@@ -6,7 +6,7 @@ region: blr            # Bangalore (closest to India). Options: blr, sgp, ...
 services:
   - name: web
     github:
-      repo: junaidsbhagdadi-tech/logimart-erp   # change to the friend's fork/repo if separate
+      repo: junaidsbhagdadi-tech/logimart-erp   # TODO: set to your GitHub org/repo
       branch: main
       deploy_on_push: true
     environment_slug: node-js
@@ -33,7 +33,7 @@ services:
         value: "5000"
       - key: COMPANY_GSTIN
         scope: RUN_TIME
-        value: "TODO_LOGIMART_GSTIN"            # change to the friend's company GSTIN
+        value: "TODO_LOGIMART_GSTIN"            # TODO: set Logimart's company GSTIN
       - key: COMPANY_STATE_CODE
         scope: RUN_TIME
         value: "29"                          # GSTIN state code (29 = Karnataka)

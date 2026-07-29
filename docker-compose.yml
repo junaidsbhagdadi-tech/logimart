@@ -1,3 +1,6 @@
+# Local dev infra for Logimart ERP.
+# Only Postgres is required: the app uses no Redis, and stores uploads (POD
+# photos / labels) in Postgres — so no object store is needed either.
 services:
   postgres:
     image: postgres:16-alpine
@@ -16,29 +19,5 @@ services:
       timeout: 5s
       retries: 10
 
-  redis:
-    image: redis:7-alpine
-    container_name: logimart-erp-redis
-    ports:
-      - "6379:6379"
-    command: ["redis-server", "--appendonly", "yes"]
-    volumes:
-      - logimart_redis:/data
-
-  minio:
-    image: minio/minio:latest
-    container_name: logimart-erp-minio
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # web console
-    volumes:
-      - logimart_minio:/data
-
 volumes:
   logimart_pg:
-  logimart_redis:
-  logimart_minio:
