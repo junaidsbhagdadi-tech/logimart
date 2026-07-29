@@ -1,0 +1,52 @@
+# DigitalOcean App Platform spec for Akul ERP (API + portal, single service).
+# Deploy: doctl apps create --spec .do/app.yaml   (or paste in the DO dashboard).
+# One service serves BOTH the NestJS API and the React portal — no Vercel needed.
+name: akul-erp
+region: blr            # Bangalore (closest to India). Options: blr, sgp, ...
+services:
+  - name: web
+    github:
+      repo: junaidsbhagdadi-tech/akul-erp   # change to the friend's fork/repo if separate
+      branch: main
+      deploy_on_push: true
+    environment_slug: node-js
+    build_command: npm run build            # builds apps/api + apps/web
+    run_command: npm start                  # prisma db push + node dist/main.js
+    instance_size_slug: basic-xs            # 1 vCPU / 1 GB (enough to build Vite+Nest)
+    instance_count: 1
+    http_port: 8080
+    health_check:
+      http_path: /health
+    envs:
+      - key: NODE_ENV
+        scope: RUN_AND_BUILD_TIME
+        value: production
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        value: ${db.DATABASE_URL}           # injected from the managed DB below
+      - key: JWT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+        value: CHANGE_ME_TO_A_LONG_RANDOM_STRING
+      - key: VOLUMETRIC_DIVISOR
+        scope: RUN_AND_BUILD_TIME
+        value: "5000"
+      - key: COMPANY_GSTIN
+        scope: RUN_TIME
+        value: "29AAUCA4736C1ZF"            # change to the friend's company GSTIN
+      - key: COMPANY_STATE_CODE
+        scope: RUN_TIME
+        value: "29"                          # GSTIN state code (29 = Karnataka)
+      # Optional: WhatsApp (leave unset to keep notifications off)
+      # - key: WHATSAPP_TOKEN
+      #   scope: RUN_TIME
+      #   type: SECRET
+      #   value: ""
+      # - key: WHATSAPP_PHONE_ID
+      #   scope: RUN_TIME
+      #   value: ""
+databases:
+  - name: db
+    engine: PG
+    version: "16"
+    production: false   # dev DB included with the app; switch to a managed cluster for prod

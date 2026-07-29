@@ -1,0 +1,25 @@
+name: akul_scanner
+description: Akul ERP ground-ops scanner — offline-first MPS scanning + POD.
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.2
+  mobile_scanner: ^5.2.3      # camera barcode scanning (ML Kit under the hood)
+  uuid: ^4.5.1                # client_event_id for idempotency
+  sqflite: ^2.3.3            # offline write-ahead queue
+  path: ^1.9.0
+  shared_preferences: ^2.3.2 # token storage
+  connectivity_plus: ^6.0.5  # auto-sync when network returns
+  geolocator: ^13.0.1        # mandatory GPS for POD
+
+dev_dependencies:
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

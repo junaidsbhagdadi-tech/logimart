@@ -1,0 +1,24 @@
+<svg viewBox="0 0 300 140" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Akul Logistics">
+  <!-- globe -->
+  <circle cx="150" cy="50" r="46" fill="#bfe0f1"/>
+  <g stroke="#9fcfe8" stroke-width="1.4" fill="none" opacity="0.8">
+    <ellipse cx="150" cy="50" rx="46" ry="18"/>
+    <ellipse cx="150" cy="50" rx="22" ry="46"/>
+    <line x1="104" y1="50" x2="196" y2="50"/>
+    <line x1="150" y1="4" x2="150" y2="96"/>
+  </g>
+  <!-- contrail swoosh -->
+  <path d="M108 70 Q150 22 206 34" stroke="#13266b" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <!-- plane -->
+  <path d="M190 30 l26 -14 -9 17 11 4 -20 10 z" fill="#13266b"/>
+  <!-- ship -->
+  <path d="M120 66 h44 l-7 12 h-30 z" fill="#1c3a8a"/>
+  <rect x="132" y="56" width="20" height="10" fill="#1c3a8a"/>
+  <!-- truck -->
+  <rect x="116" y="70" width="30" height="15" rx="2" fill="#13266b"/>
+  <path d="M146 74 h12 l7 7 v4 h-19 z" fill="#13266b"/>
+  <circle cx="125" cy="87" r="4.5" fill="#13266b"/><circle cx="125" cy="87" r="1.8" fill="#fff"/>
+  <circle cx="158" cy="87" r="4.5" fill="#13266b"/><circle cx="158" cy="87" r="1.8" fill="#fff"/>
+  <!-- wordmark -->
+  <text x="150" y="128" text-anchor="middle" font-family="'Plus Jakarta Sans', Georgia, serif" font-weight="800" font-size="30" fill="#13266b">Akul Logistics</text>
+</svg>
