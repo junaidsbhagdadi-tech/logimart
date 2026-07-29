@@ -110,6 +110,18 @@ enum ShipmentStatus {
   CANCELLED
 }
 
+// How freight is settled for this consignment.
+enum PaymentTerm {
+  PREPAID // freight billed to the client account (credit) — the default
+  TO_PAY  // "Freight Collect": freight collected from the consignee at delivery
+}
+
+// DOD (Draft on Delivery) — the instrument collected before release.
+enum DodInstrument {
+  CHEQUE
+  DD
+}
+
 model Shipment {
   id           BigInt         @id @default(autoincrement())
   awb          String         @unique // master AWB, e.g. LMT202600045
@@ -152,6 +164,23 @@ model Shipment {
   ewbValidUpto   DateTime?
   manifestId     BigInt?   // trip/manifest this consignment is attached to
   deliveryRiderId BigInt?  // rider assigned for last-mile delivery
+
+  // ---- payment terms: Prepaid vs To-Pay (Freight Collect) ----
+  paymentTerm        PaymentTerm @default(PREPAID)
+  freightToCollect   Decimal?    @db.Decimal(14, 2) // freight to collect from consignee (To-Pay)
+  freightCollected   Decimal?    @db.Decimal(14, 2) // freight actually collected at delivery
+  freightCollectedAt DateTime?
+  freightCollectedById BigInt?
+
+  // ---- DOD (Draft on Delivery): cheque/DD collected BEFORE the shipment is released ----
+  isDod            Boolean        @default(false)
+  dodAmount        Decimal?       @db.Decimal(14, 2)
+  dodInstrument    DodInstrument?
+  dodReference     String?        // cheque / DD number
+  dodBankName      String?
+  dodCollectedAt   DateTime?      // set when the draft is collected (delivery gate)
+  dodCollectedById BigInt?
+  dodHandedOverAt  DateTime?      // draft handed over to the consignor
 
   pieces ShipmentPiece[]
   pods   Pod[]

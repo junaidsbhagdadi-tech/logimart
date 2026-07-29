@@ -9,6 +9,8 @@ export function ShipmentDetail() {
   const canPod = ['DRIVER', 'HUB_MANAGER', 'SYS_ADMIN'].includes(user?.role || '');
   const canAssign = ['HUB_MANAGER', 'SYS_ADMIN'].includes(user?.role || '');
   const canReweigh = ['WAREHOUSE_HANDLER', 'HUB_MANAGER', 'FINANCE_EXEC', 'SYS_ADMIN'].includes(user?.role || '');
+  const canCollect = ['DRIVER', 'HUB_MANAGER', 'FINANCE_EXEC', 'SYS_ADMIN'].includes(user?.role || '');
+  const canHandover = ['HUB_MANAGER', 'FINANCE_EXEC', 'SYS_ADMIN'].includes(user?.role || '');
   const [s, setS] = useState<Shipment | null>(null);
   const [quote, setQuote] = useState<RateQuote | null>(null);
   const [podFile, setPodFile] = useState<File | null>(null);
@@ -75,6 +77,30 @@ export function ShipmentDetail() {
     } catch (e: any) {
       setError(e.message);
     }
+  };
+
+  const collectDodAction = async () => {
+    const reference = prompt('Cheque / DD number collected from the consignee:');
+    if (!reference) return;
+    const bankName = prompt('Bank name (optional):') || undefined;
+    setError(''); setMsg('');
+    try { const r = await api.collectDod(awb!, { reference, bankName }); setMsg(r.message); load(); }
+    catch (e: any) { setError(e.message); }
+  };
+
+  const handoverDodAction = async () => {
+    if (!confirm('Confirm the DOD draft has been handed over to the consignor?')) return;
+    setError(''); setMsg('');
+    try { const r = await api.handoverDod(awb!); setMsg(r.message); load(); }
+    catch (e: any) { setError(e.message); }
+  };
+
+  const collectFreightAction = async () => {
+    const amt = Number(prompt('Freight amount collected from the consignee (₹):', s?.freightToCollect ?? ''));
+    if (!amt) return;
+    setError(''); setMsg('');
+    try { const r = await api.collectFreight(awb!, amt); setMsg(r.message); load(); }
+    catch (e: any) { setError(e.message); }
   };
 
   const submitReweigh = async () => {
@@ -150,11 +176,64 @@ export function ShipmentDetail() {
           <div><label>Total volumetric</label>{s.totalVolKg} kg</div>
           <div><label>LR / GC No.</label>{s.lrNumber ?? '—'}</div>
           <div><label>E-way bill</label>{s.ewbNo ?? '—'}</div>
+          <div>
+            <label>Payment</label>
+            <span className={`badge ${s.paymentTerm === 'TO_PAY' ? 'TO_PAY' : 'PAID'}`}>{s.paymentTerm === 'TO_PAY' ? 'TO-PAY' : 'PREPAID'}</span>
+            {s.isDod && <span className="badge DOD" style={{ marginLeft: 6 }}>DOD</span>}
+          </div>
           {(s.ftlVehicleType || s.vehicleNo) && <div><label>FTL vehicle</label>{[s.ftlVehicleType, s.vehicleNo].filter(Boolean).join(' · ')}</div>}
           {s.departureAt && <div><label>Departure</label>{new Date(s.departureAt).toLocaleString()}</div>}
           {s.arrivalAt && <div><label>Arrival</label>{new Date(s.arrivalAt).toLocaleString()}</div>}
         </div>
       </div>
+
+      {(s.paymentTerm === 'TO_PAY' || s.isDod) && (
+        <div className="card" style={{ borderLeft: s.isDod && !s.dodCollectedAt ? '4px solid var(--warn)' : '4px solid var(--brand)' }}>
+          <h2>💳 Payment &amp; collection</h2>
+          <div className="grid cols-3">
+            {s.paymentTerm === 'TO_PAY' && (
+              <>
+                <div><label>Freight to collect</label>₹{s.freightToCollect ?? '—'}</div>
+                <div>
+                  <label>Freight collected</label>
+                  {s.freightCollectedAt
+                    ? <>₹{s.freightCollected} · {new Date(s.freightCollectedAt).toLocaleString()}</>
+                    : <span className="badge PARTIAL">PENDING</span>}
+                </div>
+              </>
+            )}
+            {s.isDod && (
+              <>
+                <div><label>DOD instrument</label>{s.dodInstrument === 'DD' ? 'Demand Draft' : 'Cheque'} · ₹{s.dodAmount ?? '—'}</div>
+                <div>
+                  <label>Draft collected</label>
+                  {s.dodCollectedAt
+                    ? <>✅ {s.dodReference}{s.dodBankName ? ` · ${s.dodBankName}` : ''}</>
+                    : <span className="badge PARTIAL">NOT COLLECTED</span>}
+                </div>
+                <div>
+                  <label>Handed to consignor</label>
+                  {s.dodHandedOverAt ? <>✅ {new Date(s.dodHandedOverAt).toLocaleString()}</> : <span className="muted">pending</span>}
+                </div>
+              </>
+            )}
+          </div>
+          <div className="row" style={{ marginTop: 14 }}>
+            {s.isDod && !s.dodCollectedAt && canCollect && (
+              <button onClick={collectDodAction}>💷 Collect {s.dodInstrument === 'DD' ? 'DD' : 'cheque'}</button>
+            )}
+            {s.isDod && s.dodCollectedAt && !s.dodHandedOverAt && canHandover && (
+              <button className="secondary" onClick={handoverDodAction}>📤 Hand over draft</button>
+            )}
+            {s.paymentTerm === 'TO_PAY' && !s.freightCollectedAt && canCollect && (
+              <button onClick={collectFreightAction}>💰 Collect freight</button>
+            )}
+          </div>
+          {s.isDod && !s.dodCollectedAt && (
+            <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>🔒 POD is blocked until the draft is collected.</p>
+          )}
+        </div>
+      )}
 
       {s.pods && s.pods.length > 0 && (
         <div className="card">

@@ -1,11 +1,11 @@
 :root {
-  --navy: #13266b;
-  --navy-deep: #0b1640;
-  --sky: #2aa9e0;          /* vivid logo blue */
-  --sky-bright: #38c0f0;
-  --sky-soft: #e8f6fd;
+  --navy: #15356e;        /* LogiMart navy (wordmark) */
+  --navy-deep: #0b1f47;
+  --sky: #1fa85c;         /* LogiMart green — primary accent */
+  --sky-bright: #34c46e;  /* bright green */
+  --sky-soft: #e7f7ee;    /* soft green wash */
   --brand: var(--navy);
-  --brand-light: #2f6fd0;
+  --brand-light: #2f8f57;
   --bg: #eef2f9;
   --card: #ffffff;
   --text: #1d2638;
@@ -22,7 +22,7 @@
 * { box-sizing: border-box; }
 body {
   margin: 0;
-  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  font-family: 'Manrope', system-ui, -apple-system, sans-serif;
   background: #eaf1fb;
   color: var(--text);
   -webkit-font-smoothing: antialiased;
@@ -34,9 +34,9 @@ body::before {
   content: '';
   position: fixed; inset: 0; z-index: -2;
   background:
-    radial-gradient(560px 560px at 88% -6%, rgba(42,169,224,.28), transparent 60%),
+    radial-gradient(560px 560px at 88% -6%, rgba(31,168,92,.28), transparent 60%),
     radial-gradient(620px 620px at -6% 8%, rgba(19,38,107,.20), transparent 58%),
-    radial-gradient(680px 680px at 60% 112%, rgba(56,192,240,.22), transparent 60%),
+    radial-gradient(680px 680px at 60% 112%, rgba(52,196,110,.22), transparent 60%),
     linear-gradient(180deg, #eef4fc 0%, #e6eff9 100%);
 }
 body::after {
@@ -135,7 +135,7 @@ label { font-size: 12px; font-weight: 600; color: var(--muted); display: block; 
   background: linear-gradient(135deg, var(--sky) 0%, var(--sky-bright) 100%);
   color: #06243a;
   font-weight: 700;
-  box-shadow: 0 8px 18px rgba(42,169,224,.4);
+  box-shadow: 0 8px 18px rgba(31,168,92,.4);
 }
 .sidebar .userbox {
   border-top: 1px solid rgba(255,255,255,.12);
@@ -163,16 +163,16 @@ label { font-size: 12px; font-weight: 600; color: var(--muted); display: block; 
 }
 .card:hover { box-shadow: 0 20px 55px rgba(19,38,107,.16); transform: translateY(-2px); }
 h1 {
-  font-family: 'Sora', 'Plus Jakarta Sans', sans-serif;
+  font-family: 'Space Grotesk', 'Manrope', sans-serif;
   font-size: 29px; font-weight: 800; margin: 4px 0 22px; color: var(--navy);
   letter-spacing: -.6px; display: flex; align-items: center; gap: 14px;
 }
 h1::before {
   content: ''; width: 7px; height: 32px; border-radius: 7px;
   background: linear-gradient(180deg, var(--sky), var(--navy));
-  box-shadow: 0 6px 14px rgba(42,169,224,.45);
+  box-shadow: 0 6px 14px rgba(31,168,92,.45);
 }
-h2 { font-family: 'Sora', 'Plus Jakarta Sans', sans-serif; font-size: 16px; font-weight: 700; margin: 0 0 15px; color: var(--navy); letter-spacing: -.2px; }
+h2 { font-family: 'Space Grotesk', 'Manrope', sans-serif; font-size: 16px; font-weight: 700; margin: 0 0 15px; color: var(--navy); letter-spacing: -.2px; }
 
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 12px 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
@@ -185,6 +185,8 @@ tbody tr:hover td { background: var(--sky-soft); }
 .badge.AT_HUB, .badge.LOADED, .badge.IN_TRANSIT, .badge.OUT_FOR_DELIVERY, .badge.ASSIGNED, .badge.PARTIALLY_PAID { background:#fff3d6; color:#946200; }
 .badge.DELIVERED, .badge.PICKED, .badge.PAID { background:#d4f6e6; color:#0a7a52; }
 .badge.PARTIAL, .badge.EXCEPTION, .badge.MISSING, .badge.DAMAGED, .badge.DISPUTED, .badge.CANCELLED { background:#fde3e5; color:#b22633; }
+.badge.TO_PAY { background:#fff0d6; color:#9a5b00; }
+.badge.DOD { background:#ece4fb; color:#5b34b8; }
 
 .grid { display: grid; gap: 14px; }
 .grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
@@ -205,7 +207,7 @@ tbody tr:hover td { background: var(--sky-soft); }
   position: fixed; right: 22px; bottom: 22px; z-index: 50;
   border-radius: 999px; padding: 12px 20px; font-weight: 700;
   background: linear-gradient(135deg, var(--sky) 0%, var(--sky-bright) 100%);
-  color: #06243a; box-shadow: 0 10px 26px rgba(42,169,224,.45);
+  color: #06243a; box-shadow: 0 10px 26px rgba(31,168,92,.45);
 }
 .modal-backdrop {
   position: fixed; inset: 0; z-index: 60;
@@ -229,7 +231,7 @@ tbody tr:hover td { background: var(--sky-soft); }
   min-height: 100vh;
   display:flex; align-items:center; justify-content:center;
   background:
-    radial-gradient(700px 700px at 15% 10%, rgba(56,192,240,.35), transparent 55%),
+    radial-gradient(700px 700px at 15% 10%, rgba(52,196,110,.35), transparent 55%),
     radial-gradient(760px 760px at 85% 90%, rgba(19,38,107,.30), transparent 55%),
     linear-gradient(150deg, #163a86 0%, #0d1c52 100%);
   padding: 20px;

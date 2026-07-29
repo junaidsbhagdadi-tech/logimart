@@ -24,6 +24,17 @@ export class PodsService {
     });
     if (!shipment) throw new NotFoundException(`AWB ${awb} not found`);
 
+    // DOD gate: a Draft-on-Delivery shipment cannot be delivered until the
+    // cheque/DD has been collected from the consignee.
+    if (shipment.isDod && !shipment.dodCollectedAt) {
+      throw new ConflictException({
+        message: `DOD not collected — delivery blocked. Collect the ${shipment.dodInstrument ?? 'cheque/DD'} (₹${shipment.dodAmount ?? '—'}) before recording POD.`,
+        awb,
+        dodAmount: shipment.dodAmount,
+        dodInstrument: shipment.dodInstrument,
+      });
+    }
+
     const isShort = dto.piecesDelivered < shipment.pieceCount;
     if (isShort && !force) {
       throw new ConflictException({

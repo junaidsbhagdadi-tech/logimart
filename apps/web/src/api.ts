@@ -67,6 +67,19 @@ export interface Shipment {
   ftlVehicleType?: string | null;
   departureAt?: string | null;
   arrivalAt?: string | null;
+  // payment terms
+  paymentTerm?: 'PREPAID' | 'TO_PAY';
+  freightToCollect?: string | null;
+  freightCollected?: string | null;
+  freightCollectedAt?: string | null;
+  // DOD (Draft on Delivery)
+  isDod?: boolean;
+  dodAmount?: string | null;
+  dodInstrument?: 'CHEQUE' | 'DD' | null;
+  dodReference?: string | null;
+  dodBankName?: string | null;
+  dodCollectedAt?: string | null;
+  dodHandedOverAt?: string | null;
   pods?: {
     id: string;
     stampPhotoUrl: string | null;
@@ -256,6 +269,14 @@ export const api = {
       `/api/v1/shipments/${awb}/pod${force ? '?force=true' : ''}`,
       { method: 'POST', body: JSON.stringify(body) },
     ),
+
+  // ---- To-Pay / DOD ----
+  collectDod: (awb: string, body: { reference: string; bankName?: string; amount?: number }) =>
+    request<{ message: string }>(`/api/v1/shipments/${awb}/dod/collect`, { method: 'POST', body: JSON.stringify(body) }),
+  handoverDod: (awb: string) =>
+    request<{ message: string }>(`/api/v1/shipments/${awb}/dod/handover`, { method: 'POST' }),
+  collectFreight: (awb: string, amount: number) =>
+    request<{ message: string }>(`/api/v1/shipments/${awb}/collect-freight`, { method: 'POST', body: JSON.stringify({ amount }) }),
 
   // ---- finance ----
   rateQuote: (awb: string) => request<RateQuote>(`/api/v1/shipments/${awb}/rate-quote`),

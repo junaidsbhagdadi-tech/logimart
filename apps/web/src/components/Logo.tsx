@@ -1,24 +1,41 @@
+import { useState } from 'react';
+
 /**
- * Logimart brand mark — inline SVG (globe + plane + truck + wordmark), so branding
- * always renders and never falls back to another company's artwork.
- * TODO(logimart): when the real Logimart logo is available, drop it into
- * apps/web/public/logo.png and switch this back to an <img src="/logo.png"> variant.
+ * LogiMart brand lockup. Prefers the real logo if you drop it at
+ * apps/web/public/logo.png; otherwise renders an inline SVG (stacked cargo
+ * boxes + two-tone "LogiMart" wordmark + "Logistics simplified" tagline).
  */
 export function Logo({ height = 44, variant = 'dark' }: { height?: number; variant?: 'dark' | 'light' }) {
-  const navy = variant === 'light' ? '#ffffff' : '#13266b';
-  const sky = '#7ec5e6';
+  const [imgOk, setImgOk] = useState(true);
+  const light = variant === 'light';
+  const navy = light ? '#ffffff' : '#15356e';
+  const green = light ? '#d6ffe8' : '#1fa85c';
+  const teal = '#17a2b8';
+
+  if (imgOk) {
+    return (
+      <img
+        src="/logo.png"
+        alt="LogiMart"
+        onError={() => setImgOk(false)}
+        style={{ height, width: 'auto', display: 'block' }}
+      />
+    );
+  }
 
   return (
-    <svg height={height} viewBox="0 0 220 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Logimart">
-      <circle cx="92" cy="46" r="40" fill={sky} opacity="0.55" />
-      <path d="M58 60 q34 -34 70 -20" stroke={navy} strokeWidth="5" fill="none" strokeLinecap="round" />
-      <path d="M120 36 l18 -10 -6 12 8 2 -14 8z" fill={navy} />
-      <rect x="64" y="62" width="34" height="16" rx="2" fill={navy} />
-      <path d="M98 66 h14 l8 8 v4 h-22z" fill={navy} />
-      <circle cx="74" cy="82" r="5" fill={navy} /><circle cx="74" cy="82" r="2" fill="#fff" />
-      <circle cx="112" cy="82" r="5" fill={navy} /><circle cx="112" cy="82" r="2" fill="#fff" />
-      <text x="110" y="112" textAnchor="middle" fontFamily="'Plus Jakarta Sans', sans-serif" fontWeight="800" fontSize="26" fill={navy}>
-        Logimart
+    <svg height={height} viewBox="0 0 344 96" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="LogiMart — Logistics simplified">
+      {/* stacked cargo boxes → ascending growth */}
+      <rect x="10" y="58" width="18" height="26" rx="4" fill={light ? 'rgba(255,255,255,.55)' : '#15356e'} />
+      <rect x="31" y="44" width="18" height="40" rx="4" fill={light ? 'rgba(255,255,255,.78)' : teal} />
+      <rect x="52" y="28" width="18" height="56" rx="4" fill={light ? '#ffffff' : '#34c46e'} />
+      {/* wordmark */}
+      <text x="86" y="56" fontFamily="'Space Grotesk','Manrope',sans-serif" fontWeight="700" fontSize="38" letterSpacing="-1">
+        <tspan fill={navy}>Logi</tspan><tspan fill={green}>Mart</tspan>
+      </text>
+      {/* tagline */}
+      <text x="88" y="79" fontFamily="'Manrope',sans-serif" fontStyle="italic" fontWeight="600" fontSize="14" letterSpacing="1.2" fill={green}>
+        Logistics simplified
       </text>
     </svg>
   );

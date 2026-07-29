@@ -37,6 +37,11 @@ export function CreateShipment() {
 
   const [pieces, setPieces] = useState<PieceForm[]>([{ ...blank }]);
   const [manualFreight, setManualFreight] = useState('');
+  const [paymentTerm, setPaymentTerm] = useState<'PREPAID' | 'TO_PAY'>('PREPAID');
+  const [freightToCollect, setFreightToCollect] = useState('');
+  const [isDod, setIsDod] = useState(false);
+  const [dodInstrument, setDodInstrument] = useState<'CHEQUE' | 'DD'>('CHEQUE');
+  const [dodAmount, setDodAmount] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -86,6 +91,11 @@ export function CreateShipment() {
         departureAt: ftl.departureAt ? new Date(ftl.departureAt).toISOString() : undefined,
         arrivalAt: ftl.arrivalAt ? new Date(ftl.arrivalAt).toISOString() : undefined,
         manualFreight: manualFreight ? +manualFreight : undefined,
+        paymentTerm,
+        freightToCollect: paymentTerm === 'TO_PAY' && freightToCollect ? +freightToCollect : undefined,
+        isDod,
+        dodInstrument: isDod ? dodInstrument : undefined,
+        dodAmount: isDod && dodAmount ? +dodAmount : undefined,
         pieces: pieces.map((p) => ({
           deadKg: +p.deadKg,
           lengthCm: p.lengthCm ? +p.lengthCm : undefined,
@@ -183,6 +193,52 @@ export function CreateShipment() {
           <div><label>HSN</label><input value={c.hsnCode} onChange={(e) => setCf('hsnCode', e.target.value)} /></div>
           <div style={{ gridColumn: 'span 2' }}><label>Goods description</label><input value={c.goodsDesc} onChange={(e) => setCf('goodsDesc', e.target.value)} /></div>
         </div>
+      </div>
+
+      <div className="card">
+        <h2>💳 Payment &amp; collection</h2>
+        <div className="grid cols-3">
+          <div>
+            <label>Freight payment term</label>
+            <select value={paymentTerm} onChange={(e) => setPaymentTerm(e.target.value as 'PREPAID' | 'TO_PAY')}>
+              <option value="PREPAID">Prepaid — bill to account</option>
+              <option value="TO_PAY">To-Pay — collect freight from consignee</option>
+            </select>
+          </div>
+          {paymentTerm === 'TO_PAY' && (
+            <div>
+              <label>Freight to collect ₹</label>
+              <input type="number" value={freightToCollect} onChange={(e) => setFreightToCollect(e.target.value)} placeholder="collected at delivery" />
+            </div>
+          )}
+          <div style={{ gridColumn: paymentTerm === 'TO_PAY' ? undefined : 'span 2' }}>
+            <label>Draft on Delivery (DOD)</label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, color: 'var(--text)', marginTop: 4, cursor: 'pointer' }}>
+              <input type="checkbox" style={{ width: 'auto' }} checked={isDod} onChange={(e) => setIsDod(e.target.checked)} />
+              Collect a cheque / DD before delivery
+            </label>
+          </div>
+          {isDod && (
+            <>
+              <div>
+                <label>Instrument</label>
+                <select value={dodInstrument} onChange={(e) => setDodInstrument(e.target.value as 'CHEQUE' | 'DD')}>
+                  <option value="CHEQUE">Cheque</option>
+                  <option value="DD">Demand Draft</option>
+                </select>
+              </div>
+              <div>
+                <label>DOD amount ₹</label>
+                <input type="number" value={dodAmount} onChange={(e) => setDodAmount(e.target.value)} placeholder="draft value" />
+              </div>
+            </>
+          )}
+        </div>
+        {isDod && (
+          <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>
+            🔒 Delivery will be <strong>blocked</strong> until the {dodInstrument === 'DD' ? 'DD' : 'cheque'} is collected from the consignee and recorded.
+          </p>
+        )}
       </div>
 
       <div className="card">

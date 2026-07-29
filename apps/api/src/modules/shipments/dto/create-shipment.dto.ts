@@ -13,7 +13,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { ServiceMode } from '@prisma/client';
+import { ServiceMode, PaymentTerm, DodInstrument } from '@prisma/client';
 
 export class PieceInputDto {
   @IsNumber()
@@ -58,6 +58,15 @@ export class CreateShipmentDto {
   @IsOptional() @IsISO8601() arrivalAt?: string;
 
   @IsOptional() @IsNumber() manualFreight?: number; // ad-hoc/one-time agreed freight
+
+  // ---- payment terms ----
+  @IsOptional() @IsEnum(PaymentTerm) paymentTerm?: PaymentTerm; // PREPAID (default) | TO_PAY
+  @IsOptional() @IsNumber() freightToCollect?: number;          // amount to collect from consignee (To-Pay)
+
+  // ---- DOD (Draft on Delivery) ----
+  @IsOptional() @IsBoolean() isDod?: boolean;
+  @IsOptional() @IsNumber() dodAmount?: number;
+  @IsOptional() @IsEnum(DodInstrument) dodInstrument?: DodInstrument; // CHEQUE | DD
 
   /** Finance override to book despite a credit hold. */
   @IsOptional() @IsBoolean() overrideCreditHold?: boolean;

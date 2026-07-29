@@ -57,6 +57,31 @@ export class ShipmentsController {
     return this.shipments.reweigh(awb, dto.lines, req.user?.sub ? Number(req.user.sub) : undefined);
   }
 
+  /** DOD — record the cheque/DD collected from the consignee (unlocks delivery). */
+  @Post(':awb/dod/collect')
+  @Roles(UserRole.DRIVER, UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  collectDod(
+    @Param('awb') awb: string,
+    @Body() dto: { reference: string; bankName?: string; amount?: number },
+    @Req() req: any,
+  ) {
+    return this.shipments.collectDod(awb, dto, BigInt(req.user.sub));
+  }
+
+  /** DOD — record handover of the collected draft to the consignor. */
+  @Post(':awb/dod/handover')
+  @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  handoverDod(@Param('awb') awb: string) {
+    return this.shipments.handoverDod(awb);
+  }
+
+  /** To-Pay — record freight collected from the consignee at delivery. */
+  @Post(':awb/collect-freight')
+  @Roles(UserRole.DRIVER, UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  collectFreight(@Param('awb') awb: string, @Body() dto: { amount: number }, @Req() req: any) {
+    return this.shipments.collectFreight(awb, dto.amount, BigInt(req.user.sub));
+  }
+
   /** MPS labels for every child box. ?format=zpl | json (default json). */
   @Get(':awb/print-mps-labels')
   async labelsForAwb(@Param('awb') awb: string) {

@@ -113,10 +113,92 @@ export class ShipmentsService {
         departureAt: dto.departureAt ? new Date(dto.departureAt) : null,
         arrivalAt: dto.arrivalAt ? new Date(dto.arrivalAt) : null,
         manualFreight: dto.manualFreight != null ? new Prisma.Decimal(dto.manualFreight) : null,
+        // payment terms
+        paymentTerm: dto.paymentTerm ?? 'PREPAID',
+        freightToCollect:
+          dto.paymentTerm === 'TO_PAY' && dto.freightToCollect != null
+            ? new Prisma.Decimal(dto.freightToCollect)
+            : null,
+        // DOD (Draft on Delivery)
+        isDod: dto.isDod ?? false,
+        dodAmount: dto.isDod && dto.dodAmount != null ? new Prisma.Decimal(dto.dodAmount) : null,
+        dodInstrument: dto.isDod ? dto.dodInstrument ?? null : null,
         pieces: { create: pieces },
       },
       include: { pieces: { orderBy: { sequenceNo: 'asc' } } },
     });
+  }
+
+  /**
+   * DOD — record that the cheque/DD was collected from the consignee.
+   * This is the delivery gate: POD is blocked (see PodsService) until this is set.
+   */
+  async collectDod(
+    awb: string,
+    dto: { reference: string; bankName?: string; amount?: number },
+    userId: bigint,
+  ) {
+    const s = await this.prisma.shipment.findUnique({
+      where: { awb },
+      select: { id: true, isDod: true, dodCollectedAt: true, dodAmount: true },
+    });
+    if (!s) throw new NotFoundException(`AWB ${awb} not found`);
+    if (!s.isDod) throw new ForbiddenException(`${awb} is not a DOD shipment.`);
+    if (s.dodCollectedAt) throw new ForbiddenException(`DOD already collected for ${awb}.`);
+    if (!dto.reference?.trim()) throw new ForbiddenException('Cheque / DD reference number is required.');
+
+    const updated = await this.prisma.shipment.update({
+      where: { id: s.id },
+      data: {
+        dodReference: dto.reference.trim(),
+        dodBankName: dto.bankName?.trim() || null,
+        dodAmount: dto.amount != null ? new Prisma.Decimal(dto.amount) : s.dodAmount,
+        dodCollectedAt: new Date(),
+        dodCollectedById: userId,
+      },
+      select: { awb: true, dodReference: true, dodBankName: true, dodAmount: true, dodCollectedAt: true },
+    });
+    return { ...updated, message: `DOD collected — delivery unlocked for ${awb}.` };
+  }
+
+  /** DOD — record handover of the collected draft to the consignor. */
+  async handoverDod(awb: string) {
+    const s = await this.prisma.shipment.findUnique({
+      where: { awb },
+      select: { id: true, isDod: true, dodCollectedAt: true, dodHandedOverAt: true },
+    });
+    if (!s) throw new NotFoundException(`AWB ${awb} not found`);
+    if (!s.isDod) throw new ForbiddenException(`${awb} is not a DOD shipment.`);
+    if (!s.dodCollectedAt) throw new ForbiddenException(`Collect the DOD draft before handing it over.`);
+    if (s.dodHandedOverAt) throw new ForbiddenException(`DOD already handed over for ${awb}.`);
+    const updated = await this.prisma.shipment.update({
+      where: { id: s.id },
+      data: { dodHandedOverAt: new Date() },
+      select: { awb: true, dodHandedOverAt: true },
+    });
+    return { ...updated, message: `DOD draft handed over to consignor for ${awb}.` };
+  }
+
+  /** To-Pay — record the freight collected from the consignee at delivery. */
+  async collectFreight(awb: string, amount: number, userId: bigint) {
+    const s = await this.prisma.shipment.findUnique({
+      where: { awb },
+      select: { id: true, paymentTerm: true, freightCollectedAt: true },
+    });
+    if (!s) throw new NotFoundException(`AWB ${awb} not found`);
+    if (s.paymentTerm !== 'TO_PAY') throw new ForbiddenException(`${awb} is not a To-Pay shipment.`);
+    if (s.freightCollectedAt) throw new ForbiddenException(`Freight already collected for ${awb}.`);
+    if (!(amount > 0)) throw new ForbiddenException('Collected amount must be greater than zero.');
+    const updated = await this.prisma.shipment.update({
+      where: { id: s.id },
+      data: {
+        freightCollected: new Prisma.Decimal(amount),
+        freightCollectedAt: new Date(),
+        freightCollectedById: userId,
+      },
+      select: { awb: true, freightCollected: true, freightCollectedAt: true },
+    });
+    return { ...updated, message: `₹${amount} freight collected for ${awb}.` };
   }
 
   /** Recent shipments, optionally scoped to a single client, with light rollup. */
