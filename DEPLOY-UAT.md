@@ -20,8 +20,32 @@ older deploy notes were consolidated into this file.
 2. **Open/log in to the cloud account** (DigitalOcean or Railway) and authorize GitHub.
 3. **Enter the secrets** (`JWT_SECRET`, etc.) in the host's dashboard.
 
-Everything else below is click-through. Rough cost: a hobby app + small managed/dev
-Postgres ≈ a few USD/month.
+Everything else below is click-through. **For a few days of free UAT, use Path 0 (Render) — $0.**
+Paid hosts (DigitalOcean / Railway, Paths A & B) cost a few USD/month for something more durable.
+
+---
+
+## Path 0 — Render (FREE, recommended for a few days of user testing)
+
+Uses the committed `render.yaml` blueprint: one free web service (API + portal) + one free Postgres.
+
+1. **New → Blueprint →** connect GitHub → pick your `logimart-erp` repo. Render reads
+   `render.yaml` and provisions the web service **and** the free Postgres automatically.
+2. `DATABASE_URL` and `JWT_SECRET` are wired for you (DB link + generated secret). Optionally
+   set the real `COMPANY_GSTIN` in the dashboard. Click **Apply / Deploy** (~4–6 min).
+3. Render gives a URL like `https://logimart-erp.onrender.com`.
+4. **Seed once (from your machine — free tier has no web shell):** copy the database's
+   **External Database URL** (Render → the `logimart-db` → *Connections*), then locally:
+   ```bash
+   cd apps/api
+   DATABASE_URL="<render EXTERNAL database url>" npm run seed
+   ```
+   (The app's start command already created the schema via `prisma db push`; this just loads
+   the demo users, hubs, rate card and pincodes.)
+5. Share the URL. First hit after 15 min idle takes ~40s to wake (free-tier sleep) — normal.
+
+> Free-tier limits: 512 MB RAM (the blueprint caps Node memory so it fits) and the free
+> Postgres expires after ~30 days. Fine for a few days of testing; migrate before production.
 
 ---
 
