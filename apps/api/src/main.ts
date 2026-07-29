@@ -16,6 +16,6 @@ async function bootstrap() {
   app.enableCors();
   const port = process.env.PORT ?? 3000;
   await app.listen(port);
-  Logger.log(`Akul ERP API listening on :${port}`, 'Bootstrap');
+  Logger.log(`Logimart ERP API listening on :${port}`, 'Bootstrap');
 }
 bootstrap();

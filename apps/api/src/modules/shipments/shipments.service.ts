@@ -24,7 +24,7 @@ export class ShipmentsService {
     return Number(((l * w * h) / VOLUMETRIC_DIVISOR).toFixed(3));
   }
 
-  /** AGLPL + YYYY + zero-padded sequence, e.g. AGLPL2026000045. */
+  /** LMT + YYYY + zero-padded sequence, e.g. LMT2026000045. */
   private async nextAwb(): Promise<string> {
     const year = new Date().getFullYear();
     const count = await this.prisma.shipment.count();

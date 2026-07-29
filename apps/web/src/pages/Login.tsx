@@ -7,7 +7,7 @@ export function Login() {
   const { login } = useAuth();
   const nav = useNavigate();
   const [email, setEmail] = useState('client@demo.com');
-  const [password, setPassword] = useState('akul1234');
+  const [password, setPassword] = useState('logimart1234');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -45,7 +45,7 @@ export function Login() {
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
         <p className="muted" style={{ marginTop: 14, textAlign: 'center' }}>
-          Demo: client@demo.com / akul1234
+          Demo: client@demo.com / logimart1234
         </p>
       </form>
     </div>

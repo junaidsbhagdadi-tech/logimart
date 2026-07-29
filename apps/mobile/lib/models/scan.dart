@@ -1,7 +1,7 @@
 /// A single scan event, queued locally before it syncs to the ERP.
 class Scan {
   final String clientEventId; // UUID — the server's idempotency key
-  final String barcode; // child id, e.g. AGLPL2026000001-002
+  final String barcode; // child id, e.g. LMT2026000001-002
   final String checkpoint;
   final String scannedAt; // ISO8601, device clock
   final int deviceSeq; // monotonic per-device ordering tiebreaker

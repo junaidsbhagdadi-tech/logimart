@@ -77,7 +77,7 @@ export function Labels() {
           <div className="mps-label" key={l.childId}>
             <div className="hdr">
               <div>
-                <strong>Akul Logistics</strong>
+                <strong>Logimart</strong>
                 <div style={{ fontSize: 11 }}>Domestic Air &amp; Road</div>
               </div>
               <div className="seq">{l.sequenceLabel}</div>

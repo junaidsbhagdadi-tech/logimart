@@ -1,17 +1,17 @@
-# DigitalOcean App Platform spec for the Akul ERP UAT environment.
+# DigitalOcean App Platform spec for the Logimart ERP UAT environment.
 # Separate app from production: tracks the `uat` branch, uses the `uat` database
-# (same cluster, isolated data), and its own subdomain uat.akullogistics.com.
+# (same cluster, isolated data), and its own subdomain uat.logimart.com.
 # Real DATABASE_URL / JWT_SECRET are set in the DO dashboard, not committed here.
-name: akul-uat
+name: logimart-uat
 region: blr
 domains:
-- domain: uat.akullogistics.com
+- domain: uat.logimart.com
   type: PRIMARY
 services:
-- name: akul-erp
+- name: logimart-erp
   environment_slug: node-js
   github:
-    repo: junaidsbhagdadi-tech/akul-erp
+    repo: junaidsbhagdadi-tech/logimart-erp
     branch: uat                 # <-- UAT tracks the uat branch
     deploy_on_push: true
   build_command: npm run build
@@ -35,7 +35,7 @@ services:
     value: "5000"
   - key: COMPANY_GSTIN
     scope: RUN_TIME
-    value: "29AAUCA4736C1ZF"
+    value: "TODO_LOGIMART_GSTIN"
   - key: COMPANY_STATE_CODE
     scope: RUN_TIME
     value: "29"

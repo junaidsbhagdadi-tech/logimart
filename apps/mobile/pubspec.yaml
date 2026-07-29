@@ -1,5 +1,5 @@
-name: akul_scanner
-description: Akul ERP ground-ops scanner — offline-first MPS scanning + POD.
+name: logimart_scanner
+description: Logimart ERP ground-ops scanner — offline-first MPS scanning + POD.
 publish_to: "none"
 version: 0.1.0+1
 

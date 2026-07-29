@@ -1,4 +1,4 @@
-# Akul Scanner (Flutter) — Ground-Ops Mobile
+# Logimart Scanner (Flutter) — Ground-Ops Mobile
 
 Offline-first MPS scanning client for warehouse handlers and drivers.
 
@@ -27,7 +27,7 @@ flutter run --dart-define=API_BASE=https://brave-respect-production-1357.up.rail
 Default API base is already the Railway UAT URL (see `lib/config.dart`); override with
 `--dart-define=API_BASE=...` for production.
 
-**Login:** seeded ops user `warehouse@akullogistics.com` / `akul1234` (or `driver@…`).
+**Login:** seeded ops user `warehouse@logimart.com` / `logimart1234` (or `driver@…`).
 
 ## Permissions to add after `flutter create`
 - **Android** — `android/app/src/main/AndroidManifest.xml`:

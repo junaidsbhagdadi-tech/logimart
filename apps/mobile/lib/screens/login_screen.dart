@@ -9,8 +9,8 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _email = TextEditingController(text: 'warehouse@akullogistics.com');
-  final _password = TextEditingController(text: 'akul1234');
+  final _email = TextEditingController(text: 'warehouse@logimart.com');
+  final _password = TextEditingController(text: 'logimart1234');
   bool _busy = false;
   String? _error;
 
@@ -42,7 +42,7 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Akul Logistics',
+              const Text('Logimart',
                   style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
               const Text('Ground Ops Scanner'),
               const SizedBox(height: 24),

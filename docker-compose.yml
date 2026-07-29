@@ -1,33 +1,33 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: akul-erp-postgres
+    container_name: logimart-erp-postgres
     environment:
-      POSTGRES_USER: akul
-      POSTGRES_PASSWORD: akul
-      POSTGRES_DB: akul_erp
+      POSTGRES_USER: logimart
+      POSTGRES_PASSWORD: logimart
+      POSTGRES_DB: logimart_erp
     ports:
       - "5432:5432"
     volumes:
-      - akul_pg:/var/lib/postgresql/data
+      - logimart_pg:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U akul -d akul_erp"]
+      test: ["CMD-SHELL", "pg_isready -U logimart -d logimart_erp"]
       interval: 5s
       timeout: 5s
       retries: 10
 
   redis:
     image: redis:7-alpine
-    container_name: akul-erp-redis
+    container_name: logimart-erp-redis
     ports:
       - "6379:6379"
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
-      - akul_redis:/data
+      - logimart_redis:/data
 
   minio:
     image: minio/minio:latest
-    container_name: akul-erp-minio
+    container_name: logimart-erp-minio
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minioadmin
@@ -36,9 +36,9 @@ services:
       - "9000:9000"   # S3 API
       - "9001:9001"   # web console
     volumes:
-      - akul_minio:/data
+      - logimart_minio:/data
 
 volumes:
-  akul_pg:
-  akul_redis:
-  akul_minio:
+  logimart_pg:
+  logimart_redis:
+  logimart_minio:

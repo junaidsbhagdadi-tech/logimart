@@ -1,4 +1,4 @@
-// End-to-end smoke test against a live Akul ERP API.
+// End-to-end smoke test against a live Logimart ERP API.
 // Usage: BASE=https://your-host node scripts/smoke-test.mjs
 const BASE = process.env.BASE || 'http://localhost:3000';
 const uuid = () => crypto.randomUUID();
@@ -23,7 +23,7 @@ async function api(path, { method = 'GET', token, body } = {}) {
 }
 
 const login = (email) =>
-  api('/api/v1/auth/login', { method: 'POST', body: { email, password: 'akul1234' } })
+  api('/api/v1/auth/login', { method: 'POST', body: { email, password: 'logimart1234' } })
     .then((r) => r.accessToken);
 
 function scans(childIds, checkpoint, baseTime, opts = {}) {
@@ -38,7 +38,7 @@ function scans(childIds, checkpoint, baseTime, opts = {}) {
 }
 
 (async () => {
-  log(`\n=== Akul ERP smoke test @ ${BASE} ===\n`);
+  log(`\n=== Logimart ERP smoke test @ ${BASE} ===\n`);
 
   // 1) health
   const health = await api('/health');
@@ -91,7 +91,7 @@ function scans(childIds, checkpoint, baseTime, opts = {}) {
   log(`     route ${m.route}, ${m.pieceCount} pcs, dead ${m.totalDeadKg}kg / vol ${m.totalVolKg}kg`);
 
   // 4) ops user scans
-  const opsToken = await login('hub@akullogistics.com');
+  const opsToken = await login('hub@logimart.com');
   log('5. LOGIN hub manager: ok');
 
   const t0 = Date.now();
@@ -133,7 +133,7 @@ function scans(childIds, checkpoint, baseTime, opts = {}) {
   const quote = await api(`/api/v1/shipments/${awb}/rate-quote`, { token: clientToken });
   log(`10. RATE QUOTE: ${quote.chargeableKg}kg chargeable -> freight ₹${quote.freight}, subtotal ₹${quote.subtotal} +GST ₹${quote.gst} = ₹${quote.grandTotal}`);
 
-  const financeToken = await login('finance@akullogistics.com');
+  const financeToken = await login('finance@logimart.com');
   const today = new Date();
   const periodStart = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
   const periodEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().slice(0, 10);
@@ -184,7 +184,7 @@ function scans(childIds, checkpoint, baseTime, opts = {}) {
   log(`19. NOTIFICATIONS recorded: ${notifs.length} (latest: ${notifs[0]?.kind} — ${notifs[0]?.message?.slice(0, 50)}…)`);
 
   // ---- Master data: onboard customer + rate matrix + surcharge-aware quote ----
-  const adminToken = await login('admin@akullogistics.com');
+  const adminToken = await login('admin@logimart.com');
   const stamp = Date.now().toString().slice(-6);
   const newClient = await api('/api/v1/clients', {
     method: 'POST', token: adminToken,
@@ -234,7 +234,7 @@ function scans(childIds, checkpoint, baseTime, opts = {}) {
   // ---- User management ----
   const newUser = await api('/api/v1/users', {
     method: 'POST', token: adminToken,
-    body: { fullName: `Test Handler ${stamp}`, email: `handler${stamp}@akullogistics.com`, password: 'pass1234', role: 'WAREHOUSE_HANDLER' },
+    body: { fullName: `Test Handler ${stamp}`, email: `handler${stamp}@logimart.com`, password: 'pass1234', role: 'WAREHOUSE_HANDLER' },
   });
   const users = await api('/api/v1/users', { token: adminToken });
   log(`26. USER created: ${newUser.email} (${newUser.role}); total users now ${users.length}`);
@@ -283,7 +283,7 @@ function scans(childIds, checkpoint, baseTime, opts = {}) {
   await api('/api/v1/scans/bulk-sync', { method: 'POST', token: opsToken, body: { deviceId: 'D', events: scans(rChild, 'LOAD', tt + 2000, { seqStart: 9 }) } });
   await api(`/api/v1/shipments/${rAwb}/assign-delivery`, { method: 'POST', token: opsToken, body: { riderId: driverId } });
 
-  const driverToken = await login('driver@akullogistics.com');
+  const driverToken = await login('driver@logimart.com');
   const tasks = await api('/api/v1/rider/tasks', { token: driverToken });
   log(`32. RIDER TASKS: ${tasks.pickups.length} pickups, ${tasks.deliveries.length} deliveries; has ${rAwb}: ${tasks.deliveries.some((d) => d.awb === rAwb)}`);
 

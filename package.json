@@ -1,8 +1,8 @@
 {
-  "name": "akul-erp",
+  "name": "logimart-erp",
   "version": "0.1.0",
   "private": true,
-  "description": "Akul ERP monorepo root — delegates build/start into apps/api for Railway (Nixpacks).",
+  "description": "Logimart ERP monorepo root — delegates build/start into apps/api for Railway (Nixpacks).",
   "engines": {
     "node": "20.x"
   },

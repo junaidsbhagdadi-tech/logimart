@@ -25,7 +25,7 @@ Topology: **API + Postgres + Redis on Railway**, **web portal on Vercel**.
    # login -> grab accessToken
    curl -X POST https://<host>/api/v1/auth/login \
      -H 'content-type: application/json' \
-     -d '{"email":"admin@akullogistics.com","password":"akul1234"}'
+     -d '{"email":"admin@logimart.com","password":"logimart1234"}'
    ```
 
 ### UAT vs Production schema strategy
@@ -54,9 +54,9 @@ Not yet scaffolded — backend-first per the roadmap.
 
 ## Push to GitHub
 ```bash
-cd "Akul ERP"
-git init && git add . && git commit -m "chore: scaffold Akul ERP (NestJS + Prisma)"
+cd "Logimart ERP"
+git init && git add . && git commit -m "chore: scaffold Logimart ERP (NestJS + Prisma)"
 git branch -M main
-git remote add origin git@github.com:<org>/akul-erp.git
+git remote add origin git@github.com:<org>/logimart-erp.git
 git push -u origin main
 ```

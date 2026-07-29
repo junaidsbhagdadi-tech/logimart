@@ -1,10 +1,10 @@
-// Thin API client for the Akul ERP backend.
+// Thin API client for the Logimart ERP backend.
 // Default: same-origin ('' -> calls /api/v1/... on whatever host serves the app),
 // which is what happens when the NestJS server serves this built portal.
 // For local dev (vite on :5173, api on :3000) set VITE_API_URL in apps/web/.env.
 const BASE = (import.meta.env.VITE_API_URL as string) || '';
 
-const TOKEN_KEY = 'akul_token';
+const TOKEN_KEY = 'logimart_token';
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
 export const setToken = (t: string) => localStorage.setItem(TOKEN_KEY, t);
 export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
@@ -30,7 +30,7 @@ async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
   // Expired/invalid session: clear it and bounce to login (only if we sent a token).
   if (res.status === 401 && token) {
     clearToken();
-    localStorage.removeItem('akul_user');
+    localStorage.removeItem('logimart_user');
     if (!location.pathname.startsWith('/login')) location.href = '/login';
     throw new ApiError(401, 'Session expired — please log in again');
   }

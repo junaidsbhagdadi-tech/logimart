@@ -14,7 +14,7 @@ class LocalQueue {
     if (_db != null) return _db!;
     final dir = await getDatabasesPath();
     _db = await openDatabase(
-      p.join(dir, 'akul_scans.db'),
+      p.join(dir, 'logimart_scans.db'),
       version: 1,
       onCreate: (db, _) => db.execute('''
         CREATE TABLE scans (

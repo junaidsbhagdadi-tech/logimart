@@ -1,12 +1,12 @@
-# DigitalOcean App Platform spec for Akul ERP (API + portal, single service).
+# DigitalOcean App Platform spec for Logimart ERP (API + portal, single service).
 # Deploy: doctl apps create --spec .do/app.yaml   (or paste in the DO dashboard).
 # One service serves BOTH the NestJS API and the React portal — no Vercel needed.
-name: akul-erp
+name: logimart-erp
 region: blr            # Bangalore (closest to India). Options: blr, sgp, ...
 services:
   - name: web
     github:
-      repo: junaidsbhagdadi-tech/akul-erp   # change to the friend's fork/repo if separate
+      repo: junaidsbhagdadi-tech/logimart-erp   # change to the friend's fork/repo if separate
       branch: main
       deploy_on_push: true
     environment_slug: node-js
@@ -33,7 +33,7 @@ services:
         value: "5000"
       - key: COMPANY_GSTIN
         scope: RUN_TIME
-        value: "29AAUCA4736C1ZF"            # change to the friend's company GSTIN
+        value: "TODO_LOGIMART_GSTIN"            # change to the friend's company GSTIN
       - key: COMPANY_STATE_CODE
         scope: RUN_TIME
         value: "29"                          # GSTIN state code (29 = Karnataka)

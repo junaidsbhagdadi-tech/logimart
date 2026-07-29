@@ -1,4 +1,4 @@
-# Deploy Akul ERP on DigitalOcean (brand-new, standalone)
+# Deploy Logimart ERP on DigitalOcean (brand-new, standalone)
 
 One **App** (API + portal in a single service) + one **managed PostgreSQL**.
 **No Vercel / no separate frontend host** — the NestJS server serves the React portal.
@@ -8,7 +8,7 @@ One **App** (API + portal in a single service) + one **managed PostgreSQL**.
 ## Option A — DigitalOcean dashboard (no CLI)
 
 1. **Create the app**
-   - DO dashboard → **Apps** → **Create App** → **GitHub** → authorize → pick the repo (`akul-erp`) → branch `main` → **Autodeploy on push: on**.
+   - DO dashboard → **Apps** → **Create App** → **GitHub** → authorize → pick the repo (`logimart-erp`) → branch `main` → **Autodeploy on push: on**.
    - It detects **Node.js**. Set:
      - **Build command:** `npm run build`
      - **Run command:** `npm start`
@@ -31,7 +31,7 @@ One **App** (API + portal in a single service) + one **managed PostgreSQL**.
    | `NODE_ENV` | `production` |
 
 4. **Deploy.** First build ~3–5 min. When healthy, DO gives a URL like
-   `https://akul-erp-xxxx.ondigitalocean.app`.
+   `https://logimart-erp-xxxx.ondigitalocean.app`.
 
 5. **Seed the data (once)** — app → **Console** →
    ```

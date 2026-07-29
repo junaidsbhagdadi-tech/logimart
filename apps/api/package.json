@@ -1,7 +1,7 @@
 {
-  "name": "@akul-erp/api",
+  "name": "@logimart-erp/api",
   "version": "0.1.0",
-  "description": "Akul ERP backend — B2B logistics, MPS-aware, offline-first scanning",
+  "description": "Logimart ERP backend — B2B logistics, MPS-aware, offline-first scanning",
   "private": true,
   "scripts": {
     "build": "nest build",

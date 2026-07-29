@@ -53,13 +53,13 @@ async function main() {
   });
 
   // ---- Users (one per role) ----
-  const pwd = await bcrypt.hash('akul1234', 10);
+  const pwd = await bcrypt.hash('logimart1234', 10);
   const users: Array<[string, string, UserRole, bigint | null, bigint | null]> = [
-    ['Sys Admin', 'admin@akullogistics.com', UserRole.SYS_ADMIN, null, null],
-    ['Hub Manager', 'hub@akullogistics.com', UserRole.HUB_MANAGER, null, blr.id],
-    ['Warehouse', 'warehouse@akullogistics.com', UserRole.WAREHOUSE_HANDLER, null, blr.id],
-    ['Driver', 'driver@akullogistics.com', UserRole.DRIVER, null, blr.id],
-    ['Finance', 'finance@akullogistics.com', UserRole.FINANCE_EXEC, null, null],
+    ['Sys Admin', 'admin@logimart.com', UserRole.SYS_ADMIN, null, null],
+    ['Hub Manager', 'hub@logimart.com', UserRole.HUB_MANAGER, null, blr.id],
+    ['Warehouse', 'warehouse@logimart.com', UserRole.WAREHOUSE_HANDLER, null, blr.id],
+    ['Driver', 'driver@logimart.com', UserRole.DRIVER, null, blr.id],
+    ['Finance', 'finance@logimart.com', UserRole.FINANCE_EXEC, null, null],
     ['Client Admin', 'client@demo.com', UserRole.CLIENT_ADMIN, client.id, null],
   ];
   for (const [fullName, email, role, clientId, hubId] of users) {
@@ -111,7 +111,7 @@ async function main() {
     skipDuplicates: true,
   });
 
-  console.log(`Seed complete. ${pins.length} pincodes loaded. Login with any seeded email / password "akul1234".`);
+  console.log(`Seed complete. ${pins.length} pincodes loaded. Login with any seeded email / password "logimart1234".`);
   console.log(`Demo client id: ${client.id}, hubs: BLR=${blr.id} HYD=${hyd.id}`);
 }
 

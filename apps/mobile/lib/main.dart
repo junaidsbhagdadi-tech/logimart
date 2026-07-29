@@ -4,19 +4,19 @@ import 'screens/login_screen.dart';
 import 'screens/scan_screen.dart';
 
 void main() {
-  runApp(const AkulScannerApp());
+  runApp(const LogimartScannerApp());
 }
 
-class AkulScannerApp extends StatelessWidget {
-  const AkulScannerApp({super.key});
+class LogimartScannerApp extends StatelessWidget {
+  const LogimartScannerApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Akul Scanner',
+      title: 'Logimart Scanner',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorSchemeSeed: const Color(0xFF2B2E83), // Akul brand blue/indigo
+        colorSchemeSeed: const Color(0xFF2B2E83), // Logimart brand blue/indigo
         useMaterial3: true,
       ),
       home: FutureBuilder<String?>(

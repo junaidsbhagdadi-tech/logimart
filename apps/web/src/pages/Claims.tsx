@@ -55,7 +55,7 @@ export function Claims() {
         <h2>Log a claim</h2>
         <p className="muted" style={{ marginTop: -6, fontSize: 13 }}>Enter an AWB to auto-link the client &amp; declared value. Settlement raises a credit note to the client.</p>
         <div className="grid cols-3">
-          <div><label>AWB</label><input value={form.awb} onChange={(e) => setForm({ ...form, awb: e.target.value })} placeholder="AGLPL2026…" /></div>
+          <div><label>AWB</label><input value={form.awb} onChange={(e) => setForm({ ...form, awb: e.target.value })} placeholder="LMT2026…" /></div>
           <div>
             <label>Type *</label>
             <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>

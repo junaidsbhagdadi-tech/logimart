@@ -1,4 +1,4 @@
-// Akul ERP — core schema
+// Logimart ERP — core schema
 // B2B logistics, MPS-aware (1 Master AWB -> many child pieces), append-only scans.
 // Volumetric divisor = 5000 (computed in application code, see shipments.service.ts).
 
@@ -112,7 +112,7 @@ enum ShipmentStatus {
 
 model Shipment {
   id           BigInt         @id @default(autoincrement())
-  awb          String         @unique // master AWB, e.g. AGLPL202600045
+  awb          String         @unique // master AWB, e.g. LMT202600045
   clientId     BigInt
   client       B2bClient      @relation(fields: [clientId], references: [id])
   serviceMode  ServiceMode
@@ -181,7 +181,7 @@ model ShipmentPiece {
   id           BigInt      @id @default(autoincrement())
   shipmentId   BigInt
   shipment     Shipment    @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
-  childId      String      @unique // AGLPL202600045-002 (the scannable identity)
+  childId      String      @unique // LMT202600045-002 (the scannable identity)
   sequenceNo   Int         // 2 (the "of 5")
   barcodeValue String      // encoded payload for QR / Code128
   deadKg       Decimal     @db.Decimal(10, 3)
