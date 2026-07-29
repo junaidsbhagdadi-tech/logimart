@@ -78,7 +78,7 @@ export function Labels() {
             <div className="hdr">
               <div>
                 <strong>Logimart</strong>
-                <div style={{ fontSize: 11 }}>Domestic Air &amp; Road</div>
+                <div style={{ fontSize: 11 }}>Surface &amp; Domestic Air Cargo</div>
               </div>
               <div className="seq">{l.sequenceLabel}</div>
             </div>

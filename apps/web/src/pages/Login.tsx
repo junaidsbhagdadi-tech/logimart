@@ -30,7 +30,7 @@ export function Login() {
       <form className="card login-card" onSubmit={onSubmit}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 20 }}>
           <Logo height={64} />
-          <div className="muted" style={{ marginTop: 6, letterSpacing: '.5px' }}>LOGISTICS ERP · Domestic Air &amp; Road</div>
+          <div className="muted" style={{ marginTop: 6, letterSpacing: '.5px' }}>LOGISTICS ERP · Surface &amp; Domestic Air Cargo</div>
         </div>
         {error && <div className="error">{error}</div>}
         <div style={{ marginBottom: 12 }}>

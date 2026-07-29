@@ -34,7 +34,7 @@ export function Track() {
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 18 }}>
           <Logo height={56} />
           <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--navy)', marginTop: 10 }}>Track your shipment</div>
-          <div className="muted">Domestic Air &amp; Road</div>
+          <div className="muted">Surface &amp; Domestic Air Cargo</div>
         </div>
         <form onSubmit={search} className="row" style={{ gap: 8 }}>
           <input value={awb} onChange={(e) => setAwb(e.target.value)} placeholder="Enter AWB e.g. LMT2026000001" style={{ flex: 1 }} />
