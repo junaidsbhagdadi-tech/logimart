@@ -139,6 +139,6 @@ curl -X POST https://<host>/api/v1/auth/login \
 ```bash
 cd "Logimart ERP"
 # (repo is already initialised and committed on branch feat/logimart-uat / main)
-git remote add origin git@github.com:<your-org>/logimart-erp.git
+git remote add origin https://github.com/junaidsbhagdadi-tech/logimart.git
 git push -u origin main
 ```

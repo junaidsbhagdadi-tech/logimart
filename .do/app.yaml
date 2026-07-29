@@ -6,7 +6,7 @@ region: blr            # Bangalore (closest to India). Options: blr, sgp, ...
 services:
   - name: web
     github:
-      repo: junaidsbhagdadi-tech/logimart-erp   # TODO: set to your GitHub org/repo
+      repo: junaidsbhagdadi-tech/logimart   # GitHub org/repo
       branch: main
       deploy_on_push: true
     environment_slug: node-js
