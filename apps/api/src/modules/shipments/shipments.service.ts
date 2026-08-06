@@ -108,6 +108,7 @@ export class ShipmentsService {
         consignorGstin: dto.consignorGstin,
         consigneeGstin: dto.consigneeGstin,
         declaredValue: dto.declaredValue != null ? new Prisma.Decimal(dto.declaredValue) : null,
+        ewbNo: dto.ewbNo?.trim() || null,
         vehicleNo: dto.vehicleNo,
         ftlVehicleType: dto.ftlVehicleType,
         departureAt: dto.departureAt ? new Date(dto.departureAt) : null,

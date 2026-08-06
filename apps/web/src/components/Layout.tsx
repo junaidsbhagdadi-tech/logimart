@@ -8,6 +8,7 @@ export function Layout() {
   const { user, logout } = useAuth();
   const isAdminFin = user?.role === 'FINANCE_EXEC' || user?.role === 'SYS_ADMIN';
   const isOps = ['HUB_MANAGER', 'DRIVER', 'SYS_ADMIN'].includes(user?.role || '');
+  const canMaster = user?.role === 'HUB_MANAGER' || user?.role === 'SYS_ADMIN';
   const nav = useNavigate();
   const [awb, setAwb] = useState('');
   const onLogout = () => {
@@ -52,6 +53,7 @@ export function Layout() {
           {isAdminFin && <NavLink to="/documents">📁 Documents</NavLink>}
           {isAdminFin && <NavLink to="/sales">📈 Sales</NavLink>}
           {isAdminFin && <NavLink to="/rates">💱 Rate Matrix</NavLink>}
+          {canMaster && <NavLink to="/master-data">🗺 Serviceability</NavLink>}
           {isAdminFin && <NavLink to="/tax">🧾 Tax Filing</NavLink>}
           {user?.role === 'SYS_ADMIN' && <NavLink to="/users">⚙️ Users</NavLink>}
           {user?.role === 'SYS_ADMIN' && <NavLink to="/audit">🕵 Audit Log</NavLink>}

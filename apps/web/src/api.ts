@@ -342,6 +342,14 @@ export const api = {
       { method: 'POST', body: JSON.stringify({ declaredValue, vehicleNo, distanceKm }) },
     ),
 
+  // ---- master data: serviceability + hubs ----
+  listPincodes: (limit = 500) => request<{ pincode: string; city: string; state: string; region: string; tier: number; isOda: boolean }[]>(`/api/v1/pincodes?limit=${limit}`),
+  createPincode: (body: { pincode: string; city: string; state: string; region: string; tier: number; isOda?: boolean }) =>
+    request('/api/v1/pincodes', { method: 'POST', body: JSON.stringify(body) }),
+  listHubs: () => request<{ id: string; code: string; name: string; zone: string }[]>('/api/v1/hubs'),
+  createHub: (body: { code: string; name: string; zone: string }) =>
+    request('/api/v1/hubs', { method: 'POST', body: JSON.stringify(body) }),
+
   // ---- master data ----
   listClients: () => request<Client[]>('/api/v1/clients'),
   createClient: (body: unknown) =>

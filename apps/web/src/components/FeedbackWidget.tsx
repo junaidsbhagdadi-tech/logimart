@@ -7,6 +7,7 @@ export function FeedbackWidget() {
   const [message, setMessage] = useState('');
   const [rating, setRating] = useState(0);
   const [category, setCategory] = useState('change');
+  const [feature, setFeature] = useState('General');
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -15,11 +16,17 @@ export function FeedbackWidget() {
     setBusy(true);
     setError('');
     try {
-      await api.submitFeedback({ message, rating: rating || undefined, category, page: window.location.pathname });
+      await api.submitFeedback({
+        message: feature && feature !== 'General' ? `[${feature}] ${message}` : message,
+        rating: rating || undefined,
+        category,
+        page: window.location.pathname,
+      });
       setSent(true);
       setMessage('');
       setRating(0);
       setCategory('change');
+      setFeature('General');
       setTimeout(() => { setOpen(false); setSent(false); }, 1400);
     } catch (e: any) {
       setError(e.message);
@@ -41,7 +48,13 @@ export function FeedbackWidget() {
             ) : (
               <>
                 {error && <div className="error">{error}</div>}
-                <label>Type of feedback</label>
+                <label>Which feature / area?</label>
+                <select value={feature} onChange={(e) => setFeature(e.target.value)}>
+                  {['General', 'Dashboard', 'Shipment booking', 'To-Pay / DOD', 'Tracking', 'Rates & billing', 'Invoices', 'Serviceability & hubs', 'E-way bill', 'Manifests / pickups', 'Users & roles'].map((f) => (
+                    <option key={f} value={f}>{f}</option>
+                  ))}
+                </select>
+                <label style={{ marginTop: 10 }}>Type of feedback</label>
                 <select value={category} onChange={(e) => setCategory(e.target.value)}>
                   <option value="change">✏️ Change something</option>
                   <option value="add">➕ Add something new</option>

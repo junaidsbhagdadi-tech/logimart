@@ -35,6 +35,11 @@ export function CreateShipment() {
     consigneeGstin: '', declaredValue: '', goodsDesc: '', hsnCode: '',
   });
 
+  const [hubs, setHubs] = useState<{ id: string; code: string; name: string }[]>([]);
+  const [originHubId, setOriginHubId] = useState<number | ''>('');
+  const [destHubId, setDestHubId] = useState<number | ''>('');
+  const [ewbNo, setEwbNo] = useState('');
+
   const [pieces, setPieces] = useState<PieceForm[]>([{ ...blank }]);
   const [manualFreight, setManualFreight] = useState('');
   const [paymentTerm, setPaymentTerm] = useState<'PREPAID' | 'TO_PAY'>('PREPAID');
@@ -46,6 +51,13 @@ export function CreateShipment() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => { if (!ownClientId) api.listClients().then(setClients).catch(() => {}); }, [ownClientId]);
+  useEffect(() => {
+    api.listHubs().then((hs) => {
+      setHubs(hs);
+      if (hs[0]) setOriginHubId(Number(hs[0].id));
+      setDestHubId(Number((hs[1] ?? hs[0])?.id));
+    }).catch(() => {});
+  }, []);
 
   const lookOrigin = async (p: string) => {
     setOriginPin(p);
@@ -54,8 +66,12 @@ export function CreateShipment() {
   };
   const lookDest = async (p: string) => {
     setDestPin(p);
-    if (/^\d{6}$/.test(p)) setDestInfo(await api.lookupPincode(p).catch(() => null));
-    else setDestInfo(null);
+    if (/^\d{6}$/.test(p)) {
+      const info = await api.lookupPincode(p).catch(() => null);
+      setDestInfo(info);
+      // auto-fetch city + state from the pincode master
+      if (info?.city) setC((prev) => ({ ...prev, consigneeCity: info.city! }));
+    } else setDestInfo(null);
   };
 
   const setCf = (k: keyof typeof c, v: string) => setC((p) => ({ ...p, [k]: v }));
@@ -71,8 +87,8 @@ export function CreateShipment() {
       const res = await api.createShipment({
         clientId: Number(clientId),
         serviceMode,
-        originHubId: 1,
-        destHubId: 2,
+        originHubId: originHubId ? Number(originHubId) : 1,
+        destHubId: destHubId ? Number(destHubId) : 2,
         originZone: originInfo?.region ?? 'SOUTH',
         destZone: destInfo?.region ?? 'SOUTH',
         originPincode: originPin || undefined,
@@ -91,6 +107,7 @@ export function CreateShipment() {
         departureAt: ftl.departureAt ? new Date(ftl.departureAt).toISOString() : undefined,
         arrivalAt: ftl.arrivalAt ? new Date(ftl.arrivalAt).toISOString() : undefined,
         manualFreight: manualFreight ? +manualFreight : undefined,
+        ewbNo: needEway && ewbNo ? ewbNo : undefined,
         paymentTerm,
         freightToCollect: paymentTerm === 'TO_PAY' && freightToCollect ? +freightToCollect : undefined,
         isDod,
@@ -121,6 +138,8 @@ export function CreateShipment() {
 
   const totalDead = pieces.reduce((s, p) => s + (+p.deadKg || 0), 0);
   const totalVol = pieces.reduce((s, p) => s + volOf(p), 0);
+  const EWB_THRESHOLD = 50000;
+  const needEway = Number(c.declaredValue) >= EWB_THRESHOLD;
 
   return (
     <>
@@ -149,6 +168,22 @@ export function CreateShipment() {
               <option value="RAIL">Rail</option>
             </select>
           </div>
+          {hubs.length > 0 && (
+            <>
+              <div>
+                <label>Origin hub</label>
+                <select value={originHubId} onChange={(e) => setOriginHubId(e.target.value ? +e.target.value : '')}>
+                  {hubs.map((hb) => <option key={hb.id} value={hb.id}>{hb.code} — {hb.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label>Destination hub</label>
+                <select value={destHubId} onChange={(e) => setDestHubId(e.target.value ? +e.target.value : '')}>
+                  {hubs.map((hb) => <option key={hb.id} value={hb.id}>{hb.code} — {hb.name}</option>)}
+                </select>
+              </div>
+            </>
+          )}
           <div>
             <label>Origin pincode</label>
             <input value={originPin} onChange={(e) => lookOrigin(e.target.value)} maxLength={6} placeholder="e.g. 560001" />
@@ -194,6 +229,24 @@ export function CreateShipment() {
           <div style={{ gridColumn: 'span 2' }}><label>Goods description</label><input value={c.goodsDesc} onChange={(e) => setCf('goodsDesc', e.target.value)} /></div>
         </div>
       </div>
+
+      {needEway && (
+        <div className="card" style={{ borderLeft: '4px solid var(--warn)', background: '#fffdf4' }}>
+          <h2 style={{ color: 'var(--warn)' }}>🛣 E-way bill required</h2>
+          <p className="muted" style={{ fontSize: 13, marginTop: -6 }}>
+            Invoice value <strong>₹{Number(c.declaredValue).toLocaleString('en-IN')}</strong> is ₹50,000 or more — an e-way bill is mandatory for this consignment.
+          </p>
+          <div className="grid cols-3">
+            <div style={{ gridColumn: 'span 2' }}>
+              <label>E-way bill number (if already generated)</label>
+              <input value={ewbNo} onChange={(e) => setEwbNo(e.target.value)} placeholder="e.g. 1234 5678 9012" />
+            </div>
+            <div style={{ alignSelf: 'end' }}>
+              <span className="muted" style={{ fontSize: 12 }}>Or leave blank and generate it after booking from the shipment page (🛣 E-way bill).</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="card">
         <h2>💳 Payment &amp; collection</h2>

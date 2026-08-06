@@ -26,4 +26,25 @@ export class PincodesService {
       take: 20,
     });
   }
+
+  /** Full serviceable-pincode list (master data screen). */
+  list(limit = 200) {
+    return this.prisma.pincode.findMany({ orderBy: [{ tier: 'asc' }, { city: 'asc' }], take: Math.min(limit, 1000) });
+  }
+
+  /** Add / update a serviceable pincode (city, state, region, tier, ODA). */
+  create(dto: { pincode: string; city: string; state: string; region: any; tier: number; isOda?: boolean }) {
+    const data = {
+      city: dto.city.trim(),
+      state: dto.state.trim(),
+      region: dto.region,
+      tier: Number(dto.tier),
+      isOda: !!dto.isOda,
+    };
+    return this.prisma.pincode.upsert({
+      where: { pincode: dto.pincode.trim() },
+      update: data,
+      create: { pincode: dto.pincode.trim(), ...data },
+    });
+  }
 }

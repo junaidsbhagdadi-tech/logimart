@@ -25,10 +25,12 @@ import { Claims } from './pages/Claims';
 import { Documents } from './pages/Documents';
 import { Receivables } from './pages/Receivables';
 import { AuditLog } from './pages/AuditLog';
+import { MasterData } from './pages/MasterData';
 
 export function App() {
   const { user } = useAuth();
   const isAdminFin = user?.role === 'FINANCE_EXEC' || user?.role === 'SYS_ADMIN';
+  const canMaster = user?.role === 'HUB_MANAGER' || user?.role === 'SYS_ADMIN';
   if (!user) {
     return (
       <Routes>
@@ -64,6 +66,7 @@ export function App() {
         <Route path="/notes" element={isAdminFin ? <Notes /> : <Navigate to="/" replace />} />
         <Route path="/claims" element={isAdminFin ? <Claims /> : <Navigate to="/" replace />} />
         <Route path="/documents" element={isAdminFin ? <Documents /> : <Navigate to="/" replace />} />
+        <Route path="/master-data" element={canMaster ? <MasterData /> : <Navigate to="/" replace />} />
         <Route path="/audit" element={user?.role === 'SYS_ADMIN' ? <AuditLog /> : <Navigate to="/" replace />} />
         <Route path="/users" element={user?.role === 'SYS_ADMIN' ? <Users /> : <Navigate to="/" replace />} />
         <Route path="/feedback" element={user?.role === 'SYS_ADMIN' ? <Feedback /> : <Navigate to="/" replace />} />

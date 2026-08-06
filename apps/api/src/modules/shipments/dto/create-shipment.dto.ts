@@ -50,6 +50,7 @@ export class CreateShipmentDto {
   @IsOptional() @IsString() consignorGstin?: string;
   @IsOptional() @IsString() consigneeGstin?: string;
   @IsOptional() @IsNumber() declaredValue?: number;
+  @IsOptional() @IsString() ewbNo?: string; // e-way bill no. (required when invoice value ≥ ₹50k)
 
   // ---- FTL trip details (optional) ----
   @IsOptional() @IsString() vehicleNo?: string;
