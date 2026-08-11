@@ -27,6 +27,7 @@ import { Receivables } from './pages/Receivables';
 import { AuditLog } from './pages/AuditLog';
 import { MasterData } from './pages/MasterData';
 import { Deliver } from './pages/Deliver';
+import { BulkBooking } from './pages/BulkBooking';
 
 export function App() {
   const { user } = useAuth();
@@ -52,6 +53,7 @@ export function App() {
       <Route element={<Layout />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/create" element={<CreateShipment />} />
+        <Route path="/bulk" element={<BulkBooking />} />
         <Route path="/shipments/:awb" element={<ShipmentDetail />} />
         <Route path="/shipments/:awb/labels" element={<Labels />} />
         <Route path="/invoices" element={<Invoices />} />

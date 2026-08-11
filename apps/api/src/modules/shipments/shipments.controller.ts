@@ -20,6 +20,16 @@ export class ShipmentsController {
     return this.shipments.create(dto);
   }
 
+  /** Bulk booking — create up to 500 shipments from an uploaded sheet. */
+  @Post('bulk')
+  @Roles(UserRole.CLIENT_ADMIN, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  bulk(@Body() dto: { rows: CreateShipmentDto[] }, @Req() req: any) {
+    const rows = (dto.rows || []).slice(0, 500).map((r) =>
+      req.user.role === UserRole.CLIENT_ADMIN ? { ...r, clientId: Number(req.user.clientId) } : r,
+    );
+    return this.shipments.bulkCreate(rows);
+  }
+
   /** List recent shipments. Client admins see only their own; staff see all. */
   @Get()
   list(@Req() req: any, @Query('limit') limit?: string) {

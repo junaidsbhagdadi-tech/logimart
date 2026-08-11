@@ -242,7 +242,7 @@ export function CreateShipment() {
               <input value={ewbNo} onChange={(e) => setEwbNo(e.target.value)} placeholder="e.g. 1234 5678 9012" />
             </div>
             <div style={{ alignSelf: 'end' }}>
-              <span className="muted" style={{ fontSize: 12 }}>Or leave blank and generate it after booking from the shipment page (🛣 E-way bill).</span>
+              <span className="muted" style={{ fontSize: 12 }}>Leave blank to <strong>auto-generate</strong> the e-way bill at booking.</span>
             </div>
           </div>
         </div>

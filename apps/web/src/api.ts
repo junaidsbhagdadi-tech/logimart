@@ -248,6 +248,11 @@ export const api = {
     ),
   createShipment: (body: unknown) =>
     request<Shipment>('/api/v1/shipments', { method: 'POST', body: JSON.stringify(body) }),
+  bulkCreateShipments: (rows: unknown[]) =>
+    request<{ total: number; created: number; results: { row: number; ok: boolean; awb?: string; error?: string }[] }>(
+      '/api/v1/shipments/bulk',
+      { method: 'POST', body: JSON.stringify({ rows }) },
+    ),
 
   // ---- ground ops ----
   uploadPod: async (file: File, kind = 'pod_stamp') => {

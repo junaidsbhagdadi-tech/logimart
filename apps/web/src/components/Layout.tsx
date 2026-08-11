@@ -41,6 +41,7 @@ export function Layout() {
         <nav>
           <NavLink to="/" end>📊 Dashboard</NavLink>
           <NavLink to="/create">➕ New Shipment</NavLink>
+          <NavLink to="/bulk">📥 Bulk Booking</NavLink>
           {isOps && <NavLink to="/my-tasks">🛵 My Tasks</NavLink>}
           {isOps && <NavLink to="/deliver">🚚 Delivery App</NavLink>}
           <NavLink to="/pickups">📦 Pickups</NavLink>

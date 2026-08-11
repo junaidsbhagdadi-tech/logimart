@@ -84,6 +84,16 @@ export class ShipmentsService {
 
     const lrNumber = awb.replace(COMPANY.awbPrefix, 'GC'); // Goods Consignment note no.
 
+    // Auto e-way bill: if invoice value ≥ ₹50k and no EWB number was supplied,
+    // generate one at booking (SANDBOX — wire a GSP for live generation).
+    const EWB_THRESHOLD = 50000;
+    let ewbNo = dto.ewbNo?.trim() || null;
+    let ewbValidUpto: Date | null = null;
+    if (!ewbNo && dto.declaredValue != null && dto.declaredValue >= EWB_THRESHOLD) {
+      ewbNo = Array.from({ length: 12 }, () => Math.floor(Math.random() * 10)).join('');
+      ewbValidUpto = new Date(Date.now() + 86400000); // 1-day default validity
+    }
+
     return this.prisma.shipment.create({
       data: {
         awb,
@@ -108,7 +118,8 @@ export class ShipmentsService {
         consignorGstin: dto.consignorGstin,
         consigneeGstin: dto.consigneeGstin,
         declaredValue: dto.declaredValue != null ? new Prisma.Decimal(dto.declaredValue) : null,
-        ewbNo: dto.ewbNo?.trim() || null,
+        ewbNo,
+        ewbValidUpto,
         vehicleNo: dto.vehicleNo,
         ftlVehicleType: dto.ftlVehicleType,
         departureAt: dto.departureAt ? new Date(dto.departureAt) : null,
@@ -128,6 +139,23 @@ export class ShipmentsService {
       },
       include: { pieces: { orderBy: { sequenceNo: 'asc' } } },
     });
+  }
+
+  /**
+   * Bulk booking — create many shipments from a list (e.g. an uploaded sheet).
+   * Each row is created independently; failures are reported per-row, not fatal.
+   */
+  async bulkCreate(rows: CreateShipmentDto[]) {
+    const results: { row: number; ok: boolean; awb?: string; error?: string }[] = [];
+    for (let i = 0; i < rows.length; i++) {
+      try {
+        const sh = await this.create(rows[i]);
+        results.push({ row: i + 1, ok: true, awb: sh.awb });
+      } catch (e: any) {
+        results.push({ row: i + 1, ok: false, error: e?.message || 'Failed to create' });
+      }
+    }
+    return { total: rows.length, created: results.filter((r) => r.ok).length, results };
   }
 
   /**
