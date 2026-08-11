@@ -26,6 +26,7 @@ import { Documents } from './pages/Documents';
 import { Receivables } from './pages/Receivables';
 import { AuditLog } from './pages/AuditLog';
 import { MasterData } from './pages/MasterData';
+import { Deliver } from './pages/Deliver';
 
 export function App() {
   const { user } = useAuth();
@@ -46,6 +47,7 @@ export function App() {
     <Routes>
       <Route path="/track" element={<Track />} />
       <Route path="/track/:awb" element={<Track />} />
+      <Route path="/deliver" element={<Deliver />} />
       <Route path="/invoices/:id/print" element={<InvoicePrint />} />
       <Route element={<Layout />}>
         <Route path="/" element={<Dashboard />} />

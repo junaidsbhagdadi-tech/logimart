@@ -1,8 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
-const MAX_BYTES = 8 * 1024 * 1024; // 8 MB
-const ALLOWED = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
+const MAX_BYTES = 15 * 1024 * 1024; // 15 MB (PDF PODs can be larger than photos)
+const ALLOWED = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'application/pdf'];
 
 @Injectable()
 export class UploadsService {

@@ -60,6 +60,11 @@ export interface Shipment {
   totalVolKg: string;
   pieces: Piece[];
   rollup: { pieceCount: number; delivered: number; isShort: boolean };
+  consigneeName?: string | null;
+  consigneePhone?: string | null;
+  consigneeAddress?: string | null;
+  consigneeCity?: string | null;
+  destPincode?: string | null;
   lrNumber?: string | null;
   ewbNo?: string | null;
   ewbValidUpto?: string | null;

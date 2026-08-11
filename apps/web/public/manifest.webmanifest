@@ -1,0 +1,12 @@
+{
+  "name": "LogiMart Delivery",
+  "short_name": "Delivery",
+  "description": "LogiMart rider delivery app — find AWB, capture POD.",
+  "start_url": "/deliver",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#15356e",
+  "theme_color": "#15356e",
+  "icons": []
+}
