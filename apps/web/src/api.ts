@@ -357,6 +357,12 @@ export const api = {
   createPincode: (body: { pincode: string; city: string; state: string; region: string; tier: number; isOda?: boolean }) =>
     request('/api/v1/pincodes', { method: 'POST', body: JSON.stringify(body) }),
   listHubs: () => request<{ id: string; code: string; name: string; zone: string }[]>('/api/v1/hubs'),
+
+  // ---- generic master data (Zone, Country, State, Product, Charge, …) ----
+  listMaster: (type: string) => request<{ code: string; name: string; attrs: Record<string, any>; active: boolean }[]>(`/api/v1/masters/${type}`),
+  saveMaster: (type: string, body: { code: string; name: string; attrs?: Record<string, any>; active?: boolean }) =>
+    request(`/api/v1/masters/${type}`, { method: 'POST', body: JSON.stringify(body) }),
+  deleteMaster: (type: string, code: string) => request(`/api/v1/masters/${type}/${encodeURIComponent(code)}`, { method: 'DELETE' }),
   createHub: (body: { code: string; name: string; zone: string }) =>
     request('/api/v1/hubs', { method: 'POST', body: JSON.stringify(body) }),
 

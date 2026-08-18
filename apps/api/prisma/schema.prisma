@@ -447,6 +447,24 @@ model Pincode {
   @@map("pincodes")
 }
 
+// Generic master-data table — one row per entry across many master types
+// (Zone, Country, State, Product, Product Type, Charge, Destination, Sales Exec …).
+// `attrs` holds the type-specific extra fields as JSON so new masters need no schema change.
+model MasterEntry {
+  id        BigInt   @id @default(autoincrement())
+  type      String   // ZONE | COUNTRY | STATE | PRODUCT | PRODUCT_TYPE | CHARGE | DESTINATION | SALES_EXEC | INDUSTRY | CONTENT | INSTRUCTION | BANK | FLIGHT
+  code      String
+  name      String
+  attrs     Json     @default("{}")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([type, code])
+  @@index([type])
+  @@map("master_entries")
+}
+
 // ============================ FTL RATES (per vehicle type / trip) ============================
 
 model FtlRate {

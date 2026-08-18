@@ -56,6 +56,7 @@ export function Layout() {
           {isAdminFin && <NavLink to="/sales">📈 Sales</NavLink>}
           {isAdminFin && <NavLink to="/rates">💱 Rate Matrix</NavLink>}
           {canMaster && <NavLink to="/master-data">🗺 Serviceability</NavLink>}
+          {canMaster && <NavLink to="/masters">🗃 Masters</NavLink>}
           {isAdminFin && <NavLink to="/tax">🧾 Tax Filing</NavLink>}
           {user?.role === 'SYS_ADMIN' && <NavLink to="/users">⚙️ Users</NavLink>}
           {user?.role === 'SYS_ADMIN' && <NavLink to="/audit">🕵 Audit Log</NavLink>}
