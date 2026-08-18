@@ -24,6 +24,7 @@ import { PincodesModule } from './modules/pincodes/pincodes.module';
 import { HubsModule } from './modules/hubs/hubs.module';
 import { MastersModule } from './modules/masters/masters.module';
 import { OpscanModule } from './modules/opscan/opscan.module';
+import { ReportsModule } from './modules/reports/reports.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
 import { RiderModule } from './modules/rider/rider.module';
@@ -74,6 +75,7 @@ const webDist = join(__dirname, '..', '..', 'web', 'dist');
     HubsModule,
     MastersModule,
     OpscanModule,
+    ReportsModule,
     UploadsModule,
     FeedbackModule,
     RiderModule,

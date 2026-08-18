@@ -32,11 +32,13 @@ import { BulkBooking } from './pages/BulkBooking';
 import { Scan } from './pages/Scan';
 import { Drs } from './pages/Drs';
 import { BulkPod } from './pages/BulkPod';
+import { Reports } from './pages/Reports';
 
 export function App() {
   const { user } = useAuth();
   const isAdminFin = user?.role === 'FINANCE_EXEC' || user?.role === 'SYS_ADMIN';
   const canMaster = user?.role === 'HUB_MANAGER' || user?.role === 'SYS_ADMIN';
+  const canReports = ['HUB_MANAGER', 'FINANCE_EXEC', 'SYS_ADMIN'].includes(user?.role || '');
   if (!user) {
     return (
       <Routes>
@@ -79,6 +81,7 @@ export function App() {
         <Route path="/documents" element={isAdminFin ? <Documents /> : <Navigate to="/" replace />} />
         <Route path="/master-data" element={canMaster ? <MasterData /> : <Navigate to="/" replace />} />
         <Route path="/masters" element={canMaster ? <Masters /> : <Navigate to="/" replace />} />
+        <Route path="/reports" element={canReports ? <Reports /> : <Navigate to="/" replace />} />
         <Route path="/audit" element={user?.role === 'SYS_ADMIN' ? <AuditLog /> : <Navigate to="/" replace />} />
         <Route path="/users" element={user?.role === 'SYS_ADMIN' ? <Users /> : <Navigate to="/" replace />} />
         <Route path="/feedback" element={user?.role === 'SYS_ADMIN' ? <Feedback /> : <Navigate to="/" replace />} />

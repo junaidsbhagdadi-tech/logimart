@@ -373,6 +373,15 @@ export const api = {
   recordScan: (body: { awb: string; eventType: string; serviceCenter?: string; remark?: string }) =>
     request<{ awb: string; eventType: string; shipmentUpdated: boolean }>('/api/v1/opscan', { method: 'POST', body: JSON.stringify(body) }),
   listScans: (limit = 50) => request<{ id: string; awb: string; eventType: string; serviceCenter: string | null; scanAt: string }[]>(`/api/v1/opscan?limit=${limit}`),
+
+  // ---- reports ----
+  runReport: (type: string, from?: string, to?: string) => {
+    const q = new URLSearchParams();
+    if (from) q.set('from', from);
+    if (to) q.set('to', to);
+    const s = q.toString();
+    return request<{ columns: { key: string; label: string }[]; rows: any[] }>(`/api/v1/reports/${type}${s ? '?' + s : ''}`);
+  },
   createHub: (body: { code: string; name: string; zone: string }) =>
     request('/api/v1/hubs', { method: 'POST', body: JSON.stringify(body) }),
 
