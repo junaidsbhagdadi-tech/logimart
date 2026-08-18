@@ -23,8 +23,8 @@ export const COMPANY = {
   gstin: process.env.COMPANY_GSTIN ?? 'TODO_LOGIMART_GSTIN',
 
   // AWB / LR prefix used when generating master waybill numbers.
-  // TODO(logimart): confirm the real prefix + numbering format.
-  awbPrefix: process.env.AWB_PREFIX ?? 'LMT',
+  // Single-letter prefix + 10-digit running number (Xpresion-style), e.g. L1000000045.
+  awbPrefix: process.env.AWB_PREFIX ?? 'L',
 } as const;
 
 /** Volumetric divisor for chargeable-weight math (cm^3 -> kg). TODO(logimart): confirm. */
