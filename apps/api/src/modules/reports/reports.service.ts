@@ -32,6 +32,11 @@ export class ReportsService {
       case 'ZERO': return this.zeroReport(range);
       case 'LEDGER_AGING': return this.ledgerAging();
       case 'TARIFF': return this.tariff();
+      case 'LOCATION_SUMMARY': return this.locationSummary(range);
+      case 'NOT_INSCAN': return this.notInscan(range);
+      case 'RUNSHEET_NOT_POD': return this.runsheetNotPod(range);
+      case 'BILLING': return this.billing(range);
+      case 'ACTION_LOG': return this.actionLog(range);
       default: return { columns: [{ key: 'msg', label: 'Info' }], rows: [{ msg: `Report '${type}' is not implemented yet.` }] };
     }
   }
@@ -184,6 +189,47 @@ export class ReportsService {
     const rc = await this.prisma.rateCard.findMany({ include: { client: { select: { legalName: true } } }, orderBy: { id: 'desc' }, take: 1000 });
     const rows = rc.map((x) => ({ customer: x.client?.legalName ?? '—', lane: `${x.originZone} → ${x.destZone}`, mode: x.serviceMode, perKg: Number(x.perKgRate).toFixed(2), minCharge: Number(x.minCharge).toFixed(2), fuelPct: Number(x.fuelPct).toFixed(2) }));
     return { columns: [{ key: 'customer', label: 'Customer' }, { key: 'lane', label: 'Lane' }, { key: 'mode', label: 'Mode' }, { key: 'perKg', label: 'Per-kg ₹' }, { key: 'minCharge', label: 'Min ₹' }, { key: 'fuelPct', label: 'Fuel %' }], rows };
+  }
+
+  private async locationSummary(range: any): Promise<Report> {
+    const g = await this.prisma.shipment.groupBy({ by: ['originHubId'], where: { createdAt: range }, _count: { _all: true }, _sum: { totalDeadKg: true } });
+    const hubs = await this.prisma.hub.findMany({ select: { id: true, name: true, code: true } });
+    const nm = new Map(hubs.map((h) => [h.id.toString(), `${h.code} — ${h.name}`]));
+    const rows = g
+      .map((x) => ({ location: nm.get(x.originHubId.toString()) || x.originHubId.toString(), shipments: x._count._all, deadKg: Number(x._sum.totalDeadKg || 0).toFixed(2) }))
+      .sort((a, b) => b.shipments - a.shipments);
+    return { columns: [{ key: 'location', label: 'Origin location' }, { key: 'shipments', label: 'Shipments' }, { key: 'deadKg', label: 'Dead kg' }], rows };
+  }
+
+  private async notInscan(range: any): Promise<Report> {
+    const s = await this.prisma.shipment.findMany({ where: { createdAt: range }, select: { awb: true, status: true, consigneeName: true }, orderBy: { id: 'desc' }, take: 2000 });
+    const scanned = await this.prisma.scanLog.findMany({ where: { eventType: 'PICKUP_IN' }, select: { awb: true } });
+    const set = new Set(scanned.map((x) => x.awb));
+    const rows = s.filter((x) => !set.has(x.awb)).slice(0, 1000).map((x) => ({ awb: x.awb, consignee: x.consigneeName || '—', status: x.status }));
+    return { columns: [{ key: 'awb', label: 'AWB' }, { key: 'consignee', label: 'Consignee' }, { key: 'status', label: 'Status' }], rows };
+  }
+
+  private async runsheetNotPod(range: any): Promise<Report> {
+    const s = await this.prisma.shipment.findMany({ where: { createdAt: range, deliveryRiderId: { not: null } }, select: { awb: true, deliveryRiderId: true, status: true, pods: { select: { id: true } } }, take: 2000 });
+    const rows = s.filter((x) => x.pods.length === 0).map((x) => ({ awb: x.awb, rider: x.deliveryRiderId?.toString() ?? '—', status: x.status }));
+    return { columns: [{ key: 'awb', label: 'AWB' }, { key: 'rider', label: 'Field exec' }, { key: 'status', label: 'Status' }], rows };
+  }
+
+  private async billing(range: any): Promise<Report> {
+    const s = await this.prisma.shipment.findMany({ where: { createdAt: range }, select: { awb: true, product: true, chargeWeight: true, charges: true, declaredValue: true }, orderBy: { id: 'desc' }, take: 1000 });
+    const rows = s
+      .filter((x) => Array.isArray(x.charges) && (x.charges as any[]).length > 0)
+      .map((x) => {
+        const total = (x.charges as any[]).reduce((t, c) => t + Number(c.amount || 0), 0);
+        return { awb: x.awb, product: x.product || '—', chargeKg: x.chargeWeight != null ? Number(x.chargeWeight).toFixed(2) : '—', charges: total.toFixed(2), invoiceValue: x.declaredValue != null ? Number(x.declaredValue).toFixed(2) : '—' };
+      });
+    return { columns: [{ key: 'awb', label: 'AWB' }, { key: 'product', label: 'Product' }, { key: 'chargeKg', label: 'Charge kg' }, { key: 'charges', label: 'Charges ₹' }, { key: 'invoiceValue', label: 'Invoice value ₹' }], rows };
+  }
+
+  private async actionLog(range: any): Promise<Report> {
+    const a = await this.prisma.auditLog.findMany({ where: { createdAt: range }, orderBy: { id: 'desc' }, take: 500 });
+    const rows = a.map((x) => ({ user: x.userName || x.userId?.toString() || '—', action: x.action, entity: x.entity || '—', method: x.method, status: x.status, at: x.createdAt.toISOString().slice(0, 16).replace('T', ' ') }));
+    return { columns: [{ key: 'user', label: 'User' }, { key: 'action', label: 'Action' }, { key: 'entity', label: 'Entity' }, { key: 'method', label: 'Method' }, { key: 'status', label: 'HTTP' }, { key: 'at', label: 'At' }], rows };
   }
 
   private async receivables(): Promise<Report> {
