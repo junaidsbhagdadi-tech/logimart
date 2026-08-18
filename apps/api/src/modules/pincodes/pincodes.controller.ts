@@ -30,6 +30,30 @@ export class PincodesController {
     return this.pincodes.create(dto);
   }
 
+  // ---- serviceability coverage (SELF network / vendor-wise) ----
+  // NOTE: declared before the ':pincode' catch-all so these static paths match first.
+  @Get('service-areas/networks')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  networks() {
+    return this.pincodes.networks();
+  }
+
+  @Get('service-areas')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  serviceAreas(@Query('network') network?: string, @Query('limit') limit?: string) {
+    return this.pincodes.listServiceAreas(network || undefined, limit ? Number(limit) : 500);
+  }
+
+  /** Bulk upload serviceable pincodes for a network (SELF or a vendor). */
+  @Post('service-areas/bulk')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  bulkServiceAreas(@Body() dto: { rows: any[]; defaultNetwork?: string }) {
+    return this.pincodes.bulkServiceAreas(dto.rows ?? [], dto.defaultNetwork || 'SELF');
+  }
+
   @Get(':pincode')
   lookup(@Param('pincode') pincode: string) {
     return this.pincodes.lookup(pincode);

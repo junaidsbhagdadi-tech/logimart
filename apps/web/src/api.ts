@@ -363,6 +363,14 @@ export const api = {
   listPincodes: (limit = 500) => request<{ pincode: string; city: string; state: string; region: string; tier: number; isOda: boolean }[]>(`/api/v1/pincodes?limit=${limit}`),
   createPincode: (body: { pincode: string; city: string; state: string; region: string; tier: number; isOda?: boolean }) =>
     request('/api/v1/pincodes', { method: 'POST', body: JSON.stringify(body) }),
+  // ---- serviceability coverage (SELF network / vendor-wise) ----
+  serviceNetworks: () => request<string[]>('/api/v1/pincodes/service-areas/networks'),
+  listServiceAreas: (network?: string, limit = 500) =>
+    request<{ id: string; pincode: string; city: string | null; state: string | null; network: string; mode: string | null; tatDays: number | null; isOda: boolean }[]>(
+      `/api/v1/pincodes/service-areas?limit=${limit}${network ? `&network=${encodeURIComponent(network)}` : ''}`),
+  bulkServiceAreas: (rows: Record<string, string>[], defaultNetwork = 'SELF') =>
+    request<{ imported: number; failed: number; errors: { pincode: string; error: string }[] }>(
+      '/api/v1/pincodes/service-areas/bulk', { method: 'POST', body: JSON.stringify({ rows, defaultNetwork }) }),
   listHubs: () => request<{ id: string; code: string; name: string; zone: string }[]>('/api/v1/hubs'),
 
   // ---- generic master data (Zone, Country, State, Product, Charge, …) ----

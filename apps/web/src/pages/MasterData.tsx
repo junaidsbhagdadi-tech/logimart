@@ -4,6 +4,7 @@ import { api } from '../api';
 const REGIONS = ['NORTH', 'SOUTH', 'EAST', 'WEST', 'NORTHEAST'];
 type Pin = { pincode: string; city: string; state: string; region: string; tier: number; isOda: boolean };
 type Hub = { id: string; code: string; name: string; zone: string };
+type ServiceArea = { id: string; pincode: string; city: string | null; state: string | null; network: string; mode: string | null; tatDays: number | null; isOda: boolean };
 
 export function MasterData() {
   const [pins, setPins] = useState<Pin[]>([]);
@@ -15,11 +16,43 @@ export function MasterData() {
   const [p, setP] = useState<Pin>({ pincode: '', city: '', state: '', region: 'SOUTH', tier: 2, isOda: false });
   const [h, setH] = useState<Hub>({ id: '', code: '', name: '', zone: 'SOUTH' });
 
+  // ---- serviceability coverage (SELF network / vendor-wise bulk upload) ----
+  const covCols = 'pincode,city,state,mode,tatDays,isOda';
+  const [net, setNet] = useState('SELF');
+  const [covText, setCovText] = useState('');
+  const [covRows, setCovRows] = useState<ServiceArea[]>([]);
+  const [covFilter, setCovFilter] = useState('');
+  const [networks, setNetworks] = useState<string[]>([]);
+  const [covResult, setCovResult] = useState<{ imported: number; failed: number; errors: { pincode: string; error: string }[] } | null>(null);
+  const [covBusy, setCovBusy] = useState(false);
+
   const load = () => {
     api.listPincodes().then(setPins).catch((e) => setError(e.message));
     api.listHubs().then(setHubs).catch(() => {});
   };
   useEffect(load, []);
+
+  const loadCoverage = () => {
+    api.serviceNetworks().then(setNetworks).catch(() => {});
+    api.listServiceAreas(covFilter || undefined).then(setCovRows).catch(() => {});
+  };
+  useEffect(loadCoverage, [covFilter]);
+
+  const covTemplate = () => {
+    const url = URL.createObjectURL(new Blob([covCols + '\n'], { type: 'text/csv' }));
+    const a = document.createElement('a'); a.href = url; a.download = 'logimart-serviceable-pincodes-template.csv'; a.click(); URL.revokeObjectURL(url);
+  };
+  const importCoverage = async () => {
+    setError(''); setCovResult(null);
+    const rows = parseCsv(covText);
+    if (rows.length === 0) { setError(`Paste CSV rows (${covCols}) or upload a file.`); return; }
+    setCovBusy(true);
+    try {
+      const res = await api.bulkServiceAreas(rows, net.trim() || 'SELF');
+      setCovResult(res); setCovText(''); loadCoverage();
+    } catch (e: any) { setError(e.message); }
+    setCovBusy(false);
+  };
 
   const addPin = async () => {
     setError(''); setMsg('');
@@ -87,6 +120,55 @@ export function MasterData() {
       </div>
 
       <div className="card">
+        <h2>📤 Bulk upload serviceable pincodes — SELF network / vendor-wise</h2>
+        <p className="muted" style={{ marginTop: -6 }}>
+          Load coverage for your own <strong>SELF</strong> network or a specific <strong>vendor</strong>. Columns: <code>{covCols}</code>. Same pincode + network is updated; the base directory is kept in sync.
+        </p>
+        <div className="grid cols-3">
+          <div>
+            <label>Network</label>
+            <input list="lm-networks" value={net} onChange={(e) => setNet(e.target.value)} placeholder="SELF or vendor name" />
+            <datalist id="lm-networks"><option value="SELF" />{networks.filter((n) => n !== 'SELF').map((n) => <option key={n} value={n} />)}</datalist>
+          </div>
+        </div>
+        <div className="row" style={{ marginTop: 10 }}>
+          <button className="secondary" onClick={covTemplate}>⬇ Template</button>
+          <label className="secondary" style={{ padding: '10px 16px', borderRadius: 11, cursor: 'pointer', fontWeight: 600, fontSize: 13, border: '1px solid var(--border)' }}>
+            📎 Upload CSV<input type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) f.text().then(setCovText); }} />
+          </label>
+        </div>
+        <textarea rows={6} value={covText} onChange={(e) => setCovText(e.target.value)} placeholder={covCols + '\n560001,Bengaluru,Karnataka,SURFACE,1,false'} style={{ width: '100%', font: '13px monospace', padding: 12, border: '1px solid var(--border)', borderRadius: 11, marginTop: 12 }} />
+        <div className="row" style={{ marginTop: 12, justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="muted">Uploading into <strong>{net.trim() || 'SELF'}</strong>{covResult && <span style={{ marginLeft: 12, color: 'var(--ok)', fontWeight: 700 }}>✓ {covResult.imported} imported{covResult.failed > 0 ? `, ${covResult.failed} failed` : ''}</span>}</div>
+          <button onClick={importCoverage} disabled={covBusy || !covText.trim()}>{covBusy ? 'Uploading…' : 'Upload coverage'}</button>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 style={{ margin: 0 }}>Network coverage ({covRows.length})</h2>
+          <select value={covFilter} onChange={(e) => setCovFilter(e.target.value)} style={{ width: 220 }}>
+            <option value="">All networks</option>
+            {networks.map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </div>
+        <table style={{ marginTop: 12 }}>
+          <thead><tr><th>Pincode</th><th>City</th><th>State</th><th>Network</th><th>Mode</th><th>TAT</th><th>ODA</th></tr></thead>
+          <tbody>
+            {covRows.slice(0, 300).map((x) => (
+              <tr key={x.id}>
+                <td><strong>{x.pincode}</strong></td><td>{x.city || '—'}</td><td>{x.state || '—'}</td>
+                <td><span className={'badge ' + (x.network === 'SELF' ? 'DELIVERED' : 'AT_HUB')}>{x.network}</span></td>
+                <td>{x.mode || '—'}</td><td>{x.tatDays != null ? `${x.tatDays}d` : '—'}</td>
+                <td>{x.isOda ? <span className="badge PARTIAL">ODA</span> : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {covRows.length === 0 && <p className="muted">No coverage loaded yet — bulk upload above.</p>}
+      </div>
+
+      <div className="card">
         <h2>Add hub</h2>
         <div className="grid cols-3">
           <div><label>Hub code *</label><input value={h.code} onChange={(e) => setH({ ...h, code: e.target.value.toUpperCase() })} placeholder="BLR" /></div>
@@ -128,4 +210,17 @@ export function MasterData() {
       </div>
     </>
   );
+}
+
+/** Minimal CSV → array of {header: value} rows (first line = header). */
+function parseCsv(text: string): Record<string, string>[] {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length < 2) return [];
+  const header = lines[0].split(',').map((h) => h.trim());
+  return lines.slice(1).map((line) => {
+    const cells = line.split(',');
+    const row: Record<string, string> = {};
+    header.forEach((h, i) => { row[h] = (cells[i] ?? '').trim(); });
+    return row;
+  });
 }

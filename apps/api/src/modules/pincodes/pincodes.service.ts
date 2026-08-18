@@ -47,4 +47,62 @@ export class PincodesService {
       create: { pincode: dto.pincode.trim(), ...data },
     });
   }
+
+  // ============ serviceability coverage (SELF network / vendor-wise) ============
+
+  /** Distinct networks present in the coverage table (for the filter dropdown). */
+  async networks(): Promise<string[]> {
+    const rows = await this.prisma.serviceablePincode.groupBy({ by: ['network'], orderBy: { network: 'asc' } });
+    return rows.map((r) => r.network);
+  }
+
+  /** Coverage list, optionally filtered to one network (SELF or a vendor). */
+  listServiceAreas(network?: string, limit = 500) {
+    return this.prisma.serviceablePincode.findMany({
+      where: network ? { network } : undefined,
+      orderBy: [{ network: 'asc' }, { pincode: 'asc' }],
+      take: Math.min(limit, 5000),
+    });
+  }
+
+  /**
+   * Bulk upsert serviceable pincodes for a network. Each row: pincode (required),
+   * plus optional city/state/mode/tatDays/isOda; network defaults to the row's
+   * `network` or the request-level `defaultNetwork` or 'SELF'. Also mirrors the
+   * base pincode into the Pincode directory (region derived) so booking lookups work.
+   */
+  async bulkServiceAreas(
+    rows: Array<{ pincode?: string; city?: string; state?: string; network?: string; mode?: string; tatDays?: string | number; isOda?: string | boolean }>,
+    defaultNetwork = 'SELF',
+  ) {
+    let ok = 0;
+    const errors: { pincode: string; error: string }[] = [];
+    for (const raw of rows) {
+      const pincode = String(raw.pincode ?? '').trim();
+      if (!/^\d{6}$/.test(pincode)) { errors.push({ pincode: pincode || '(blank)', error: 'pincode must be 6 digits' }); continue; }
+      const network = String(raw.network || defaultNetwork).trim().toUpperCase() === 'SELF' ? 'SELF' : String(raw.network || defaultNetwork).trim();
+      const isOda = raw.isOda === true || String(raw.isOda ?? '').trim().toLowerCase() === 'true' || String(raw.isOda ?? '').trim() === '1';
+      const tatDays = raw.tatDays != null && String(raw.tatDays).trim() !== '' ? Number(raw.tatDays) : null;
+      const city = raw.city?.toString().trim() || null;
+      const state = raw.state?.toString().trim() || null;
+      const mode = raw.mode?.toString().trim() || null;
+      try {
+        await this.prisma.serviceablePincode.upsert({
+          where: { pincode_network: { pincode, network } },
+          update: { city, state, mode, tatDays, isOda, isActive: true },
+          create: { pincode, network, city, state, mode, tatDays, isOda },
+        });
+        // keep the base directory in sync so booking pincode-lookup resolves
+        if (city && state) {
+          await this.prisma.pincode.upsert({
+            where: { pincode },
+            update: { city, state, isOda: isOda || undefined },
+            create: { pincode, city, state, region: regionFromPincode(pincode) as any, tier: 2, isOda },
+          }).catch(() => undefined);
+        }
+        ok++;
+      } catch (e: any) { errors.push({ pincode, error: e.message }); }
+    }
+    return { imported: ok, failed: errors.length, errors: errors.slice(0, 50) };
+  }
 }

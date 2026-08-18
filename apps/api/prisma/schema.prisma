@@ -459,6 +459,28 @@ model Pincode {
   @@map("pincodes")
 }
 
+/// Serviceability coverage: which pincodes are served, by the SELF network or a vendor.
+/// A pincode can appear once per network (self + one row per vendor), so the same
+/// destination can be delivered in-house OR handed to a specific carrier.
+model ServiceablePincode {
+  id        BigInt   @id @default(autoincrement())
+  pincode   String
+  city      String?
+  state     String?
+  network   String   @default("SELF") // 'SELF' (own network) or a vendor name/code
+  vendorId  BigInt?
+  mode      String?  // SURFACE | AIR
+  tatDays   Int?     // committed transit days
+  isOda     Boolean  @default(false)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@unique([pincode, network])
+  @@index([pincode])
+  @@index([network])
+  @@map("serviceable_pincodes")
+}
+
 // Generic master-data table — one row per entry across many master types
 // (Zone, Country, State, Product, Product Type, Charge, Destination, Sales Exec …).
 // `attrs` holds the type-specific extra fields as JSON so new masters need no schema change.
