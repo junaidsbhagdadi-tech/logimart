@@ -33,6 +33,7 @@ import { Scan } from './pages/Scan';
 import { Drs } from './pages/Drs';
 import { BulkPod } from './pages/BulkPod';
 import { Reports } from './pages/Reports';
+import { Import } from './pages/Import';
 
 export function App() {
   const { user } = useAuth();
@@ -82,6 +83,7 @@ export function App() {
         <Route path="/master-data" element={canMaster ? <MasterData /> : <Navigate to="/" replace />} />
         <Route path="/masters" element={canMaster ? <Masters /> : <Navigate to="/" replace />} />
         <Route path="/reports" element={canReports ? <Reports /> : <Navigate to="/" replace />} />
+        <Route path="/import" element={canMaster ? <Import /> : <Navigate to="/" replace />} />
         <Route path="/audit" element={user?.role === 'SYS_ADMIN' ? <AuditLog /> : <Navigate to="/" replace />} />
         <Route path="/users" element={user?.role === 'SYS_ADMIN' ? <Users /> : <Navigate to="/" replace />} />
         <Route path="/feedback" element={user?.role === 'SYS_ADMIN' ? <Feedback /> : <Navigate to="/" replace />} />

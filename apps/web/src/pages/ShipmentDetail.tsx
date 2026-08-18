@@ -103,6 +103,14 @@ export function ShipmentDetail() {
     catch (e: any) { setError(e.message); }
   };
 
+  const addComment = async () => {
+    const text = prompt('Progress comment / remark for this shipment:');
+    if (!text) return;
+    setError(''); setMsg('');
+    try { await api.recordScan({ awb: awb!, eventType: 'COMMENT', remark: text }); setMsg('💬 Comment added to tracking.'); }
+    catch (e: any) { setError(e.message); }
+  };
+
   const submitReweigh = async () => {
     if (!s) return;
     const lines = s.pieces
@@ -143,6 +151,7 @@ export function ShipmentDetail() {
             </label>
           )}
           {canPod && <button onClick={recordPod}>✍ Record POD</button>}
+          {canPod && <button className="secondary" onClick={addComment}>💬 Comment</button>}
           {canReweigh && <button className="secondary" onClick={() => { setReweighMode((v) => !v); setMsg(''); }}>⚖ {reweighMode ? 'Cancel re-weigh' : 'Re-weigh'}</button>}
           <Link to={`/shipments/${s.awb}/labels`}><button>🏷 Print labels</button></Link>
         </div>

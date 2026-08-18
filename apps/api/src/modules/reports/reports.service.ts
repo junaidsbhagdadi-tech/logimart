@@ -20,6 +20,10 @@ export class ReportsService {
       case 'DELIVERY_STATUS': return this.deliveryStatus(range);
       case 'SCAN': return this.scanReport(range);
       case 'RECEIVABLES': return this.receivables();
+      case 'INVOICE': return this.invoiceReport();
+      case 'VENDOR': return this.vendorReport();
+      case 'MANIFEST': return this.manifestReport(range);
+      case 'PICKUP': return this.pickupReport(range);
       default: return { columns: [{ key: 'msg', label: 'Info' }], rows: [{ msg: `Report '${type}' is not implemented yet.` }] };
     }
   }
@@ -87,6 +91,34 @@ export class ReportsService {
     const s = await this.prisma.scanLog.findMany({ where: { scanAt: range }, orderBy: { scanAt: 'desc' }, take: 1000 });
     const rows = s.map((x) => ({ awb: x.awb, event: x.eventType, serviceCenter: x.serviceCenter || '—', at: x.scanAt.toISOString().replace('T', ' ').slice(0, 19) }));
     return { columns: [{ key: 'awb', label: 'AWB' }, { key: 'event', label: 'Event' }, { key: 'serviceCenter', label: 'Service centre' }, { key: 'at', label: 'At' }], rows };
+  }
+
+  private async invoiceReport(): Promise<Report> {
+    const inv = await this.prisma.invoice.findMany({
+      include: { client: { select: { legalName: true } } },
+      orderBy: { id: 'desc' },
+      take: 500,
+    });
+    const rows = inv.map((x) => ({ invoiceNo: x.invoiceNo, customer: x.client.legalName, total: Number(x.total).toFixed(2), status: x.status, dueDate: x.dueDate.toISOString().slice(0, 10) }));
+    return { columns: [{ key: 'invoiceNo', label: 'Invoice No' }, { key: 'customer', label: 'Customer' }, { key: 'total', label: 'Total ₹' }, { key: 'status', label: 'Status' }, { key: 'dueDate', label: 'Due date' }], rows };
+  }
+
+  private async vendorReport(): Promise<Report> {
+    const v = await this.prisma.vendor.findMany({ orderBy: { name: 'asc' } });
+    const rows = v.map((x) => ({ name: x.name, modes: x.modes, city: x.city || '—', gstin: x.gstin || '—', active: x.isActive ? 'Yes' : 'No' }));
+    return { columns: [{ key: 'name', label: 'Vendor' }, { key: 'modes', label: 'Modes' }, { key: 'city', label: 'City' }, { key: 'gstin', label: 'GSTIN' }, { key: 'active', label: 'Active' }], rows };
+  }
+
+  private async manifestReport(range: any): Promise<Report> {
+    const m = await this.prisma.manifest.findMany({ where: { createdAt: range }, orderBy: { id: 'desc' }, take: 500 });
+    const rows = m.map((x) => ({ code: x.code, vehicleNo: x.vehicleNo, status: x.status, at: x.createdAt.toISOString().slice(0, 16).replace('T', ' ') }));
+    return { columns: [{ key: 'code', label: 'Manifest' }, { key: 'vehicleNo', label: 'Vehicle' }, { key: 'status', label: 'Status' }, { key: 'at', label: 'Created' }], rows };
+  }
+
+  private async pickupReport(range: any): Promise<Report> {
+    const p = await this.prisma.pickupRequest.findMany({ where: { createdAt: range }, orderBy: { id: 'desc' }, take: 500 });
+    const rows = p.map((x) => ({ address: x.pickupAddress, city: x.city || '—', pieces: x.estPieces, mode: x.cargoMode || '—', at: x.createdAt.toISOString().slice(0, 16).replace('T', ' ') }));
+    return { columns: [{ key: 'address', label: 'Pickup address' }, { key: 'city', label: 'City' }, { key: 'pieces', label: 'Est. pieces' }, { key: 'mode', label: 'Mode' }, { key: 'at', label: 'Created' }], rows };
   }
 
   private async receivables(): Promise<Report> {

@@ -6,14 +6,18 @@ const REPORTS: { group: string; items: { key: string; label: string; noDate?: bo
     { key: 'MIS', label: 'MIS Report' },
     { key: 'SCAN', label: 'Scan Report' },
     { key: 'DELIVERY_STATUS', label: 'Delivery Status' },
+    { key: 'MANIFEST', label: 'Manifest Report' },
+    { key: 'PICKUP', label: 'Pickup Report' },
   ] },
   { group: 'Statements', items: [
     { key: 'DAILY', label: 'Daily Report' },
     { key: 'CUSTOMER_SUMMARY', label: 'Customer Summary' },
     { key: 'PRODUCT_SUMMARY', label: 'Product Summary' },
     { key: 'DESTINATION_SUMMARY', label: 'Destination Summary' },
+    { key: 'VENDOR', label: 'Vendor Report', noDate: true },
   ] },
-  { group: 'AR', items: [
+  { group: 'AWB / Finance', items: [
+    { key: 'INVOICE', label: 'Invoice Report', noDate: true },
     { key: 'RECEIVABLES', label: 'Receivables (Outstanding)', noDate: true },
   ] },
 ];
