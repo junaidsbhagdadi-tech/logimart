@@ -37,6 +37,9 @@ export class ReportsService {
       case 'RUNSHEET_NOT_POD': return this.runsheetNotPod(range);
       case 'BILLING': return this.billing(range);
       case 'ACTION_LOG': return this.actionLog(range);
+      case 'LOGIN_LOG': return this.loginLog(range);
+      case 'MISSING_AWB': return this.missingAwb(range);
+      case 'CUSTOMER_REGISTER': return this.customerRegister(range);
       default: return { columns: [{ key: 'msg', label: 'Info' }], rows: [{ msg: `Report '${type}' is not implemented yet.` }] };
     }
   }
@@ -230,6 +233,34 @@ export class ReportsService {
     const a = await this.prisma.auditLog.findMany({ where: { createdAt: range }, orderBy: { id: 'desc' }, take: 500 });
     const rows = a.map((x) => ({ user: x.userName || x.userId?.toString() || '—', action: x.action, entity: x.entity || '—', method: x.method, status: x.status, at: x.createdAt.toISOString().slice(0, 16).replace('T', ' ') }));
     return { columns: [{ key: 'user', label: 'User' }, { key: 'action', label: 'Action' }, { key: 'entity', label: 'Entity' }, { key: 'method', label: 'Method' }, { key: 'status', label: 'HTTP' }, { key: 'at', label: 'At' }], rows };
+  }
+
+  private async loginLog(range: any): Promise<Report> {
+    const a = await this.prisma.auditLog.findMany({ where: { createdAt: range, path: { contains: 'auth/login' } }, orderBy: { id: 'desc' }, take: 500 });
+    const rows = a.map((x) => ({ user: x.userName || x.userId?.toString() || '—', status: x.status, ip: x.ip || '—', at: x.createdAt.toISOString().slice(0, 16).replace('T', ' ') }));
+    return { columns: [{ key: 'user', label: 'User' }, { key: 'status', label: 'HTTP' }, { key: 'ip', label: 'IP' }, { key: 'at', label: 'At' }], rows };
+  }
+
+  private async missingAwb(range: any): Promise<Report> {
+    const s = await this.prisma.shipment.findMany({ where: { createdAt: range }, select: { awb: true }, take: 5000 });
+    const nums = s.map((x) => { const m = x.awb.match(/(\d+)$/); return m ? Number(m[1]) : NaN; }).filter((n) => !Number.isNaN(n)).sort((a, b) => a - b);
+    if (nums.length < 2) return { columns: [{ key: 'msg', label: 'Info' }], rows: [{ msg: 'Not enough AWBs to detect gaps.' }] };
+    const min = nums[0], max = nums[nums.length - 1];
+    if (max - min > 5000) return { columns: [{ key: 'msg', label: 'Info' }], rows: [{ msg: 'AWB range too large to enumerate — narrow the date range.' }] };
+    const present = new Set(nums);
+    const rows: { missing: number }[] = [];
+    for (let i = min; i <= max; i++) if (!present.has(i)) rows.push({ missing: i });
+    return { columns: [{ key: 'missing', label: 'Missing AWB number' }], rows: rows.length ? rows : [{ missing: 'None — sequence is complete' as any }] };
+  }
+
+  private async customerRegister(range: any): Promise<Report> {
+    const g = await this.prisma.shipment.groupBy({ by: ['clientId'], where: { createdAt: range }, _count: { _all: true }, _sum: { declaredValue: true } });
+    const clients = await this.prisma.b2bClient.findMany({ select: { id: true, legalName: true } });
+    const nm = new Map(clients.map((c) => [c.id.toString(), c.legalName]));
+    const rows = g
+      .map((x) => ({ customer: nm.get(x.clientId.toString()) || x.clientId.toString(), shipments: x._count._all, invoiceValue: Number(x._sum.declaredValue || 0).toFixed(2) }))
+      .sort((a, b) => b.shipments - a.shipments);
+    return { columns: [{ key: 'customer', label: 'Customer' }, { key: 'shipments', label: 'Shipments' }, { key: 'invoiceValue', label: 'Invoice value ₹' }], rows };
   }
 
   private async receivables(): Promise<Report> {

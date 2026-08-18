@@ -9,6 +9,7 @@ const REPORTS: { group: string; items: { key: string; label: string; noDate?: bo
     { key: 'PICKUP', label: 'Pickup Report' },
     { key: 'DRS', label: 'DRS Report' },
     { key: 'ACTION_LOG', label: 'Action Log' },
+    { key: 'LOGIN_LOG', label: 'Login Log' },
   ] },
   { group: 'Scan', items: [
     { key: 'SCAN', label: 'Scan Report' },
@@ -24,11 +25,13 @@ const REPORTS: { group: string; items: { key: string; label: string; noDate?: bo
     { key: 'PRODUCT_SUMMARY', label: 'Product Summary' },
     { key: 'DESTINATION_SUMMARY', label: 'Destination Summary' },
     { key: 'LOCATION_SUMMARY', label: 'Location Summary' },
+    { key: 'CUSTOMER_REGISTER', label: 'Customer Register' },
     { key: 'VENDOR', label: 'Vendor Report', noDate: true },
     { key: 'TARIFF', label: 'Tariff Rate', noDate: true },
   ] },
   { group: 'AWB / Finance', items: [
     { key: 'BILLING', label: 'Billing Report' },
+    { key: 'MISSING_AWB', label: 'Missing AWB' },
     { key: 'INVOICE', label: 'Invoice Report', noDate: true },
     { key: 'VOID', label: 'Void Report' },
     { key: 'ZERO', label: 'Zero Report' },
