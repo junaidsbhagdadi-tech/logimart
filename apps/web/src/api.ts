@@ -82,6 +82,8 @@ export interface Shipment {
   docType?: string | null;
   chargeWeight?: string | null;
   charges?: { code: string; name: string; amount: number }[] | null;
+  bdWaybill?: string | null;
+  bdStatus?: string | null;
   // DOD (Draft on Delivery)
   isDod?: boolean;
   dodAmount?: string | null;
@@ -373,6 +375,13 @@ export const api = {
   recordScan: (body: { awb: string; eventType: string; serviceCenter?: string; remark?: string }) =>
     request<{ awb: string; eventType: string; shipmentUpdated: boolean }>('/api/v1/opscan', { method: 'POST', body: JSON.stringify(body) }),
   listScans: (limit = 50) => request<{ id: string; awb: string; eventType: string; serviceCenter: string | null; scanAt: string }[]>(`/api/v1/opscan?limit=${limit}`),
+
+  // ---- BlueDart carrier integration ----
+  bdStatus: () => request<{ configured: boolean; [k: string]: any }>('/api/v1/bluedart/status'),
+  bdServiceable: (pincode: string) => request<any>(`/api/v1/bluedart/serviceable/${pincode}`),
+  bdTrack: (awb: string) => request<any>(`/api/v1/bluedart/track/${awb}`),
+  bdHandoff: (awb: string) => request<{ awb: string; bdWaybill: string | null; response: any }>(`/api/v1/bluedart/handoff/${awb}`, { method: 'POST' }),
+  bdSync: (awb: string) => request<{ awb: string; bdStatus: string | null }>(`/api/v1/bluedart/sync/${awb}`, { method: 'POST' }),
 
   // ---- reports ----
   runReport: (type: string, from?: string, to?: string) => {

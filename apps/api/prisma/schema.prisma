@@ -169,6 +169,11 @@ model Shipment {
   chargeWeight   Decimal?  @db.Decimal(10, 3)
   charges        Json?     // [{ code, name, amount }] — accessorials picked from the Charges master
 
+  // ---- carrier hand-off (BlueDart) ----
+  bdWaybill      String?   // BlueDart waybill (AWB) number returned on hand-off
+  bdStatus       String?   // last BlueDart status pulled via tracking
+  bdHandedAt     DateTime?
+
   manifestId     BigInt?   // trip/manifest this consignment is attached to
   deliveryRiderId BigInt?  // rider assigned for last-mile delivery
 
@@ -486,6 +491,17 @@ model ScanLog {
   @@index([awb])
   @@index([eventType])
   @@map("scan_logs")
+}
+
+// Cached carrier auth token (e.g. BlueDart JWT, valid 24h). Postgres-backed so
+// it is shared across API instances instead of re-authing per request.
+model IntegrationToken {
+  provider  String   @id // 'BLUEDART'
+  token     String   @db.Text
+  expiresAt DateTime
+  updatedAt DateTime @updatedAt
+
+  @@map("integration_tokens")
 }
 
 // ============================ FTL RATES (per vehicle type / trip) ============================

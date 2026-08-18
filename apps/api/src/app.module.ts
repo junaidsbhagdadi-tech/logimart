@@ -25,6 +25,7 @@ import { HubsModule } from './modules/hubs/hubs.module';
 import { MastersModule } from './modules/masters/masters.module';
 import { OpscanModule } from './modules/opscan/opscan.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { BluedartModule } from './modules/bluedart/bluedart.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
 import { RiderModule } from './modules/rider/rider.module';
@@ -76,6 +77,7 @@ const webDist = join(__dirname, '..', '..', 'web', 'dist');
     MastersModule,
     OpscanModule,
     ReportsModule,
+    BluedartModule,
     UploadsModule,
     FeedbackModule,
     RiderModule,

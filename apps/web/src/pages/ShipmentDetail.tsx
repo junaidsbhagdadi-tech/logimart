@@ -111,6 +111,18 @@ export function ShipmentDetail() {
     catch (e: any) { setError(e.message); }
   };
 
+  const handoffBd = async () => {
+    if (!confirm('Hand this shipment off to BlueDart (generate waybill)?')) return;
+    setError(''); setMsg('');
+    try { const r = await api.bdHandoff(awb!); setMsg(r.bdWaybill ? `📦 Handed to BlueDart — waybill ${r.bdWaybill}` : 'Hand-off sent (no waybill returned).'); load(); }
+    catch (e: any) { setError(e.message); }
+  };
+  const trackBd = async () => {
+    setError(''); setMsg('');
+    try { const r = await api.bdSync(awb!); setMsg(r.bdStatus ? `🔎 BlueDart status: ${r.bdStatus}` : 'BlueDart tracking pulled.'); load(); }
+    catch (e: any) { setError(e.message); }
+  };
+
   const submitReweigh = async () => {
     if (!s) return;
     const lines = s.pieces
@@ -152,6 +164,8 @@ export function ShipmentDetail() {
           )}
           {canPod && <button onClick={recordPod}>✍ Record POD</button>}
           {canPod && <button className="secondary" onClick={addComment}>💬 Comment</button>}
+          {canAssign && <button className="secondary" onClick={handoffBd}>📦 Hand to BlueDart</button>}
+          {canAssign && s.bdWaybill && <button className="secondary" onClick={trackBd}>🔎 BlueDart track</button>}
           {canReweigh && <button className="secondary" onClick={() => { setReweighMode((v) => !v); setMsg(''); }}>⚖ {reweighMode ? 'Cancel re-weigh' : 'Re-weigh'}</button>}
           <Link to={`/shipments/${s.awb}/labels`}><button>🏷 Print labels</button></Link>
         </div>
@@ -186,6 +200,7 @@ export function ShipmentDetail() {
           <div><label>LR / GC No.</label>{s.lrNumber ?? '—'}</div>
           <div><label>E-way bill</label>{s.ewbNo ?? '—'}</div>
           {s.product && <div><label>Product</label>{s.product}{s.docType ? ` · ${s.docType}` : ''}</div>}
+          {s.bdWaybill && <div><label>BlueDart AWB</label>{s.bdWaybill}{s.bdStatus ? ` · ${s.bdStatus}` : ''}</div>}
           {s.chargeWeight && <div><label>Charge weight</label>{s.chargeWeight} kg</div>}
           <div>
             <label>Payment</label>
