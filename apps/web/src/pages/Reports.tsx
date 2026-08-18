@@ -4,10 +4,16 @@ import { api } from '../api';
 const REPORTS: { group: string; items: { key: string; label: string; noDate?: boolean }[] }[] = [
   { group: 'Operations', items: [
     { key: 'MIS', label: 'MIS Report' },
-    { key: 'SCAN', label: 'Scan Report' },
     { key: 'DELIVERY_STATUS', label: 'Delivery Status' },
     { key: 'MANIFEST', label: 'Manifest Report' },
     { key: 'PICKUP', label: 'Pickup Report' },
+    { key: 'DRS', label: 'DRS Report' },
+  ] },
+  { group: 'Scan', items: [
+    { key: 'SCAN', label: 'Scan Report' },
+    { key: 'INSCAN', label: 'Inscan Report' },
+    { key: 'COMMENT_VIEW', label: 'Comment View' },
+    { key: 'VOLUMETRIC', label: 'Volumetric Weight' },
   ] },
   { group: 'Statements', items: [
     { key: 'DAILY', label: 'Daily Report' },
@@ -15,10 +21,16 @@ const REPORTS: { group: string; items: { key: string; label: string; noDate?: bo
     { key: 'PRODUCT_SUMMARY', label: 'Product Summary' },
     { key: 'DESTINATION_SUMMARY', label: 'Destination Summary' },
     { key: 'VENDOR', label: 'Vendor Report', noDate: true },
+    { key: 'TARIFF', label: 'Tariff Rate', noDate: true },
   ] },
   { group: 'AWB / Finance', items: [
     { key: 'INVOICE', label: 'Invoice Report', noDate: true },
+    { key: 'VOID', label: 'Void Report' },
+    { key: 'ZERO', label: 'Zero Report' },
+  ] },
+  { group: 'AR', items: [
     { key: 'RECEIVABLES', label: 'Receivables (Outstanding)', noDate: true },
+    { key: 'LEDGER_AGING', label: 'Ledger Aging', noDate: true },
   ] },
 ];
 const ALL = REPORTS.flatMap((g) => g.items);

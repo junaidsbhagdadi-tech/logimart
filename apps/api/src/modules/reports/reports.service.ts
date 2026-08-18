@@ -24,6 +24,14 @@ export class ReportsService {
       case 'VENDOR': return this.vendorReport();
       case 'MANIFEST': return this.manifestReport(range);
       case 'PICKUP': return this.pickupReport(range);
+      case 'DRS': return this.drsReport(range);
+      case 'COMMENT_VIEW': return this.commentView(range);
+      case 'INSCAN': return this.inscan(range);
+      case 'VOLUMETRIC': return this.volumetric(range);
+      case 'VOID': return this.voidReport(range);
+      case 'ZERO': return this.zeroReport(range);
+      case 'LEDGER_AGING': return this.ledgerAging();
+      case 'TARIFF': return this.tariff();
       default: return { columns: [{ key: 'msg', label: 'Info' }], rows: [{ msg: `Report '${type}' is not implemented yet.` }] };
     }
   }
@@ -119,6 +127,63 @@ export class ReportsService {
     const p = await this.prisma.pickupRequest.findMany({ where: { createdAt: range }, orderBy: { id: 'desc' }, take: 500 });
     const rows = p.map((x) => ({ address: x.pickupAddress, city: x.city || '—', pieces: x.estPieces, mode: x.cargoMode || '—', at: x.createdAt.toISOString().slice(0, 16).replace('T', ' ') }));
     return { columns: [{ key: 'address', label: 'Pickup address' }, { key: 'city', label: 'City' }, { key: 'pieces', label: 'Est. pieces' }, { key: 'mode', label: 'Mode' }, { key: 'at', label: 'Created' }], rows };
+  }
+
+  private async drsReport(range: any): Promise<Report> {
+    const s = await this.prisma.shipment.findMany({
+      where: { createdAt: range, deliveryRiderId: { not: null } },
+      select: { awb: true, status: true, deliveryRiderId: true, destZone: true, consigneeName: true, pieceCount: true },
+      orderBy: { id: 'desc' }, take: 1000,
+    });
+    const rows = s.map((x) => ({ awb: x.awb, rider: x.deliveryRiderId?.toString() ?? '—', consignee: x.consigneeName || '—', destination: x.destZone, pieces: x.pieceCount, status: x.status }));
+    return { columns: [{ key: 'awb', label: 'AWB' }, { key: 'rider', label: 'Field exec' }, { key: 'consignee', label: 'Consignee' }, { key: 'destination', label: 'Destination' }, { key: 'pieces', label: 'Pcs' }, { key: 'status', label: 'Status' }], rows };
+  }
+
+  private async commentView(range: any): Promise<Report> {
+    const s = await this.prisma.scanLog.findMany({ where: { scanAt: range, eventType: 'COMMENT' }, orderBy: { scanAt: 'desc' }, take: 1000 });
+    const rows = s.map((x) => ({ awb: x.awb, comment: x.remark || '—', at: x.scanAt.toISOString().slice(0, 16).replace('T', ' ') }));
+    return { columns: [{ key: 'awb', label: 'AWB' }, { key: 'comment', label: 'Comment' }, { key: 'at', label: 'At' }], rows };
+  }
+
+  private async inscan(range: any): Promise<Report> {
+    const s = await this.prisma.scanLog.findMany({ where: { scanAt: range, eventType: { in: ['PICKUP_IN', 'MANIFEST_IN'] } }, orderBy: { scanAt: 'desc' }, take: 1000 });
+    const rows = s.map((x) => ({ awb: x.awb, event: x.eventType, serviceCenter: x.serviceCenter || '—', at: x.scanAt.toISOString().slice(0, 16).replace('T', ' ') }));
+    return { columns: [{ key: 'awb', label: 'AWB' }, { key: 'event', label: 'Event' }, { key: 'serviceCenter', label: 'Service centre' }, { key: 'at', label: 'At' }], rows };
+  }
+
+  private async volumetric(range: any): Promise<Report> {
+    const s = await this.prisma.shipment.findMany({ where: { createdAt: range }, select: { awb: true, totalDeadKg: true, totalVolKg: true, chargeWeight: true }, orderBy: { id: 'desc' }, take: 1000 });
+    const rows = s.map((x) => ({ awb: x.awb, deadKg: Number(x.totalDeadKg).toFixed(2), volKg: Number(x.totalVolKg).toFixed(2), chargeKg: x.chargeWeight != null ? Number(x.chargeWeight).toFixed(2) : '—' }));
+    return { columns: [{ key: 'awb', label: 'AWB' }, { key: 'deadKg', label: 'Dead kg' }, { key: 'volKg', label: 'Vol kg' }, { key: 'chargeKg', label: 'Charge kg' }], rows };
+  }
+
+  private async voidReport(range: any): Promise<Report> {
+    const s = await this.prisma.shipment.findMany({ where: { createdAt: range, status: 'CANCELLED' as any }, select: { awb: true, consigneeName: true, createdAt: true }, orderBy: { id: 'desc' }, take: 1000 });
+    const rows = s.map((x) => ({ awb: x.awb, consignee: x.consigneeName || '—', at: x.createdAt.toISOString().slice(0, 10) }));
+    return { columns: [{ key: 'awb', label: 'AWB' }, { key: 'consignee', label: 'Consignee' }, { key: 'at', label: 'Booked' }], rows };
+  }
+
+  private async zeroReport(range: any): Promise<Report> {
+    const s = await this.prisma.shipment.findMany({ where: { createdAt: range, totalDeadKg: 0 }, select: { awb: true, product: true, pieceCount: true }, orderBy: { id: 'desc' }, take: 1000 });
+    const rows = s.map((x) => ({ awb: x.awb, product: x.product || '—', pieces: x.pieceCount }));
+    return { columns: [{ key: 'awb', label: 'AWB' }, { key: 'product', label: 'Product' }, { key: 'pieces', label: 'Pcs' }], rows };
+  }
+
+  private async ledgerAging(): Promise<Report> {
+    const inv = await this.prisma.invoice.findMany({ where: { status: { in: ['ISSUED', 'PARTIALLY_PAID'] } as any }, include: { client: { select: { legalName: true } } }, take: 1000 });
+    const now = Date.now();
+    const rows = inv.map((x) => {
+      const days = Math.floor((now - x.dueDate.getTime()) / 86400000);
+      const bucket = days <= 0 ? 'Current' : days <= 30 ? '1-30' : days <= 60 ? '31-60' : days <= 90 ? '61-90' : '90+';
+      return { invoiceNo: x.invoiceNo, customer: x.client.legalName, total: Number(x.total).toFixed(2), dueDate: x.dueDate.toISOString().slice(0, 10), daysOverdue: Math.max(0, days), bucket };
+    }).sort((a, b) => b.daysOverdue - a.daysOverdue);
+    return { columns: [{ key: 'invoiceNo', label: 'Invoice' }, { key: 'customer', label: 'Customer' }, { key: 'total', label: 'Total ₹' }, { key: 'dueDate', label: 'Due date' }, { key: 'daysOverdue', label: 'Days overdue' }, { key: 'bucket', label: 'Bucket' }], rows };
+  }
+
+  private async tariff(): Promise<Report> {
+    const rc = await this.prisma.rateCard.findMany({ include: { client: { select: { legalName: true } } }, orderBy: { id: 'desc' }, take: 1000 });
+    const rows = rc.map((x) => ({ customer: x.client?.legalName ?? '—', lane: `${x.originZone} → ${x.destZone}`, mode: x.serviceMode, perKg: Number(x.perKgRate).toFixed(2), minCharge: Number(x.minCharge).toFixed(2), fuelPct: Number(x.fuelPct).toFixed(2) }));
+    return { columns: [{ key: 'customer', label: 'Customer' }, { key: 'lane', label: 'Lane' }, { key: 'mode', label: 'Mode' }, { key: 'perKg', label: 'Per-kg ₹' }, { key: 'minCharge', label: 'Min ₹' }, { key: 'fuelPct', label: 'Fuel %' }], rows };
   }
 
   private async receivables(): Promise<Report> {
