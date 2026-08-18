@@ -368,6 +368,11 @@ export const api = {
   saveMaster: (type: string, body: { code: string; name: string; attrs?: Record<string, any>; active?: boolean }) =>
     request(`/api/v1/masters/${type}`, { method: 'POST', body: JSON.stringify(body) }),
   deleteMaster: (type: string, code: string) => request(`/api/v1/masters/${type}/${encodeURIComponent(code)}`, { method: 'DELETE' }),
+
+  // ---- operational scans (pickup-in, out-scan, manifest-in, undelivered, miss-route) ----
+  recordScan: (body: { awb: string; eventType: string; serviceCenter?: string; remark?: string }) =>
+    request<{ awb: string; eventType: string; shipmentUpdated: boolean }>('/api/v1/opscan', { method: 'POST', body: JSON.stringify(body) }),
+  listScans: (limit = 50) => request<{ id: string; awb: string; eventType: string; serviceCenter: string | null; scanAt: string }[]>(`/api/v1/opscan?limit=${limit}`),
   createHub: (body: { code: string; name: string; zone: string }) =>
     request('/api/v1/hubs', { method: 'POST', body: JSON.stringify(body) }),
 

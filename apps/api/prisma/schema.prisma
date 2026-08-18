@@ -472,6 +472,22 @@ model MasterEntry {
   @@map("master_entries")
 }
 
+// Flat operational scan log (Pickup In-scan, Out-scan, Manifest In-scan,
+// Un-delivery, Miss-route). Independent of the piece-level event-sourced ScanEvent.
+model ScanLog {
+  id            BigInt   @id @default(autoincrement())
+  awb           String
+  eventType     String   // PICKUP_IN | OUT_SCAN | MANIFEST_IN | UNDELIVERED | MISROUTE
+  serviceCenter String?
+  scannedById   BigInt?
+  remark        String?
+  scanAt        DateTime @default(now())
+
+  @@index([awb])
+  @@index([eventType])
+  @@map("scan_logs")
+}
+
 // ============================ FTL RATES (per vehicle type / trip) ============================
 
 model FtlRate {

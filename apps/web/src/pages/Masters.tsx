@@ -51,6 +51,19 @@ const MASTERS: MasterDef[] = [
   { key: 'INSTRUCTION', label: 'Instruction', icon: '📝', fields: [F('code', 'Code'), F('name', 'Instruction')] },
   { key: 'BANK', label: 'Bank', icon: '🏦', fields: [F('code', 'Code'), F('name', 'Bank name'), F('ifsc', 'IFSC', { attr: true }), F('branch', 'Branch', { attr: true })] },
   { key: 'FLIGHT', label: 'Flight', icon: '✈️', fields: [F('code', 'Flight code'), F('name', 'Flight / carrier'), F('airline', 'Airline', { attr: true })] },
+  { key: 'FUEL_SETUP', label: 'Fuel Setup', icon: '⛽', fields: [
+    F('code', 'Entry code'), F('name', 'Label'),
+    F('customer', 'Customer', { attr: true }), F('vendor', 'Vendor', { attr: true }), F('productCode', 'Product', { attr: true }),
+    F('destination', 'Destination', { attr: true }), F('service', 'Service', { attr: true }),
+    F('fromDate', 'From date', { attr: true }), F('toDate', 'To date', { attr: true }),
+    F('percentage', 'Fuel %', { attr: true, type: 'number' }),
+  ] },
+  { key: 'TAX_SETUP', label: 'Tax Setup', icon: '🧮', fields: [
+    F('code', 'Entry code'), F('name', 'Label'),
+    F('customer', 'Customer', { attr: true }), F('productCode', 'Product', { attr: true }),
+    F('fromDate', 'From date', { attr: true }), F('toDate', 'To date', { attr: true }),
+    F('igst', 'IGST %', { attr: true, type: 'number' }), F('cgst', 'CGST %', { attr: true, type: 'number' }), F('sgst', 'SGST %', { attr: true, type: 'number' }),
+  ] },
 ];
 
 export function Masters() {

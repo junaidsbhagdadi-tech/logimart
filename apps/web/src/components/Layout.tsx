@@ -44,6 +44,9 @@ export function Layout() {
           <NavLink to="/bulk">📥 Bulk Booking</NavLink>
           {isOps && <NavLink to="/my-tasks">🛵 My Tasks</NavLink>}
           {isOps && <NavLink to="/deliver">🚚 Delivery App</NavLink>}
+          {isOps && <NavLink to="/scan">📡 Scan</NavLink>}
+          {isOps && <NavLink to="/drs">📋 DRS</NavLink>}
+          {isOps && <NavLink to="/bulk-pod">📥 Bulk POD</NavLink>}
           <NavLink to="/pickups">📦 Pickups</NavLink>
           {isOps && <NavLink to="/manifests">🚚 Manifests</NavLink>}
           <NavLink to="/invoices">🧾 Invoices</NavLink>

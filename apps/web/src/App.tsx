@@ -29,6 +29,9 @@ import { MasterData } from './pages/MasterData';
 import { Masters } from './pages/Masters';
 import { Deliver } from './pages/Deliver';
 import { BulkBooking } from './pages/BulkBooking';
+import { Scan } from './pages/Scan';
+import { Drs } from './pages/Drs';
+import { BulkPod } from './pages/BulkPod';
 
 export function App() {
   const { user } = useAuth();
@@ -55,6 +58,9 @@ export function App() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/create" element={<CreateShipment />} />
         <Route path="/bulk" element={<BulkBooking />} />
+        <Route path="/scan" element={<Scan />} />
+        <Route path="/drs" element={<Drs />} />
+        <Route path="/bulk-pod" element={<BulkPod />} />
         <Route path="/shipments/:awb" element={<ShipmentDetail />} />
         <Route path="/shipments/:awb/labels" element={<Labels />} />
         <Route path="/invoices" element={<Invoices />} />
