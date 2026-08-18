@@ -24,12 +24,15 @@ export class ShipmentsService {
     return Number(((l * w * h) / VOLUMETRIC_DIVISOR).toFixed(3));
   }
 
-  /** LMT + YYYY + zero-padded sequence, e.g. LMT2026000045. */
+  /**
+   * Xpresion-style AWB: prefix + a continuous 10-digit running number (no year),
+   * e.g. LMT1000000045 — matches the carrier "letter + 10 digits" waybill format.
+   * Base 1000000000 keeps every AWB a fixed 10 digits from the first booking.
+   */
   private async nextAwb(): Promise<string> {
-    const year = new Date().getFullYear();
     const count = await this.prisma.shipment.count();
-    const seq = String(count + 1).padStart(6, '0');
-    return `${COMPANY.awbPrefix}${year}${seq}`;
+    const seq = 1000000000 + count + 1;
+    return `${COMPANY.awbPrefix}${seq}`;
   }
 
   /**

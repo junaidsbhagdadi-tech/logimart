@@ -41,7 +41,7 @@ export function CreateShipment() {
   const [ewbNo, setEwbNo] = useState('');
 
   // services + charges (from the Product / Charges masters)
-  const [products, setProducts] = useState<{ code: string; name: string }[]>([]);
+  const [products, setProducts] = useState<{ code: string; name: string; type?: string }[]>([]);
   const [chargeMasters, setChargeMasters] = useState<{ code: string; name: string }[]>([]);
   const [product, setProduct] = useState('');
   const [docType, setDocType] = useState<'DOX' | 'NDOX'>('NDOX');
@@ -67,7 +67,7 @@ export function CreateShipment() {
       if (hs[0]) setOriginHubId(Number(hs[0].id));
       setDestHubId(Number((hs[1] ?? hs[0])?.id));
     }).catch(() => {});
-    api.listMaster('PRODUCT').then((r) => setProducts(r.map((x) => ({ code: x.code, name: x.name })))).catch(() => {});
+    api.listMaster('PRODUCT').then((r) => setProducts(r.map((x) => ({ code: x.code, name: x.name, type: (x.attrs as any)?.productType || (x.attrs as any)?.groupType })))).catch(() => {});
     api.listMaster('CHARGE').then((r) => setChargeMasters(r.map((x) => ({ code: x.code, name: x.name })))).catch(() => {});
   }, []);
 
@@ -261,7 +261,7 @@ export function CreateShipment() {
             <label>Product</label>
             <select value={product} onChange={(e) => setProduct(e.target.value)}>
               <option value="">— select —</option>
-              {products.map((p) => <option key={p.code} value={p.code}>{p.code} — {p.name}</option>)}
+              {products.map((p) => <option key={p.code} value={p.code}>{p.code} — {p.name}{p.type ? ` (${p.type})` : ''}</option>)}
             </select>
           </div>
           <div>

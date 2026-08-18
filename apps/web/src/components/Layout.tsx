@@ -4,17 +4,70 @@ import { useAuth } from '../auth';
 import { Logo } from './Logo';
 import { FeedbackWidget } from './FeedbackWidget';
 
+type Item = { to: string; icon: string; label: string; end?: boolean; show?: boolean };
+type Group = { title: string; items: Item[] };
+
 export function Layout() {
   const { user, logout } = useAuth();
-  const isAdminFin = user?.role === 'FINANCE_EXEC' || user?.role === 'SYS_ADMIN';
-  const isOps = ['HUB_MANAGER', 'DRIVER', 'SYS_ADMIN'].includes(user?.role || '');
-  const canMaster = user?.role === 'HUB_MANAGER' || user?.role === 'SYS_ADMIN';
+  const role = user?.role || '';
+  const isAdminFin = role === 'FINANCE_EXEC' || role === 'SYS_ADMIN';
+  const isOps = ['HUB_MANAGER', 'DRIVER', 'SYS_ADMIN'].includes(role);
+  const canMaster = role === 'HUB_MANAGER' || role === 'SYS_ADMIN';
+  const isSysAdmin = role === 'SYS_ADMIN';
   const nav = useNavigate();
   const [awb, setAwb] = useState('');
-  const onLogout = () => {
-    logout();
-    nav('/login');
-  };
+
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem('lm.rail') === '1');
+  const toggleRail = () => setCollapsed((c) => { const n = !c; localStorage.setItem('lm.rail', n ? '1' : '0'); return n; });
+
+  const [closed, setClosed] = useState<Record<string, boolean>>(() => {
+    try { return JSON.parse(localStorage.getItem('lm.navClosed') || '{}'); } catch { return {}; }
+  });
+  const toggleGroup = (title: string) => setClosed((c) => {
+    const n = { ...c, [title]: !c[title] }; localStorage.setItem('lm.navClosed', JSON.stringify(n)); return n;
+  });
+
+  const groups: Group[] = [
+    { title: 'Overview', items: [
+      { to: '/', icon: '📊', label: 'Dashboard', end: true },
+    ] },
+    { title: 'Operations', items: [
+      { to: '/create', icon: '➕', label: 'New Shipment' },
+      { to: '/bulk', icon: '📥', label: 'Bulk Booking' },
+      { to: '/my-tasks', icon: '🛵', label: 'My Tasks', show: isOps },
+      { to: '/deliver', icon: '🚚', label: 'Delivery App', show: isOps },
+      { to: '/scan', icon: '📡', label: 'Scan', show: isOps },
+      { to: '/drs', icon: '📋', label: 'DRS', show: isOps },
+      { to: '/bulk-pod', icon: '📸', label: 'Bulk POD', show: isOps },
+      { to: '/pickups', icon: '📦', label: 'Pickups' },
+      { to: '/manifests', icon: '🗺', label: 'Manifests', show: isOps },
+    ] },
+    { title: 'Billing & CRM', items: [
+      { to: '/invoices', icon: '🧾', label: 'Invoices' },
+      { to: '/receivables', icon: '📒', label: 'Receivables', show: isAdminFin },
+      { to: '/notes', icon: '±', label: 'Debit / Credit Notes', show: isAdminFin },
+      { to: '/claims', icon: '🛡', label: 'Claims', show: isAdminFin },
+      { to: '/customers', icon: '👥', label: 'Customers', show: isAdminFin },
+      { to: '/vendors', icon: '🏢', label: 'Vendors', show: isAdminFin },
+      { to: '/documents', icon: '📁', label: 'Documents', show: isAdminFin },
+      { to: '/sales', icon: '📈', label: 'Sales', show: isAdminFin },
+    ] },
+    { title: 'Masters & Setup', items: [
+      { to: '/rates', icon: '💱', label: 'Rate Matrix', show: isAdminFin },
+      { to: '/master-data', icon: '🌐', label: 'Serviceability', show: canMaster },
+      { to: '/masters', icon: '🗃', label: 'Masters', show: canMaster },
+      { to: '/import', icon: '📤', label: 'Import', show: canMaster },
+      { to: '/tax', icon: '🧮', label: 'Tax Filing', show: isAdminFin },
+    ] },
+    { title: 'Insights & Admin', items: [
+      { to: '/reports', icon: '📈', label: 'Reports', show: isAdminFin || canMaster },
+      { to: '/users', icon: '⚙️', label: 'Users', show: isSysAdmin },
+      { to: '/audit', icon: '🕵', label: 'Audit Log', show: isSysAdmin },
+      { to: '/feedback', icon: '💬', label: 'Feedback', show: isSysAdmin },
+    ] },
+  ];
+
+  const onLogout = () => { logout(); nav('/login'); };
   const lookupAwb = (e: React.FormEvent) => {
     e.preventDefault();
     const q = awb.trim();
@@ -25,54 +78,51 @@ export function Layout() {
 
   return (
     <div className="app">
-      <aside className="sidebar">
+      <aside className={collapsed ? 'sidebar collapsed' : 'sidebar'}>
+        <button className="rail-toggle" onClick={toggleRail} title={collapsed ? 'Expand menu' : 'Collapse menu'} aria-label="Toggle menu">
+          {collapsed ? '»' : '«'}
+        </button>
         <div className="logo-box">
-          <Logo height={38} />
+          <Logo height={collapsed ? 30 : 38} />
         </div>
-        <form onSubmit={lookupAwb} className="awb-lookup" style={{ padding: '0 12px 10px' }}>
-          <input
-            value={awb}
-            onChange={(e) => setAwb(e.target.value)}
-            placeholder="🔍 AWB lookup…"
-            aria-label="AWB lookup"
-            style={{ width: '100%', fontSize: 13, padding: '8px 10px' }}
-          />
-        </form>
+        {!collapsed && (
+          <form onSubmit={lookupAwb} className="awb-lookup" style={{ padding: '0 12px 10px' }}>
+            <input
+              value={awb}
+              onChange={(e) => setAwb(e.target.value)}
+              placeholder="🔍 AWB lookup…"
+              aria-label="AWB lookup"
+              style={{ width: '100%', fontSize: 13, padding: '8px 10px' }}
+            />
+          </form>
+        )}
         <nav>
-          <NavLink to="/" end>📊 Dashboard</NavLink>
-          <NavLink to="/create">➕ New Shipment</NavLink>
-          <NavLink to="/bulk">📥 Bulk Booking</NavLink>
-          {isOps && <NavLink to="/my-tasks">🛵 My Tasks</NavLink>}
-          {isOps && <NavLink to="/deliver">🚚 Delivery App</NavLink>}
-          {isOps && <NavLink to="/scan">📡 Scan</NavLink>}
-          {isOps && <NavLink to="/drs">📋 DRS</NavLink>}
-          {isOps && <NavLink to="/bulk-pod">📥 Bulk POD</NavLink>}
-          <NavLink to="/pickups">📦 Pickups</NavLink>
-          {isOps && <NavLink to="/manifests">🚚 Manifests</NavLink>}
-          <NavLink to="/invoices">🧾 Invoices</NavLink>
-          {isAdminFin && <NavLink to="/receivables">📒 Receivables</NavLink>}
-          {isAdminFin && <NavLink to="/notes">± Debit/Credit Notes</NavLink>}
-          {isAdminFin && <NavLink to="/claims">🛡 Claims</NavLink>}
-          {isAdminFin && <NavLink to="/customers">👥 Customers</NavLink>}
-          {isAdminFin && <NavLink to="/vendors">🏢 Vendors</NavLink>}
-          {isAdminFin && <NavLink to="/documents">📁 Documents</NavLink>}
-          {isAdminFin && <NavLink to="/sales">📈 Sales</NavLink>}
-          {isAdminFin && <NavLink to="/rates">💱 Rate Matrix</NavLink>}
-          {canMaster && <NavLink to="/master-data">🗺 Serviceability</NavLink>}
-          {canMaster && <NavLink to="/masters">🗃 Masters</NavLink>}
-          {canMaster && <NavLink to="/import">📤 Import</NavLink>}
-          {isAdminFin && <NavLink to="/tax">🧾 Tax Filing</NavLink>}
-          {(isAdminFin || canMaster) && <NavLink to="/reports">📊 Reports</NavLink>}
-          {user?.role === 'SYS_ADMIN' && <NavLink to="/users">⚙️ Users</NavLink>}
-          {user?.role === 'SYS_ADMIN' && <NavLink to="/audit">🕵 Audit Log</NavLink>}
-          {user?.role === 'SYS_ADMIN' && <NavLink to="/feedback">💬 Feedback</NavLink>}
+          {groups.map((g) => {
+            const items = g.items.filter((it) => it.show !== false);
+            if (items.length === 0) return null;
+            const isClosed = !!closed[g.title];
+            return (
+              <div key={g.title} className={isClosed ? 'nav-group closed' : 'nav-group'}>
+                <button className="group-head" onClick={() => toggleGroup(g.title)} title={g.title}>
+                  <span>{g.title}</span>
+                  <span className="chev">▼</span>
+                </button>
+                <div className="group-items">
+                  {items.map((it) => (
+                    <NavLink key={it.to} to={it.to} end={it.end} title={it.label}>
+                      <span className="ico">{it.icon}</span>
+                      <span className="lbl">{it.label}</span>
+                    </NavLink>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </nav>
         <div className="userbox">
           <div className="name">{user?.fullName}</div>
           <div className="role">{user?.role}</div>
-          <button className="secondary" style={{ marginTop: 10, width: '100%' }} onClick={onLogout}>
-            Logout
-          </button>
+          <button className="secondary" onClick={onLogout} title="Logout">Logout</button>
         </div>
       </aside>
       <main className="main">

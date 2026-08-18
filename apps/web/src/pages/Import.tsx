@@ -20,9 +20,31 @@ export function Import() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [results, setResults] = useState<{ code: string; ok: boolean; error?: string }[]>([]);
+  const [form, setForm] = useState<Record<string, string>>({});
+  const [addMsg, setAddMsg] = useState('');
+  const [addBusy, setAddBusy] = useState(false);
 
   const def = TYPES.find((t) => t.key === type)!;
   const rows = useMemo(() => parseCsv(text), [text]);
+  const fields = def.cols.split(',');
+
+  const pickType = (k: string) => { setType(k); setForm({}); setAddMsg(''); setError(''); setResults([]); };
+
+  const addOne = async () => {
+    setAddMsg(''); setError('');
+    const code = (form.code || '').trim();
+    if (!code) { setError('Code is required.'); return; }
+    const { code: _c, name: _n, ...rest } = form;
+    const attrs: Record<string, string> = {};
+    for (const [k, v] of Object.entries(rest)) if (v?.trim()) attrs[k] = v.trim();
+    setAddBusy(true);
+    try {
+      await api.saveMaster(type, { code, name: (form.name || code).trim(), attrs });
+      setAddMsg(`✓ Saved ${code} to ${def.label}.`);
+      setForm({});
+    } catch (e: any) { setError(e.message); }
+    setAddBusy(false);
+  };
 
   const template = () => {
     const csv = def.cols + '\n';
@@ -47,19 +69,40 @@ export function Import() {
 
   return (
     <>
-      <h1>📤 Excel / CSV Import</h1>
+      <h1>📤 Add & Import Master Data</h1>
       {error && <div className="error">{error}</div>}
 
       <div className="card" style={{ padding: 14 }}>
         <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
           {TYPES.map((t) => (
-            <button key={t.key} className={t.key === type ? '' : 'secondary'} style={{ padding: '8px 14px' }} onClick={() => setType(t.key)}>{t.label}</button>
+            <button key={t.key} className={t.key === type ? '' : 'secondary'} style={{ padding: '8px 14px' }} onClick={() => pickType(t.key)}>{t.label}</button>
           ))}
         </div>
       </div>
 
       <div className="card">
-        <h2>Import {def.label}</h2>
+        <h2>➕ Add a {def.label.replace(/s$/, '')}</h2>
+        <p className="muted" style={{ marginTop: -6 }}>Fill the fields and save one record — or use bulk CSV import below.</p>
+        <div className="grid cols-3">
+          {fields.map((f) => (
+            <div key={f}>
+              <label>{f}{f === 'code' ? ' *' : ''}</label>
+              <input
+                value={form[f] ?? ''}
+                onChange={(e) => setForm((s) => ({ ...s, [f]: e.target.value }))}
+                placeholder={f === 'code' ? 'unique code' : f}
+              />
+            </div>
+          ))}
+        </div>
+        <div className="row" style={{ marginTop: 14, justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="muted">{addMsg && <span style={{ color: 'var(--ok)', fontWeight: 700 }}>{addMsg}</span>}</div>
+          <button onClick={addOne} disabled={addBusy || !(form.code || '').trim()}>{addBusy ? 'Saving…' : `Save ${def.label.replace(/s$/, '')}`}</button>
+        </div>
+      </div>
+
+      <div className="card">
+        <h2>⬆ Bulk import {def.label} (CSV)</h2>
         <p className="muted" style={{ marginTop: -6 }}>Columns: <code>{def.cols}</code>. First row is the header. Existing codes are updated.</p>
         <div className="row">
           <button className="secondary" onClick={template}>⬇ Template</button>
