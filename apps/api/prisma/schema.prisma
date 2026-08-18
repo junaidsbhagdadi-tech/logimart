@@ -69,6 +69,24 @@ model B2bClient {
   contactName     String?
   contactPhone    String?
   contactEmail    String?
+  // ---- Xpresion "Personal Information" parity fields ----
+  contactPerson   String?
+  addressLine2    String?
+  state           String?
+  tel1            String?
+  tel2            String?
+  fax             String?
+  billingState    String?
+  serviceCentre   String?
+  origin          String?
+  startDate       DateTime?
+  aadhaarNo       String?
+  dobAadhaar      DateTime?
+  passportNo      String?
+  tanNo           String?
+  invoiceFormat   String?
+  customerType    String?   @default("Customer") // Customer | Agent | ...
+  registerType    String?   @default("Registered") // Registered | Un Registered | B2B | B2C
   creditLimit     Decimal  @default(0) @db.Decimal(14, 2)
   creditDays      Int      @default(30) // Net 30 / Net 60
   outstandingBal  Decimal  @default(0) @db.Decimal(14, 2)
@@ -77,15 +95,48 @@ model B2bClient {
   isOneTime       Boolean  @default(false) // walk-in / ad-hoc, non-contract
   createdAt       DateTime @default(now())
 
-  users     User[]
-  shipments Shipment[]
-  rateCards RateCard[]
-  invoices  Invoice[]
-  ledger    LedgerEntry[]
-  notes     DebitCreditNote[]
-  claims    Claim[]
+  users        User[]
+  shipments    Shipment[]
+  rateCards    RateCard[]
+  invoices     Invoice[]
+  ledger       LedgerEntry[]
+  notes        DebitCreditNote[]
+  claims       Claim[]
+  addresses    CustomerAddress[]
 
   @@map("b2b_clients")
+}
+
+/// Additional shipper/consignee addresses per customer (Xpresion "Customer Address" tab).
+model CustomerAddress {
+  id           BigInt    @id @default(autoincrement())
+  clientId     BigInt
+  contactType  String?   // Shipper | Consignee | Billing | ...
+  name         String
+  designation  String?
+  email        String?
+  mobile       String?
+  landline     String?
+  addressLine1 String?
+  addressLine2 String?
+  addressLine3 String?
+  pincode      String?
+  city         String?
+  state        String?
+  country      String?   @default("India")
+  gstNo        String?
+  panNo        String?
+  aadhaarNo    String?
+  iecNo        String?
+  adCode       String?
+  lutNo        String?
+  isDefault    Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+
+  client B2bClient @relation(fields: [clientId], references: [id])
+
+  @@index([clientId])
+  @@map("customer_addresses")
 }
 
 // ============================ MASTER AWB (Shipment) ============================

@@ -30,11 +30,28 @@ export class CustomersService {
           gstin: dto.gstin,
           pan: dto.pan,
           addressLine: dto.addressLine,
+          addressLine2: dto.addressLine2,
           city: dto.city,
+          state: dto.state,
           pincode: dto.pincode,
           contactName: dto.contactName,
+          contactPerson: dto.contactPerson,
           contactPhone: dto.contactPhone,
           contactEmail: dto.contactEmail,
+          tel1: dto.tel1,
+          tel2: dto.tel2,
+          fax: dto.fax,
+          billingState: dto.billingState,
+          serviceCentre: dto.serviceCentre,
+          origin: dto.origin,
+          startDate: dto.startDate ? new Date(dto.startDate) : undefined,
+          aadhaarNo: dto.aadhaarNo,
+          dobAadhaar: dto.dobAadhaar ? new Date(dto.dobAadhaar) : undefined,
+          passportNo: dto.passportNo,
+          tanNo: dto.tanNo,
+          invoiceFormat: dto.invoiceFormat,
+          customerType: dto.customerType ?? undefined,
+          registerType: dto.registerType ?? undefined,
           creditLimit: new Prisma.Decimal(dto.creditLimit ?? 0),
           creditDays: dto.creditDays ?? 30,
           isOneTime: dto.isOneTime ?? false,
@@ -60,11 +77,14 @@ export class CustomersService {
 
   async update(id: number, dto: UpdateClientDto) {
     await this.get(id);
+    const { startDate, dobAadhaar, creditLimit, ...rest } = dto;
     return this.prisma.b2bClient.update({
       where: { id: BigInt(id) },
       data: {
-        ...dto,
-        creditLimit: dto.creditLimit != null ? new Prisma.Decimal(dto.creditLimit) : undefined,
+        ...rest,
+        startDate: startDate ? new Date(startDate) : undefined,
+        dobAadhaar: dobAadhaar ? new Date(dobAadhaar) : undefined,
+        creditLimit: creditLimit != null ? new Prisma.Decimal(creditLimit) : undefined,
       },
     });
   }

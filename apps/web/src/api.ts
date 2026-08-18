@@ -167,7 +167,15 @@ export interface Client {
   gstin: string | null;
   pan: string | null;
   city: string | null;
+  state?: string | null;
   contactPhone: string | null;
+  contactEmail?: string | null;
+  contactPerson?: string | null;
+  billingState?: string | null;
+  serviceCentre?: string | null;
+  origin?: string | null;
+  customerType?: string | null;
+  registerType?: string | null;
   creditLimit: string;
   creditDays: number;
   outstandingBal: string;
