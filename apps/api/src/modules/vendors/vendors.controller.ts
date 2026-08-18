@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles } from '../../common/rbac/roles.decorator';
@@ -18,6 +18,24 @@ export class VendorsController {
   @Get()
   list() {
     return this.vendors.list();
+  }
+
+  // ---- Service Mapping (declared before ':id' so the static path matches first) ----
+  @Get('service-mappings')
+  listMappings() {
+    return this.vendors.listMappings();
+  }
+
+  @Post('service-mappings')
+  @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  addMapping(@Body() dto: any) {
+    return this.vendors.addMapping(dto);
+  }
+
+  @Delete('service-mappings/:id')
+  @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  delMapping(@Param('id') id: string) {
+    return this.vendors.delMapping(Number(id));
   }
 
   @Get(':id')

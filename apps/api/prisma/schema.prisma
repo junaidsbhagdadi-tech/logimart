@@ -685,12 +685,45 @@ model Vendor {
   contactName  String?
   contactPhone String?
   contactEmail String?
+  // ---- Xpresion Vendor-master parity ----
+  vendorCode   String?  @unique
+  contactPerson String?
+  addressLine2 String?
+  tel1         String?
+  tel2         String?
+  fax          String?
+  website      String?
+  mode         String?  // single primary mode
+  fuelHead     String?
+  currency     String?  @default("INR")
+  origin       String?
+  vendorZip    String?
+  isGlobal     Boolean  @default(false)
+  gstEnabled   Boolean  @default(false)
+  volRoundOff  Boolean  @default(false)
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
 
   payments VendorPayment[]
 
   @@map("vendors")
+}
+
+/// Vendor ↔ service ↔ billing-vendor mapping with weight bands (Xpresion "Service Mapping").
+model ServiceMapping {
+  id            BigInt   @id @default(autoincrement())
+  vendor        String
+  serviceType   String   // SELF | DHL | ARAMEX | ...
+  billingVendor String?
+  minWeight     Decimal  @default(0) @db.Decimal(10, 3)
+  maxWeight     Decimal  @default(0) @db.Decimal(10, 3)
+  vendorLink    String?  // integration link key (AFTERSHIP | BLUEDART | DHL | ...)
+  isSinglePiece Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  @@index([vendor])
+  @@map("service_mappings")
 }
 
 model VendorPayment {

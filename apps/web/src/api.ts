@@ -451,6 +451,10 @@ export const api = {
     request(`/api/v1/vendors/${id}/payments`, { method: 'POST', body: JSON.stringify(body) }),
   markVendorPaid: (paymentId: string) =>
     request(`/api/v1/vendors/payments/${paymentId}/paid`, { method: 'PATCH' }),
+  // ---- service mapping ----
+  listServiceMappings: () => request<any[]>('/api/v1/vendors/service-mappings'),
+  addServiceMapping: (body: unknown) => request('/api/v1/vendors/service-mappings', { method: 'POST', body: JSON.stringify(body) }),
+  delServiceMapping: (id: string) => request(`/api/v1/vendors/service-mappings/${id}`, { method: 'DELETE' }),
 
   // ---- CRM / sales ----
   listLeads: () => request<any[]>('/api/v1/leads'),

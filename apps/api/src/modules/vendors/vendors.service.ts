@@ -20,8 +20,45 @@ export class VendorsService {
         contactName: dto.contactName,
         contactPhone: dto.contactPhone,
         contactEmail: dto.contactEmail,
+        // Xpresion parity
+        vendorCode: dto.vendorCode || null,
+        contactPerson: dto.contactPerson || null,
+        addressLine2: dto.addressLine2 || null,
+        tel1: dto.tel1 || null,
+        tel2: dto.tel2 || null,
+        fax: dto.fax || null,
+        website: dto.website || null,
+        mode: dto.mode || null,
+        fuelHead: dto.fuelHead || null,
+        currency: dto.currency || 'INR',
+        origin: dto.origin || null,
+        vendorZip: dto.vendorZip || null,
+        isGlobal: !!dto.isGlobal,
+        gstEnabled: !!dto.gstEnabled,
+        volRoundOff: !!dto.volRoundOff,
       },
     });
+  }
+
+  // ---- Service Mapping (vendor → service → billing vendor, weight bands) ----
+  listMappings() {
+    return this.prisma.serviceMapping.findMany({ orderBy: [{ vendor: 'asc' }, { serviceType: 'asc' }] });
+  }
+  addMapping(dto: any) {
+    return this.prisma.serviceMapping.create({
+      data: {
+        vendor: dto.vendor,
+        serviceType: dto.serviceType || 'SELF',
+        billingVendor: dto.billingVendor || null,
+        minWeight: new Prisma.Decimal(dto.minWeight ?? 0),
+        maxWeight: new Prisma.Decimal(dto.maxWeight ?? 0),
+        vendorLink: dto.vendorLink || null,
+        isSinglePiece: !!dto.isSinglePiece,
+      },
+    });
+  }
+  delMapping(id: number) {
+    return this.prisma.serviceMapping.delete({ where: { id: BigInt(id) } });
   }
 
   async list() {
