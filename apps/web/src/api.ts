@@ -77,6 +77,11 @@ export interface Shipment {
   freightToCollect?: string | null;
   freightCollected?: string | null;
   freightCollectedAt?: string | null;
+  // services + charges
+  product?: string | null;
+  docType?: string | null;
+  chargeWeight?: string | null;
+  charges?: { code: string; name: string; amount: number }[] | null;
   // DOD (Draft on Delivery)
   isDod?: boolean;
   dodAmount?: string | null;

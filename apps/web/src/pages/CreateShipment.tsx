@@ -40,6 +40,16 @@ export function CreateShipment() {
   const [destHubId, setDestHubId] = useState<number | ''>('');
   const [ewbNo, setEwbNo] = useState('');
 
+  // services + charges (from the Product / Charges masters)
+  const [products, setProducts] = useState<{ code: string; name: string }[]>([]);
+  const [chargeMasters, setChargeMasters] = useState<{ code: string; name: string }[]>([]);
+  const [product, setProduct] = useState('');
+  const [docType, setDocType] = useState<'DOX' | 'NDOX'>('NDOX');
+  const [chargeWeight, setChargeWeight] = useState('');
+  const [charges, setCharges] = useState<{ code: string; name: string; amount: number }[]>([]);
+  const [chargeCode, setChargeCode] = useState('');
+  const [chargeAmt, setChargeAmt] = useState('');
+
   const [pieces, setPieces] = useState<PieceForm[]>([{ ...blank }]);
   const [manualFreight, setManualFreight] = useState('');
   const [paymentTerm, setPaymentTerm] = useState<'PREPAID' | 'TO_PAY'>('PREPAID');
@@ -57,7 +67,17 @@ export function CreateShipment() {
       if (hs[0]) setOriginHubId(Number(hs[0].id));
       setDestHubId(Number((hs[1] ?? hs[0])?.id));
     }).catch(() => {});
+    api.listMaster('PRODUCT').then((r) => setProducts(r.map((x) => ({ code: x.code, name: x.name })))).catch(() => {});
+    api.listMaster('CHARGE').then((r) => setChargeMasters(r.map((x) => ({ code: x.code, name: x.name })))).catch(() => {});
   }, []);
+
+  const addCharge = () => {
+    const cm = chargeMasters.find((c) => c.code === chargeCode);
+    if (!cm || !(Number(chargeAmt) > 0)) return;
+    setCharges((cs) => [...cs.filter((c) => c.code !== cm.code), { code: cm.code, name: cm.name, amount: Number(chargeAmt) }]);
+    setChargeCode(''); setChargeAmt('');
+  };
+  const chargesTotal = charges.reduce((s, c) => s + c.amount, 0);
 
   const lookOrigin = async (p: string) => {
     setOriginPin(p);
@@ -108,6 +128,10 @@ export function CreateShipment() {
         arrivalAt: ftl.arrivalAt ? new Date(ftl.arrivalAt).toISOString() : undefined,
         manualFreight: manualFreight ? +manualFreight : undefined,
         ewbNo: needEway && ewbNo ? ewbNo : undefined,
+        product: product || undefined,
+        docType,
+        chargeWeight: chargeWeight ? +chargeWeight : undefined,
+        charges: charges.length ? charges : undefined,
         paymentTerm,
         freightToCollect: paymentTerm === 'TO_PAY' && freightToCollect ? +freightToCollect : undefined,
         isDod,
@@ -228,6 +252,62 @@ export function CreateShipment() {
           <div><label>HSN</label><input value={c.hsnCode} onChange={(e) => setCf('hsnCode', e.target.value)} /></div>
           <div style={{ gridColumn: 'span 2' }}><label>Goods description</label><input value={c.goodsDesc} onChange={(e) => setCf('goodsDesc', e.target.value)} /></div>
         </div>
+      </div>
+
+      <div className="card">
+        <h2>🧾 Services &amp; charges</h2>
+        <div className="grid cols-3">
+          <div>
+            <label>Product</label>
+            <select value={product} onChange={(e) => setProduct(e.target.value)}>
+              <option value="">— select —</option>
+              {products.map((p) => <option key={p.code} value={p.code}>{p.code} — {p.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label>Doc type</label>
+            <select value={docType} onChange={(e) => setDocType(e.target.value as 'DOX' | 'NDOX')}>
+              <option value="NDOX">NDOX (non-document)</option>
+              <option value="DOX">DOX (document)</option>
+            </select>
+          </div>
+          <div>
+            <label>Charge weight (kg)</label>
+            <input type="number" value={chargeWeight} onChange={(e) => setChargeWeight(e.target.value)} placeholder={`${Math.max(totalDead, totalVol).toFixed(2)} (dead/vol max)`} />
+          </div>
+        </div>
+
+        <div className="row" style={{ marginTop: 12, alignItems: 'flex-end' }}>
+          <div style={{ flex: 2 }}>
+            <label>Add charge (from Charges master)</label>
+            <select value={chargeCode} onChange={(e) => setChargeCode(e.target.value)}>
+              <option value="">— select charge —</option>
+              {chargeMasters.map((c) => <option key={c.code} value={c.code}>{c.code} — {c.name}</option>)}
+            </select>
+          </div>
+          <div style={{ flex: 1 }}>
+            <label>Amount ₹</label>
+            <input type="number" value={chargeAmt} onChange={(e) => setChargeAmt(e.target.value)} />
+          </div>
+          <button className="secondary" onClick={addCharge} disabled={!chargeCode || !(Number(chargeAmt) > 0)}>+ Add</button>
+        </div>
+
+        {charges.length > 0 && (
+          <table style={{ marginTop: 12 }}>
+            <thead><tr><th>Code</th><th>Charge</th><th style={{ textAlign: 'right' }}>Amount ₹</th><th></th></tr></thead>
+            <tbody>
+              {charges.map((c) => (
+                <tr key={c.code}>
+                  <td><strong>{c.code}</strong></td><td>{c.name}</td>
+                  <td style={{ textAlign: 'right' }}>{c.amount.toFixed(2)}</td>
+                  <td style={{ textAlign: 'right' }}><button className="secondary" style={{ padding: '4px 10px' }} onClick={() => setCharges((cs) => cs.filter((x) => x.code !== c.code))}>✕</button></td>
+                </tr>
+              ))}
+              <tr><td colSpan={2}><strong>Total charges</strong></td><td style={{ textAlign: 'right' }}><strong>₹{chargesTotal.toFixed(2)}</strong></td><td></td></tr>
+            </tbody>
+          </table>
+        )}
+        {chargeMasters.length === 0 && <p className="muted" style={{ fontSize: 12 }}>Tip: add charges in 🗃 Masters → Charges to pick them here.</p>}
       </div>
 
       {needEway && (

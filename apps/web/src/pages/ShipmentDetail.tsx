@@ -176,6 +176,8 @@ export function ShipmentDetail() {
           <div><label>Total volumetric</label>{s.totalVolKg} kg</div>
           <div><label>LR / GC No.</label>{s.lrNumber ?? '—'}</div>
           <div><label>E-way bill</label>{s.ewbNo ?? '—'}</div>
+          {s.product && <div><label>Product</label>{s.product}{s.docType ? ` · ${s.docType}` : ''}</div>}
+          {s.chargeWeight && <div><label>Charge weight</label>{s.chargeWeight} kg</div>}
           <div>
             <label>Payment</label>
             <span className={`badge ${s.paymentTerm === 'TO_PAY' ? 'TO_PAY' : 'PAID'}`}>{s.paymentTerm === 'TO_PAY' ? 'TO-PAY' : 'PREPAID'}</span>
@@ -232,6 +234,21 @@ export function ShipmentDetail() {
           {s.isDod && !s.dodCollectedAt && (
             <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>🔒 POD is blocked until the draft is collected.</p>
           )}
+        </div>
+      )}
+
+      {s.charges && s.charges.length > 0 && (
+        <div className="card">
+          <h2>🧾 Charges</h2>
+          <table>
+            <thead><tr><th>Code</th><th>Charge</th><th style={{ textAlign: 'right' }}>Amount ₹</th></tr></thead>
+            <tbody>
+              {s.charges.map((c) => (
+                <tr key={c.code}><td><strong>{c.code}</strong></td><td>{c.name}</td><td style={{ textAlign: 'right' }}>{Number(c.amount).toFixed(2)}</td></tr>
+              ))}
+              <tr><td colSpan={2}><strong>Total charges</strong></td><td style={{ textAlign: 'right' }}><strong>₹{s.charges.reduce((t, c) => t + Number(c.amount), 0).toFixed(2)}</strong></td></tr>
+            </tbody>
+          </table>
         </div>
       )}
 

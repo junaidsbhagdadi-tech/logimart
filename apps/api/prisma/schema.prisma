@@ -162,6 +162,13 @@ model Shipment {
   manualFreight  Decimal?  @db.Decimal(14, 2) // ad-hoc/one-time rate override
   ewbNo          String?   // e-way bill number
   ewbValidUpto   DateTime?
+
+  // ---- services + accessorial charges (AWB Entry parity) ----
+  product        String?   // product/service code from the Product master
+  docType        String?   // DOX | NDOX
+  chargeWeight   Decimal?  @db.Decimal(10, 3)
+  charges        Json?     // [{ code, name, amount }] — accessorials picked from the Charges master
+
   manifestId     BigInt?   // trip/manifest this consignment is attached to
   deliveryRiderId BigInt?  // rider assigned for last-mile delivery
 

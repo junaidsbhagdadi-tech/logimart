@@ -64,6 +64,12 @@ export class CreateShipmentDto {
   @IsOptional() @IsEnum(PaymentTerm) paymentTerm?: PaymentTerm; // PREPAID (default) | TO_PAY
   @IsOptional() @IsNumber() freightToCollect?: number;          // amount to collect from consignee (To-Pay)
 
+  // ---- services + accessorial charges ----
+  @IsOptional() @IsString() product?: string;
+  @IsOptional() @IsString() docType?: string; // DOX | NDOX
+  @IsOptional() @IsNumber() chargeWeight?: number;
+  @IsOptional() @IsArray() charges?: { code: string; name: string; amount: number }[];
+
   // ---- DOD (Draft on Delivery) ----
   @IsOptional() @IsBoolean() isDod?: boolean;
   @IsOptional() @IsNumber() dodAmount?: number;
