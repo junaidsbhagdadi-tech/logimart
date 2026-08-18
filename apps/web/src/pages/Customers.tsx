@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, Client } from '../api';
+import { CustomerSubTab } from '../components/CustomerSubTab';
 
 const blank = {
   legalName: '', accountCode: '', contactPerson: '',
@@ -143,11 +144,10 @@ export function Customers() {
           </>
         )}
 
-        {tab !== 'Personal Information' && (
-          <div className="muted" style={{ padding: '20px 4px' }}>
-            <strong>{tab}</strong> — per-customer {tab === 'Fuel Surcharges' ? 'fuel-surcharge %' : tab === 'Other Charges' ? 'accessorial charges' : tab === 'Customer Volumetric' ? 'volumetric divisors (CFT / cm / inch)' : 'shipper/consignee addresses'} are the next build batch. Create the customer under Personal Information first; this tab attaches to a saved customer.
-          </div>
-        )}
+        {tab === 'Fuel Surcharges' && <CustomerSubTab clients={clients} kind="fuel" />}
+        {tab === 'Other Charges' && <CustomerSubTab clients={clients} kind="charges" />}
+        {tab === 'Customer Volumetric' && <CustomerSubTab clients={clients} kind="vol" />}
+        {tab === 'Customer Address' && <CustomerSubTab clients={clients} kind="addr" />}
       </div>
 
       <div className="card">

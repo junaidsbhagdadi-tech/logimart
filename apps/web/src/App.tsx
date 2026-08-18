@@ -11,6 +11,7 @@ import { InvoiceDetail } from './pages/InvoiceDetail';
 import { Track } from './pages/Track';
 import { Customers } from './pages/Customers';
 import { RateMatrix } from './pages/RateMatrix';
+import { CustomerRate } from './pages/CustomerRate';
 import { Pickups } from './pages/Pickups';
 import { Manifests } from './pages/Manifests';
 import { MyTasks } from './pages/MyTasks';
@@ -75,6 +76,7 @@ export function App() {
         <Route path="/vendors" element={isAdminFin ? <Vendors /> : <Navigate to="/" replace />} />
         <Route path="/sales" element={isAdminFin ? <Sales /> : <Navigate to="/" replace />} />
         <Route path="/rates" element={isAdminFin ? <RateMatrix /> : <Navigate to="/" replace />} />
+        <Route path="/customer-rate" element={isAdminFin ? <CustomerRate /> : <Navigate to="/" replace />} />
         <Route path="/tax" element={isAdminFin ? <TaxFiling /> : <Navigate to="/" replace />} />
         <Route path="/receivables" element={isAdminFin ? <Receivables /> : <Navigate to="/" replace />} />
         <Route path="/notes" element={isAdminFin ? <Notes /> : <Navigate to="/" replace />} />

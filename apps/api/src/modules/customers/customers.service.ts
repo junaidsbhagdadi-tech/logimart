@@ -88,4 +88,60 @@ export class CustomersService {
       },
     });
   }
+
+  // ============ sub-tabs (per customer) ============
+  private dec(n: any) { return new Prisma.Decimal(n ?? 0); }
+  private date(s?: string) { return s ? new Date(s) : null; }
+
+  // ---- Fuel Surcharges ----
+  listFuel(clientId: number) {
+    return this.prisma.customerFuelSurcharge.findMany({ where: { clientId: BigInt(clientId) }, orderBy: { id: 'desc' } });
+  }
+  addFuel(clientId: number, d: any) {
+    return this.prisma.customerFuelSurcharge.create({ data: {
+      clientId: BigInt(clientId), vendor: d.vendor, product: d.product, destination: d.destination, service: d.service,
+      fromDate: this.date(d.fromDate), toDate: this.date(d.toDate), percentage: this.dec(d.percentage),
+    } });
+  }
+  delFuel(rowId: number) { return this.prisma.customerFuelSurcharge.delete({ where: { id: BigInt(rowId) } }); }
+
+  // ---- Other Charges ----
+  listCharges(clientId: number) {
+    return this.prisma.customerOtherCharge.findMany({ where: { clientId: BigInt(clientId) }, orderBy: { id: 'desc' } });
+  }
+  addCharge(clientId: number, d: any) {
+    return this.prisma.customerOtherCharge.create({ data: {
+      clientId: BigInt(clientId), chargeDesc: d.chargeDesc, origin: d.origin, product: d.product,
+      destination: d.destination, service: d.service, fromDate: this.date(d.fromDate), toDate: this.date(d.toDate),
+      value: this.dec(d.value), minimumValue: d.minimumValue != null && d.minimumValue !== '' ? this.dec(d.minimumValue) : null,
+    } });
+  }
+  delCharge(rowId: number) { return this.prisma.customerOtherCharge.delete({ where: { id: BigInt(rowId) } }); }
+
+  // ---- Volumetric ----
+  listVol(clientId: number) {
+    return this.prisma.customerVolumetric.findMany({ where: { clientId: BigInt(clientId) }, orderBy: { id: 'desc' } });
+  }
+  addVol(clientId: number, d: any) {
+    return this.prisma.customerVolumetric.create({ data: {
+      clientId: BigInt(clientId), product: d.product, vendor: d.vendor, service: d.service,
+      cft: this.dec(d.cft), cmDivide: this.dec(d.cmDivide), inchDivide: this.dec(d.inchDivide),
+    } });
+  }
+  delVol(rowId: number) { return this.prisma.customerVolumetric.delete({ where: { id: BigInt(rowId) } }); }
+
+  // ---- Addresses ----
+  listAddr(clientId: number) {
+    return this.prisma.customerAddress.findMany({ where: { clientId: BigInt(clientId) }, orderBy: { id: 'desc' } });
+  }
+  addAddr(clientId: number, d: any) {
+    return this.prisma.customerAddress.create({ data: {
+      clientId: BigInt(clientId), contactType: d.contactType, name: d.name || 'Address', designation: d.designation,
+      email: d.email, mobile: d.mobile, landline: d.landline, addressLine1: d.addressLine1, addressLine2: d.addressLine2,
+      addressLine3: d.addressLine3, pincode: d.pincode, city: d.city, state: d.state, country: d.country || 'India',
+      gstNo: d.gstNo, panNo: d.panNo, aadhaarNo: d.aadhaarNo, iecNo: d.iecNo, adCode: d.adCode, lutNo: d.lutNo,
+      isDefault: !!d.isDefault,
+    } });
+  }
+  delAddr(rowId: number) { return this.prisma.customerAddress.delete({ where: { id: BigInt(rowId) } }); }
 }

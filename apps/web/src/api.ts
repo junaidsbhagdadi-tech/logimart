@@ -416,6 +416,26 @@ export const api = {
     request<Client>('/api/v1/clients', { method: 'POST', body: JSON.stringify(body) }),
   updateClient: (id: string, body: unknown) =>
     request<Client>(`/api/v1/clients/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+
+  // ---- customer sub-tabs ----
+  listFuel: (clientId: string) => request<any[]>(`/api/v1/clients/${clientId}/fuel-surcharges`),
+  addFuel: (clientId: string, body: unknown) => request(`/api/v1/clients/${clientId}/fuel-surcharges`, { method: 'POST', body: JSON.stringify(body) }),
+  delFuel: (clientId: string, rowId: string) => request(`/api/v1/clients/${clientId}/fuel-surcharges/${rowId}`, { method: 'DELETE' }),
+  listCharges: (clientId: string) => request<any[]>(`/api/v1/clients/${clientId}/other-charges`),
+  addCharge: (clientId: string, body: unknown) => request(`/api/v1/clients/${clientId}/other-charges`, { method: 'POST', body: JSON.stringify(body) }),
+  delCharge: (clientId: string, rowId: string) => request(`/api/v1/clients/${clientId}/other-charges/${rowId}`, { method: 'DELETE' }),
+  listVol: (clientId: string) => request<any[]>(`/api/v1/clients/${clientId}/volumetrics`),
+  addVol: (clientId: string, body: unknown) => request(`/api/v1/clients/${clientId}/volumetrics`, { method: 'POST', body: JSON.stringify(body) }),
+  delVol: (clientId: string, rowId: string) => request(`/api/v1/clients/${clientId}/volumetrics/${rowId}`, { method: 'DELETE' }),
+  listAddr: (clientId: string) => request<any[]>(`/api/v1/clients/${clientId}/addresses`),
+  addAddr: (clientId: string, body: unknown) => request(`/api/v1/clients/${clientId}/addresses`, { method: 'POST', body: JSON.stringify(body) }),
+  delAddr: (clientId: string, rowId: string) => request(`/api/v1/clients/${clientId}/addresses/${rowId}`, { method: 'DELETE' }),
+
+  // ---- rate matrix (weight-slab tariff) ----
+  listRateSlabs: (clientId?: string) => request<any[]>(`/api/v1/rate-slabs${clientId ? `?clientId=${clientId}` : ''}`),
+  addRateSlab: (body: unknown) => request('/api/v1/rate-slabs', { method: 'POST', body: JSON.stringify(body) }),
+  delRateSlab: (id: string) => request(`/api/v1/rate-slabs/${id}`, { method: 'DELETE' }),
+
   listRateCards: () => request<RateCardRow[]>('/api/v1/rate-cards'),
   createRateCard: (body: unknown) =>
     request<RateCardRow>('/api/v1/rate-cards', { method: 'POST', body: JSON.stringify(body) }),

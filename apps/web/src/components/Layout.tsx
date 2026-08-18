@@ -54,6 +54,7 @@ export function Layout() {
     ] },
     { title: 'Masters & Setup', items: [
       { to: '/rates', icon: '💱', label: 'Rate Matrix', show: isAdminFin },
+      { to: '/customer-rate', icon: '📊', label: 'Customer Rate', show: isAdminFin },
       { to: '/master-data', icon: '🌐', label: 'Serviceability', show: canMaster },
       { to: '/masters', icon: '🗃', label: 'Masters', show: canMaster },
       { to: '/import', icon: '📤', label: 'Import', show: canMaster },

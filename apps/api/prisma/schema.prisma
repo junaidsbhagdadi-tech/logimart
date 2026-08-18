@@ -139,6 +139,83 @@ model CustomerAddress {
   @@map("customer_addresses")
 }
 
+/// Per-customer fuel-surcharge % (Xpresion "Fuel Surcharges" tab).
+model CustomerFuelSurcharge {
+  id          BigInt    @id @default(autoincrement())
+  clientId    BigInt
+  vendor      String?
+  product     String?
+  destination String?
+  service     String?
+  fromDate    DateTime?
+  toDate      DateTime?
+  percentage  Decimal   @db.Decimal(6, 2)
+  createdAt   DateTime  @default(now())
+
+  @@index([clientId])
+  @@map("customer_fuel_surcharges")
+}
+
+/// Per-customer accessorial charges (Xpresion "Other Charges" tab).
+model CustomerOtherCharge {
+  id           BigInt    @id @default(autoincrement())
+  clientId     BigInt
+  chargeDesc   String    // AIRWAYBILL CHARGES | FREIGHT ON VALUE | ...
+  fromDate     DateTime?
+  toDate       DateTime?
+  origin       String?
+  product      String?
+  destination  String?
+  service      String?
+  value        Decimal   @db.Decimal(12, 2)
+  minimumValue Decimal?  @db.Decimal(12, 2)
+  createdAt    DateTime  @default(now())
+
+  @@index([clientId])
+  @@map("customer_other_charges")
+}
+
+/// Per-customer volumetric divisors (Xpresion "Customer Volumetric" tab).
+model CustomerVolumetric {
+  id         BigInt   @id @default(autoincrement())
+  clientId   BigInt
+  product    String?
+  vendor     String?
+  service    String?
+  cft        Decimal  @db.Decimal(10, 2)
+  cmDivide   Decimal  @db.Decimal(10, 2)
+  inchDivide Decimal  @db.Decimal(10, 2)
+  createdAt  DateTime @default(now())
+
+  @@index([clientId])
+  @@map("customer_volumetrics")
+}
+
+/// Weight-slab tariff (Xpresion "Customer Rate" / ClientRate). A client (or generic
+/// when clientId is null) has many slabs across vendor/product/zone/destination/service.
+model ClientRateSlab {
+  id          BigInt   @id @default(autoincrement())
+  clientId    BigInt?
+  vendor      String?
+  product     String?
+  zone        String?
+  country     String?
+  destination String?
+  service     String?
+  origin      String?
+  originZone  String?
+  unit        String?  // KG | PCS | ...
+  days        Int?     // committed TAT
+  rateType    String   // INITIAL | ADDITIONAL | UPTO | PLUS | PLUSKG
+  weight      Decimal  @db.Decimal(10, 3)
+  rate        Decimal  @db.Decimal(12, 2)
+  fromDate    DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([clientId])
+  @@map("client_rate_slabs")
+}
+
 // ============================ MASTER AWB (Shipment) ============================
 
 enum ServiceMode {
