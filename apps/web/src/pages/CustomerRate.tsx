@@ -21,13 +21,39 @@ export function CustomerRate() {
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => { api.listClients().then(setClients).catch(() => {}); }, []);
+  // master-driven lookups (Xpresion-style)
+  const [zones, setZones] = useState<string[]>([]);
+  const [prods, setProds] = useState<string[]>([]);
+  const [dests, setDests] = useState<string[]>([]);
+  const [countries, setCountries] = useState<string[]>([]);
+  const [vendors, setVendors] = useState<string[]>([]);
+  const [services, setServices] = useState<string[]>([]);
+
+  useEffect(() => {
+    const codes = (r: any[]) => r.map((x) => x.code || x.name).filter(Boolean);
+    const uniq = (a: string[]) => Array.from(new Set(a));
+    api.listClients().then(setClients).catch(() => {});
+    api.listMaster('ZONE').then((r) => setZones(uniq(['NORTH', 'SOUTH', 'EAST', 'WEST', 'NORTHEAST', ...codes(r)]))).catch(() => setZones(['NORTH', 'SOUTH', 'EAST', 'WEST', 'NORTHEAST']));
+    api.listMaster('PRODUCT').then((r) => setProds(codes(r))).catch(() => {});
+    api.listMaster('DESTINATION').then((r) => setDests(codes(r))).catch(() => {});
+    api.listMaster('COUNTRY').then((r) => setCountries(r.map((x) => x.name || x.code).filter(Boolean))).catch(() => {});
+    api.listVendors().then((r) => setVendors(uniq(['SELF', ...r.map((v: any) => v.name).filter(Boolean)]))).catch(() => setVendors(['SELF']));
+    api.listServiceMappings().then((r) => setServices(uniq(r.map((m: any) => m.serviceType).filter(Boolean)))).catch(() => {});
+  }, []);
+
   const loadRows = () => {
     api.listRateSlabs(head.clientId || undefined).then(setRows).catch((e) => setError(e.message));
   };
   useEffect(loadRows, [head.clientId]);
 
   const setH = (k: keyof typeof blankHead, v: string) => setHead((h) => ({ ...h, [k]: v }));
+  // datalist-backed input: pick from the master OR type a free value (mirrors Xpresion's 🔍 lookups)
+  const lookup = (k: keyof typeof blankHead, list: string[], ph?: string) => (
+    <>
+      <input list={`lm-${k}`} value={head[k]} onChange={(e) => setH(k, e.target.value)} placeholder={ph} />
+      <datalist id={`lm-${k}`}>{list.map((o) => <option key={o} value={o} />)}</datalist>
+    </>
+  );
 
   const addToList = () => {
     setError('');
@@ -76,21 +102,21 @@ export function CustomerRate() {
             </select>
           </div>
           <div><label>From Date</label><input type="date" value={head.fromDate} onChange={(e) => setH('fromDate', e.target.value)} /></div>
-          <div><label>Origin</label><input value={head.origin} onChange={(e) => setH('origin', e.target.value)} /></div>
-          <div><label>Vendor</label><input value={head.vendor} onChange={(e) => setH('vendor', e.target.value)} placeholder="SELF or vendor" /></div>
+          <div><label>Origin</label>{lookup('origin', dests, 'origin hub / city')}</div>
+          <div><label>Vendor</label>{lookup('vendor', vendors, 'SELF or vendor')}</div>
 
-          <div><label>Product</label><input value={head.product} onChange={(e) => setH('product', e.target.value)} /></div>
-          <div><label>Zone</label><input value={head.zone} onChange={(e) => setH('zone', e.target.value)} /></div>
-          <div><label>Country</label><input value={head.country} onChange={(e) => setH('country', e.target.value)} /></div>
-          <div><label>Destination</label><input value={head.destination} onChange={(e) => setH('destination', e.target.value)} /></div>
+          <div><label>Product</label>{lookup('product', prods)}</div>
+          <div><label>Zone</label>{lookup('zone', zones)}</div>
+          <div><label>Country</label>{lookup('country', countries)}</div>
+          <div><label>Destination</label>{lookup('destination', dests)}</div>
 
-          <div><label>Service</label><input value={head.service} onChange={(e) => setH('service', e.target.value)} /></div>
+          <div><label>Service</label>{lookup('service', services)}</div>
           <div>
             <label>Unit</label>
             <select value={head.unit} onChange={(e) => setH('unit', e.target.value)}>{UNITS.map((u) => <option key={u}>{u}</option>)}</select>
           </div>
           <div><label>Days (TAT)</label><input type="number" value={head.days} onChange={(e) => setH('days', e.target.value)} /></div>
-          <div><label>Origin Zone</label><input value={head.originZone} onChange={(e) => setH('originZone', e.target.value)} /></div>
+          <div><label>Origin Zone</label>{lookup('originZone', zones)}</div>
         </div>
       </div>
 
