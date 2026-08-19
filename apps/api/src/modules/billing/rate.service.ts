@@ -167,7 +167,9 @@ export class RateService {
     }
     if (String(mode || 'FLAT').toUpperCase() === 'DYNAMIC') {
       const diesel = await this.currentDieselPrice();
-      const raw = Number(basePct ?? 0) + (diesel - Number(baseFuel ?? 0)) * Number(step ?? 0);
+      // variable part applies only to the rise above a reference diesel price; blank/0 ref => base only
+      const rise = Number(baseFuel) > 0 ? diesel - Number(baseFuel) : 0;
+      const raw = Number(basePct ?? 0) + rise * Number(step ?? 0);
       const ceiling = cap != null && cap !== '' && Number(cap) > 0 ? Number(cap) : DEFAULT_FUEL_CAP;
       return Math.max(0, Math.min(ceiling, +raw.toFixed(2)));
     }

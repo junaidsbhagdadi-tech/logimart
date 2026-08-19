@@ -19,7 +19,7 @@ const CONFIG: Record<Kind, { fields: Field[]; cols: string[] }> = {
       { key: 'mode', label: 'Mode', type: 'select', options: ['FLAT', 'DYNAMIC'] },
       { key: 'percentage', label: 'Flat %  (FLAT)', type: 'number' },
       { key: 'basePct', label: 'Base %  (DYNAMIC)', type: 'number' },
-      { key: 'baseFuelPrice', label: 'Base diesel ₹/L  (DYNAMIC)', type: 'number' },
+      { key: 'baseFuelPrice', label: 'Base diesel ₹/L — reference (DYNAMIC)', type: 'number' },
       { key: 'stepPerRupee', label: '% per ₹1 rise  (DYNAMIC)', type: 'number' },
       { key: 'maxPct', label: 'Max % cap  (DYNAMIC, default 50)', type: 'number' },
       { key: 'product', label: 'Product' }, { key: 'service', label: 'Service' },

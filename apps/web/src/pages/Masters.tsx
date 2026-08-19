@@ -24,7 +24,7 @@ const MASTERS: MasterDef[] = [
     F('mode', 'Mode', { attr: true, type: 'select', options: ['FLAT', 'DYNAMIC'] }),
     F('percentage', 'Flat %  (FLAT)', { attr: true, type: 'number' }),
     F('basePct', 'Base %  (DYNAMIC)', { attr: true, type: 'number' }),
-    F('baseFuelPrice', 'Base diesel ₹/L  (DYNAMIC)', { attr: true, type: 'number' }),
+    F('baseFuelPrice', 'Base diesel ₹/L — reference price (DYNAMIC)', { attr: true, type: 'number' }),
     F('stepPerRupee', '% per ₹1 rise  (DYNAMIC)', { attr: true, type: 'number' }),
     F('maxPct', 'Max % cap  (DYNAMIC, default 50)', { attr: true, type: 'number' }),
   ] },
@@ -95,8 +95,10 @@ export function Masters() {
   const fa = form.attrs || {};
   const fmode = String(fa.mode || 'FLAT').toUpperCase();
   const fcap = Number(fa.maxPct) > 0 ? Number(fa.maxPct) : 50;
+  // variable part applies only to the rise ABOVE a reference diesel price; blank/0 ref => no variable
+  const frise = Number(fa.baseFuelPrice) > 0 ? (diesel || 0) - Number(fa.baseFuelPrice) : 0;
   const feff = fmode === 'DYNAMIC'
-    ? Math.max(0, Math.min(fcap, Number(fa.basePct || 0) + ((diesel || 0) - Number(fa.baseFuelPrice || 0)) * Number(fa.stepPerRupee || 0)))
+    ? Math.max(0, Math.min(fcap, Number(fa.basePct || 0) + frise * Number(fa.stepPerRupee || 0)))
     : Number(fa.percentage || 0);
 
   const val = (f: Field) => (f.attr ? form.attrs?.[f.key] ?? '' : form[f.key] ?? '');
@@ -174,9 +176,13 @@ export function Masters() {
             </p>
             <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--navy)' }}>Effective fuel surcharge = {feff.toFixed(2)}%</div>
             {fmode === 'DYNAMIC' && (
-              <p className="muted" style={{ marginTop: 6, marginBottom: 0 }}>
-                {Number(fa.basePct || 0)}% + (₹{diesel || 0} − ₹{Number(fa.baseFuelPrice || 0)}) × {Number(fa.stepPerRupee || 0)} per ₹1 = {feff.toFixed(2)}%
-              </p>
+              Number(fa.baseFuelPrice) > 0
+                ? <p className="muted" style={{ marginTop: 6, marginBottom: 0 }}>
+                    {Number(fa.basePct || 0)}% + (₹{diesel || 0} − ₹{Number(fa.baseFuelPrice)} ref) × {Number(fa.stepPerRupee || 0)}/₹ = {feff.toFixed(2)}%
+                  </p>
+                : <p style={{ marginTop: 6, marginBottom: 0, color: 'var(--warn)', fontWeight: 600 }}>
+                    ⚠ Set a <strong>Base diesel ₹/L</strong> (the reference price) — the variable only applies to the rise above it. Until then, effective = base {Number(fa.basePct || 0)}%.
+                  </p>
             )}
           </div>
         )}
