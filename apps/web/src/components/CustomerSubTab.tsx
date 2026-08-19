@@ -15,6 +15,7 @@ const CHARGE_TYPES = [
 const CONFIG: Record<Kind, { fields: Field[]; cols: string[] }> = {
   fuel: {
     fields: [
+      { key: 'mechanism', label: 'Mechanism (Masters → Fuel Mechanism code — overrides below)' },
       { key: 'mode', label: 'Mode', type: 'select', options: ['FLAT', 'DYNAMIC'] },
       { key: 'percentage', label: 'Flat %  (FLAT)', type: 'number' },
       { key: 'basePct', label: 'Base %  (DYNAMIC)', type: 'number' },
@@ -24,7 +25,7 @@ const CONFIG: Record<Kind, { fields: Field[]; cols: string[] }> = {
       { key: 'vendor', label: 'Vendor' }, { key: 'destination', label: 'Destination' },
       { key: 'fromDate', label: 'From Date', type: 'date' }, { key: 'toDate', label: 'To Date', type: 'date' },
     ],
-    cols: ['mode', 'percentage', 'basePct', 'baseFuelPrice', 'stepPerRupee', 'product', 'service'],
+    cols: ['mechanism', 'mode', 'percentage', 'basePct', 'baseFuelPrice', 'stepPerRupee', 'service'],
   },
   charges: {
     fields: [

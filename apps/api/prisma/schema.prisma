@@ -152,6 +152,7 @@ model CustomerFuelSurcharge {
   service       String?
   fromDate      DateTime?
   toDate        DateTime?
+  mechanism     String?   // links to a Fuel Mechanism master (code); its params override when set
   mode          String    @default("FLAT") // FLAT | DYNAMIC
   percentage    Decimal?  @db.Decimal(6, 2) // flat %
   basePct       Decimal?  @db.Decimal(6, 2) // dynamic: base % at base fuel price
@@ -304,6 +305,41 @@ model Shipment {
   consigneeCity  String?
   destPincode    String?
   isOda          Boolean   @default(false) // out-of-delivery-area destination
+
+  // ---- shipper (sender) — a full party, separate from the billing customer ----
+  shipperName     String?
+  shipperContact  String?
+  shipperAddress1 String?
+  shipperAddress2 String?
+  shipperPincode  String?
+  shipperCity     String?
+  shipperState    String?
+  shipperPhone    String?
+  shipperMobile   String?
+  shipperEmail    String?
+  shipperCountry  String?
+  shipperIec      String?
+  shipperGstin    String?
+  shipperDocType  String?
+  shipperDocNo    String?
+  originLocation  String? // origin place (e.g. DELHI), distinct from originZone
+
+  // ---- consignee extras (Xpresion parity) ----
+  consigneeContact  String?
+  consigneeState    String?
+  consigneeCountry  String?
+  consigneeIec      String?
+  consigneeDocType  String?
+  consigneeDocNo    String?
+
+  // ---- services extras ----
+  vendor         String?
+  service        String?
+  shipmentValue  Decimal? @db.Decimal(14, 2)
+  isCommercial   Boolean  @default(false)
+  isMedical      Boolean  @default(false)
+  referenceNo    String?
+
   vehicleNo      String?
   ftlVehicleType String?   // 8ft | 10ft | 14ft | 17ft | 20ft | 32FT SXL | 32ft MXL
   departureAt    DateTime?

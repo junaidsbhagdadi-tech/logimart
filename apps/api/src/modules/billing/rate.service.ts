@@ -148,12 +148,19 @@ export class RateService {
       orderBy: { id: 'desc' },
     });
     if (!fs) return 0;
-    if ((fs.mode || 'FLAT').toUpperCase() === 'DYNAMIC') {
+    // Params come from the row; a linked Fuel Mechanism master (if set) overrides them.
+    let mode = fs.mode, basePct: any = fs.basePct, baseFuel: any = fs.baseFuelPrice, step: any = fs.stepPerRupee, flat: any = fs.percentage;
+    if (fs.mechanism) {
+      const m = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'FUEL_MECHANISM', code: fs.mechanism } } });
+      const a: any = m?.attrs || {};
+      if (m) { mode = a.mode || mode; basePct = a.basePct ?? basePct; baseFuel = a.baseFuelPrice ?? baseFuel; step = a.stepPerRupee ?? step; flat = a.percentage ?? flat; }
+    }
+    if (String(mode || 'FLAT').toUpperCase() === 'DYNAMIC') {
       const diesel = await this.currentDieselPrice();
-      const pct = Number(fs.basePct ?? 0) + (diesel - Number(fs.baseFuelPrice ?? 0)) * Number(fs.stepPerRupee ?? 0);
+      const pct = Number(basePct ?? 0) + (diesel - Number(baseFuel ?? 0)) * Number(step ?? 0);
       return Math.max(0, +pct.toFixed(2));
     }
-    return Number(fs.percentage ?? 0);
+    return Number(flat ?? 0);
   }
 
   private isSurface(serviceMode?: string): boolean {

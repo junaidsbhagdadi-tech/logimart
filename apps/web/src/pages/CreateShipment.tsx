@@ -32,7 +32,19 @@ export function CreateShipment() {
   const [c, setC] = useState({
     consigneeName: '', consigneePhone: '', consigneeAddress: '', consigneeCity: '',
     consigneeGstin: '', declaredValue: '', goodsDesc: '', hsnCode: '',
+    consigneeContact: '', consigneeState: '', consigneeCountry: 'India', consigneeIec: '', consigneeDocType: '', consigneeDocNo: '',
   });
+
+  // shipper (sender) — a full party, separate from the billing customer
+  const [shp, setShp] = useState({
+    shipperName: '', shipperContact: '', shipperAddress1: '', shipperAddress2: '',
+    shipperPincode: '', shipperCity: '', shipperState: '', shipperPhone: '', shipperMobile: '',
+    shipperEmail: '', shipperCountry: 'India', shipperIec: '', shipperGstin: '', shipperDocType: '', shipperDocNo: '',
+    originLocation: '',
+  });
+  const setS = (k: keyof typeof shp, v: string) => setShp((p) => ({ ...p, [k]: v }));
+  // services extras
+  const [svc, setSvc] = useState({ vendor: '', service: '', shipmentValue: '', referenceNo: '', isCommercial: false, isMedical: false });
 
   const [hubs, setHubs] = useState<{ id: string; code: string; name: string }[]>([]);
   const [originHubId, setOriginHubId] = useState<number | ''>('');
@@ -125,6 +137,22 @@ export function CreateShipment() {
         consigneeGstin: c.consigneeGstin || undefined,
         declaredValue: c.declaredValue ? +c.declaredValue : undefined,
         goodsDesc: c.goodsDesc || undefined,
+        // shipper (sender)
+        ...Object.fromEntries(Object.entries(shp).map(([k, v]) => [k, v || undefined])),
+        // consignee extras
+        consigneeContact: c.consigneeContact || undefined,
+        consigneeState: c.consigneeState || undefined,
+        consigneeCountry: c.consigneeCountry || undefined,
+        consigneeIec: c.consigneeIec || undefined,
+        consigneeDocType: c.consigneeDocType || undefined,
+        consigneeDocNo: c.consigneeDocNo || undefined,
+        // services extras
+        vendor: svc.vendor || undefined,
+        service: svc.service || undefined,
+        shipmentValue: svc.shipmentValue ? +svc.shipmentValue : undefined,
+        referenceNo: svc.referenceNo || undefined,
+        isCommercial: svc.isCommercial,
+        isMedical: svc.isMedical,
         hsnCode: c.hsnCode || undefined,
         vehicleNo: ftl.vehicleNo || undefined,
         ftlVehicleType: isFtl ? ftl.ftlVehicleType : undefined,
@@ -244,6 +272,36 @@ export function CreateShipment() {
       )}
 
       <div className="card">
+        <h2>📤 Shipper details <span className="muted" style={{ fontSize: 12, fontWeight: 500 }}>— the sender (leave blank to use the customer)</span></h2>
+        <div className="grid cols-4">
+          <div><label>Origin</label><input value={shp.originLocation} onChange={(e) => setS('originLocation', e.target.value)} placeholder="e.g. DELHI" /></div>
+          <div><label>Company name</label><input value={shp.shipperName} onChange={(e) => setS('shipperName', e.target.value)} /></div>
+          <div><label>Contact name</label><input value={shp.shipperContact} onChange={(e) => setS('shipperContact', e.target.value)} /></div>
+          <div><label>Mobile</label><input value={shp.shipperMobile} onChange={(e) => setS('shipperMobile', e.target.value)} /></div>
+
+          <div><label>Address 1</label><input value={shp.shipperAddress1} onChange={(e) => setS('shipperAddress1', e.target.value)} /></div>
+          <div><label>Address 2</label><input value={shp.shipperAddress2} onChange={(e) => setS('shipperAddress2', e.target.value)} /></div>
+          <div><label>Pincode</label><input value={shp.shipperPincode} maxLength={6} onChange={(e) => setS('shipperPincode', e.target.value)} /></div>
+          <div><label>City</label><input value={shp.shipperCity} onChange={(e) => setS('shipperCity', e.target.value)} /></div>
+
+          <div><label>State</label><input value={shp.shipperState} onChange={(e) => setS('shipperState', e.target.value)} /></div>
+          <div><label>Telephone</label><input value={shp.shipperPhone} onChange={(e) => setS('shipperPhone', e.target.value)} /></div>
+          <div><label>E-mail</label><input value={shp.shipperEmail} onChange={(e) => setS('shipperEmail', e.target.value)} /></div>
+          <div><label>Country</label><input value={shp.shipperCountry} onChange={(e) => setS('shipperCountry', e.target.value)} /></div>
+
+          <div><label>GSTIN</label><input value={shp.shipperGstin} onChange={(e) => setS('shipperGstin', e.target.value.toUpperCase())} /></div>
+          <div><label>IEC No.</label><input value={shp.shipperIec} onChange={(e) => setS('shipperIec', e.target.value)} /></div>
+          <div>
+            <label>Document Type</label>
+            <select value={shp.shipperDocType} onChange={(e) => setS('shipperDocType', e.target.value)}>
+              <option value="">Select</option><option>PAN</option><option>Aadhaar</option><option>Passport</option><option>GSTIN</option><option>Other</option>
+            </select>
+          </div>
+          <div><label>Document No.</label><input value={shp.shipperDocNo} onChange={(e) => setS('shipperDocNo', e.target.value)} /></div>
+        </div>
+      </div>
+
+      <div className="card">
         <h2>Consignee &amp; consignment</h2>
         <div className="grid cols-3">
           <div><label>Consignee name</label><input value={c.consigneeName} onChange={(e) => setCf('consigneeName', e.target.value)} /></div>
@@ -273,6 +331,14 @@ export function CreateShipment() {
             <label>Charge weight (kg)</label>
             <input type="number" value={chargeWeight} onChange={(e) => setChargeWeight(e.target.value)} placeholder={`${Math.max(totalDead, totalVol).toFixed(2)} (dead/vol max)`} />
           </div>
+          <div><label>Vendor</label><input value={svc.vendor} onChange={(e) => setSvc({ ...svc, vendor: e.target.value })} placeholder="SELF or carrier" /></div>
+          <div><label>Service</label><input value={svc.service} onChange={(e) => setSvc({ ...svc, service: e.target.value })} placeholder="SELF / DHL / …" /></div>
+          <div><label>Shipment value ₹</label><input type="number" value={svc.shipmentValue} onChange={(e) => setSvc({ ...svc, shipmentValue: e.target.value })} /></div>
+          <div><label>Reference No.</label><input value={svc.referenceNo} onChange={(e) => setSvc({ ...svc, referenceNo: e.target.value })} /></div>
+        </div>
+        <div className="row" style={{ gap: 20, marginTop: 10 }}>
+          <label className="row" style={{ gap: 6, fontWeight: 600, color: 'var(--text)' }}><input type="checkbox" style={{ width: 'auto' }} checked={svc.isCommercial} onChange={(e) => setSvc({ ...svc, isCommercial: e.target.checked })} /> Commercial</label>
+          <label className="row" style={{ gap: 6, fontWeight: 600, color: 'var(--text)' }}><input type="checkbox" style={{ width: 'auto' }} checked={svc.isMedical} onChange={(e) => setSvc({ ...svc, isMedical: e.target.checked })} /> Medical charges</label>
         </div>
 
         <div className="row" style={{ marginTop: 12, alignItems: 'flex-end' }}>

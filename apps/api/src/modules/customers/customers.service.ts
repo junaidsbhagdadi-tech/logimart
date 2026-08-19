@@ -102,6 +102,7 @@ export class CustomersService {
     return this.prisma.customerFuelSurcharge.create({ data: {
       clientId: BigInt(clientId), vendor: d.vendor, product: d.product, destination: d.destination, service: d.service,
       fromDate: this.date(d.fromDate), toDate: this.date(d.toDate),
+      mechanism: d.mechanism || null,
       mode: (d.mode || 'FLAT').toUpperCase() === 'DYNAMIC' ? 'DYNAMIC' : 'FLAT',
       percentage: num(d.percentage),
       basePct: num(d.basePct), baseFuelPrice: num(d.baseFuelPrice), stepPerRupee: num(d.stepPerRupee),

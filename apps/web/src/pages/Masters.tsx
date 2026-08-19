@@ -19,6 +19,14 @@ const MASTERS: MasterDef[] = [
     F('gstReverse', 'GST reverse', { attr: true, type: 'checkbox' }),
   ] },
   { key: 'PRODUCT_TYPE', label: 'Product Type', icon: '🏷', fields: [F('code', 'Type code'), F('name', 'Type name')] },
+  { key: 'FUEL_MECHANISM', label: 'Fuel Mechanism', icon: '⛽', fields: [
+    F('code', 'Code'), F('name', 'Name'),
+    F('mode', 'Mode', { attr: true, type: 'select', options: ['FLAT', 'DYNAMIC'] }),
+    F('percentage', 'Flat %  (FLAT)', { attr: true, type: 'number' }),
+    F('basePct', 'Base %  (DYNAMIC)', { attr: true, type: 'number' }),
+    F('baseFuelPrice', 'Base diesel ₹/L  (DYNAMIC)', { attr: true, type: 'number' }),
+    F('stepPerRupee', '% per ₹1 rise  (DYNAMIC)', { attr: true, type: 'number' }),
+  ] },
   { key: 'CHARGE', label: 'Charges', icon: '💱', fields: [
     F('code', 'Charge code'), F('name', 'Charge name'),
     F('baseOn', 'Calculated on', { attr: true, type: 'select', options: ['FLAT', 'Actual Weight', 'Freight', 'Shipment Value', 'ODA'] }),
@@ -76,8 +84,18 @@ export function Masters() {
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
 
+  const [diesel, setDiesel] = useState<number | null>(null);
+
   const load = () => api.listMaster(typeKey).then(setRows).catch((e) => setError(e.message));
   useEffect(() => { setForm({}); setEditing(false); setError(''); setMsg(''); setQ(''); load(); /* eslint-disable-next-line */ }, [typeKey]);
+  useEffect(() => { api.getFuelPrice().then((r) => setDiesel(r.current)).catch(() => {}); }, []);
+
+  // Fuel Mechanism live calculator (effective surcharge % at the current diesel price)
+  const fa = form.attrs || {};
+  const fmode = String(fa.mode || 'FLAT').toUpperCase();
+  const feff = fmode === 'DYNAMIC'
+    ? Math.max(0, Number(fa.basePct || 0) + ((diesel || 0) - Number(fa.baseFuelPrice || 0)) * Number(fa.stepPerRupee || 0))
+    : Number(fa.percentage || 0);
 
   const val = (f: Field) => (f.attr ? form.attrs?.[f.key] ?? '' : form[f.key] ?? '');
   const setVal = (f: Field, v: any) =>
@@ -145,6 +163,21 @@ export function Masters() {
           <button onClick={save}>{editing ? 'Update' : '+ Add'} {def.label}</button>
           {editing && <button className="secondary" onClick={() => { setForm({}); setEditing(false); }}>Cancel</button>}
         </div>
+
+        {typeKey === 'FUEL_MECHANISM' && (
+          <div className="card" style={{ borderLeft: '4px solid var(--sky)', marginTop: 16, marginBottom: 0 }}>
+            <h2 style={{ marginBottom: 8 }}>🧮 Calculator</h2>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Current diesel: <strong>{diesel != null ? `₹${diesel}/L` : '— set on Customer Rate —'}</strong>. Live from the values above.
+            </p>
+            <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--navy)' }}>Effective fuel surcharge = {feff.toFixed(2)}%</div>
+            {fmode === 'DYNAMIC' && (
+              <p className="muted" style={{ marginTop: 6, marginBottom: 0 }}>
+                {Number(fa.basePct || 0)}% + (₹{diesel || 0} − ₹{Number(fa.baseFuelPrice || 0)}) × {Number(fa.stepPerRupee || 0)} per ₹1 = {feff.toFixed(2)}%
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="card">

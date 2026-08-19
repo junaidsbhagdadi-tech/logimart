@@ -52,6 +52,40 @@ export class CreateShipmentDto {
   @IsOptional() @IsNumber() declaredValue?: number;
   @IsOptional() @IsString() ewbNo?: string; // e-way bill no. (required when invoice value ≥ ₹50k)
 
+  // ---- shipper (sender) — separate party from the billing customer ----
+  @IsOptional() @IsString() shipperName?: string;
+  @IsOptional() @IsString() shipperContact?: string;
+  @IsOptional() @IsString() shipperAddress1?: string;
+  @IsOptional() @IsString() shipperAddress2?: string;
+  @IsOptional() @IsString() shipperPincode?: string;
+  @IsOptional() @IsString() shipperCity?: string;
+  @IsOptional() @IsString() shipperState?: string;
+  @IsOptional() @IsString() shipperPhone?: string;
+  @IsOptional() @IsString() shipperMobile?: string;
+  @IsOptional() @IsString() shipperEmail?: string;
+  @IsOptional() @IsString() shipperCountry?: string;
+  @IsOptional() @IsString() shipperIec?: string;
+  @IsOptional() @IsString() shipperGstin?: string;
+  @IsOptional() @IsString() shipperDocType?: string;
+  @IsOptional() @IsString() shipperDocNo?: string;
+  @IsOptional() @IsString() originLocation?: string;
+
+  // ---- consignee extras ----
+  @IsOptional() @IsString() consigneeContact?: string;
+  @IsOptional() @IsString() consigneeState?: string;
+  @IsOptional() @IsString() consigneeCountry?: string;
+  @IsOptional() @IsString() consigneeIec?: string;
+  @IsOptional() @IsString() consigneeDocType?: string;
+  @IsOptional() @IsString() consigneeDocNo?: string;
+
+  // ---- services extras ----
+  @IsOptional() @IsString() vendor?: string;
+  @IsOptional() @IsString() service?: string;
+  @IsOptional() @IsNumber() shipmentValue?: number;
+  @IsOptional() @IsBoolean() isCommercial?: boolean;
+  @IsOptional() @IsBoolean() isMedical?: boolean;
+  @IsOptional() @IsString() referenceNo?: string;
+
   // ---- FTL trip details (optional) ----
   @IsOptional() @IsString() vehicleNo?: string;
   @IsOptional() @IsString() ftlVehicleType?: string;
