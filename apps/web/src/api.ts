@@ -431,6 +431,10 @@ export const api = {
   addAddr: (clientId: string, body: unknown) => request(`/api/v1/clients/${clientId}/addresses`, { method: 'POST', body: JSON.stringify(body) }),
   delAddr: (clientId: string, rowId: string) => request(`/api/v1/clients/${clientId}/addresses/${rowId}`, { method: 'DELETE' }),
 
+  // ---- fuel price (drives dynamic fuel surcharge) ----
+  getFuelPrice: () => request<{ fuelType: string; current: number | null; effectiveFrom: string | null; history: any[] }>('/api/v1/fuel-price'),
+  setFuelPrice: (body: unknown) => request('/api/v1/fuel-price', { method: 'POST', body: JSON.stringify(body) }),
+
   // ---- rate matrix (weight-slab tariff) ----
   listRateSlabs: (clientId?: string) => request<any[]>(`/api/v1/rate-slabs${clientId ? `?clientId=${clientId}` : ''}`),
   addRateSlab: (body: unknown) => request('/api/v1/rate-slabs', { method: 'POST', body: JSON.stringify(body) }),

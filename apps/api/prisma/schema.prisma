@@ -139,21 +139,42 @@ model CustomerAddress {
   @@map("customer_addresses")
 }
 
-/// Per-customer fuel-surcharge % (Xpresion "Fuel Surcharges" tab).
+/// Per-customer fuel-surcharge (Xpresion "Fuel Surcharges" tab).
+/// mode FLAT   -> use `percentage` directly.
+/// mode DYNAMIC-> effective % = basePct + (currentDieselPrice - baseFuelPrice) * stepPerRupee
+///               (diesel-linked; floored at 0). currentDieselPrice comes from FuelPrice.
 model CustomerFuelSurcharge {
-  id          BigInt    @id @default(autoincrement())
-  clientId    BigInt
-  vendor      String?
-  product     String?
-  destination String?
-  service     String?
-  fromDate    DateTime?
-  toDate      DateTime?
-  percentage  Decimal   @db.Decimal(6, 2)
-  createdAt   DateTime  @default(now())
+  id            BigInt    @id @default(autoincrement())
+  clientId      BigInt
+  vendor        String?
+  product       String?
+  destination   String?
+  service       String?
+  fromDate      DateTime?
+  toDate        DateTime?
+  mode          String    @default("FLAT") // FLAT | DYNAMIC
+  percentage    Decimal?  @db.Decimal(6, 2) // flat %
+  basePct       Decimal?  @db.Decimal(6, 2) // dynamic: base % at base fuel price
+  baseFuelPrice Decimal?  @db.Decimal(8, 2) // dynamic: reference diesel ₹/L
+  stepPerRupee  Decimal?  @db.Decimal(6, 3) // dynamic: +X% per ₹1 above base
+  createdAt     DateTime  @default(now())
 
   @@index([clientId])
   @@map("customer_fuel_surcharges")
+}
+
+/// Current fuel (diesel) price — the variable that drives dynamic fuel surcharges.
+/// Latest row by effectiveFrom = the price in force.
+model FuelPrice {
+  id            BigInt   @id @default(autoincrement())
+  fuelType      String   @default("DIESEL")
+  price         Decimal  @db.Decimal(8, 2) // ₹ per litre
+  effectiveFrom DateTime @default(now())
+  note          String?
+  createdAt     DateTime @default(now())
+
+  @@index([fuelType, effectiveFrom])
+  @@map("fuel_prices")
 }
 
 /// Per-customer accessorial charges (Xpresion "Other Charges" tab).

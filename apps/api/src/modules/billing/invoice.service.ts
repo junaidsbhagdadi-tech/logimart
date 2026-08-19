@@ -36,7 +36,7 @@ export class InvoiceService {
         clientId: client.id,
         createdAt: { gte: new Date(periodStart), lte: new Date(periodEnd) },
       },
-      include: { pieces: { select: { status: true, deadKg: true, volKg: true } } },
+      include: { pieces: { select: { status: true, deadKg: true, volKg: true, lengthCm: true, widthCm: true, heightCm: true } } },
     });
 
     const lines: {

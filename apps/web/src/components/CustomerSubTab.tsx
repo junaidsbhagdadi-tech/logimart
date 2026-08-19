@@ -15,12 +15,16 @@ const CHARGE_TYPES = [
 const CONFIG: Record<Kind, { fields: Field[]; cols: string[] }> = {
   fuel: {
     fields: [
-      { key: 'vendor', label: 'Vendor' }, { key: 'product', label: 'Product' },
-      { key: 'destination', label: 'Destination' }, { key: 'service', label: 'Service' },
+      { key: 'mode', label: 'Mode', type: 'select', options: ['FLAT', 'DYNAMIC'] },
+      { key: 'percentage', label: 'Flat %  (FLAT)', type: 'number' },
+      { key: 'basePct', label: 'Base %  (DYNAMIC)', type: 'number' },
+      { key: 'baseFuelPrice', label: 'Base diesel ₹/L  (DYNAMIC)', type: 'number' },
+      { key: 'stepPerRupee', label: '% per ₹1 rise  (DYNAMIC)', type: 'number' },
+      { key: 'product', label: 'Product' }, { key: 'service', label: 'Service' },
+      { key: 'vendor', label: 'Vendor' }, { key: 'destination', label: 'Destination' },
       { key: 'fromDate', label: 'From Date', type: 'date' }, { key: 'toDate', label: 'To Date', type: 'date' },
-      { key: 'percentage', label: 'Percentage *', type: 'number', required: true },
     ],
-    cols: ['vendor', 'product', 'destination', 'service', 'fromDate', 'toDate', 'percentage'],
+    cols: ['mode', 'percentage', 'basePct', 'baseFuelPrice', 'stepPerRupee', 'product', 'service'],
   },
   charges: {
     fields: [
@@ -35,9 +39,9 @@ const CONFIG: Record<Kind, { fields: Field[]; cols: string[] }> = {
   vol: {
     fields: [
       { key: 'product', label: 'Product' }, { key: 'vendor', label: 'Vendor' }, { key: 'service', label: 'Service' },
-      { key: 'cft', label: 'CFT *', type: 'number', required: true },
-      { key: 'cmDivide', label: 'Centimeter Divide *', type: 'number', required: true },
-      { key: 'inchDivide', label: 'Inches Divide *', type: 'number', required: true },
+      { key: 'cmDivide', label: 'Divisor (cm³ per CFT, e.g. 28317) *', type: 'number', required: true },
+      { key: 'cft', label: 'CFT factor (kg per CFT) *', type: 'number', required: true },
+      { key: 'inchDivide', label: 'Inches Divisor (opt.)', type: 'number' },
     ],
     cols: ['product', 'vendor', 'service', 'cft', 'cmDivide', 'inchDivide'],
   },

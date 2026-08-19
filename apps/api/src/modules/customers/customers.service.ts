@@ -98,9 +98,13 @@ export class CustomersService {
     return this.prisma.customerFuelSurcharge.findMany({ where: { clientId: BigInt(clientId) }, orderBy: { id: 'desc' } });
   }
   addFuel(clientId: number, d: any) {
+    const num = (v: any) => (v != null && v !== '' ? new Prisma.Decimal(v) : null);
     return this.prisma.customerFuelSurcharge.create({ data: {
       clientId: BigInt(clientId), vendor: d.vendor, product: d.product, destination: d.destination, service: d.service,
-      fromDate: this.date(d.fromDate), toDate: this.date(d.toDate), percentage: this.dec(d.percentage),
+      fromDate: this.date(d.fromDate), toDate: this.date(d.toDate),
+      mode: (d.mode || 'FLAT').toUpperCase() === 'DYNAMIC' ? 'DYNAMIC' : 'FLAT',
+      percentage: num(d.percentage),
+      basePct: num(d.basePct), baseFuelPrice: num(d.baseFuelPrice), stepPerRupee: num(d.stepPerRupee),
     } });
   }
   delFuel(rowId: number) { return this.prisma.customerFuelSurcharge.delete({ where: { id: BigInt(rowId) } }); }

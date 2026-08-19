@@ -28,6 +28,8 @@ export function CustomerRate() {
   const [countries, setCountries] = useState<string[]>([]);
   const [vendors, setVendors] = useState<string[]>([]);
   const [services, setServices] = useState<string[]>([]);
+  const [diesel, setDiesel] = useState<number | null>(null);
+  const [newDiesel, setNewDiesel] = useState('');
 
   useEffect(() => {
     const codes = (r: any[]) => r.map((x) => x.code || x.name).filter(Boolean);
@@ -39,7 +41,15 @@ export function CustomerRate() {
     api.listMaster('COUNTRY').then((r) => setCountries(r.map((x) => x.name || x.code).filter(Boolean))).catch(() => {});
     api.listVendors().then((r) => setVendors(uniq(['SELF', ...r.map((v: any) => v.name).filter(Boolean)]))).catch(() => setVendors(['SELF']));
     api.listServiceMappings().then((r) => setServices(uniq(r.map((m: any) => m.serviceType).filter(Boolean)))).catch(() => {});
+    api.getFuelPrice().then((r) => setDiesel(r.current)).catch(() => {});
   }, []);
+
+  const saveDiesel = async () => {
+    if (!newDiesel) return;
+    setError(''); setMsg('');
+    try { await api.setFuelPrice({ price: Number(newDiesel), fuelType: 'DIESEL' }); setDiesel(Number(newDiesel)); setNewDiesel(''); setMsg('✓ Diesel price updated.'); }
+    catch (e: any) { setError(e.message); }
+  };
 
   const loadRows = () => {
     api.listRateSlabs(head.clientId || undefined).then(setRows).catch((e) => setError(e.message));
@@ -90,6 +100,18 @@ export function CustomerRate() {
       <h1>💱 Customer Rate</h1>
       {error && <div className="error">{error}</div>}
       {msg && <div className="card" style={{ borderLeft: '4px solid var(--ok)' }}>{msg}</div>}
+
+      <div className="card">
+        <h2>⛽ Diesel price — drives dynamic fuel surcharge</h2>
+        <div className="row" style={{ alignItems: 'flex-end', gap: 18 }}>
+          <div className="muted" style={{ fontSize: 15 }}>In force: <strong style={{ color: 'var(--navy)' }}>{diesel != null ? `₹${diesel}/L` : '— not set —'}</strong></div>
+          <div><label>New price ₹/L</label><input type="number" value={newDiesel} onChange={(e) => setNewDiesel(e.target.value)} style={{ width: 160 }} /></div>
+          <button className="secondary" onClick={saveDiesel} disabled={!newDiesel}>Update</button>
+        </div>
+        <p className="muted" style={{ marginTop: 8, marginBottom: 0 }}>
+          Customers on <strong>DYNAMIC</strong> fuel bill at: base% + (this price − base diesel) × (% per ₹1 rise). FLAT customers use their fixed %.
+        </p>
+      </div>
 
       <div className="card">
         <h2>Tariff header</h2>

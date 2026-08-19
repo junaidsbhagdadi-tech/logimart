@@ -131,13 +131,63 @@ export class RateService {
     return null;
   }
 
-  /** Most recent applicable per-customer fuel-surcharge % (Customer master → Fuel Surcharges). */
+  /** Current diesel price (₹/L) — the variable behind dynamic fuel surcharges. */
+  private async currentDieselPrice(): Promise<number> {
+    const fp = await this.prisma.fuelPrice.findFirst({ where: { fuelType: 'DIESEL' }, orderBy: { effectiveFrom: 'desc' } });
+    return fp ? Number(fp.price) : 0;
+  }
+
+  /**
+   * Effective per-customer fuel-surcharge %.
+   * FLAT   -> the stored percentage.
+   * DYNAMIC-> basePct + (currentDiesel - baseFuelPrice) * stepPerRupee, floored at 0.
+   */
   private async customerFuelPct(clientId: bigint): Promise<number> {
     const fs = await this.prisma.customerFuelSurcharge.findFirst({
       where: { clientId, OR: [{ fromDate: null }, { fromDate: { lte: new Date() } }] },
       orderBy: { id: 'desc' },
     });
-    return fs ? Number(fs.percentage) : 0;
+    if (!fs) return 0;
+    if ((fs.mode || 'FLAT').toUpperCase() === 'DYNAMIC') {
+      const diesel = await this.currentDieselPrice();
+      const pct = Number(fs.basePct ?? 0) + (diesel - Number(fs.baseFuelPrice ?? 0)) * Number(fs.stepPerRupee ?? 0);
+      return Math.max(0, +pct.toFixed(2));
+    }
+    return Number(fs.percentage ?? 0);
+  }
+
+  private isSurface(serviceMode?: string): boolean {
+    const m = (serviceMode || '').toUpperCase();
+    return m.startsWith('ROAD') || m === 'RAIL' || m.includes('SURFACE');
+  }
+
+  /** Customer CFT/volumetric rule (matches product/service when the row specifies them). */
+  private async customerVolRule(clientId: bigint, shipment: any) {
+    const rules = await this.prisma.customerVolumetric.findMany({ where: { clientId }, orderBy: { id: 'desc' } });
+    if (!rules.length) return null;
+    const eq = (a: any, b: any) => !a || (b != null && String(a).toUpperCase() === String(b).toUpperCase());
+    return rules.find((r) => eq(r.product, shipment.product) && eq(r.service, shipment.serviceMode)) || rules[0];
+  }
+
+  /**
+   * Chargeable weight = max(dead, volumetric). For SURFACE cargo with a customer CFT rule,
+   * volumetric = Σ_boxes (L×W×H / divisor) × CFT-factor. Otherwise Σ stored volKg (÷5000).
+   */
+  async chargeableKgFor(shipment: any, pieces: any[]): Promise<number> {
+    const dead = pieces.reduce((s, p) => s + Number(p.deadKg), 0);
+    let vol = pieces.reduce((s, p) => s + Number(p.volKg || 0), 0);
+    if (this.isSurface(shipment.serviceMode)) {
+      const rule = await this.customerVolRule(shipment.clientId, shipment);
+      const divisor = Number(rule?.cmDivide ?? 0);
+      const cft = Number(rule?.cft ?? 0);
+      if (rule && divisor > 0 && cft > 0) {
+        vol = +pieces.reduce((s, p) => {
+          const l = Number(p.lengthCm || 0), w = Number(p.widthCm || 0), h = Number(p.heightCm || 0);
+          return s + (l && w && h ? (l * w * h / divisor) * cft : 0);
+        }, 0).toFixed(3);
+      }
+    }
+    return +Math.max(dead, vol).toFixed(3);
   }
 
   /** Price a shipment from the Xpresion slab tariff; null if no slab matches (caller falls back). */
@@ -165,7 +215,7 @@ export class RateService {
    * Returns null if no applicable rate is configured (per-kg path).
    */
   async chargesForShipment(shipment: any, pieces: WeightLike[]): Promise<ChargeBreakup | null> {
-    const chargeableKg = this.chargeableKg(pieces);
+    const chargeableKg = await this.chargeableKgFor(shipment, pieces);
 
     // 1) one-time / agreed manual freight override
     if (shipment.manualFreight != null) {
