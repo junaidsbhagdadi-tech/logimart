@@ -103,7 +103,7 @@ export class InvoiceService {
         sgst: new Prisma.Decimal(sgst),
         igst: new Prisma.Decimal(igst),
         placeOfSupply,
-        sacCode: '9968',
+        sacCode: '996812', // SAC for goods transport / courier (matches billing app)
         total: new Prisma.Decimal(total),
         status: InvoiceStatus.ISSUED,
         dueDate,
