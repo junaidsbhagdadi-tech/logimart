@@ -238,6 +238,32 @@ export class ShipmentsService {
   }
 
   /** Recent shipments, optionally scoped to a single client, with light rollup. */
+  /** Xpresion-style AWB Entry List rows (flat, filter/grid-friendly). */
+  async awbList(clientId: bigint | undefined, limit: number) {
+    const shipments = await this.prisma.shipment.findMany({
+      where: clientId != null ? { clientId } : undefined,
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(limit, 500),
+      include: { client: { select: { legalName: true, accountCode: true } } },
+    });
+    return shipments.map((s) => ({
+      awb: s.awb,
+      bookDate: s.createdAt,
+      shipperName: s.client.legalName, // client is the shipper unless a separate shipper is captured
+      customerCode: s.client.accountCode,
+      customerName: s.client.legalName,
+      consigneeName: s.consigneeName ?? '',
+      destination: s.consigneeCity ?? s.destPincode ?? s.destZone,
+      product: s.product ?? '',
+      vendor: s.vehicleNo ? 'SELF' : (s.bdWaybill ? 'BLUEDART' : 'SELF'),
+      actualWeight: Number(s.totalDeadKg),
+      chargeWeight: s.chargeWeight != null ? Number(s.chargeWeight) : Math.max(Number(s.totalDeadKg), Number(s.totalVolKg)),
+      pieces: s.pieceCount,
+      deliveryVendor: s.bdWaybill ?? s.awb, // carrier waybill; self = own AWB
+      status: s.status,
+    }));
+  }
+
   async list(clientId: bigint | undefined, limit: number) {
     const shipments = await this.prisma.shipment.findMany({
       where: clientId != null ? { clientId } : undefined,

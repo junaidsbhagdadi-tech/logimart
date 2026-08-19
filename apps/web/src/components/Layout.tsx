@@ -33,6 +33,7 @@ export function Layout() {
     ] },
     { title: 'Operations', items: [
       { to: '/create', icon: '➕', label: 'New Shipment' },
+      { to: '/awb-list', icon: '📝', label: 'AWB Entry List' },
       { to: '/bulk', icon: '📥', label: 'Bulk Booking' },
       { to: '/my-tasks', icon: '🛵', label: 'My Tasks', show: isOps },
       { to: '/deliver', icon: '🚚', label: 'Delivery App', show: isOps },

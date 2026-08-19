@@ -4,6 +4,7 @@ import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { CreateShipment } from './pages/CreateShipment';
+import { AwbEntryList } from './pages/AwbEntryList';
 import { ShipmentDetail } from './pages/ShipmentDetail';
 import { Labels } from './pages/Labels';
 import { Invoices } from './pages/Invoices';
@@ -62,6 +63,7 @@ export function App() {
       <Route element={<Layout />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/create" element={<CreateShipment />} />
+        <Route path="/awb-list" element={<AwbEntryList />} />
         <Route path="/bulk" element={<BulkBooking />} />
         <Route path="/scan" element={<Scan />} />
         <Route path="/drs" element={<Drs />} />

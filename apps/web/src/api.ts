@@ -431,6 +431,9 @@ export const api = {
   addAddr: (clientId: string, body: unknown) => request(`/api/v1/clients/${clientId}/addresses`, { method: 'POST', body: JSON.stringify(body) }),
   delAddr: (clientId: string, rowId: string) => request(`/api/v1/clients/${clientId}/addresses/${rowId}`, { method: 'DELETE' }),
 
+  // ---- AWB Entry List ----
+  awbList: (limit = 300) => request<any[]>(`/api/v1/shipments/awb-list?limit=${limit}`),
+
   // ---- fuel price (drives dynamic fuel surcharge) ----
   getFuelPrice: () => request<{ fuelType: string; current: number | null; effectiveFrom: string | null; history: any[] }>('/api/v1/fuel-price'),
   setFuelPrice: (body: unknown) => request('/api/v1/fuel-price', { method: 'POST', body: JSON.stringify(body) }),
