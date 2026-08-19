@@ -189,7 +189,7 @@ label { font-size: 12px; font-weight: 600; color: var(--muted); display: block; 
 .sidebar.collapsed .userbox button { font-size: 0; padding: 9px 0; }
 .sidebar.collapsed .userbox button::before { content: '⏻'; font-size: 15px; }
 
-.main { flex: 1; padding: 30px 38px; max-width: 1220px; }
+.main { flex: 1; min-width: 0; padding: 30px 40px; max-width: none; }
 
 .card {
   background: rgba(255,255,255,.82);
