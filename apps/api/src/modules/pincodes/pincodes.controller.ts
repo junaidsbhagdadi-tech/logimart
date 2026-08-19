@@ -54,6 +54,12 @@ export class PincodesController {
     return this.pincodes.bulkServiceAreas(dto.rows ?? [], dto.defaultNetwork || 'SELF');
   }
 
+  /** Which networks/products serve a pincode (fastest TAT first) — used by booking auto-pick. */
+  @Get('service-options/:pincode')
+  serviceOptions(@Param('pincode') pincode: string) {
+    return this.pincodes.serviceOptions(pincode);
+  }
+
   @Get(':pincode')
   lookup(@Param('pincode') pincode: string) {
     return this.pincodes.lookup(pincode);

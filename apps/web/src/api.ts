@@ -373,6 +373,7 @@ export const api = {
   createPincode: (body: { pincode: string; city: string; state: string; region: string; tier: number; isOda?: boolean }) =>
     request('/api/v1/pincodes', { method: 'POST', body: JSON.stringify(body) }),
   // ---- serviceability coverage (SELF network / vendor-wise) ----
+  serviceOptions: (pincode: string) => request<{ network: string; mode: string | null; tatDays: number | null; isOda: boolean; city: string | null }[]>(`/api/v1/pincodes/service-options/${pincode}`),
   serviceNetworks: () => request<string[]>('/api/v1/pincodes/service-areas/networks'),
   listServiceAreas: (network?: string, limit = 500) =>
     request<{ id: string; pincode: string; city: string | null; state: string | null; network: string; mode: string | null; tatDays: number | null; isOda: boolean }[]>(

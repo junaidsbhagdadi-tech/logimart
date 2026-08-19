@@ -56,6 +56,19 @@ export class PincodesService {
     return rows.map((r) => r.network);
   }
 
+  /** Which networks/products serve a pincode — one row per network, fastest TAT first. */
+  async serviceOptions(pincode: string) {
+    const rows = await this.prisma.serviceablePincode.findMany({
+      where: { pincode: pincode.trim(), isActive: true },
+      orderBy: [{ tatDays: 'asc' }],
+    });
+    const byNet = new Map<string, { network: string; mode: string | null; tatDays: number | null; isOda: boolean; city: string | null }>();
+    for (const r of rows) {
+      if (!byNet.has(r.network)) byNet.set(r.network, { network: r.network, mode: r.mode, tatDays: r.tatDays, isOda: r.isOda, city: r.city });
+    }
+    return Array.from(byNet.values()).sort((a, b) => (a.tatDays ?? 9999) - (b.tatDays ?? 9999));
+  }
+
   /** Coverage list, optionally filtered to one network (SELF or a vendor). */
   listServiceAreas(network?: string, limit = 500) {
     return this.prisma.serviceablePincode.findMany({

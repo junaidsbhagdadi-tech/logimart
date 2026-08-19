@@ -48,6 +48,7 @@ export function CreateShipment() {
   // services extras
   const [svc, setSvc] = useState({ vendor: '', service: '', shipmentValue: '', referenceNo: '', isCommercial: false, isMedical: false });
   const [flags, setFlags] = useState({ oda: false, appt: false });
+  const [svcOptions, setSvcOptions] = useState<{ network: string; mode: string | null; tatDays: number | null; isOda: boolean }[]>([]);
 
   const [hubs, setHubs] = useState<{ id: string; code: string; name: string }[]>([]);
   const [originHubId, setOriginHubId] = useState<number | ''>('');
@@ -110,7 +111,13 @@ export function CreateShipment() {
       setDestInfo(info);
       // auto-fetch city + state from the pincode master
       if (info?.city) setC((prev) => ({ ...prev, consigneeCity: info.city! }));
-    } else setDestInfo(null);
+      // which carrier products serve this pincode? auto-pick the fastest BlueDart product.
+      const opts = await api.serviceOptions(p).catch(() => []);
+      setSvcOptions(opts);
+      const best = opts.find((o) => o.network.startsWith('BLUEDART')) || opts[0];
+      if (best) setSvc((s) => ({ ...s, vendor: best.network, service: best.mode || s.service }));
+      if (best?.isOda) setFlags((f) => ({ ...f, oda: true }));
+    } else { setDestInfo(null); setSvcOptions([]); }
   };
 
   const setCf = (k: keyof typeof c, v: string) => setC((p) => ({ ...p, [k]: v }));
@@ -269,6 +276,24 @@ export function CreateShipment() {
             {pinHint(destInfo)}
           </div>
         </div>
+        {svcOptions.length > 0 && (
+          <div style={{ marginTop: 10, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10, background: '#f6f9f4' }}>
+            <div className="muted" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 6 }}>Carrier products serving {destPin} — fastest auto-picked</div>
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+              {svcOptions.map((o) => {
+                const picked = o.network === svc.vendor;
+                return (
+                  <button key={o.network} type="button"
+                    className={picked ? '' : 'secondary'}
+                    style={{ padding: '6px 12px', fontSize: 12 }}
+                    onClick={() => setSvc((s) => ({ ...s, vendor: o.network, service: o.mode || s.service }))}>
+                    {o.network} · {o.mode ?? '—'} · {o.tatDays != null ? `${o.tatDays}d` : 'TAT ?'}{o.isOda ? ' · ODA' : ''}{picked ? ' ✓' : ''}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {isFtl && (
