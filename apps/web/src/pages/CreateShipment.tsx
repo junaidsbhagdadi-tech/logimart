@@ -14,6 +14,25 @@ const volOf = (p: PieceForm) => {
 
 type PinInfo = Awaited<ReturnType<typeof api.lookupPincode>>;
 
+// Map a product's master attribute to the transport-mode enum billing uses.
+const MODES = ['AIR_EXPRESS', 'AIR_ECONOMY', 'ROAD_FTL', 'ROAD_PTL', 'RAIL'];
+function mapMode(v?: string): string {
+  const s = (v || '').toString().trim().toUpperCase().replace(/[\s-]+/g, '_');
+  if (!s) return '';
+  if (MODES.includes(s)) return s;
+  if (s.includes('FTL')) return 'ROAD_FTL';
+  if (s.includes('PTL') || s.includes('SURFACE') || s.includes('ROAD')) return 'ROAD_PTL';
+  if (s.includes('RAIL') || s.includes('TRAIN')) return 'RAIL';
+  if (s.includes('ECON')) return 'AIR_ECONOMY';
+  if (s.includes('AIR') || s.includes('EXP') || s.includes('PRIOR')) return 'AIR_EXPRESS';
+  return '';
+}
+const MODE_LABEL: Record<string, string> = {
+  AIR_EXPRESS: 'Air — Express', AIR_ECONOMY: 'Air — Economy',
+  ROAD_FTL: 'Road — FTL', ROAD_PTL: 'Road — PTL', RAIL: 'Rail',
+};
+const modeLabel = (m: string) => MODE_LABEL[m] ?? m;
+
 export function CreateShipment() {
   const nav = useNavigate();
   const { user } = useAuth();
@@ -21,8 +40,6 @@ export function CreateShipment() {
 
   const [clients, setClients] = useState<Client[]>([]);
   const [clientId, setClientId] = useState<number | ''>(ownClientId ?? '');
-  const [serviceMode, setServiceMode] = useState('ROAD_PTL');
-  const isFtl = serviceMode === 'ROAD_FTL';
   const [ftl, setFtl] = useState({ vehicleNo: '', ftlVehicleType: '32FT SXL', departureAt: '', arrivalAt: '' });
 
   const [originPin, setOriginPin] = useState('');
@@ -41,7 +58,7 @@ export function CreateShipment() {
   const [ewbNo, setEwbNo] = useState('');
 
   // services + charges (from the Product / Charges masters)
-  const [products, setProducts] = useState<{ code: string; name: string; type?: string }[]>([]);
+  const [products, setProducts] = useState<{ code: string; name: string; type?: string; mode?: string }[]>([]);
   const [chargeMasters, setChargeMasters] = useState<{ code: string; name: string }[]>([]);
   const [product, setProduct] = useState('');
   const [docType, setDocType] = useState<'DOX' | 'NDOX'>('NDOX');
@@ -49,6 +66,11 @@ export function CreateShipment() {
   const [charges, setCharges] = useState<{ code: string; name: string; amount: number }[]>([]);
   const [chargeCode, setChargeCode] = useState('');
   const [chargeAmt, setChargeAmt] = useState('');
+
+  // Product is the single service selector (Xpresion-style); transport mode is derived from it.
+  const selProduct = products.find((p) => p.code === product);
+  const serviceMode = selProduct?.mode || 'ROAD_PTL';
+  const isFtl = serviceMode === 'ROAD_FTL';
 
   const [pieces, setPieces] = useState<PieceForm[]>([{ ...blank }]);
   const [manualFreight, setManualFreight] = useState('');
@@ -67,7 +89,7 @@ export function CreateShipment() {
       if (hs[0]) setOriginHubId(Number(hs[0].id));
       setDestHubId(Number((hs[1] ?? hs[0])?.id));
     }).catch(() => {});
-    api.listMaster('PRODUCT').then((r) => setProducts(r.map((x) => ({ code: x.code, name: x.name, type: (x.attrs as any)?.productType || (x.attrs as any)?.groupType })))).catch(() => {});
+    api.listMaster('PRODUCT').then((r) => setProducts(r.map((x) => ({ code: x.code, name: x.name, type: (x.attrs as any)?.productType || (x.attrs as any)?.groupType, mode: mapMode((x.attrs as any)?.service || (x.attrs as any)?.mode || (x.attrs as any)?.serviceMode || (x.attrs as any)?.groupType) })))).catch(() => {});
     api.listMaster('CHARGE').then((r) => setChargeMasters(r.map((x) => ({ code: x.code, name: x.name })))).catch(() => {});
   }, []);
 
@@ -183,14 +205,14 @@ export function CreateShipment() {
             </div>
           )}
           <div>
-            <label>Service mode</label>
-            <select value={serviceMode} onChange={(e) => setServiceMode(e.target.value)}>
-              <option value="AIR_EXPRESS">Air — Express</option>
-              <option value="AIR_ECONOMY">Air — Economy</option>
-              <option value="ROAD_FTL">Road — FTL</option>
-              <option value="ROAD_PTL">Road — PTL</option>
-              <option value="RAIL">Rail</option>
+            <label>Product *</label>
+            <select value={product} onChange={(e) => setProduct(e.target.value)}>
+              <option value="">— select —</option>
+              {products.map((p) => <option key={p.code} value={p.code}>{p.code} — {p.name}{p.type ? ` (${p.type})` : ''}</option>)}
             </select>
+            <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+              Mode: <strong>{modeLabel(serviceMode)}</strong>{product && !selProduct?.mode ? ' (default — set this product’s mode in Masters)' : ''}
+            </div>
           </div>
           {hubs.length > 0 && (
             <>
@@ -256,14 +278,8 @@ export function CreateShipment() {
 
       <div className="card">
         <h2>🧾 Services &amp; charges</h2>
+        <p className="muted" style={{ marginTop: -8 }}>Product (which sets the service mode) is chosen above under Booking.</p>
         <div className="grid cols-3">
-          <div>
-            <label>Product</label>
-            <select value={product} onChange={(e) => setProduct(e.target.value)}>
-              <option value="">— select —</option>
-              {products.map((p) => <option key={p.code} value={p.code}>{p.code} — {p.name}{p.type ? ` (${p.type})` : ''}</option>)}
-            </select>
-          </div>
           <div>
             <label>Doc type</label>
             <select value={docType} onChange={(e) => setDocType(e.target.value as 'DOX' | 'NDOX')}>
