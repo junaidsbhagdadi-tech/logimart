@@ -146,6 +146,7 @@ export class ShipmentsService {
         shipmentValue: dto.shipmentValue != null ? new Prisma.Decimal(dto.shipmentValue) : null,
         isCommercial: dto.isCommercial ?? false,
         isMedical: dto.isMedical ?? false,
+        apptDelivery: dto.apptDelivery ?? false,
         referenceNo: dto.referenceNo || null,
         goodsDesc: dto.goodsDesc,
         hsnCode: dto.hsnCode,

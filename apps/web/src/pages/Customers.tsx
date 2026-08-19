@@ -9,7 +9,7 @@ const blank = {
   billingState: '', serviceCentre: '', origin: '', startDate: '',
   gstin: '', aadhaarNo: '', dobAadhaar: '', passportNo: '', pan: '', tanNo: '',
   invoiceFormat: '', customerType: 'Customer', registerType: 'Registered',
-  creditLimit: '', creditDays: '30', isOneTime: false,
+  creditLimit: '', creditDays: '30', isOneTime: false, isCash: false,
 };
 
 const TABS = ['Personal Information', 'Fuel Surcharges', 'Other Charges', 'Customer Volumetric', 'Customer Address'] as const;
@@ -66,6 +66,7 @@ export function Customers() {
         creditLimit: form.creditLimit ? +form.creditLimit : 0,
         creditDays: form.creditDays ? +form.creditDays : 30,
         isOneTime: form.isOneTime,
+        isCash: form.isCash,
       }) as Client;
       setMsg(`✓ Created ${c.legalName} (${c.accountCode})`);
       setForm({ ...blank });
@@ -139,6 +140,9 @@ export function Customers() {
               <label className="row" style={{ gap: 6, fontWeight: 600, color: 'var(--text)' }}>
                 <input type="checkbox" checked={form.isOneTime} onChange={(e) => setForm((f) => ({ ...f, isOneTime: e.target.checked }))} style={{ width: 'auto' }} /> One-time / walk-in customer
               </label>
+              <label className="row" style={{ gap: 6, fontWeight: 600, color: 'var(--text)' }}>
+                <input type="checkbox" checked={form.isCash} onChange={(e) => setForm((f) => ({ ...f, isCash: e.target.checked }))} style={{ width: 'auto' }} /> Cash customer (no invoices)
+              </label>
               <button style={{ marginLeft: 'auto' }} disabled={!form.legalName} onClick={create}>Save</button>
             </div>
           </>
@@ -160,7 +164,7 @@ export function Customers() {
                 <td>{c.accountCode}</td><td><strong>{c.legalName}</strong></td><td>{c.gstin ?? '—'}</td><td>{c.pan ?? '—'}</td>
                 <td>{c.city ?? '—'}</td><td>₹{c.creditLimit}</td><td>₹{c.outstandingBal}</td>
                 <td>Net {c.creditDays}</td>
-                <td>{c.isCreditHold ? <span className="badge PARTIAL">HOLD</span> : <span className="badge DELIVERED">OK</span>}</td>
+                <td>{c.isCash ? <span className="badge DOD">CASH</span> : c.isCreditHold ? <span className="badge PARTIAL">HOLD</span> : <span className="badge DELIVERED">OK</span>}</td>
                 <td>
                   <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => toggleActive(c)}>
                     {c.isActive === false ? 'Activate' : 'Deactivate'}

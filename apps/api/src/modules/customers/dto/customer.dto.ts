@@ -32,6 +32,7 @@ export class CreateClientDto {
   @IsOptional() @IsNumber() @Min(0) creditLimit?: number;
   @IsOptional() @IsInt() @Min(0) creditDays?: number;
   @IsOptional() @IsBoolean() isOneTime?: boolean;
+  @IsOptional() @IsBoolean() isCash?: boolean;
 }
 
 export class UpdateClientDto {
@@ -64,4 +65,5 @@ export class UpdateClientDto {
   @IsOptional() @IsString() registerType?: string;
   @IsOptional() @IsNumber() @Min(0) creditLimit?: number;
   @IsOptional() @IsInt() @Min(0) creditDays?: number;
+  @IsOptional() @IsBoolean() isCash?: boolean;
 }

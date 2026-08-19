@@ -84,6 +84,7 @@ export class CreateShipmentDto {
   @IsOptional() @IsNumber() shipmentValue?: number;
   @IsOptional() @IsBoolean() isCommercial?: boolean;
   @IsOptional() @IsBoolean() isMedical?: boolean;
+  @IsOptional() @IsBoolean() apptDelivery?: boolean;
   @IsOptional() @IsString() referenceNo?: string;
 
   // ---- FTL trip details (optional) ----

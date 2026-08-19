@@ -22,6 +22,8 @@ export function CreateShipment() {
 
   const [clients, setClients] = useState<Client[]>([]);
   const [clientId, setClientId] = useState<number | ''>(ownClientId ?? '');
+  const [custText, setCustText] = useState('');
+  const [prodText, setProdText] = useState('');
   const [ftl, setFtl] = useState({ vehicleNo: '', ftlVehicleType: '32FT SXL', departureAt: '', arrivalAt: '' });
 
   const [originPin, setOriginPin] = useState('');
@@ -45,6 +47,7 @@ export function CreateShipment() {
   const setS = (k: keyof typeof shp, v: string) => setShp((p) => ({ ...p, [k]: v }));
   // services extras
   const [svc, setSvc] = useState({ vendor: '', service: '', shipmentValue: '', referenceNo: '', isCommercial: false, isMedical: false });
+  const [flags, setFlags] = useState({ oda: false, appt: false });
 
   const [hubs, setHubs] = useState<{ id: string; code: string; name: string }[]>([]);
   const [originHubId, setOriginHubId] = useState<number | ''>('');
@@ -129,7 +132,8 @@ export function CreateShipment() {
         destZone: destInfo?.region ?? 'SOUTH',
         originPincode: originPin || undefined,
         destPincode: destPin || undefined,
-        isOda: destInfo?.isOda ?? false,
+        isOda: flags.oda || (destInfo?.isOda ?? false),
+        apptDelivery: flags.appt,
         consigneeName: c.consigneeName || undefined,
         consigneePhone: c.consigneePhone || undefined,
         consigneeAddress: c.consigneeAddress || undefined,
@@ -208,18 +212,32 @@ export function CreateShipment() {
           {!ownClientId && (
             <div>
               <label>Customer *</label>
-              <select value={clientId} onChange={(e) => setClientId(e.target.value ? +e.target.value : '')}>
-                <option value="">— select —</option>
-                {clients.map((cl) => <option key={cl.id} value={cl.id}>{cl.legalName}</option>)}
-              </select>
+              <input
+                list="lm-customers"
+                value={custText}
+                placeholder="search by name or code…"
+                onChange={(e) => {
+                  const v = e.target.value; setCustText(v);
+                  const m = clients.find((c) => `${c.accountCode} — ${c.legalName}` === v || c.accountCode.toLowerCase() === v.toLowerCase() || c.legalName.toLowerCase() === v.toLowerCase());
+                  setClientId(m ? Number(m.id) : '');
+                }}
+              />
+              <datalist id="lm-customers">{clients.map((cl) => <option key={cl.id} value={`${cl.accountCode} — ${cl.legalName}`} />)}</datalist>
             </div>
           )}
           <div>
             <label>Product *</label>
-            <select value={product} onChange={(e) => setProduct(e.target.value)}>
-              <option value="">— select —</option>
-              {products.map((p) => <option key={p.code} value={p.code}>{p.code} — {p.name}{p.type ? ` (${p.type})` : ''}</option>)}
-            </select>
+            <input
+              list="lm-products"
+              value={prodText}
+              placeholder="search product…"
+              onChange={(e) => {
+                const v = e.target.value; setProdText(v);
+                const m = products.find((p) => `${p.code} — ${p.name}${p.type ? ` (${p.type})` : ''}` === v || p.code.toLowerCase() === v.toLowerCase() || p.name.toLowerCase() === v.toLowerCase());
+                setProduct(m ? m.code : '');
+              }}
+            />
+            <datalist id="lm-products">{products.map((p) => <option key={p.code} value={`${p.code} — ${p.name}${p.type ? ` (${p.type})` : ''}`} />)}</datalist>
             <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
               Mode: <strong>{modeLabel(serviceMode)}</strong>{product && !selProduct?.mode ? ' (default — set this product’s mode in Masters)' : ''}
             </div>
@@ -313,6 +331,10 @@ export function CreateShipment() {
           <div><label>Agreed freight ₹ (one-time — overrides rate card)</label><input type="number" value={manualFreight} onChange={(e) => setManualFreight(e.target.value)} placeholder="optional" /></div>
           <div><label>HSN</label><input value={c.hsnCode} onChange={(e) => setCf('hsnCode', e.target.value)} /></div>
           <div style={{ gridColumn: 'span 2' }}><label>Goods description</label><input value={c.goodsDesc} onChange={(e) => setCf('goodsDesc', e.target.value)} /></div>
+        </div>
+        <div className="row" style={{ gap: 20, marginTop: 10 }}>
+          <label className="row" style={{ gap: 6, fontWeight: 600, color: 'var(--text)' }}><input type="checkbox" style={{ width: 'auto' }} checked={flags.oda} onChange={(e) => setFlags({ ...flags, oda: e.target.checked })} /> ODA (out-of-delivery-area)</label>
+          <label className="row" style={{ gap: 6, fontWeight: 600, color: 'var(--text)' }}><input type="checkbox" style={{ width: 'auto' }} checked={flags.appt} onChange={(e) => setFlags({ ...flags, appt: e.target.checked })} /> Appointment delivery</label>
         </div>
       </div>
 

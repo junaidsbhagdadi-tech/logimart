@@ -55,6 +55,7 @@ export class CustomersService {
           creditLimit: new Prisma.Decimal(dto.creditLimit ?? 0),
           creditDays: dto.creditDays ?? 30,
           isOneTime: dto.isOneTime ?? false,
+          isCash: dto.isCash ?? false,
         },
       });
     } catch (e) {
@@ -116,7 +117,7 @@ export class CustomersService {
   }
   addCharge(clientId: number, d: any) {
     return this.prisma.customerOtherCharge.create({ data: {
-      clientId: BigInt(clientId), chargeDesc: d.chargeDesc, origin: d.origin, product: d.product,
+      clientId: BigInt(clientId), chargeDesc: d.chargeDesc, vendor: d.vendor || null, origin: d.origin, product: d.product,
       destination: d.destination, service: d.service, fromDate: this.date(d.fromDate), toDate: this.date(d.toDate),
       value: this.dec(d.value), minimumValue: d.minimumValue != null && d.minimumValue !== '' ? this.dec(d.minimumValue) : null,
     } });

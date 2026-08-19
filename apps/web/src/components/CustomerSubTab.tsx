@@ -31,12 +31,13 @@ const CONFIG: Record<Kind, { fields: Field[]; cols: string[] }> = {
   charges: {
     fields: [
       { key: 'chargeDesc', label: 'Charge Desc *', type: 'select', options: CHARGE_TYPES, required: true },
+      { key: 'vendor', label: 'Vendor (blank = all)' },
       { key: 'fromDate', label: 'From Date', type: 'date' }, { key: 'toDate', label: 'To Date', type: 'date' },
       { key: 'origin', label: 'Origin' }, { key: 'product', label: 'Product' }, { key: 'destination', label: 'Destination' },
       { key: 'service', label: 'Service' }, { key: 'value', label: 'Value *', type: 'number', required: true },
       { key: 'minimumValue', label: 'Minimum Value', type: 'number' },
     ],
-    cols: ['chargeDesc', 'origin', 'destination', 'service', 'fromDate', 'toDate', 'value', 'minimumValue'],
+    cols: ['chargeDesc', 'vendor', 'destination', 'service', 'fromDate', 'toDate', 'value', 'minimumValue'],
   },
   vol: {
     fields: [

@@ -181,6 +181,7 @@ export interface Client {
   outstandingBal: string;
   isCreditHold: boolean;
   isActive: boolean;
+  isCash?: boolean;
 }
 export interface RateCardRow {
   id: string;

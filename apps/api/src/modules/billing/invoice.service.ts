@@ -30,6 +30,9 @@ export class InvoiceService {
   async generate(clientId: number, periodStart: string, periodEnd: string) {
     const client = await this.prisma.b2bClient.findUnique({ where: { id: BigInt(clientId) } });
     if (!client) throw new NotFoundException('Client not found');
+    if (client.isCash) {
+      throw new BadRequestException(`${client.legalName} is a CASH customer — invoices are not generated (paid at booking/delivery).`);
+    }
 
     const shipments = await this.prisma.shipment.findMany({
       where: {

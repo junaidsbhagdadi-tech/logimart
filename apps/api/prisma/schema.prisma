@@ -93,6 +93,7 @@ model B2bClient {
   isCreditHold    Boolean  @default(false)
   isActive        Boolean  @default(true)
   isOneTime       Boolean  @default(false) // walk-in / ad-hoc, non-contract
+  isCash          Boolean  @default(false) // cash customer — no invoices generated
   createdAt       DateTime @default(now())
 
   users        User[]
@@ -183,6 +184,7 @@ model FuelPrice {
 model CustomerOtherCharge {
   id           BigInt    @id @default(autoincrement())
   clientId     BigInt
+  vendor       String?   // vendor-specific charge (blank = all vendors / SELF)
   chargeDesc   String    // AIRWAYBILL CHARGES | FREIGHT ON VALUE | ...
   fromDate     DateTime?
   toDate       DateTime?
@@ -339,6 +341,7 @@ model Shipment {
   shipmentValue  Decimal? @db.Decimal(14, 2)
   isCommercial   Boolean  @default(false)
   isMedical      Boolean  @default(false)
+  apptDelivery   Boolean  @default(false) // appointment delivery required
   referenceNo    String?
 
   vehicleNo      String?
