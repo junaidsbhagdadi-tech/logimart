@@ -72,7 +72,7 @@ export function InvoicePrint() {
             {c?.gstin && <><br />GSTIN: {c.gstin}</>}
           </div>
           <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-            Place of supply: <strong>{inv.placeOfSupply ?? '—'}</strong> · SAC: <strong>{inv.sacCode ?? '9968'}</strong>
+            Place of supply: <strong>{inv.placeOfSupply ?? '—'}</strong> · SAC: <strong>{inv.sacCode ?? COMPANY.sacCode}</strong>
           </div>
         </div>
 
@@ -114,8 +114,21 @@ export function InvoicePrint() {
             GST e-invoice IRN: {inv.irn}
           </div>
         )}
-        <div className="muted" style={{ marginTop: 24, fontSize: 11 }}>
-          This is a computer-generated tax invoice. {COMPANY.legalName}.
+
+        <div className="inv-terms">
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>Terms &amp; Conditions</div>
+          <ol style={{ margin: 0, paddingLeft: 18, fontSize: 11.5, lineHeight: 1.6 }}>
+            {COMPANY.terms.map((t, i) => <li key={i}>{t}</li>)}
+          </ol>
+          <div style={{ marginTop: 8, fontSize: 11.5, lineHeight: 1.7 }}>
+            <div><strong>Beneficiary Name:</strong> {COMPANY.bank.beneficiary}</div>
+            <div><strong>Bank Name:</strong> {COMPANY.bank.name} &nbsp;·&nbsp; <strong>A/C No.:</strong> {COMPANY.bank.accountNo}</div>
+            <div><strong>IFSC Code:</strong> {COMPANY.bank.ifsc} &nbsp;·&nbsp; <strong>Branch:</strong> {COMPANY.bank.branch}</div>
+          </div>
+        </div>
+
+        <div className="muted" style={{ marginTop: 16, fontSize: 11, textAlign: 'center' }}>
+          ★ This is a computer-generated document and does not require a physical signature. — {COMPANY.legalName}
         </div>
       </div>
     </div>

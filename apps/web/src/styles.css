@@ -309,6 +309,8 @@ tbody tr:hover td { background: var(--sky-soft); }
 .inv-totals { margin-top: 16px; margin-left: auto; width: 280px; }
 .inv-totals > div { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; }
 .inv-totals .grand { border-top: 2px solid var(--navy); margin-top: 4px; padding-top: 8px; font-weight: 800; font-size: 17px; color: var(--navy); }
+.inv-terms { margin-top: 18px; border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; background: #fafcff; clear: both; }
+.inv-terms ol li { margin-bottom: 3px; }
 
 /* ============ thermal labels ============ */
 .label-sheet { display:grid; grid-template-columns: repeat(2, 1fr); gap:16px; }
