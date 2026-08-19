@@ -3,8 +3,11 @@ import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
 
-/** Bulk booking — paste or upload a CSV (export from Excel) → many AWBs at once. */
-const COLS_STAFF = ['clientId', 'serviceMode', 'originPincode', 'destPincode', 'consigneeName', 'consigneePhone', 'consigneeAddress', 'declaredValue', 'deadKg'];
+/** Bulk booking — paste or upload a CSV (export from Excel) → many AWBs at once.
+ * MPS: one row per BOX; rows sharing the same `ref` are grouped into a single AWB
+ * (each row contributes one piece with its own dimensions). Shipment-level fields are
+ * taken from the first row of each ref group. A blank ref = a single-box shipment. */
+const COLS_STAFF = ['ref', 'clientId', 'serviceMode', 'originPincode', 'destPincode', 'consigneeName', 'consigneePhone', 'consigneeAddress', 'declaredValue', 'deadKg', 'lengthCm', 'widthCm', 'heightCm'];
 const COLS_CLIENT = COLS_STAFF.filter((c) => c !== 'clientId');
 
 export function BulkBooking() {
@@ -23,11 +26,31 @@ export function BulkBooking() {
   }, []);
 
   const rows = useMemo(() => parseCsv(text), [text]);
+  // group box-rows into shipments by `ref` (blank ref = its own single-box shipment)
+  const grouped = useMemo(() => {
+    const m = new Map<string, Record<string, string>[]>();
+    rows.forEach((r, i) => {
+      const key = r.ref && r.ref.trim() ? r.ref.trim() : `__row${i}`;
+      const arr = m.get(key) ?? [];
+      arr.push(r);
+      m.set(key, arr);
+    });
+    return Array.from(m.values());
+  }, [rows]);
 
   const downloadTemplate = () => {
+    // A1 = a 2-box MPS shipment (two rows, same ref); A2 = a single-box shipment.
     const sample = ownClientId
-      ? 'ROAD_PTL,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,5'
-      : '1,ROAD_PTL,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,5';
+      ? [
+          'A1,ROAD_PTL,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,5,30,20,15',
+          'A1,ROAD_PTL,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,8,40,30,20',
+          'A2,ROAD_PTL,560001,400001,Beta Corp,9812345670,5 Fort Mumbai,12000,3,25,20,10',
+        ].join('\n')
+      : [
+          'A1,1,ROAD_PTL,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,5,30,20,15',
+          'A1,1,ROAD_PTL,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,8,40,30,20',
+          'A2,1,ROAD_PTL,560001,400001,Beta Corp,9812345670,5 Fort Mumbai,12000,3,25,20,10',
+        ].join('\n');
     const csv = cols.join(',') + '\n' + sample + '\n';
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     const a = document.createElement('a'); a.href = url; a.download = 'logimart-bulk-booking-template.csv'; a.click();
@@ -38,20 +61,29 @@ export function BulkBooking() {
 
   const submit = async () => {
     setError(''); setResult(null);
-    if (rows.length === 0) { setError('No rows found. Paste CSV or upload a file.'); return; }
-    const dtos = rows.map((r) => ({
-      clientId: ownClientId ?? Number(r.clientId),
-      serviceMode: (r.serviceMode || 'ROAD_PTL').toUpperCase(),
-      originHubId: hubIds[0], destHubId: hubIds[1],
-      originZone: 'SOUTH', destZone: 'SOUTH',
-      originPincode: r.originPincode || undefined,
-      destPincode: r.destPincode || undefined,
-      consigneeName: r.consigneeName || undefined,
-      consigneePhone: r.consigneePhone || undefined,
-      consigneeAddress: r.consigneeAddress || undefined,
-      declaredValue: r.declaredValue ? Number(r.declaredValue) : undefined,
-      pieces: [{ deadKg: Number(r.deadKg) || 0.5 }],
-    }));
+    if (grouped.length === 0) { setError('No rows found. Paste CSV or upload a file.'); return; }
+    const dtos = grouped.map((grp) => {
+      const first = grp[0];
+      return {
+        clientId: ownClientId ?? Number(first.clientId),
+        serviceMode: (first.serviceMode || 'ROAD_PTL').toUpperCase(),
+        originHubId: hubIds[0], destHubId: hubIds[1],
+        originZone: 'SOUTH', destZone: 'SOUTH',
+        originPincode: first.originPincode || undefined,
+        destPincode: first.destPincode || undefined,
+        consigneeName: first.consigneeName || undefined,
+        consigneePhone: first.consigneePhone || undefined,
+        consigneeAddress: first.consigneeAddress || undefined,
+        declaredValue: first.declaredValue ? Number(first.declaredValue) : undefined,
+        // one piece per box-row, each with its own dimensions (MPS)
+        pieces: grp.map((r) => ({
+          deadKg: Number(r.deadKg) || 0.5,
+          lengthCm: r.lengthCm ? Number(r.lengthCm) : undefined,
+          widthCm: r.widthCm ? Number(r.widthCm) : undefined,
+          heightCm: r.heightCm ? Number(r.heightCm) : undefined,
+        })),
+      };
+    });
     setBusy(true);
     try { setResult(await api.bulkCreateShipments(dtos)); }
     catch (e: any) { setError(e.message); }
@@ -66,8 +98,10 @@ export function BulkBooking() {
       <div className="card">
         <h2>How it works</h2>
         <p className="muted" style={{ marginTop: -6 }}>
-          Download the template, fill one shipment per row in Excel, save as CSV, then upload or paste it below.
-          E-way bills auto-generate for rows with invoice value ≥ ₹50,000.
+          Fill <strong>one box per row</strong> in Excel, save as CSV, then upload or paste below. For a multi-box
+          shipment (MPS), give every box the <strong>same <code>ref</code></strong> — they book under one AWB, each
+          box carrying its own weight + dimensions (L×W×H cm). A blank <code>ref</code> = a single-box shipment.
+          E-way bills auto-generate when invoice value ≥ ₹50,000.
         </p>
         <div className="row">
           <button className="secondary" onClick={downloadTemplate}>⬇ Download CSV template</button>
@@ -84,8 +118,8 @@ export function BulkBooking() {
         <textarea rows={8} value={text} onChange={(e) => setText(e.target.value)} placeholder={cols.join(',') + '\n…'}
           style={{ width: '100%', font: '13px monospace', padding: 12, border: '1px solid var(--border)', borderRadius: 11 }} />
         <div className="row" style={{ marginTop: 12, justifyContent: 'space-between', alignItems: 'center' }}>
-          <div className="muted"><strong>{rows.length}</strong> row(s) detected</div>
-          <button disabled={busy || rows.length === 0} onClick={submit}>{busy ? 'Booking…' : `Book ${rows.length} shipment(s)`}</button>
+          <div className="muted"><strong>{rows.length}</strong> box(es) → <strong>{grouped.length}</strong> shipment(s)</div>
+          <button disabled={busy || grouped.length === 0} onClick={submit}>{busy ? 'Booking…' : `Book ${grouped.length} shipment(s)`}</button>
         </div>
       </div>
 
