@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, ShipmentStatus } from '@prisma/client';
+import { PieceStatus, Prisma, ShipmentStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreatePodDto } from './dto/create-pod.dto';
@@ -63,6 +63,17 @@ export class PodsService {
       where: { id: shipment.id },
       data: { status: isShort ? ShipmentStatus.PARTIAL : ShipmentStatus.DELIVERED },
     });
+
+    // Mark the delivered pieces DELIVERED so billing (which bills delivered pieces) picks them up.
+    if (isShort) {
+      const ps = await this.prisma.shipmentPiece.findMany({
+        where: { shipmentId: shipment.id }, orderBy: { sequenceNo: 'asc' }, select: { id: true },
+      });
+      const ids = ps.slice(0, dto.piecesDelivered).map((p) => p.id);
+      if (ids.length) await this.prisma.shipmentPiece.updateMany({ where: { id: { in: ids } }, data: { status: PieceStatus.DELIVERED } });
+    } else {
+      await this.prisma.shipmentPiece.updateMany({ where: { shipmentId: shipment.id }, data: { status: PieceStatus.DELIVERED } });
+    }
 
     await this.notifications.notify({
       channel: shipment.consigneePhone ? 'whatsapp' : 'inapp',
