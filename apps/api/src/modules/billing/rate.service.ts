@@ -21,6 +21,7 @@ export interface ChargeBreakup {
 }
 
 const r2 = (n: number) => +n.toFixed(2);
+const DEFAULT_FUEL_CAP = 50; // guardrail: dynamic fuel-surcharge % can't exceed this unless a maxPct is set
 
 @Injectable()
 export class RateService {
@@ -105,29 +106,29 @@ export class RateService {
     const by = (t: string) => slabs.filter((s) => String(s.rateType).toUpperCase() === t).sort((a, b) => Number(a.weight) - Number(b.weight));
     const upto = by('UPTO');
     const initial = by('INITIAL');
-    const additional = [...by('ADDITIONAL'), ...by('PLUSKG'), ...by('PLUS')].sort((a, b) => Number(a.weight) - Number(b.weight));
-    const step = additional[0];
-    const stepAdd = (base: number, fromKg: number) => {
-      if (!step) return base;
-      const sw = Number(step.weight) || 1;
+    const pluskg = by('PLUSKG')[0];                                  // ₹/kg × chargeable weight
+    const additional = [...by('ADDITIONAL'), ...by('PLUS')].sort((a, b) => Number(a.weight) - Number(b.weight))[0]; // per weight-block
+    // Increment beyond a base weight: PLUSKG is per-kg, ADDITIONAL/PLUS is per block.
+    const addBeyond = (base: number, fromKg: number) => {
       const extra = kg - fromKg;
-      return extra <= 0 ? base : base + Math.ceil(extra / sw) * Number(step.rate);
+      if (extra <= 0) return base;
+      if (pluskg) return base + extra * Number(pluskg.rate);
+      if (additional) { const sw = Number(additional.weight) || 1; return base + Math.ceil(extra / sw) * Number(additional.rate); }
+      return base;
     };
 
     if (upto.length) {
       const tier = upto.find((u) => kg <= Number(u.weight));
       if (tier) return { freight: Number(tier.rate), basis: `slab UPTO ${tier.weight}kg` };
       const last = upto[upto.length - 1];
-      return { freight: stepAdd(Number(last.rate), Number(last.weight)), basis: `slab UPTO ${last.weight}kg + add` };
+      return { freight: addBeyond(Number(last.rate), Number(last.weight)), basis: `slab UPTO ${last.weight}kg + add` };
     }
     if (initial.length) {
       const init = [...initial].reverse().find((i) => Number(i.weight) <= kg) || initial[0];
-      return { freight: stepAdd(Number(init.rate), Number(init.weight)), basis: `slab INITIAL ${init.weight}kg` };
+      return { freight: addBeyond(Number(init.rate), Number(init.weight)), basis: `slab INITIAL ${init.weight}kg` };
     }
-    if (step) {
-      const sw = Number(step.weight) || 1;
-      return { freight: Math.ceil(kg / sw) * Number(step.rate), basis: 'slab per-kg' };
-    }
+    if (pluskg) return { freight: +(kg * Number(pluskg.rate)).toFixed(2), basis: `slab ₹${pluskg.rate}/kg` }; // pure per-kg
+    if (additional) { const sw = Number(additional.weight) || 1; return { freight: Math.ceil(kg / sw) * Number(additional.rate), basis: 'slab per-block' }; }
     return null;
   }
 
@@ -142,6 +143,15 @@ export class RateService {
    * FLAT   -> the stored percentage.
    * DYNAMIC-> basePct + (currentDiesel - baseFuelPrice) * stepPerRupee, floored at 0.
    */
+  /** Customer FOV (Freight On Value) % + min, from the Other Charges "FREIGHT ON VALUE" row. */
+  private async customerFov(clientId: bigint): Promise<{ pct: number; min: number } | null> {
+    const oc = await this.prisma.customerOtherCharge.findFirst({
+      where: { clientId, chargeDesc: { in: ['FREIGHT ON VALUE', 'FOV'] } },
+      orderBy: { id: 'desc' },
+    });
+    return oc ? { pct: Number(oc.value ?? 0), min: Number(oc.minimumValue ?? 0) } : null;
+  }
+
   private async customerFuelPct(clientId: bigint): Promise<number> {
     const fs = await this.prisma.customerFuelSurcharge.findFirst({
       where: { clientId, OR: [{ fromDate: null }, { fromDate: { lte: new Date() } }] },
@@ -149,16 +159,17 @@ export class RateService {
     });
     if (!fs) return 0;
     // Params come from the row; a linked Fuel Mechanism master (if set) overrides them.
-    let mode = fs.mode, basePct: any = fs.basePct, baseFuel: any = fs.baseFuelPrice, step: any = fs.stepPerRupee, flat: any = fs.percentage;
+    let mode = fs.mode, basePct: any = fs.basePct, baseFuel: any = fs.baseFuelPrice, step: any = fs.stepPerRupee, flat: any = fs.percentage, cap: any = fs.maxPct;
     if (fs.mechanism) {
       const m = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'FUEL_MECHANISM', code: fs.mechanism } } });
       const a: any = m?.attrs || {};
-      if (m) { mode = a.mode || mode; basePct = a.basePct ?? basePct; baseFuel = a.baseFuelPrice ?? baseFuel; step = a.stepPerRupee ?? step; flat = a.percentage ?? flat; }
+      if (m) { mode = a.mode || mode; basePct = a.basePct ?? basePct; baseFuel = a.baseFuelPrice ?? baseFuel; step = a.stepPerRupee ?? step; flat = a.percentage ?? flat; cap = a.maxPct ?? cap; }
     }
     if (String(mode || 'FLAT').toUpperCase() === 'DYNAMIC') {
       const diesel = await this.currentDieselPrice();
-      const pct = Number(basePct ?? 0) + (diesel - Number(baseFuel ?? 0)) * Number(step ?? 0);
-      return Math.max(0, +pct.toFixed(2));
+      const raw = Number(basePct ?? 0) + (diesel - Number(baseFuel ?? 0)) * Number(step ?? 0);
+      const ceiling = cap != null && cap !== '' && Number(cap) > 0 ? Number(cap) : DEFAULT_FUEL_CAP;
+      return Math.max(0, Math.min(ceiling, +raw.toFixed(2)));
     }
     return Number(flat ?? 0);
   }
@@ -216,9 +227,14 @@ export class RateService {
     const freight = r2(priced.freight);
     const fuelPct = await this.customerFuelPct(shipment.clientId);
     const fuel = r2(freight * (fuelPct / 100));
+    // FOV (Freight On Value) — % of the invoice/declared value, from the customer's Other Charges
+    const fovCfg = await this.customerFov(shipment.clientId);
+    const invVal = Number(shipment.shipmentValue ?? shipment.declaredValue ?? 0);
+    const fov = fovCfg ? r2(Math.max((invVal * fovCfg.pct) / 100, fovCfg.min)) : 0;
     const lines = [{ head: `Freight (${priced.basis})`, amount: freight }];
     if (fuel > 0) lines.push({ head: `Fuel ${fuelPct}%`, amount: fuel });
-    return { chargeableKg, freight, fuel, fov: 0, oda: 0, docket: 0, handling: 0, subtotal: r2(freight + fuel), lines, basis: priced.basis };
+    if (fov > 0) lines.push({ head: `FOV ${fovCfg!.pct}% on ₹${invVal}`, amount: fov });
+    return { chargeableKg, freight, fuel, fov, oda: 0, docket: 0, handling: 0, subtotal: r2(freight + fuel + fov), lines, basis: priced.basis };
   }
 
   /**

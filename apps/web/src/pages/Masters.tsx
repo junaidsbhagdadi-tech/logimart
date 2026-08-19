@@ -26,6 +26,7 @@ const MASTERS: MasterDef[] = [
     F('basePct', 'Base %  (DYNAMIC)', { attr: true, type: 'number' }),
     F('baseFuelPrice', 'Base diesel ₹/L  (DYNAMIC)', { attr: true, type: 'number' }),
     F('stepPerRupee', '% per ₹1 rise  (DYNAMIC)', { attr: true, type: 'number' }),
+    F('maxPct', 'Max % cap  (DYNAMIC, default 50)', { attr: true, type: 'number' }),
   ] },
   { key: 'CHARGE', label: 'Charges', icon: '💱', fields: [
     F('code', 'Charge code'), F('name', 'Charge name'),
@@ -93,8 +94,9 @@ export function Masters() {
   // Fuel Mechanism live calculator (effective surcharge % at the current diesel price)
   const fa = form.attrs || {};
   const fmode = String(fa.mode || 'FLAT').toUpperCase();
+  const fcap = Number(fa.maxPct) > 0 ? Number(fa.maxPct) : 50;
   const feff = fmode === 'DYNAMIC'
-    ? Math.max(0, Number(fa.basePct || 0) + ((diesel || 0) - Number(fa.baseFuelPrice || 0)) * Number(fa.stepPerRupee || 0))
+    ? Math.max(0, Math.min(fcap, Number(fa.basePct || 0) + ((diesel || 0) - Number(fa.baseFuelPrice || 0)) * Number(fa.stepPerRupee || 0)))
     : Number(fa.percentage || 0);
 
   const val = (f: Field) => (f.attr ? form.attrs?.[f.key] ?? '' : form[f.key] ?? '');

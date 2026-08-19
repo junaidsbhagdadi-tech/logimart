@@ -158,6 +158,7 @@ model CustomerFuelSurcharge {
   basePct       Decimal?  @db.Decimal(6, 2) // dynamic: base % at base fuel price
   baseFuelPrice Decimal?  @db.Decimal(8, 2) // dynamic: reference diesel ₹/L
   stepPerRupee  Decimal?  @db.Decimal(6, 3) // dynamic: +X% per ₹1 above base
+  maxPct        Decimal?  @db.Decimal(6, 2) // dynamic: safety cap on the effective %
   createdAt     DateTime  @default(now())
 
   @@index([clientId])

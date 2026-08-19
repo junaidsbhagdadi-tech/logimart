@@ -105,7 +105,7 @@ export class CustomersService {
       mechanism: d.mechanism || null,
       mode: (d.mode || 'FLAT').toUpperCase() === 'DYNAMIC' ? 'DYNAMIC' : 'FLAT',
       percentage: num(d.percentage),
-      basePct: num(d.basePct), baseFuelPrice: num(d.baseFuelPrice), stepPerRupee: num(d.stepPerRupee),
+      basePct: num(d.basePct), baseFuelPrice: num(d.baseFuelPrice), stepPerRupee: num(d.stepPerRupee), maxPct: num(d.maxPct),
     } });
   }
   delFuel(rowId: number) { return this.prisma.customerFuelSurcharge.delete({ where: { id: BigInt(rowId) } }); }
