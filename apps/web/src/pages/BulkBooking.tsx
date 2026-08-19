@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
+import { mapMode } from '../productMode';
 
 /** Bulk booking — paste or upload a CSV (export from Excel) → many AWBs at once.
  * MPS: one row per BOX; rows sharing the same `ref` are grouped into a single AWB
  * (each row contributes one piece with its own dimensions). Shipment-level fields are
  * taken from the first row of each ref group. A blank ref = a single-box shipment. */
-const COLS_STAFF = ['ref', 'clientId', 'serviceMode', 'originPincode', 'destPincode', 'consigneeName', 'consigneePhone', 'consigneeAddress', 'declaredValue', 'deadKg', 'lengthCm', 'widthCm', 'heightCm'];
+const COLS_STAFF = ['ref', 'clientId', 'product', 'originPincode', 'destPincode', 'consigneeName', 'consigneePhone', 'consigneeAddress', 'declaredValue', 'deadKg', 'lengthCm', 'widthCm', 'heightCm'];
 const COLS_CLIENT = COLS_STAFF.filter((c) => c !== 'clientId');
 
 export function BulkBooking() {
@@ -21,8 +22,15 @@ export function BulkBooking() {
   const [error, setError] = useState('');
   const [result, setResult] = useState<{ total: number; created: number; results: { row: number; ok: boolean; awb?: string; error?: string }[] } | null>(null);
 
+  const [prodModes, setProdModes] = useState<Record<string, string>>({}); // product code -> transport mode
+
   useEffect(() => {
     api.listHubs().then((hs) => { if (hs[0]) setHubIds([Number(hs[0].id), Number((hs[1] ?? hs[0]).id)]); }).catch(() => {});
+    api.listMaster('PRODUCT').then((r) => {
+      const m: Record<string, string> = {};
+      r.forEach((x) => { m[x.code.toUpperCase()] = mapMode((x.attrs as any)?.service || (x.attrs as any)?.mode || (x.attrs as any)?.serviceMode || (x.attrs as any)?.groupType); });
+      setProdModes(m);
+    }).catch(() => {});
   }, []);
 
   const rows = useMemo(() => parseCsv(text), [text]);
@@ -40,16 +48,17 @@ export function BulkBooking() {
 
   const downloadTemplate = () => {
     // A1 = a 2-box MPS shipment (two rows, same ref); A2 = a single-box shipment.
+    const p = Object.keys(prodModes)[0] || 'SURFACE'; // a real product code if any, else a mode keyword
     const sample = ownClientId
       ? [
-          'A1,ROAD_PTL,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,5,30,20,15',
-          'A1,ROAD_PTL,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,8,40,30,20',
-          'A2,ROAD_PTL,560001,400001,Beta Corp,9812345670,5 Fort Mumbai,12000,3,25,20,10',
+          `A1,${p},560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,5,30,20,15`,
+          `A1,${p},560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,8,40,30,20`,
+          `A2,${p},560001,400001,Beta Corp,9812345670,5 Fort Mumbai,12000,3,25,20,10`,
         ].join('\n')
       : [
-          'A1,1,ROAD_PTL,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,5,30,20,15',
-          'A1,1,ROAD_PTL,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,8,40,30,20',
-          'A2,1,ROAD_PTL,560001,400001,Beta Corp,9812345670,5 Fort Mumbai,12000,3,25,20,10',
+          `A1,1,${p},560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,5,30,20,15`,
+          `A1,1,${p},560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,8,40,30,20`,
+          `A2,1,${p},560001,400001,Beta Corp,9812345670,5 Fort Mumbai,12000,3,25,20,10`,
         ].join('\n');
     const csv = cols.join(',') + '\n' + sample + '\n';
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -64,9 +73,13 @@ export function BulkBooking() {
     if (grouped.length === 0) { setError('No rows found. Paste CSV or upload a file.'); return; }
     const dtos = grouped.map((grp) => {
       const first = grp[0];
+      const prodCode = (first.product || '').trim();
+      // derive the transport mode from the product (master mapping first, then keyword)
+      const serviceMode = prodModes[prodCode.toUpperCase()] || mapMode(prodCode) || 'ROAD_PTL';
       return {
         clientId: ownClientId ?? Number(first.clientId),
-        serviceMode: (first.serviceMode || 'ROAD_PTL').toUpperCase(),
+        product: prodCode || undefined,
+        serviceMode,
         originHubId: hubIds[0], destHubId: hubIds[1],
         originZone: 'SOUTH', destZone: 'SOUTH',
         originPincode: first.originPincode || undefined,
@@ -101,6 +114,7 @@ export function BulkBooking() {
           Fill <strong>one box per row</strong> in Excel, save as CSV, then upload or paste below. For a multi-box
           shipment (MPS), give every box the <strong>same <code>ref</code></strong> — they book under one AWB, each
           box carrying its own weight + dimensions (L×W×H cm). A blank <code>ref</code> = a single-box shipment.
+          The <code>product</code> column sets the service / transport mode (same as the booking form).
           E-way bills auto-generate when invoice value ≥ ₹50,000.
         </p>
         <div className="row">

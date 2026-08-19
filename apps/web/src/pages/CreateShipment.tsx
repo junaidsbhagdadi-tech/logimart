@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, Client } from '../api';
 import { useAuth } from '../auth';
+import { mapMode, modeLabel } from '../productMode';
 
 interface PieceForm { deadKg: string; lengthCm: string; widthCm: string; heightCm: string; }
 const blank: PieceForm = { deadKg: '', lengthCm: '', widthCm: '', heightCm: '' };
@@ -13,25 +14,6 @@ const volOf = (p: PieceForm) => {
 };
 
 type PinInfo = Awaited<ReturnType<typeof api.lookupPincode>>;
-
-// Map a product's master attribute to the transport-mode enum billing uses.
-const MODES = ['AIR_EXPRESS', 'AIR_ECONOMY', 'ROAD_FTL', 'ROAD_PTL', 'RAIL'];
-function mapMode(v?: string): string {
-  const s = (v || '').toString().trim().toUpperCase().replace(/[\s-]+/g, '_');
-  if (!s) return '';
-  if (MODES.includes(s)) return s;
-  if (s.includes('FTL')) return 'ROAD_FTL';
-  if (s.includes('PTL') || s.includes('SURFACE') || s.includes('ROAD')) return 'ROAD_PTL';
-  if (s.includes('RAIL') || s.includes('TRAIN')) return 'RAIL';
-  if (s.includes('ECON')) return 'AIR_ECONOMY';
-  if (s.includes('AIR') || s.includes('EXP') || s.includes('PRIOR')) return 'AIR_EXPRESS';
-  return '';
-}
-const MODE_LABEL: Record<string, string> = {
-  AIR_EXPRESS: 'Air — Express', AIR_ECONOMY: 'Air — Economy',
-  ROAD_FTL: 'Road — FTL', ROAD_PTL: 'Road — PTL', RAIL: 'Rail',
-};
-const modeLabel = (m: string) => MODE_LABEL[m] ?? m;
 
 export function CreateShipment() {
   const nav = useNavigate();
