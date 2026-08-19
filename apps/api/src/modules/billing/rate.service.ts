@@ -177,10 +177,14 @@ export class RateService {
   }
 
   /**
-   * Chargeable weight = max(dead, volumetric). For SURFACE cargo with a customer CFT rule,
-   * volumetric = Σ_boxes (L×W×H / divisor) × CFT-factor. Otherwise Σ stored volKg (÷5000).
+   * Chargeable weight. An explicitly entered charge weight is definitive (operator override).
+   * Otherwise max(dead, volumetric) — and for SURFACE cargo with a customer CFT rule,
+   * volumetric = Σ_boxes (L×W×H / divisor) × CFT-factor; else Σ stored volKg (÷5000).
    */
   async chargeableKgFor(shipment: any, pieces: any[]): Promise<number> {
+    if (shipment.chargeWeight != null && Number(shipment.chargeWeight) > 0) {
+      return +Number(shipment.chargeWeight).toFixed(3);
+    }
     const dead = pieces.reduce((s, p) => s + Number(p.deadKg), 0);
     let vol = pieces.reduce((s, p) => s + Number(p.volKg || 0), 0);
     if (this.isSurface(shipment.serviceMode)) {
