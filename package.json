@@ -7,7 +7,7 @@
     "node": "20.x"
   },
   "scripts": {
-    "build": "cd apps/api && npm install --include=dev --no-audit --no-fund && npx prisma generate && npm run build && cd ../web && npm install --include=dev --no-audit --no-fund && npm run build",
-    "start": "cd apps/api && npx prisma db push --accept-data-loss && node dist/main.js"
+    "build": "cd apps/api && npm install --include=dev --no-audit --no-fund && npx prisma generate && npx prisma db push --accept-data-loss && npm run build && cd ../web && npm install --include=dev --no-audit --no-fund && npm run build",
+    "start": "cd apps/api && node dist/main.js"
   }
 }

@@ -16,8 +16,8 @@ services:
     plan: free
     region: singapore          # closest free region to India (also: oregon, frankfurt, ohio, virginia)
     branch: main
-    buildCommand: npm run build
-    startCommand: npm start     # prisma db push (creates schema) + node dist/main.js
+    buildCommand: npm run build # includes `prisma db push` (schema sync happens at build, not on every wake)
+    startCommand: npm start     # node dist/main.js only — fast boot so free-tier hibernate-wake never times out
     healthCheckPath: /health
     autoDeploy: true
     envVars:
