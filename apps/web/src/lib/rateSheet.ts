@@ -64,9 +64,48 @@ export async function parseRateWorkbook(file: File, family: 'CARGO' | 'COURIER')
   const dests = new Set<string>();
 
   if (family === 'COURIER') {
-    notes.push('Courier (DP/TDD/NDD) matrix detected. The 250/500g slab layout is pending a filled sample — slabs not parsed yet.');
-    hdr.forEach((h) => dests.add(h.zone));
-    return { family, slabs: [], origins: [], dests: [...dests], notes };
+    // Layout: col A = weight slab (FIRST 250 GM / FIRST 500 GM / EVERY ADD 500 GM),
+    // col B = origin zone (A/B/C/OTHER, one label per 3-row block), cols C.. = dest zones.
+    const slabOf = (t: string): [string, number] | null => {
+      const s = String(t).toUpperCase();
+      if (/250/.test(s)) return ['FIRST250', 0.25];
+      if (/500/.test(s) && /(ADD|EVERY)/.test(s)) return ['ADD500', 0.5];
+      if (/500/.test(s)) return ['FIRST500', 0.5];
+      return null;
+    };
+    // slab column = the one (left of dests) holding FIRST/ADD text
+    let slabCol = -1;
+    for (let c = 0; c < minHdrCol && slabCol < 0; c++) {
+      for (let r = hdrRow + 1; r < best.length; r++) if (slabOf(String(best[r]?.[c] ?? ''))) { slabCol = c; break; }
+    }
+    // Blank separator rows get stripped by the reader, so delimit each origin block by its
+    // base slab (FIRST 250, else FIRST 500) — a new base row starts a new origin block.
+    const dataRows: { r: number; sw: [string, number] }[] = [];
+    for (let r = hdrRow + 1; r < best.length; r++) { const sw = slabOf(String(best[r]?.[slabCol] ?? '')); if (sw) dataRows.push({ r, sw }); }
+    const baseType = dataRows.some((d) => d.sw[0] === 'FIRST250') ? 'FIRST250' : 'FIRST500';
+    const blocks: { r: number; sw: [string, number] }[][] = [];
+    let cur: { r: number; sw: [string, number] }[] | null = null;
+    for (const d of dataRows) {
+      if (d.sw[0] === baseType) { if (cur) blocks.push(cur); cur = [d]; }
+      else if (cur) cur.push(d);
+      else cur = [d];
+    }
+    if (cur) blocks.push(cur);
+    for (const blk of blocks) {
+      let origin: string | null = null;
+      for (const d of blk) { const oz = String(best[d.r]?.[originCol] ?? '').trim().toUpperCase(); if (COURIER_ZONE.test(oz)) { origin = oz; break; } }
+      if (!origin) continue;
+      origins.add(origin);
+      for (const d of blk) {
+        const [rateType, weight] = d.sw;
+        for (const h of hdr) {
+          const rate = num(best[d.r]?.[h.col]);
+          if (rate > 0) { slabs.push({ originZone: origin, zone: h.zone, rateType, weight, rate }); dests.add(h.zone); }
+        }
+      }
+    }
+    if (!slabs.length) notes.push('Courier axes found but no rates in the grid — is the template filled?');
+    return { family, slabs, origins: [...origins], dests: [...dests], notes };
   }
 
   // CARGO: one ₹/kg rate per origin×dest cell → PLUSKG weight 1
@@ -81,6 +120,25 @@ export async function parseRateWorkbook(file: File, family: 'CARGO' | 'COURIER')
   }
   if (!slabs.length) notes.push('Zone axes found but no numeric rates in the grid — is the template filled?');
   return { family, slabs, origins: [...origins], dests: [...dests], notes };
+}
+
+/** Download a blank courier (DP/TDD/NDD) template: origin blocks × weight slabs × dest zones. */
+export function downloadCourierTemplate() {
+  const dests = ['A', 'B', 'C', 'OTHER'];
+  const origins = ['A', 'B', 'C', 'OTHER'];
+  const slabs = ['FIRST 250 GM', 'FIRST 500 GM', 'EVERY ADD 500 GM'];
+  const aoa: any[][] = [
+    ['Weight Slab', 'Zone', 'Intracity', 'Within Region', 'Metro', 'ROI'],
+    ['', '', 'A', 'B', 'C', 'OTHER'],
+  ];
+  origins.forEach((oz) => {
+    slabs.forEach((sl, i) => aoa.push([sl, i === 0 ? oz : '', '', '', '', '']));
+    aoa.push([]); // blank separator between origin blocks
+  });
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'DP, TDD AND NDD');
+  XLSX.writeFile(wb, 'Logimart-courier-rate-template.xlsx');
 }
 
 /** Download a blank cargo (Apex/Surface) rate template: origin rows × dest cols. */

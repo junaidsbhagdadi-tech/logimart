@@ -190,7 +190,7 @@ function RateUpload({ client, products, vendors, onCancel, onSaved }: {
     setErr('');
     if (!product) { setErr('Pick a product.'); return; }
     const slabs = result?.slabs ?? [];
-    if (!slabs.length && fam === 'CARGO') { setErr('No rates parsed — upload a filled cargo matrix.'); return; }
+    if (!slabs.length) { setErr(`No rates parsed — upload a filled ${fam.toLowerCase()} matrix.`); return; }
     setBusy(true);
     try {
       await api.createCustomerCard({
@@ -229,7 +229,13 @@ function RateUpload({ client, products, vendors, onCancel, onSaved }: {
       </div>
 
       <div className="card" style={{ padding: 12, marginTop: 12 }}>
-        <label style={{ fontSize: 12 }}>Rate matrix file (.xlsx / .xlsb)</label>
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <label style={{ fontSize: 12 }}>Rate matrix file (.xlsx / .xlsb) — {fam} layout</label>
+          <button className="secondary" style={{ padding: '3px 10px', fontSize: 12 }}
+            onClick={async () => { const m = await import('../lib/rateSheet'); fam === 'COURIER' ? m.downloadCourierTemplate() : m.downloadCargoTemplate(); }}>
+            ⬇ Blank {fam.toLowerCase()} template
+          </button>
+        </div>
         <input type="file" accept=".xlsx,.xlsb,.xls,.csv" onChange={(e) => onFile(e.target.files?.[0])} />
         {result && (
           <div style={{ marginTop: 10, fontSize: 13 }}>
@@ -241,7 +247,11 @@ function RateUpload({ client, products, vendors, onCancel, onSaved }: {
             )}
           </div>
         )}
-        {fam === 'COURIER' && <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>Courier (DP/TDD/NDD) matrix parsing is pending a filled sample. You can still create the card header and add its 250/500g slabs manually via Edit.</p>}
+        <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>
+          {fam === 'COURIER'
+            ? 'Courier: origin blocks (A/B/C/OTHER) × FIRST 250 / FIRST 500 / EVERY ADD 500 GM × dest zones.'
+            : 'Cargo: one ₹/kg rate per origin×dest zone cell (18-zone matrix).'}
+        </p>
       </div>
 
       <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>

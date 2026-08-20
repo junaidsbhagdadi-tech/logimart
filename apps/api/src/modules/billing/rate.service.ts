@@ -109,6 +109,18 @@ export class RateService {
    */
   private priceSlabs(slabs: any[], kg: number): { freight: number; basis: string } | null {
     const by = (t: string) => slabs.filter((s) => String(s.rateType).toUpperCase() === t).sort((a, b) => Number(a.weight) - Number(b.weight));
+    // Courier (DP/TDD/NDD): first 250g / first 500g base + every additional 500g.
+    const first250 = by('FIRST250')[0], first500 = by('FIRST500')[0], add500 = by('ADD500')[0];
+    if (first250 || first500 || add500) {
+      const base = first500 || first250;
+      if (first250 && kg <= 0.25) return { freight: Number(first250.rate), basis: 'courier first-250g' };
+      if (base && kg <= 0.5) return { freight: Number(base.rate), basis: 'courier first-500g' };
+      if (base) {
+        const steps = Math.ceil(Math.max(0, kg - 0.5) / 0.5);
+        const add = add500 ? steps * Number(add500.rate) : 0;
+        return { freight: +(Number(base.rate) + add).toFixed(2), basis: `courier 500g + ${steps}×500g` };
+      }
+    }
     const upto = by('UPTO');
     const initial = by('INITIAL');
     const pluskg = by('PLUSKG')[0];                                  // ₹/kg × chargeable weight
