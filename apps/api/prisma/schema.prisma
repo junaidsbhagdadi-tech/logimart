@@ -86,7 +86,10 @@ model B2bClient {
   tanNo           String?
   invoiceFormat   String?
   email2          String?   // secondary billing email (billing-app parity)
-  billingCycle    String?   @default("MONTHLY") // MONTHLY | FORTNIGHTLY | WEEKLY
+  iecCode         String?
+  salesPerson     String?
+  accountType     String?   @default("CREDIT") // CREDIT | WALLET
+  billingCycle    String?   @default("MONTHLY") // MONTHLY | FORTNIGHTLY
   allowSameGstin  Boolean   @default(false) // permit another customer with the same GSTIN
   customerType    String?   @default("Customer") // Customer | Agent | ...
   registerType    String?   @default("Registered") // Registered | Un Registered | B2B | B2C

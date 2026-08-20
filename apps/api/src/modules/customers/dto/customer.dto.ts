@@ -30,7 +30,10 @@ export class CreateClientDto {
   @IsOptional() @IsString() customerType?: string; // Customer | Agent
   @IsOptional() @IsString() registerType?: string; // Registered | Un Registered | B2B | B2C
   @IsOptional() @IsEmail() email2?: string;
-  @IsOptional() @IsString() billingCycle?: string; // MONTHLY | FORTNIGHTLY | WEEKLY
+  @IsOptional() @IsString() iecCode?: string;
+  @IsOptional() @IsString() salesPerson?: string;
+  @IsOptional() @IsString() accountType?: string; // CREDIT | WALLET
+  @IsOptional() @IsString() billingCycle?: string; // MONTHLY | FORTNIGHTLY
   @IsOptional() @IsBoolean() allowSameGstin?: boolean;
   @IsOptional() @IsNumber() @Min(0) creditLimit?: number;
   @IsOptional() @IsInt() @Min(0) creditDays?: number;

@@ -3,13 +3,11 @@ import { api, Client } from '../api';
 import { CustomerSubTab } from '../components/CustomerSubTab';
 
 const blank = {
-  legalName: '', accountCode: '', contactPerson: '',
-  addressLine: '', addressLine2: '', pincode: '', city: '', state: '',
-  tel1: '', tel2: '', contactEmail: '', contactPhone: '', fax: '',
-  billingState: '', serviceCentre: '', origin: '', startDate: '',
-  gstin: '', aadhaarNo: '', dobAadhaar: '', passportNo: '', pan: '', tanNo: '',
-  invoiceFormat: '', customerType: 'Customer', registerType: 'Registered',
-  creditLimit: '', creditDays: '30', isOneTime: false, isCash: false,
+  legalName: '', customerType: 'Domestic', accountCode: '', contactPhone: '',
+  contactEmail: '', email2: '', gstin: '', pan: '', tanNo: '', iecCode: '',
+  addressLine: '', pincode: '', city: '', state: '', salesPerson: '',
+  accountType: 'CREDIT', billingCycle: 'MONTHLY', allowSameGstin: false,
+  creditLimit: '', creditDays: '30', isCash: false,
 };
 
 const TABS = ['Personal Information', 'Fuel Surcharges', 'Other Charges', 'Customer Volumetric', 'Customer Address'] as const;
@@ -46,7 +44,13 @@ export function Customers() {
     setBulkBusy(false);
   };
 
-  const set = (k: keyof typeof blank, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (k: keyof typeof blank, v: any) => setForm((f) => ({ ...f, [k]: v }));
+
+  // auto-fill city + state from the pincode master (billing-app behaviour)
+  const onPincode = (v: string) => {
+    setForm((f) => ({ ...f, pincode: v }));
+    if (/^\d{6}$/.test(v)) api.lookupPincode(v).then((p) => { if (p?.city) setForm((f) => ({ ...f, city: p.city!, state: p.state ?? f.state })); }).catch(() => {});
+  };
 
   const toggleActive = async (c: Client) => {
     setError('');
@@ -59,35 +63,26 @@ export function Customers() {
     try {
       const c = await api.createClient({
         legalName: form.legalName,
+        customerType: form.customerType || undefined,
         accountCode: form.accountCode || undefined,
-        contactPerson: form.contactPerson || undefined,
+        contactPhone: form.contactPhone || undefined,
+        contactEmail: form.contactEmail || undefined,
+        email2: form.email2 || undefined,
+        gstin: form.gstin || undefined,
+        pan: form.pan || undefined,
+        tanNo: form.tanNo || undefined,
+        iecCode: form.iecCode || undefined,
         addressLine: form.addressLine || undefined,
-        addressLine2: form.addressLine2 || undefined,
         pincode: form.pincode || undefined,
         city: form.city || undefined,
         state: form.state || undefined,
-        tel1: form.tel1 || undefined,
-        tel2: form.tel2 || undefined,
-        contactEmail: form.contactEmail || undefined,
-        contactPhone: form.contactPhone || undefined,
-        fax: form.fax || undefined,
-        billingState: form.billingState || undefined,
-        serviceCentre: form.serviceCentre || undefined,
-        origin: form.origin || undefined,
-        startDate: form.startDate ? new Date(form.startDate).toISOString() : undefined,
-        gstin: form.gstin || undefined,
-        aadhaarNo: form.aadhaarNo || undefined,
-        dobAadhaar: form.dobAadhaar ? new Date(form.dobAadhaar).toISOString() : undefined,
-        passportNo: form.passportNo || undefined,
-        pan: form.pan || undefined,
-        tanNo: form.tanNo || undefined,
-        invoiceFormat: form.invoiceFormat || undefined,
-        customerType: form.customerType || undefined,
-        registerType: form.registerType || undefined,
+        salesPerson: form.salesPerson || undefined,
+        accountType: form.accountType || undefined,
+        billingCycle: form.billingCycle || undefined,
+        allowSameGstin: form.allowSameGstin,
+        isCash: form.accountType === 'WALLET' ? false : form.isCash,
         creditLimit: form.creditLimit ? +form.creditLimit : 0,
         creditDays: form.creditDays ? +form.creditDays : 30,
-        isOneTime: form.isOneTime,
-        isCash: form.isCash,
       }) as Client;
       setMsg(`✓ Created ${c.legalName} (${c.accountCode})`);
       setForm({ ...blank });
@@ -110,61 +105,64 @@ export function Customers() {
 
         {tab === 'Personal Information' && (
           <>
-            <h2>Personal Details</h2>
-            <div className="grid cols-4">
-              <div><label>Code</label><input value={form.accountCode} onChange={(e) => set('accountCode', e.target.value.toUpperCase())} placeholder="auto if blank" /></div>
-              <div><label>Name *</label><input value={form.legalName} onChange={(e) => set('legalName', e.target.value)} /></div>
-              <div><label>Contact Person</label><input value={form.contactPerson} onChange={(e) => set('contactPerson', e.target.value)} /></div>
-              <div><label>Address 1</label><input value={form.addressLine} onChange={(e) => set('addressLine', e.target.value)} /></div>
-
-              <div><label>Address 2</label><input value={form.addressLine2} onChange={(e) => set('addressLine2', e.target.value)} /></div>
-              <div><label>Pin Code</label><input value={form.pincode} maxLength={6} onChange={(e) => set('pincode', e.target.value)} /></div>
-              <div><label>City</label><input value={form.city} onChange={(e) => set('city', e.target.value)} /></div>
-              <div><label>State</label><input value={form.state} onChange={(e) => set('state', e.target.value)} /></div>
-
-              <div><label>Tel No. 1</label><input value={form.tel1} onChange={(e) => set('tel1', e.target.value)} /></div>
-              <div><label>Tel No. 2</label><input value={form.tel2} onChange={(e) => set('tel2', e.target.value)} /></div>
-              <div><label>Email ID *</label><input value={form.contactEmail} onChange={(e) => set('contactEmail', e.target.value)} placeholder="abc@xyz.com" /></div>
-              <div><label>Mobile *</label><input value={form.contactPhone} onChange={(e) => set('contactPhone', e.target.value)} /></div>
-
-              <div><label>Fax No</label><input value={form.fax} onChange={(e) => set('fax', e.target.value)} /></div>
-              <div><label>Customer Billing State *</label><input value={form.billingState} onChange={(e) => set('billingState', e.target.value)} /></div>
-              <div><label>Service Centre *</label><input value={form.serviceCentre} onChange={(e) => set('serviceCentre', e.target.value)} /></div>
-              <div><label>Start Date *</label><input type="date" value={form.startDate} onChange={(e) => set('startDate', e.target.value)} /></div>
-
-              <div><label>Origin *</label><input value={form.origin} onChange={(e) => set('origin', e.target.value)} /></div>
-              <div><label>GST No.</label><input value={form.gstin} onChange={(e) => set('gstin', e.target.value.toUpperCase())} /></div>
-              <div><label>Aadhar No.</label><input value={form.aadhaarNo} onChange={(e) => set('aadhaarNo', e.target.value)} /></div>
-              <div><label>DOB On Aadhar</label><input type="date" value={form.dobAadhaar} onChange={(e) => set('dobAadhaar', e.target.value)} /></div>
-
-              <div><label>Passport No.</label><input value={form.passportNo} onChange={(e) => set('passportNo', e.target.value)} /></div>
-              <div><label>PAN No.</label><input value={form.pan} maxLength={10} onChange={(e) => set('pan', e.target.value.toUpperCase())} placeholder="AAAAA0000A" /></div>
-              <div><label>TAN No.</label><input value={form.tanNo} onChange={(e) => set('tanNo', e.target.value.toUpperCase())} /></div>
-              <div><label>Invoice Format</label><input value={form.invoiceFormat} onChange={(e) => set('invoiceFormat', e.target.value)} /></div>
-
+            <h2>Add New Customer <span className="muted" style={{ fontSize: 12, fontWeight: 500 }}>— create a new billing entity</span></h2>
+            <div className="grid cols-2">
+              <div><label>Customer Name *</label><input value={form.legalName} onChange={(e) => set('legalName', e.target.value)} placeholder="Acme Logistics Pvt Ltd" /></div>
               <div>
-                <label>Customer Type</label>
+                <label>Customer Type *</label>
                 <select value={form.customerType} onChange={(e) => set('customerType', e.target.value)}>
-                  <option>Customer</option><option>Agent</option><option>Franchise</option>
+                  <option>Domestic</option><option>International</option>
                 </select>
               </div>
-              <div>
-                <label>Register Type</label>
-                <select value={form.registerType} onChange={(e) => set('registerType', e.target.value)}>
-                  <option>Registered</option><option>Un Registered</option><option>B2B</option><option>B2C</option>
-                </select>
-              </div>
-              <div><label>Credit limit (₹)</label><input type="number" value={form.creditLimit} onChange={(e) => set('creditLimit', e.target.value)} /></div>
-              <div><label>Credit days</label><input type="number" value={form.creditDays} onChange={(e) => set('creditDays', e.target.value)} /></div>
+
+              <div><label>Account Code <span className="muted">(optional)</span></label><input value={form.accountCode} onChange={(e) => set('accountCode', e.target.value.toUpperCase())} placeholder="auto if blank" /></div>
+              <div><label>Contact No *</label><input value={form.contactPhone} onChange={(e) => set('contactPhone', e.target.value)} placeholder="+91 98765 43210" /></div>
+
+              <div><label>Primary Email * <span className="muted">(for invoices)</span></label><input value={form.contactEmail} onChange={(e) => set('contactEmail', e.target.value)} placeholder="billing@company.com" /></div>
+              <div><label>Secondary Email <span className="muted">(CC)</span></label><input value={form.email2} onChange={(e) => set('email2', e.target.value)} placeholder="accounts@company.com" /></div>
+
+              <div><label>GSTIN *</label><input value={form.gstin} maxLength={15} onChange={(e) => set('gstin', e.target.value.toUpperCase())} placeholder="29ABCDE1234F1Z5" /></div>
+              <div><label>PAN <span className="muted">(optional)</span></label><input value={form.pan} maxLength={10} onChange={(e) => set('pan', e.target.value.toUpperCase())} placeholder="ABCDE1234F" /></div>
+
+              <div><label>TAN <span className="muted">(optional)</span></label><input value={form.tanNo} onChange={(e) => set('tanNo', e.target.value.toUpperCase())} /></div>
+              <div><label>IEC Code <span className="muted">(optional)</span></label><input value={form.iecCode} onChange={(e) => set('iecCode', e.target.value)} /></div>
             </div>
-            <div className="row" style={{ marginTop: 14, alignItems: 'center' }}>
-              <label className="row" style={{ gap: 6, fontWeight: 600, color: 'var(--text)' }}>
-                <input type="checkbox" checked={form.isOneTime} onChange={(e) => setForm((f) => ({ ...f, isOneTime: e.target.checked }))} style={{ width: 'auto' }} /> One-time / walk-in customer
-              </label>
-              <label className="row" style={{ gap: 6, fontWeight: 600, color: 'var(--text)' }}>
-                <input type="checkbox" checked={form.isCash} onChange={(e) => setForm((f) => ({ ...f, isCash: e.target.checked }))} style={{ width: 'auto' }} /> Cash customer (no invoices)
-              </label>
-              <button style={{ marginLeft: 'auto' }} disabled={!form.legalName} onClick={create}>Save</button>
+
+            <div style={{ marginTop: 14 }}><label>Billing Address *</label><input value={form.addressLine} onChange={(e) => set('addressLine', e.target.value)} placeholder="123 Industrial Area, Phase 1" /></div>
+            <div className="grid cols-3" style={{ marginTop: 14 }}>
+              <div><label>Pincode *</label><input value={form.pincode} maxLength={6} onChange={(e) => onPincode(e.target.value)} placeholder="400001" /><div className="muted" style={{ fontSize: 11, marginTop: 3 }}>City &amp; State auto-fill on entry</div></div>
+              <div><label>City *</label><input value={form.city} onChange={(e) => set('city', e.target.value)} /></div>
+              <div><label>State *</label><input value={form.state} onChange={(e) => set('state', e.target.value)} /></div>
+            </div>
+
+            <div style={{ marginTop: 14 }}><label>Sales Person <span className="muted">(optional)</span></label><input value={form.salesPerson} onChange={(e) => set('salesPerson', e.target.value)} placeholder="e.g. Rahul Sharma" /></div>
+
+            <div style={{ marginTop: 16 }}>
+              <label>Account Type</label>
+              <div className="row" style={{ gap: 10 }}>
+                <button type="button" className={form.accountType === 'CREDIT' ? '' : 'secondary'} onClick={() => set('accountType', 'CREDIT')}>Credit Account<div style={{ fontSize: 11, fontWeight: 400 }}>Post-paid — invoice each cycle</div></button>
+                <button type="button" className={form.accountType === 'WALLET' ? '' : 'secondary'} onClick={() => set('accountType', 'WALLET')}>Wallet Account<div style={{ fontSize: 11, fontWeight: 400 }}>Pre-paid — balance deducted</div></button>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 16 }}>
+              <label>Billing Cycle</label>
+              <div className="row" style={{ gap: 10 }}>
+                <button type="button" className={form.billingCycle === 'MONTHLY' ? '' : 'secondary'} onClick={() => set('billingCycle', 'MONTHLY')}>Monthly (1st–30/31st)</button>
+                <button type="button" className={form.billingCycle === 'FORTNIGHTLY' ? '' : 'secondary'} onClick={() => set('billingCycle', 'FORTNIGHTLY')}>Fortnightly (1–15 / 16–End)</button>
+              </div>
+              <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>Determines valid billing date ranges.</div>
+            </div>
+
+            <label className="row" style={{ gap: 8, marginTop: 16, fontWeight: 600, color: 'var(--text)' }}>
+              <input type="checkbox" style={{ width: 'auto' }} checked={form.allowSameGstin} onChange={(e) => setForm((f) => ({ ...f, allowSameGstin: e.target.checked }))} />
+              Allow duplicate GSTIN <span className="muted" style={{ fontWeight: 400 }}>— create a second billing account for the same legal entity</span>
+            </label>
+
+            <div className="row" style={{ marginTop: 18, alignItems: 'center' }}>
+              <div><label>Credit limit (₹)</label><input type="number" value={form.creditLimit} onChange={(e) => set('creditLimit', e.target.value)} style={{ width: 160 }} /></div>
+              <div><label>Credit days</label><input type="number" value={form.creditDays} onChange={(e) => set('creditDays', e.target.value)} style={{ width: 120 }} /></div>
+              <button style={{ marginLeft: 'auto' }} disabled={!form.legalName} onClick={create}>Save Customer</button>
             </div>
           </>
         )}
