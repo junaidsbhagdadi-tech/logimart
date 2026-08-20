@@ -68,14 +68,21 @@ export class ShipmentsService {
     const awb = manualAwb || (await this.nextAwb());
     const total = dto.pieces.length;
 
-    // Pincode → region drives the billing zone; directory flags ODA destinations.
-    const originZone = (dto.originPincode && regionFromPincode(dto.originPincode)) || dto.originZone;
-    const destZone = (dto.destPincode && regionFromPincode(dto.destPincode)) || dto.destZone;
+    // Product-specific zone from the pincode master (DP→dpZone, APEX→apexZone,
+    // SURFACE→surfaceZone), falling back to broad region then the supplied zone.
+    const [originPin, destPin] = await Promise.all([
+      dto.originPincode ? this.prisma.pincode.findUnique({ where: { pincode: dto.originPincode } }) : null,
+      dto.destPincode ? this.prisma.pincode.findUnique({ where: { pincode: dto.destPincode } }) : null,
+    ]);
+    const zoneFor = (pin: any, pincode?: string, fallback?: string): string | undefined => {
+      const fam = String(dto.product ?? '').toUpperCase();
+      const z = pin && (['DP', 'TDD', 'NDD'].includes(fam) ? pin.dpZone : fam === 'APEX' ? pin.apexZone : fam === 'SURFACE' ? pin.surfaceZone : pin.ecomZone);
+      return z || pin?.region || (pincode ? regionFromPincode(pincode) : undefined) || fallback;
+    };
+    const originZone = zoneFor(originPin, dto.originPincode, dto.originZone) || dto.originZone;
+    const destZone = zoneFor(destPin, dto.destPincode, dto.destZone) || dto.destZone;
     let isOda = dto.isOda ?? false;
-    if (dto.destPincode) {
-      const pin = await this.prisma.pincode.findUnique({ where: { pincode: dto.destPincode } });
-      if (pin?.isOda) isOda = true;
-    }
+    if (destPin && (destPin.isOda || (destPin.edl && destPin.edl.toUpperCase() !== 'REGULAR'))) isOda = true;
 
     const pieces = dto.pieces.map((p, i) => {
       const sequenceNo = i + 1;

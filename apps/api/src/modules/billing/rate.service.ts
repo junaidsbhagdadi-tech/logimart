@@ -314,13 +314,31 @@ export class RateService {
     return +Math.max(dead, vol, Number(card.minChargeableKg ?? 0)).toFixed(3);
   }
 
+  /**
+   * EDL (= ODA) from the network's standard matrix when the destination pincode is an
+   * EDL location. Matrix cell by (distance-km band × chargeable-weight band); fallbacks:
+   * North-East → max(₹15/kg, ₹3000); >500km → ₹14/km; >1500kg → ₹5/kg (whichever higher).
+   */
+  private async edlCharge(network: string, destPin: any, weightKg: number): Promise<number> {
+    if (!destPin || !destPin.edl || String(destPin.edl).toUpperCase() === 'REGULAR') return 0;
+    if (String(destPin.region ?? '').toUpperCase() === 'NORTHEAST') return r2(Math.max(weightKg * 15, 3000));
+    const dist = destPin.edlDistanceKm != null ? Number(destPin.edlDistanceKm) : null;
+    if (dist == null) return 0;
+    const rows = await this.prisma.edlRate.findMany({ where: { network } });
+    const cell = rows.find((r) => dist >= r.kmFrom && dist <= r.kmTo && weightKg >= r.wtFromKg && weightKg <= r.wtToKg);
+    if (cell) return r2(Number(cell.rate));
+    const byKm = dist > 500 ? dist * 14 : 0;
+    const byKg = weightKg > 1500 ? weightKg * 5 : 0;
+    return byKm || byKg ? r2(Math.max(byKm, byKg)) : 0;
+  }
+
   /** Price a shipment fully from its CustomerRateCard: freight (slabs) + every accessorial on the card. */
   async chargesFromRateCard(shipment: any, pieces: any[]): Promise<ChargeBreakup | null> {
     const card = await this.resolveRateCard(shipment);
     if (!card) return null;
     const chargeableKg = this.cardChargeableKg(shipment, pieces, card);
     const eq = (a: any, b: any) => !a || (b != null && String(a).toUpperCase() === String(b).toUpperCase());
-    const zoneSlabs = card.slabs.filter((s: any) => eq(s.zone, shipment.destZone));
+    const zoneSlabs = card.slabs.filter((s: any) => eq(s.zone, shipment.destZone) && eq(s.originZone, shipment.originZone));
     const priced = this.priceSlabs(zoneSlabs.length ? zoneSlabs : card.slabs, chargeableKg);
     if (!priced) return null;
 
@@ -330,8 +348,13 @@ export class RateService {
     const invVal = Number(shipment.shipmentValue ?? shipment.declaredValue ?? 0);
     let fov = 0;
     if (Number(card.fovPct) > 0 || Number(card.fovMin) > 0) fov = r2(Math.max((invVal * Number(card.fovPct)) / 100, Number(card.fovMin)));
+    // ODA: the network EDL matrix wins when the destination is an EDL location; else the card's ODA.
     let oda = 0;
-    if (shipment.isOda && (Number(card.odaFlat) > 0 || Number(card.odaPerKg) > 0 || Number(card.odaMin) > 0)) {
+    let odaLabel = 'ODA';
+    const destPin = shipment.destPincode ? await this.prisma.pincode.findUnique({ where: { pincode: shipment.destPincode } }) : null;
+    const edl = await this.edlCharge(this.deriveNetwork(shipment), destPin, chargeableKg);
+    if (edl > 0) { oda = edl; odaLabel = 'EDL (ODA)'; }
+    else if (shipment.isOda && (Number(card.odaFlat) > 0 || Number(card.odaPerKg) > 0 || Number(card.odaMin) > 0)) {
       oda = r2(Math.max(Number(card.odaFlat) + Number(card.odaPerKg) * chargeableKg, Number(card.odaMin)));
     }
     const topay = shipment.paymentTerm === 'TO_PAY' ? r2(Number(card.topayCharge)) : 0;
@@ -339,19 +362,34 @@ export class RateService {
     const loading = r2(Number(card.loadingCharge));
     const unloading = r2(Number(card.unloadingCharge));
     const docket = r2(Number(card.docketCharge));
+    const awb = r2(Number(card.awbCharge));
+    const emergency = r2(Number(card.emergencyCharge));
+    const environment = r2(Number(card.environmentCharge));
+    // handling: weight-banded ₹/pcs; OSP: oversize (dim>119cm or pcs>69kg)
+    const pcs = pieces.length;
+    const bands: any[] = Array.isArray(card.handlingBands) ? card.handlingBands : [];
+    const hb = bands.find((b) => chargeableKg >= Number(b.fromKg ?? 0) && chargeableKg <= Number(b.toKg ?? 1e9));
+    const handling = hb ? r2(Number(hb.perPcs ?? 0) * pcs) : 0;
+    const oversize = pieces.some((p) => Number(p.deadKg) > 69 || [p.lengthCm, p.widthCm, p.heightCm].some((d) => Number(d || 0) > 119));
+    const osp = oversize ? r2(Number(card.ospCharge)) : 0;
 
     const lines = [{ head: `Freight (${priced.basis})`, amount: freight }];
     if (fuel > 0) lines.push({ head: `Fuel ${fuelPct}%`, amount: fuel });
     if (fov > 0) lines.push({ head: `FOV ${Number(card.fovPct)}% on ₹${invVal}`, amount: fov });
-    if (oda > 0) lines.push({ head: 'ODA', amount: oda });
+    if (oda > 0) lines.push({ head: odaLabel, amount: oda });
+    if (awb > 0) lines.push({ head: 'Airwaybill charges', amount: awb });
+    if (emergency > 0) lines.push({ head: 'Emergency surcharge', amount: emergency });
+    if (environment > 0) lines.push({ head: 'Environmental surcharge', amount: environment });
+    if (handling > 0) lines.push({ head: 'Handling', amount: handling });
+    if (osp > 0) lines.push({ head: 'OSP (oversize)', amount: osp });
     if (topay > 0) lines.push({ head: 'To-Pay charge', amount: topay });
     if (appt > 0) lines.push({ head: 'Appointment delivery', amount: appt });
     if (loading > 0) lines.push({ head: 'Loading', amount: loading });
     if (unloading > 0) lines.push({ head: 'Unloading', amount: unloading });
     if (docket > 0) lines.push({ head: 'Docket', amount: docket });
-    const subtotal = r2(freight + fuel + fov + oda + topay + appt + loading + unloading + docket);
+    const subtotal = r2(freight + fuel + fov + oda + awb + emergency + environment + handling + osp + topay + appt + loading + unloading + docket);
     return {
-      chargeableKg, freight, fuel, fov, oda, docket, handling: 0, topay, appt, loading, unloading,
+      chargeableKg, freight, fuel, fov, oda, docket, handling, topay, appt, loading, unloading,
       subtotal, lines, basis: `card ${card.network}/${card.product} — ${priced.basis}`,
     };
   }
