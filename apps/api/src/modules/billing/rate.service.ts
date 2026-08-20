@@ -15,9 +15,13 @@ export interface ChargeBreakup {
   oda: number;
   docket: number;
   handling: number;
+  topay?: number;
+  appt?: number;
+  loading?: number;
+  unloading?: number;
   subtotal: number; // pre-GST total of all charge heads
   lines: { head: string; amount: number }[];
-  basis: string; // 'per-kg' | 'ftl' | 'manual'
+  basis: string; // 'card:… | slab… | per-kg | ftl | manual'
 }
 
 const r2 = (n: number) => +n.toFixed(2);
@@ -248,9 +252,113 @@ export class RateService {
     return { chargeableKg, freight, fuel, fov, oda: 0, docket: 0, handling: 0, subtotal: r2(freight + fuel + fov), lines, basis: priced.basis };
   }
 
+  // ================= Revamped CustomerRateCard (primary tariff) =================
+
+  /** Network the shipment routes on: SELF, BLUEDART, or the vendor code. */
+  private deriveNetwork(shipment: any): string {
+    const v = String(shipment.vendor ?? '').toUpperCase();
+    if (!v) return 'SELF';
+    if (v.startsWith('BLUEDART')) return 'BLUEDART';
+    return v;
+  }
+
+  /** Best-matching active card for the shipment: same product, then exact network > SELF > any. */
+  async resolveRateCard(shipment: any) {
+    const now = new Date();
+    const cards = await this.prisma.customerRateCard.findMany({
+      where: { clientId: shipment.clientId, isActive: true, validFrom: { lte: now }, OR: [{ validTo: null }, { validTo: { gte: now } }] },
+      include: { slabs: true },
+    });
+    if (!cards.length) return null;
+    const prod = String(shipment.product ?? '').toUpperCase();
+    const net = this.deriveNetwork(shipment);
+    const byProduct = cards.filter((c) => !prod || String(c.product).toUpperCase() === prod);
+    const pool = byProduct.length ? byProduct : cards;
+    return (
+      pool.find((c) => String(c.network).toUpperCase() === net) ||
+      pool.find((c) => String(c.network).toUpperCase() === 'SELF') ||
+      pool[0]
+    );
+  }
+
+  /** Effective FSC % for a card: FLAT uses fuelPct; DYNAMIC reads its FUEL_MECHANISM master (diesel-linked). */
+  private async cardFuelPct(card: any): Promise<number> {
+    if (String(card.fuelMode ?? 'FLAT').toUpperCase() !== 'DYNAMIC') return Number(card.fuelPct ?? 0);
+    let basePct = 0, baseFuel = 0, step = 0, cap = 0;
+    if (card.fuelMechanism) {
+      const m = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'FUEL_MECHANISM', code: card.fuelMechanism } } });
+      const a: any = m?.attrs || {};
+      basePct = Number(a.basePct ?? 0); baseFuel = Number(a.baseFuelPrice ?? 0); step = Number(a.stepPerRupee ?? 0); cap = Number(a.maxPct ?? 0);
+    }
+    const diesel = await this.currentDieselPrice();
+    const rise = baseFuel > 0 ? diesel - baseFuel : 0;
+    const raw = basePct + rise * step;
+    const ceiling = cap > 0 ? cap : DEFAULT_FUEL_CAP;
+    return Math.max(0, Math.min(ceiling, +raw.toFixed(2)));
+  }
+
+  /** Chargeable weight under a card: operator override > max(dead, card-volumetric, minChargeableKg). */
+  private cardChargeableKg(shipment: any, pieces: any[], card: any): number {
+    if (shipment.chargeWeight != null && Number(shipment.chargeWeight) > 0) return +Number(shipment.chargeWeight).toFixed(3);
+    const dead = pieces.reduce((s, p) => s + Number(p.deadKg), 0);
+    let vol = pieces.reduce((s, p) => s + Number(p.volKg || 0), 0);
+    if (this.isSurface(shipment.serviceMode)) {
+      const divisor = Number(card.volumetricDivisor ?? 0), cft = Number(card.cft ?? 0);
+      if (divisor > 0 && cft > 0) {
+        vol = +pieces.reduce((s, p) => {
+          const l = Number(p.lengthCm || 0), w = Number(p.widthCm || 0), h = Number(p.heightCm || 0);
+          return s + (l && w && h ? (l * w * h / divisor) * cft : 0);
+        }, 0).toFixed(3);
+      }
+    }
+    return +Math.max(dead, vol, Number(card.minChargeableKg ?? 0)).toFixed(3);
+  }
+
+  /** Price a shipment fully from its CustomerRateCard: freight (slabs) + every accessorial on the card. */
+  async chargesFromRateCard(shipment: any, pieces: any[]): Promise<ChargeBreakup | null> {
+    const card = await this.resolveRateCard(shipment);
+    if (!card) return null;
+    const chargeableKg = this.cardChargeableKg(shipment, pieces, card);
+    const eq = (a: any, b: any) => !a || (b != null && String(a).toUpperCase() === String(b).toUpperCase());
+    const zoneSlabs = card.slabs.filter((s: any) => eq(s.zone, shipment.destZone));
+    const priced = this.priceSlabs(zoneSlabs.length ? zoneSlabs : card.slabs, chargeableKg);
+    if (!priced) return null;
+
+    const freight = r2(Math.max(priced.freight, Number(card.minFreight ?? 0)));
+    const fuelPct = await this.cardFuelPct(card);
+    const fuel = r2(freight * (fuelPct / 100));
+    const invVal = Number(shipment.shipmentValue ?? shipment.declaredValue ?? 0);
+    let fov = 0;
+    if (Number(card.fovPct) > 0 || Number(card.fovMin) > 0) fov = r2(Math.max((invVal * Number(card.fovPct)) / 100, Number(card.fovMin)));
+    let oda = 0;
+    if (shipment.isOda && (Number(card.odaFlat) > 0 || Number(card.odaPerKg) > 0 || Number(card.odaMin) > 0)) {
+      oda = r2(Math.max(Number(card.odaFlat) + Number(card.odaPerKg) * chargeableKg, Number(card.odaMin)));
+    }
+    const topay = shipment.paymentTerm === 'TO_PAY' ? r2(Number(card.topayCharge)) : 0;
+    const appt = shipment.apptDelivery ? r2(Number(card.apptCharge)) : 0;
+    const loading = r2(Number(card.loadingCharge));
+    const unloading = r2(Number(card.unloadingCharge));
+    const docket = r2(Number(card.docketCharge));
+
+    const lines = [{ head: `Freight (${priced.basis})`, amount: freight }];
+    if (fuel > 0) lines.push({ head: `Fuel ${fuelPct}%`, amount: fuel });
+    if (fov > 0) lines.push({ head: `FOV ${Number(card.fovPct)}% on ₹${invVal}`, amount: fov });
+    if (oda > 0) lines.push({ head: 'ODA', amount: oda });
+    if (topay > 0) lines.push({ head: 'To-Pay charge', amount: topay });
+    if (appt > 0) lines.push({ head: 'Appointment delivery', amount: appt });
+    if (loading > 0) lines.push({ head: 'Loading', amount: loading });
+    if (unloading > 0) lines.push({ head: 'Unloading', amount: unloading });
+    if (docket > 0) lines.push({ head: 'Docket', amount: docket });
+    const subtotal = r2(freight + fuel + fov + oda + topay + appt + loading + unloading + docket);
+    return {
+      chargeableKg, freight, fuel, fov, oda, docket, handling: 0, topay, appt, loading, unloading,
+      subtotal, lines, basis: `card ${card.network}/${card.product} — ${priced.basis}`,
+    };
+  }
+
   /**
    * Resolve charges for a shipment: manual override > FTL flat rate >
-   * weight-slab tariff (INITIAL/ADDITIONAL/UPTO/PLUS/PLUSKG) > per-kg card.
+   * customer rate card (revamped) > legacy weight-slab tariff > per-kg card.
    */
   async chargesForShipment(shipment: any, pieces: WeightLike[]): Promise<ChargeBreakup | null> {
     const chargeableKg = await this.chargeableKgFor(shipment, pieces);
@@ -276,7 +384,11 @@ export class RateService {
       }
     }
 
-    // 3) Weight-slab tariff (Customer Rate: INITIAL / ADDITIONAL / UPTO / PLUS / PLUSKG) — the primary tariff
+    // 3) Revamped CustomerRateCard (network × product) — the primary tariff
+    const cardBreakup = await this.chargesFromRateCard(shipment, pieces as any[]);
+    if (cardBreakup) return cardBreakup;
+
+    // 4) Legacy weight-slab tariff (ClientRateSlab) — fallback for un-migrated data
     const slabBreakup = await this.chargesFromSlabs(shipment, chargeableKg);
     if (slabBreakup) return slabBreakup;
 

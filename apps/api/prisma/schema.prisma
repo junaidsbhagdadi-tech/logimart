@@ -105,6 +105,7 @@ model B2bClient {
   users        User[]
   shipments    Shipment[]
   rateCards    RateCard[]
+  customerRateCards CustomerRateCard[]
   invoices     Invoice[]
   ledger       LedgerEntry[]
   notes        DebitCreditNote[]
@@ -245,6 +246,74 @@ model ClientRateSlab {
 
   @@index([clientId])
   @@map("client_rate_slabs")
+}
+
+/// Revamped rate card (billing-app "eye → rate cards" parity). One card per
+/// customer × network (SELF | vendor) × product; mode derived from the PRODUCT master.
+/// The card OWNS its zone × weight-slab grid AND all accessorials, so AIR/Surface/vendor
+/// naturally carry different FSC/FOV/ODA/etc. Masters drive every dropdown.
+model CustomerRateCard {
+  id                BigInt    @id @default(autoincrement())
+  clientId          BigInt
+  client            B2bClient @relation(fields: [clientId], references: [id])
+  network           String    @default("SELF")   // SELF | vendorCode (e.g. BLUEDART)
+  vendor            String?                        // vendor display name/code when network != SELF
+  product           String                         // PRODUCT master code (DP | APEX | SURFACE ...)
+  mode              String?                        // AIR | SURFACE | EXPRESS (from PRODUCT master groupType)
+  service           String?                        // optional finer service (NDD | SDD | ...)
+  label             String?
+  // ---- weight / volumetric ----
+  volumetricDivisor Decimal   @default(5000) @db.Decimal(10, 2)
+  cft               Decimal   @default(0) @db.Decimal(10, 3) // surface CFT factor (0 = divisor only)
+  minChargeableKg   Decimal   @default(0) @db.Decimal(10, 3)
+  minFreight        Decimal   @default(0) @db.Decimal(12, 2)
+  addlWeightUnitG   Int       @default(1000) // additional weight step (g) for PLUS/PLUSKG
+  // ---- FSC (flat or dynamic diesel-linked) ----
+  fuelMode          String    @default("FLAT")  // FLAT | DYNAMIC
+  fuelPct           Decimal   @default(0) @db.Decimal(6, 2)   // flat %
+  fuelMechanism     String?                                    // FUEL_MECHANISM master code (dynamic)
+  // ---- FOV ----
+  fovPct            Decimal   @default(0) @db.Decimal(6, 3)
+  fovMin            Decimal   @default(0) @db.Decimal(12, 2)
+  // ---- ODA ----
+  odaFlat           Decimal   @default(0) @db.Decimal(12, 2)
+  odaPerKg          Decimal   @default(0) @db.Decimal(12, 2)
+  odaMin            Decimal   @default(0) @db.Decimal(12, 2)
+  // ---- other accessorials ----
+  topayCharge       Decimal   @default(0) @db.Decimal(12, 2)  // applied when payment term = TO_PAY
+  apptCharge        Decimal   @default(0) @db.Decimal(12, 2)
+  loadingCharge     Decimal   @default(0) @db.Decimal(12, 2)
+  unloadingCharge   Decimal   @default(0) @db.Decimal(12, 2)
+  docketCharge      Decimal   @default(0) @db.Decimal(12, 2)
+  // ---- validity ----
+  validFrom         DateTime  @default(now())
+  validTo           DateTime?
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  slabs             CustomerRateCardSlab[]
+
+  @@index([clientId])
+  @@index([clientId, network, product])
+  @@map("customer_rate_cards")
+}
+
+/// Zone × weight-slab cell of a CustomerRateCard. rateType keeps the flexible
+/// family (INITIAL | ADDITIONAL | UPTO | PLUS | PLUSKG).
+model CustomerRateCardSlab {
+  id         BigInt   @id @default(autoincrement())
+  rateCardId BigInt
+  card       CustomerRateCard @relation(fields: [rateCardId], references: [id], onDelete: Cascade)
+  zone       String   // ZONE master code/name
+  rateType   String   // INITIAL | ADDITIONAL | UPTO | PLUS | PLUSKG
+  weight     Decimal  @db.Decimal(10, 3)
+  rate       Decimal  @db.Decimal(12, 2)
+  slabOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  @@index([rateCardId])
+  @@map("customer_rate_card_slabs")
 }
 
 // ============================ MASTER AWB (Shipment) ============================
