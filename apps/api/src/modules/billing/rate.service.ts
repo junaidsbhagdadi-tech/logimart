@@ -90,6 +90,7 @@ export class RateService {
   private slabMatches(s: any, shipment: any): boolean {
     const eq = (a: any, b: any) => !a || (b != null && String(a).toUpperCase() === String(b).toUpperCase());
     return (
+      eq(s.vendor, shipment.vendor) && // the booking-picked carrier product (e.g. BLUEDART-APEX)
       eq(s.zone, shipment.destZone) &&
       eq(s.originZone, shipment.originZone) &&
       eq(s.product, shipment.product) &&
@@ -222,9 +223,17 @@ export class RateService {
     if (!slabs.length) return null;
     const matched = slabs.filter((s) => this.slabMatches(s, shipment));
     if (!matched.length) return null;
-    // prefer client-specific slabs over generic ones
-    const clientSlabs = matched.filter((s) => s.clientId != null);
-    const priced = this.priceSlabs(clientSlabs.length ? clientSlabs : matched, chargeableKg);
+    // Pick the most specific coherent set: client+vendor > client > vendor > generic.
+    const vend = String(shipment.vendor ?? '').toUpperCase();
+    const vendorMatch = (s: any) => !!s.vendor && String(s.vendor).toUpperCase() === vend;
+    const tiers = [
+      matched.filter((s) => s.clientId != null && vendorMatch(s)),
+      matched.filter((s) => s.clientId != null),
+      matched.filter((s) => vendorMatch(s)),
+      matched,
+    ];
+    const use = tiers.find((t) => t.length > 0) ?? matched;
+    const priced = this.priceSlabs(use, chargeableKg);
     if (!priced) return null;
     const freight = r2(priced.freight);
     const fuelPct = await this.customerFuelPct(shipment.clientId);
