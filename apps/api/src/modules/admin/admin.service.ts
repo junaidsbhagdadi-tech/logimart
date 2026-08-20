@@ -34,7 +34,9 @@ export class AdminService {
     await del('customerCharges', () => p.customerOtherCharge.deleteMany({}));
     await del('customerVolumetric', () => p.customerVolumetric.deleteMany({}));
     await del('customerAddresses', () => p.customerAddress.deleteMany({}));
-    await del('serviceAreas', () => p.serviceablePincode.deleteMany({}));
+    // Serviceability: keep the loaded carrier product coverage (BLUEDART-*), drop only the
+    // stray verification rows (SELF, bare BLUEDART) so real data survives.
+    await del('strayServiceAreas', () => p.serviceablePincode.deleteMany({ where: { NOT: { network: { startsWith: 'BLUEDART-' } } } }));
     await del('serviceMappings', () => p.serviceMapping.deleteMany({}));
     await del('fuelPrices', () => p.fuelPrice.deleteMany({}));
     await del('integrationTokens', () => p.integrationToken.deleteMany({}));
@@ -42,12 +44,17 @@ export class AdminService {
 
     await del('vendorPayments', () => p.vendorPayment.deleteMany({}));
     await del('testVendors', () => p.vendor.deleteMany({ where: { vendorCode: 'BLR-BD' } }));
-    await del('testCustomers', () => p.b2bClient.deleteMany({ where: { accountCode: 'XPTP003' } }));
 
-    // reset remaining customers' running balances (invoices/ledger are gone)
+    // reset the AWB counter (re-seeds on next booking) and customers' running balances
+    await del('awbCounter', () => p.counter.deleteMany({ where: { name: 'awb' } }));
     await p.b2bClient.updateMany({ data: { outstandingBal: 0, isCreditHold: false } });
 
     const total = Object.values(r).reduce((s, n) => s + n, 0);
-    return { ok: true, totalDeleted: total, cleared: r, kept: ['users', 'hubs', 'customers', 'vendors', 'rate cards', 'reference masters'] };
+    return {
+      ok: true,
+      totalDeleted: total,
+      cleared: r,
+      kept: ['users', 'hubs', 'customers (balances reset)', 'vendors', 'rate cards', 'reference masters', 'BLUEDART-* serviceability'],
+    };
   }
 }
