@@ -1,4 +1,4 @@
-import { Controller, Post, UseGuards } from '@nestjs/common';
+import { Controller, Param, Post, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles } from '../../common/rbac/roles.decorator';
@@ -14,5 +14,12 @@ export class AdminController {
   @Roles(UserRole.SYS_ADMIN)
   clearTestData() {
     return this.admin.clearTestData();
+  }
+
+  /** Purge ONE customer's transactional + rate data (keeps the customer). SYS_ADMIN only. */
+  @Post('clear-client/:clientId')
+  @Roles(UserRole.SYS_ADMIN)
+  clearClient(@Param('clientId') clientId: string) {
+    return this.admin.clearClient(Number(clientId));
   }
 }
