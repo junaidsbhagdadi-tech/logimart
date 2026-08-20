@@ -48,6 +48,54 @@ export class PincodesService {
     });
   }
 
+  /** Region (broad enum) from a granular zone code, e.g. NE1→NORTHEAST, N2→NORTH, W1→WEST. */
+  private regionFromZone(z?: string | null): any {
+    const s = String(z ?? '').trim().toUpperCase();
+    if (s.startsWith('NE')) return 'NORTHEAST';
+    if (s.startsWith('N')) return 'NORTH';
+    if (s.startsWith('S')) return 'SOUTH';
+    if (s.startsWith('E')) return 'EAST';
+    if (s.startsWith('W')) return 'WEST';
+    return null; // C (central) etc. — no matching Region enum
+  }
+
+  /**
+   * Bulk upsert the pincode → per-product zone + EDL mapping (PINCODE MAPPING upload).
+   * Row keys (case-insensitive): pincode, area/city, serviceCentre, areaName, state,
+   * dpZone, surfaceZone, apexZone, ecomZone, edl, edlDistanceKm, tat(hours).
+   */
+  async bulkMapping(rows: any[]) {
+    let ok = 0;
+    const errors: { pincode: string; error: string }[] = [];
+    const num = (v: any) => (v != null && String(v).trim() !== '' && !isNaN(Number(v)) ? Number(v) : null);
+    for (const r of rows) {
+      const pincode = String(r.pincode ?? '').trim();
+      if (!/^\d{6}$/.test(pincode)) { errors.push({ pincode: pincode || '(blank)', error: 'pincode must be 6 digits' }); continue; }
+      const surfaceZone = r.surfaceZone ? String(r.surfaceZone).trim().toUpperCase() : null;
+      const apexZone = r.apexZone ? String(r.apexZone).trim().toUpperCase() : null;
+      const edlRaw = String(r.edl ?? '').trim();
+      const data: any = {
+        city: (r.city ?? r.area ?? '').toString().trim() || 'NA',
+        state: (r.state ?? '').toString().trim() || 'NA',
+        serviceCentre: r.serviceCentre ? String(r.serviceCentre).trim() : null,
+        areaName: r.areaName ? String(r.areaName).trim() : null,
+        dpZone: r.dpZone ? String(r.dpZone).trim().toUpperCase() : null,
+        surfaceZone, apexZone,
+        ecomZone: r.ecomZone ? String(r.ecomZone).trim().toUpperCase() : null,
+        edl: edlRaw || 'Regular',
+        edlDistanceKm: num(r.edlDistanceKm),
+        tatHours: num(r.tat ?? r.tatHours),
+        isOda: edlRaw !== '' && edlRaw.toUpperCase() !== 'REGULAR',
+        region: this.regionFromZone(surfaceZone || apexZone),
+      };
+      try {
+        await this.prisma.pincode.upsert({ where: { pincode }, update: data, create: { pincode, ...data } });
+        ok++;
+      } catch (e: any) { errors.push({ pincode, error: e.message }); }
+    }
+    return { imported: ok, failed: errors.length, errors: errors.slice(0, 50) };
+  }
+
   // ============ serviceability coverage (SELF network / vendor-wise) ============
 
   /** Distinct networks present in the coverage table (for the filter dropdown). */

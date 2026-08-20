@@ -53,6 +53,19 @@ export class RateCardsController {
     return this.rateCards.removeCard(Number(id));
   }
 
+  // ---- EDL (ODA) matrix, per vendor/network ----
+  @Get('edl')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  listEdl(@Query('network') network?: string) {
+    return this.rateCards.listEdl(network || undefined);
+  }
+
+  @Post('edl/bulk')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  bulkEdl(@Body() dto: { network: string; rows: any[] }) {
+    return this.rateCards.bulkEdl(dto.network || 'SELF', dto.rows ?? []);
+  }
+
   // ---- FTL rates ----
   @Post('ftl')
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)

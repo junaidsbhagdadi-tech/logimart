@@ -79,6 +79,15 @@ export class RateCardsService {
       minChargeableKg: dec(num(d.minChargeableKg)),
       minFreight: dec(num(d.minFreight)),
       addlWeightUnitG: num(d.addlWeightUnitG, 1000),
+      cityWiseRates: !!d.cityWiseRates,
+      rateAboveKg: d.rateAboveKg != null && d.rateAboveKg !== '' ? dec(num(d.rateAboveKg)) : null,
+      rateAboveKgRate: d.rateAboveKgRate != null && d.rateAboveKgRate !== '' ? dec(num(d.rateAboveKgRate)) : null,
+      volDiscountPct: dec(num(d.volDiscountPct)),
+      handlingBands: Array.isArray(d.handlingBands) ? d.handlingBands : [],
+      ospCharge: dec(num(d.ospCharge)),
+      awbCharge: dec(num(d.awbCharge)),
+      emergencyCharge: dec(num(d.emergencyCharge)),
+      environmentCharge: dec(num(d.environmentCharge)),
       fuelMode: (d.fuelMode || 'FLAT').toUpperCase() === 'DYNAMIC' ? 'DYNAMIC' : 'FLAT',
       fuelPct: dec(num(d.fuelPct)),
       fuelMechanism: d.fuelMechanism || null,
@@ -102,6 +111,7 @@ export class RateCardsService {
     return slabs
       .filter((s) => s && s.zone && s.rateType && s.rate != null && s.rate !== '')
       .map((s, i) => ({
+        originZone: s.originZone ? String(s.originZone).toUpperCase() : null,
         zone: String(s.zone).toUpperCase(),
         rateType: String(s.rateType).toUpperCase(),
         weight: dec(Number(s.weight ?? 0)),
@@ -158,5 +168,31 @@ export class RateCardsService {
 
   removeCard(id: number) {
     return this.prisma.customerRateCard.delete({ where: { id: BigInt(id) } });
+  }
+
+  // ============================================================================
+  // EDL (= ODA) matrix — one standard km-band × weight-band table per vendor/network.
+  // ============================================================================
+
+  listEdl(network?: string) {
+    return this.prisma.edlRate.findMany({
+      where: network ? { network: network.toUpperCase() } : undefined,
+      orderBy: [{ network: 'asc' }, { kmFrom: 'asc' }, { wtFromKg: 'asc' }],
+      take: 5000,
+    });
+  }
+
+  /** Replace a network's EDL matrix with the uploaded cells. Rows: {kmFrom,kmTo,wtFromKg,wtToKg,rate}. */
+  async bulkEdl(network: string, rows: any[]) {
+    const net = (network || 'SELF').toUpperCase();
+    const clean = (rows || [])
+      .filter((r) => r && r.rate != null && r.rate !== '')
+      .map((r) => ({
+        network: net, kmFrom: Number(r.kmFrom ?? 0), kmTo: Number(r.kmTo ?? 0),
+        wtFromKg: Number(r.wtFromKg ?? 0), wtToKg: Number(r.wtToKg ?? 0), rate: dec(Number(r.rate ?? 0)),
+      }));
+    await this.prisma.edlRate.deleteMany({ where: { network: net } });
+    if (clean.length) await this.prisma.edlRate.createMany({ data: clean });
+    return { network: net, imported: clean.length };
   }
 }

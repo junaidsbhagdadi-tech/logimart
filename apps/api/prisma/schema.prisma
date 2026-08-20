@@ -265,9 +265,20 @@ model CustomerRateCard {
   // ---- weight / volumetric ----
   volumetricDivisor Decimal   @default(5000) @db.Decimal(10, 2)
   cft               Decimal   @default(0) @db.Decimal(10, 3) // surface CFT factor (0 = divisor only)
-  minChargeableKg   Decimal   @default(0) @db.Decimal(10, 3)
-  minFreight        Decimal   @default(0) @db.Decimal(12, 2)
-  addlWeightUnitG   Int       @default(1000) // additional weight step (g) for PLUS/PLUSKG
+  minChargeableKg   Decimal   @default(0) @db.Decimal(10, 3)  // red-required
+  minFreight        Decimal   @default(0) @db.Decimal(12, 2)  // red-required
+  addlWeightUnitG   Int       @default(1000) // additional weight step (g); 250/500 for DP/TDD/NDD
+  // ---- required-for-all config (red fields in the upload) ----
+  cityWiseRates     Boolean   @default(false)                 // "City wise rates option"
+  rateAboveKg       Decimal?  @db.Decimal(10, 3)              // break point, e.g. 500 kg
+  rateAboveKgRate   Decimal?  @db.Decimal(12, 2)              // ₹/kg above the break
+  volDiscountPct    Decimal   @default(0) @db.Decimal(6, 2)   // "Volume weight Discount option"
+  handlingBands     Json      @default("[]")                  // [{fromKg,toKg,perPcs}] weight-banded per-pcs
+  ospCharge         Decimal   @default(0) @db.Decimal(12, 2)  // oversize (air): dim>119cm or pcs>69kg
+  // ---- standard surcharge heads (customer bill) ----
+  awbCharge         Decimal   @default(0) @db.Decimal(12, 2)  // AIRWAYBILL CHARGES (flat / shipment)
+  emergencyCharge   Decimal   @default(0) @db.Decimal(12, 2)  // Emergency Situation Surcharge
+  environmentCharge Decimal   @default(0) @db.Decimal(12, 2)  // Environmental Surcharge
   // ---- FSC (flat or dynamic diesel-linked) ----
   fuelMode          String    @default("FLAT")  // FLAT | DYNAMIC
   fuelPct           Decimal   @default(0) @db.Decimal(6, 2)   // flat %
@@ -305,8 +316,9 @@ model CustomerRateCardSlab {
   id         BigInt   @id @default(autoincrement())
   rateCardId BigInt
   card       CustomerRateCard @relation(fields: [rateCardId], references: [id], onDelete: Cascade)
-  zone       String   // ZONE master code/name
-  rateType   String   // INITIAL | ADDITIONAL | UPTO | PLUS | PLUSKG
+  originZone String?  // origin zone (origin × dest grid); null = any origin
+  zone       String   // destination zone code (DP: A/B/C/OTHER · Apex/Surface: N1..NE3)
+  rateType   String   // INITIAL | ADDITIONAL | UPTO | PLUS | PLUSKG | FIRST250 | FIRST500 | ADD500
   weight     Decimal  @db.Decimal(10, 3)
   rate       Decimal  @db.Decimal(12, 2)
   slabOrder  Int      @default(0)
@@ -722,13 +734,40 @@ model Pincode {
   pincode String  @id
   city    String
   state   String
-  region  Region
-  tier    Int     // 1 | 2 | 3
+  region  Region?
+  tier    Int?    // 1 | 2 | 3
   isOda   Boolean @default(false)
+  // ---- zone mapping (per product) + EDL, from the PINCODE MAPPING upload ----
+  serviceCentre String?  // e.g. ANT
+  areaName      String?  // e.g. ANTARIKSH BHAVAN
+  dpZone        String?  // A | B | C | OTHER  (Intracity | Within Region | Metro | ROI)
+  surfaceZone   String?  // N1..NE3
+  apexZone      String?  // N1..NE3
+  ecomZone      String?
+  edl           String?  @default("Regular") // Regular | EDL (out-of-coverage → ODA charge)
+  edlDistanceKm Int?     // km from nearest service centre — drives the EDL matrix lookup
+  tatHours      Int?
 
   @@index([city])
   @@index([region])
   @@map("pincodes")
+}
+
+/// EDL (= ODA / "Extra Delivery Location") matrix — one standard table per vendor/network.
+/// Charge = cell at (km-band × chargeable-weight-band). Fallback rules for beyond-range /
+/// NE-JCK live in a MasterEntry(type 'EDL_RULE', code = network).
+model EdlRate {
+  id        BigInt   @id @default(autoincrement())
+  network   String   @default("SELF") // vendor code (e.g. BLUEDART) or SELF
+  kmFrom    Int
+  kmTo      Int
+  wtFromKg  Int
+  wtToKg    Int
+  rate      Decimal  @db.Decimal(12, 2)
+  createdAt DateTime @default(now())
+
+  @@index([network])
+  @@map("edl_rates")
 }
 
 /// Serviceability coverage: which pincodes are served, by the SELF network or a vendor.

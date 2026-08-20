@@ -54,6 +54,14 @@ export class PincodesController {
     return this.pincodes.bulkServiceAreas(dto.rows ?? [], dto.defaultNetwork || 'SELF');
   }
 
+  /** Bulk upload the pincode → per-product zone + EDL mapping (PINCODE MAPPING format). */
+  @Post('mapping/bulk')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  bulkMapping(@Body() dto: { rows: any[] }) {
+    return this.pincodes.bulkMapping(dto.rows ?? []);
+  }
+
   /** Which networks/products serve a pincode (fastest TAT first) — used by booking auto-pick. */
   @Get('service-options/:pincode')
   serviceOptions(@Param('pincode') pincode: string) {
