@@ -306,6 +306,9 @@ export const api = {
 
   // ---- finance ----
   rateQuote: (awb: string) => request<RateQuote>(`/api/v1/shipments/${awb}/rate-quote`),
+  billWorksheet: (clientId: string | number, from?: string, to?: string) =>
+    request<{ columns: { header: string; key: string }[]; client: { accountCode: string; legalName: string }; count: number; rows: Record<string, any>[] }>(
+      `/api/v1/billing/bill-worksheet?clientId=${clientId}${from ? `&from=${from}` : ''}${to ? `&to=${to}` : ''}`),
   listInvoices: () => request<Invoice[]>('/api/v1/billing/invoices'),
   getInvoice: (id: string) => request<Invoice>(`/api/v1/billing/invoices/${id}`),
   generateInvoice: (clientId: number, periodStart: string, periodEnd: string) =>

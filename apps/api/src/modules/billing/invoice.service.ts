@@ -6,6 +6,19 @@ import { RateService } from './rate.service';
 
 const GST_RATE = 0.18; // India GST
 
+// "Customer bill working" column order (59 cols). {header} is the sheet label (may repeat,
+// e.g. "Origin" twice); {key} is the unique field in each row object.
+const BILL_COLUMNS: { header: string; key: string }[] = [
+  'AWBNo', 'BookingDate', 'CustomerCode', 'CustomerName', 'Invoice_No', 'Invoice_Date', 'Cust_Invoice_No', 'Cust_Invoice_Date',
+  'Shipment_Value', 'COD_Amount', 'AddField7', 'Vendor_InvoiceNo', 'Shipper', 'ManifestNo', 'VendorCode', 'ProductCode',
+  'Origin', 'PaymentType', 'Pieces', 'ChargeWeight', 'Forwarding_AWB', 'Consignee_Name', 'Consignee_Pin', 'DestinationName',
+  'ZoneCode', 'DomIntl', ['Origin', 'Origin_2'] as any, 'Content', 'Instruction', 'ContractCustomer', 'Description', 'EntryLocked',
+  'Freight', 'AIRWAYBILL CHARGES', 'Emergency Sit. Surhrg.', 'ENVIRONMENTAL SURCHARGE', 'EXTRA DELIVERY LOCATION', 'TDD', 'NDD',
+  'FREIGHT ON VALUE', 'OVER SIZE PCS', 'PICKUP CHARGES', 'TOPAY CHARGES', 'VALUABLE CARGO HANDLING CHARGE', 'CHEQUE/DD ON DELIVERY',
+  'APPOINTMENT DELIVERY', 'Packaging charges', 'Pikcup charges', 'Reverse pick up ( Topay)', 'DEMMURAGE CHARGE', 'Other Charges 1',
+  'Other Charges 2', 'RAS CHARGE', 'Currency Adjustment', 'FuelSurcharge', 'TaxIGST', 'SBCessSGST', 'KKCessCGST', 'TotalSales',
+].map((c) => (Array.isArray(c) ? { header: c[0], key: c[1] } : { header: c as string, key: c as string }));
+
 const STATE_NAMES: Record<string, string> = {
   '29': 'Karnataka', '27': 'Maharashtra', '36': 'Telangana', '33': 'Tamil Nadu',
   '07': 'Delhi', '24': 'Gujarat', '06': 'Haryana', '09': 'Uttar Pradesh',
@@ -154,6 +167,56 @@ export class InvoiceService {
     });
 
     return { invoice, creditHold: overLimit, newBalance, creditLimit: client.creditLimit };
+  }
+
+  /**
+   * Bill-working export — one row per AWB with every charge head, matching the
+   * "Customer bill working" sheet columns exactly (59 cols). Charges come from the
+   * live rate engine; unrated AWBs show zeros.
+   */
+  async billWorksheet(clientId: number, from?: string, to?: string) {
+    const client = await this.prisma.b2bClient.findUnique({ where: { id: BigInt(clientId) } });
+    if (!client) throw new NotFoundException('Client not found');
+    const where: any = { clientId: client.id };
+    if (from || to) where.createdAt = { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) };
+    const shipments = await this.prisma.shipment.findMany({
+      where, orderBy: { createdAt: 'asc' }, take: 5000,
+      include: { pieces: { select: { status: true, deadKg: true, volKg: true, lengthCm: true, widthCm: true, heightCm: true } } },
+    });
+
+    const carrierState = process.env.COMPANY_STATE_CODE ?? '29';
+    const clientState = client.gstin && client.gstin.length >= 2 ? client.gstin.slice(0, 2) : null;
+    const intraState = clientState ? clientState === carrierState : true;
+    const vendorCode = (v?: string | null) => (v && String(v).toUpperCase().startsWith('BLUEDART') ? 'BDR' : (v || 'SELF'));
+    const d10 = (dt: any) => (dt ? new Date(dt).toISOString().slice(0, 10) : '');
+
+    const rows: Record<string, any>[] = [];
+    for (const s of shipments) {
+      const b: any = (await this.rates.chargesForShipment(s, s.pieces)) || {};
+      const num = (x: any) => +(Number(x ?? 0)).toFixed(2);
+      const sub = num(b.subtotal);
+      const gst = +(sub * GST_RATE).toFixed(2);
+      rows.push({
+        AWBNo: s.awb, BookingDate: d10(s.createdAt), CustomerCode: client.accountCode, CustomerName: client.legalName,
+        Invoice_No: '', Invoice_Date: '', Cust_Invoice_No: s.referenceNo ?? '', Cust_Invoice_Date: '',
+        Shipment_Value: num(s.shipmentValue ?? s.declaredValue), COD_Amount: 0, AddField7: '', Vendor_InvoiceNo: '',
+        Shipper: s.shipperName ?? '', ManifestNo: '', VendorCode: vendorCode(s.vendor), ProductCode: s.product ?? '',
+        Origin: s.originZone ?? '', PaymentType: s.paymentTerm === 'TO_PAY' ? 'T' : 'R', Pieces: s.pieceCount,
+        ChargeWeight: num(b.chargeableKg), Forwarding_AWB: s.awb, Consignee_Name: s.consigneeName ?? '',
+        Consignee_Pin: s.destPincode ?? '', DestinationName: s.consigneeCity ?? '', ZoneCode: s.destZone ?? '',
+        DomIntl: 'D', Origin_2: s.originZone ?? '', Content: s.goodsDesc ?? '', Instruction: '', ContractCustomer: 'Y',
+        Description: '', EntryLocked: 'Unlocked',
+        Freight: num(b.freight), 'AIRWAYBILL CHARGES': num(b.awb), 'Emergency Sit. Surhrg.': num(b.emergency),
+        'ENVIRONMENTAL SURCHARGE': num(b.environment), 'EXTRA DELIVERY LOCATION': num(b.oda), TDD: 0, NDD: 0,
+        'FREIGHT ON VALUE': num(b.fov), 'OVER SIZE PCS': num(b.osp), 'PICKUP CHARGES': 0, 'TOPAY CHARGES': num(b.topay),
+        'VALUABLE CARGO HANDLING CHARGE': num(b.handling), 'CHEQUE/DD ON DELIVERY': 0, 'APPOINTMENT DELIVERY': num(b.appt),
+        'Packaging charges': 0, 'Pikcup charges': 0, 'Reverse pick up ( Topay)': 0, 'DEMMURAGE CHARGE': 0,
+        'Other Charges 1': num(b.loading), 'Other Charges 2': num(b.unloading), 'RAS CHARGE': 0, 'Currency Adjustment': 0,
+        FuelSurcharge: num(b.fuel), TaxIGST: intraState ? 0 : gst, SBCessSGST: intraState ? +(gst / 2).toFixed(2) : 0,
+        KKCessCGST: intraState ? +(gst / 2).toFixed(2) : 0, TotalSales: +(sub + gst).toFixed(2),
+      });
+    }
+    return { columns: BILL_COLUMNS, client: { accountCode: client.accountCode, legalName: client.legalName }, count: rows.length, rows };
   }
 
   /**

@@ -14,6 +14,7 @@ import { Customers } from './pages/Customers';
 import { RateMatrix } from './pages/RateMatrix';
 import { CustomerRate } from './pages/CustomerRate';
 import { RateCard } from './pages/RateCard';
+import { BillWorksheet } from './pages/BillWorksheet';
 import { Pickups } from './pages/Pickups';
 import { Manifests } from './pages/Manifests';
 import { MyTasks } from './pages/MyTasks';
@@ -72,6 +73,7 @@ export function App() {
         <Route path="/shipments/:awb" element={<ShipmentDetail />} />
         <Route path="/shipments/:awb/labels" element={<Labels />} />
         <Route path="/invoices" element={<Invoices />} />
+        <Route path="/bill-worksheet" element={isAdminFin ? <BillWorksheet /> : <Navigate to="/" replace />} />
         <Route path="/invoices/:id" element={<InvoiceDetail />} />
         <Route path="/my-tasks" element={<MyTasks />} />
         <Route path="/pickups" element={<Pickups />} />

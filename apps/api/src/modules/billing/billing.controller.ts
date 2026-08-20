@@ -58,6 +58,13 @@ export class BillingController {
     return this.invoices.generateEInvoice(Number(id));
   }
 
+  /** Bill-working export (per-AWB charge breakdown) for a client — matches the bill sheet. */
+  @Get('billing/bill-worksheet')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  billWorksheet(@Query('clientId') clientId: string, @Query('from') from?: string, @Query('to') to?: string) {
+    return this.invoices.billWorksheet(Number(clientId), from, to);
+  }
+
   /** Receivables aging across all clients (current / 1-30 / 31-60 / 61-90 / 90+). */
   @Get('billing/aging')
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)

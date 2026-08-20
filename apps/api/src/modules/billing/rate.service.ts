@@ -19,6 +19,10 @@ export interface ChargeBreakup {
   appt?: number;
   loading?: number;
   unloading?: number;
+  awb?: number;
+  emergency?: number;
+  environment?: number;
+  osp?: number;
   subtotal: number; // pre-GST total of all charge heads
   lines: { head: string; amount: number }[];
   basis: string; // 'card:… | slab… | per-kg | ftl | manual'
@@ -402,6 +406,7 @@ export class RateService {
     const subtotal = r2(freight + fuel + fov + oda + awb + emergency + environment + handling + osp + topay + appt + loading + unloading + docket);
     return {
       chargeableKg, freight, fuel, fov, oda, docket, handling, topay, appt, loading, unloading,
+      awb, emergency, environment, osp,
       subtotal, lines, basis: `card ${card.network}/${card.product} — ${priced.basis}`,
     };
   }
