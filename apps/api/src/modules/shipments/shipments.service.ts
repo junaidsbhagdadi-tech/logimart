@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Prisma, ShipmentStatus, PieceStatus, ScanCheckpoint } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -55,7 +55,13 @@ export class ShipmentsService {
       );
     }
 
-    const awb = await this.nextAwb();
+    // Manually-booked shipments carry a pre-assigned AWB; otherwise auto-generate.
+    const manualAwb = (dto as any).manualAwb ? String((dto as any).manualAwb).trim().toUpperCase() : '';
+    if (manualAwb) {
+      const exists = await this.prisma.shipment.findUnique({ where: { awb: manualAwb }, select: { id: true } });
+      if (exists) throw new ConflictException(`AWB ${manualAwb} already exists.`);
+    }
+    const awb = manualAwb || (await this.nextAwb());
     const total = dto.pieces.length;
 
     // Pincode → region drives the billing zone; directory flags ODA destinations.

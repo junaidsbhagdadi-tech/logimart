@@ -8,7 +8,7 @@ import { mapMode } from '../productMode';
  * MPS: one row per BOX; rows sharing the same `ref` are grouped into a single AWB
  * (each row contributes one piece with its own dimensions). Shipment-level fields are
  * taken from the first row of each ref group. A blank ref = a single-box shipment. */
-const COLS_STAFF = ['ref', 'clientId', 'product', 'originPincode', 'destPincode', 'consigneeName', 'consigneePhone', 'consigneeAddress', 'declaredValue', 'deadKg', 'lengthCm', 'widthCm', 'heightCm'];
+const COLS_STAFF = ['ref', 'awb', 'clientId', 'product', 'originPincode', 'destPincode', 'consigneeName', 'consigneePhone', 'consigneeAddress', 'declaredValue', 'deadKg', 'lengthCm', 'widthCm', 'heightCm'];
 const COLS_CLIENT = COLS_STAFF.filter((c) => c !== 'clientId');
 
 export function BulkBooking() {
@@ -49,16 +49,17 @@ export function BulkBooking() {
   const downloadTemplate = () => {
     // A1 = a 2-box MPS shipment (two rows, same ref); A2 = a single-box shipment.
     const p = Object.keys(prodModes)[0] || 'SURFACE'; // a real product code if any, else a mode keyword
+    // A1 = a manually-booked shipment (pre-assigned AWB BD10000001); A2 = blank awb -> auto-generated.
     const sample = ownClientId
       ? [
-          `A1,${p},560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,5,30,20,15`,
-          `A1,${p},560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,8,40,30,20`,
-          `A2,${p},560001,400001,Beta Corp,9812345670,5 Fort Mumbai,12000,3,25,20,10`,
+          `A1,BD10000001,${p},560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,5,30,20,15`,
+          `A1,BD10000001,${p},560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,8,40,30,20`,
+          `A2,,${p},560001,400001,Beta Corp,9812345670,5 Fort Mumbai,12000,3,25,20,10`,
         ].join('\n')
       : [
-          `A1,1,${p},560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,5,30,20,15`,
-          `A1,1,${p},560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,8,40,30,20`,
-          `A2,1,${p},560001,400001,Beta Corp,9812345670,5 Fort Mumbai,12000,3,25,20,10`,
+          `A1,BD10000001,1,${p},560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,5,30,20,15`,
+          `A1,BD10000001,1,${p},560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,8,40,30,20`,
+          `A2,,1,${p},560001,400001,Beta Corp,9812345670,5 Fort Mumbai,12000,3,25,20,10`,
         ].join('\n');
     const csv = cols.join(',') + '\n' + sample + '\n';
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -78,6 +79,7 @@ export function BulkBooking() {
       const serviceMode = prodModes[prodCode.toUpperCase()] || mapMode(prodCode) || 'ROAD_PTL';
       return {
         clientId: ownClientId ?? Number(first.clientId),
+        manualAwb: first.awb || undefined, // pre-assigned AWB for a manually-booked shipment
         product: prodCode || undefined,
         serviceMode,
         originHubId: hubIds[0], destHubId: hubIds[1],
@@ -114,6 +116,7 @@ export function BulkBooking() {
           Fill <strong>one box per row</strong> in Excel, save as CSV, then upload or paste below. For a multi-box
           shipment (MPS), give every box the <strong>same <code>ref</code></strong> — they book under one AWB, each
           box carrying its own weight + dimensions (L×W×H cm). A blank <code>ref</code> = a single-box shipment.
+          Fill <code>awb</code> to import a <strong>manually-booked</strong> shipment with its existing AWB; leave it blank to auto-generate.
           The <code>product</code> column sets the service / transport mode (same as the booking form).
           E-way bills auto-generate when invoice value ≥ ₹50,000.
         </p>

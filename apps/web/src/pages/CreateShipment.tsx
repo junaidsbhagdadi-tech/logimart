@@ -210,8 +210,11 @@ export function CreateShipment() {
 
   return (
     <>
-      <h1>New MPS Shipment</h1>
-      {error && <div className="error">{error}</div>}
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+        <h1 style={{ margin: 0 }}>New MPS Shipment</h1>
+        <button type="button" className="secondary" onClick={() => nav('/bulk')} title="Bulk import shipments (incl. manually-booked AWBs)">📥 Bulk import</button>
+      </div>
+      {error && <div className="error" style={{ marginTop: 16 }}>{error}</div>}
 
       <div className="card">
         <h2>Booking</h2>

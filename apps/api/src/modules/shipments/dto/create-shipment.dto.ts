@@ -29,6 +29,8 @@ export class CreateShipmentDto {
   @IsInt()
   clientId!: number;
 
+  @IsOptional() @IsString() manualAwb?: string; // pre-assigned AWB for a manually-booked shipment
+
   @IsEnum(ServiceMode)
   serviceMode!: ServiceMode;
 
