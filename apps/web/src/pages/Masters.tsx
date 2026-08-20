@@ -86,6 +86,12 @@ export function Masters() {
   const [error, setError] = useState('');
 
   const [diesel, setDiesel] = useState<number | null>(null);
+  const [newDiesel, setNewDiesel] = useState('');
+  const saveDiesel = async () => {
+    if (!newDiesel) return;
+    try { await api.setFuelPrice({ price: Number(newDiesel) }); setDiesel(Number(newDiesel)); setNewDiesel(''); setMsg(`✓ Current diesel set to ₹${newDiesel}/L`); }
+    catch (e: any) { setError(e.message); }
+  };
 
   const load = () => api.listMaster(typeKey).then(setRows).catch((e) => setError(e.message));
   useEffect(() => { setForm({}); setEditing(false); setError(''); setMsg(''); setQ(''); load(); /* eslint-disable-next-line */ }, [typeKey]);
@@ -171,9 +177,14 @@ export function Masters() {
         {typeKey === 'FUEL_MECHANISM' && (
           <div className="card" style={{ borderLeft: '4px solid var(--sky)', marginTop: 16, marginBottom: 0 }}>
             <h2 style={{ marginBottom: 8 }}>🧮 Calculator</h2>
-            <p className="muted" style={{ marginTop: 0 }}>
-              Current diesel: <strong>{diesel != null ? `₹${diesel}/L` : '— set on Customer Rate —'}</strong>. Live from the values above.
-            </p>
+            <div className="row" style={{ gap: 8, alignItems: 'flex-end', marginBottom: 8, flexWrap: 'wrap' }}>
+              <div>
+                <label style={{ fontSize: 12 }}>Current diesel ₹/L</label>
+                <input type="number" step="0.01" value={newDiesel} onChange={(e) => setNewDiesel(e.target.value)} placeholder={diesel != null ? String(diesel) : 'e.g. 94.50'} style={{ width: 140 }} />
+              </div>
+              <button className="secondary" onClick={saveDiesel} disabled={!newDiesel}>Set price</button>
+              <span className="muted" style={{ fontSize: 12 }}>In force: <strong>{diesel != null ? `₹${diesel}/L` : 'not set'}</strong> — drives every DYNAMIC card.</span>
+            </div>
             <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--navy)' }}>Effective fuel surcharge = {feff.toFixed(2)}%</div>
             {fmode === 'DYNAMIC' && (
               Number(fa.baseFuelPrice) > 0
