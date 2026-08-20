@@ -219,53 +219,6 @@ model CustomerVolumetric {
   @@map("customer_volumetrics")
 }
 
-/// Billing-app-style rate card: one per (customer, productType, serviceType), holding
-/// weight-bracket slabs (from–to grams) × zone → rate, plus card-level surcharges,
-/// flat-rate override, a volume discount, and validity. productType uses Logimart's
-/// own product types (from the Product master).
-model CarrierRateCard {
-  id               BigInt   @id @default(autoincrement())
-  clientId         BigInt
-  productType      String   // Logimart product type (e.g. DOMESTIC / APEX / …)
-  serviceType      String   // AIR | SURFACE | NDD | …
-  rateType         String   @default("PER_UNIT")
-  fuelSurchargePct Decimal  @default(0) @db.Decimal(6, 2)
-  fovPct           Decimal? @db.Decimal(6, 2)
-  fovMinAmount     Decimal? @db.Decimal(12, 2)
-  odaCharge        Decimal? @db.Decimal(12, 2)
-  codPct           Decimal? @db.Decimal(6, 2)
-  codMinAmount     Decimal? @db.Decimal(12, 2)
-  rtoCost          Decimal? @db.Decimal(12, 2)
-  discountMinAmount Decimal? @db.Decimal(14, 2) // volume-discount threshold (invoice ≥ this)
-  discountPct      Decimal? @db.Decimal(6, 2)
-  flatRate         Decimal? @db.Decimal(12, 2)  // flat rate overrides slabs while within validity
-  effectiveFrom    DateTime?
-  effectiveTo      DateTime?
-  isActive         Boolean  @default(true)
-  createdAt        DateTime @default(now())
-
-  slabs CarrierRateSlab[]
-
-  @@index([clientId, productType, serviceType])
-  @@map("carrier_rate_cards")
-}
-
-/// Weight-bracket slab under a CarrierRateCard: weight in [fromWeightGrams, toWeightGrams) for a zone → rate.
-model CarrierRateSlab {
-  id              BigInt  @id @default(autoincrement())
-  rateCardId      BigInt
-  slabOrder       Int     @default(0)
-  fromWeightGrams Int
-  toWeightGrams   Int?    // null = open-ended top bracket
-  zone            String
-  rate            Decimal @db.Decimal(12, 2)
-
-  card CarrierRateCard @relation(fields: [rateCardId], references: [id], onDelete: Cascade)
-
-  @@index([rateCardId])
-  @@map("carrier_rate_slabs")
-}
-
 /// Weight-slab tariff (Xpresion "Customer Rate" / ClientRate). A client (or generic
 /// when clientId is null) has many slabs across vendor/product/zone/destination/service.
 model ClientRateSlab {

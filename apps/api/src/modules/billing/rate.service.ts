@@ -248,77 +248,9 @@ export class RateService {
     return { chargeableKg, freight, fuel, fov, oda: 0, docket: 0, handling: 0, subtotal: r2(freight + fuel + fov), lines, basis: priced.basis };
   }
 
-  // ================= billing-app rate card (weight-bracket by zone) =================
-
-  /** Match a CarrierRateCard for the shipment by client + product type + service. */
-  private async carrierCardFor(shipment: any) {
-    const cards = await this.prisma.carrierRateCard.findMany({
-      where: { clientId: shipment.clientId, isActive: true },
-      include: { slabs: { orderBy: { slabOrder: 'asc' } } },
-    });
-    if (!cards.length) return null;
-    const eqi = (a: any, b: any) => String(a ?? '').toUpperCase() === String(b ?? '').toUpperCase();
-    const prod = String(shipment.product ?? '').toUpperCase();
-    const svc = this.isSurface(shipment.serviceMode) ? 'SURFACE' : 'AIR';
-    // prefer exact product+service, then product, then service, then any
-    const tiers: ((c: any) => boolean)[] = [
-      (c) => eqi(c.productType, prod) && (eqi(c.serviceType, svc) || eqi(c.serviceType, shipment.service)),
-      (c) => eqi(c.productType, prod),
-      (c) => eqi(c.serviceType, svc) || eqi(c.serviceType, shipment.service),
-      () => true,
-    ];
-    for (const pred of tiers) { const hit = cards.find(pred); if (hit) return hit; }
-    return null;
-  }
-
-  /** Price from a billing-app rate card: flat OR weight-bracket-by-zone base + surcharges + volume discount. */
-  async chargesFromCarrierCard(shipment: any, chargeableKg: number): Promise<ChargeBreakup | null> {
-    const card = await this.carrierCardFor(shipment);
-    if (!card) return null;
-    const weightGrams = Math.round(chargeableKg * 1000);
-    const zone = String(shipment.destZone ?? '').toUpperCase();
-    const now = new Date();
-
-    let base: number | null = null;
-    let basis = '';
-    if (card.flatRate != null && card.effectiveFrom && card.effectiveTo && now >= card.effectiveFrom && now <= card.effectiveTo) {
-      base = Number(card.flatRate);
-      basis = 'flat';
-    } else {
-      const zoneSlabs = card.slabs
-        .filter((s) => String(s.zone).toUpperCase() === zone)
-        .sort((a, b) => a.fromWeightGrams - b.fromWeightGrams);
-      const slab = zoneSlabs.find((s) => weightGrams >= s.fromWeightGrams && (s.toWeightGrams == null || weightGrams < s.toWeightGrams));
-      if (!slab) return null; // no bracket for this weight/zone -> caller falls back
-      base = Number(slab.rate);
-      basis = `${slab.fromWeightGrams}-${slab.toWeightGrams ?? '∞'}g / ${zone}`;
-    }
-
-    const freight = r2(base);
-    const fuel = r2((freight * Number(card.fuelSurchargePct)) / 100);
-    const invVal = Number(shipment.shipmentValue ?? shipment.declaredValue ?? 0);
-    let fov = 0;
-    if (card.fovPct != null || card.fovMinAmount != null) fov = r2(Math.max((invVal * Number(card.fovPct ?? 0)) / 100, Number(card.fovMinAmount ?? 0)));
-    const oda = shipment.isOda && card.odaCharge != null ? r2(Number(card.odaCharge)) : 0;
-
-    let subtotal = r2(freight + fuel + fov + oda);
-    let discount = 0;
-    if (card.discountMinAmount != null && card.discountPct != null && subtotal >= Number(card.discountMinAmount)) {
-      discount = r2((freight * Number(card.discountPct)) / 100);
-      subtotal = r2(subtotal - discount);
-    }
-
-    const lines = [{ head: `Freight (${basis})`, amount: freight }];
-    if (fuel > 0) lines.push({ head: `Fuel ${card.fuelSurchargePct}%`, amount: fuel });
-    if (fov > 0) lines.push({ head: 'FOV', amount: fov });
-    if (oda > 0) lines.push({ head: 'ODA', amount: oda });
-    if (discount > 0) lines.push({ head: `Discount ${card.discountPct}%`, amount: -discount });
-    return { chargeableKg, freight, fuel, fov, oda, docket: 0, handling: 0, subtotal, lines, basis: `card ${basis}` };
-  }
-
   /**
-   * Resolve charges for a shipment: manual override > FTL flat rate > carrier rate card >
-   * Xpresion slab tariff > per-kg. Returns null if no applicable rate is configured.
+   * Resolve charges for a shipment: manual override > FTL flat rate >
+   * weight-slab tariff (INITIAL/ADDITIONAL/UPTO/PLUS/PLUSKG) > per-kg card.
    */
   async chargesForShipment(shipment: any, pieces: WeightLike[]): Promise<ChargeBreakup | null> {
     const chargeableKg = await this.chargeableKgFor(shipment, pieces);
@@ -344,11 +276,7 @@ export class RateService {
       }
     }
 
-    // 3) Billing-app rate card (weight-bracket by zone) — the primary tariff
-    const cardBreakup = await this.chargesFromCarrierCard(shipment, chargeableKg);
-    if (cardBreakup) return cardBreakup;
-
-    // 4) Xpresion weight-slab tariff (Customer Rate) — fallback
+    // 3) Weight-slab tariff (Customer Rate: INITIAL / ADDITIONAL / UPTO / PLUS / PLUSKG) — the primary tariff
     const slabBreakup = await this.chargesFromSlabs(shipment, chargeableKg);
     if (slabBreakup) return slabBreakup;
 
