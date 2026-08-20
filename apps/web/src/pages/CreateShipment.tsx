@@ -114,7 +114,7 @@ export function CreateShipment() {
       // which carrier products serve this pincode? auto-pick the fastest BlueDart product.
       const opts = await api.serviceOptions(p).catch(() => []);
       setSvcOptions(opts);
-      const best = opts.find((o) => o.network.startsWith('BLUEDART')) || opts[0];
+      const best = opts.find((o) => /^BLUEDART-/.test(o.network)) || opts.find((o) => o.network.startsWith('BLUEDART')) || opts[0];
       if (best) setSvc((s) => ({ ...s, vendor: best.network, service: best.mode || s.service }));
       if (best?.isOda) setFlags((f) => ({ ...f, oda: true }));
     } else { setDestInfo(null); setSvcOptions([]); }
