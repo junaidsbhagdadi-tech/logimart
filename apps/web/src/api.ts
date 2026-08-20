@@ -454,6 +454,17 @@ export const api = {
   createFtlRate: (body: unknown) =>
     request('/api/v1/rate-cards/ftl', { method: 'POST', body: JSON.stringify(body) }),
 
+  // ---- revamped customer rate cards (eye → popout) ----
+  listCustomerCards: (clientId?: string | number) =>
+    request<any[]>(`/api/v1/rate-cards/cards${clientId != null ? `?clientId=${clientId}` : ''}`),
+  getCustomerCard: (id: string | number) => request<any>(`/api/v1/rate-cards/cards/${id}`),
+  createCustomerCard: (body: unknown) =>
+    request<any>('/api/v1/rate-cards/cards', { method: 'POST', body: JSON.stringify(body) }),
+  updateCustomerCard: (id: string | number, body: unknown) =>
+    request<any>(`/api/v1/rate-cards/cards/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  delCustomerCard: (id: string | number) =>
+    request(`/api/v1/rate-cards/cards/${id}`, { method: 'DELETE' }),
+
   // ---- vendors ----
   listVendors: () => request<any[]>('/api/v1/vendors'),
   getVendor: (id: string) => request<any>(`/api/v1/vendors/${id}`),

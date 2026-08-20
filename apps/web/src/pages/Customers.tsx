@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, Client } from '../api';
 import { CustomerSubTab } from '../components/CustomerSubTab';
+import { RateCardsDialog } from '../components/RateCardsDialog';
 
 const blank = {
   legalName: '', customerType: 'Domestic', accountCode: '', contactPhone: '',
@@ -25,6 +26,7 @@ export function Customers() {
   const [bulkText, setBulkText] = useState('');
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkResult, setBulkResult] = useState<{ total: number; created: number; results: { name: string; code?: string; ok: boolean; error?: string }[] } | null>(null);
+  const [rcClient, setRcClient] = useState<Client | null>(null);
 
   const load = () => { api.listClients().then(setClients).catch((e) => setError(e.message)); };
   useEffect(load, []);
@@ -198,13 +200,14 @@ export function Customers() {
       <div className="card">
         <h2>Customers ({clients.length})</h2>
         <table>
-          <thead><tr><th>Code</th><th>Name</th><th>GSTIN</th><th>PAN</th><th>City</th><th>Credit limit</th><th>Outstanding</th><th>Terms</th><th>Status</th><th>Active</th></tr></thead>
+          <thead><tr><th>Code</th><th>Name</th><th>GSTIN</th><th>PAN</th><th>City</th><th>Credit limit</th><th>Outstanding</th><th>Terms</th><th>Rate Cards</th><th>Status</th><th>Active</th></tr></thead>
           <tbody>
             {clients.map((c) => (
               <tr key={c.id} style={{ opacity: c.isActive === false ? 0.5 : 1 }}>
                 <td>{c.accountCode}</td><td><strong>{c.legalName}</strong></td><td>{c.gstin ?? '—'}</td><td>{c.pan ?? '—'}</td>
                 <td>{c.city ?? '—'}</td><td>₹{c.creditLimit}</td><td>₹{c.outstandingBal}</td>
                 <td>Net {c.creditDays}</td>
+                <td><button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} title="View / edit rate cards" onClick={() => setRcClient(c)}>👁 Cards</button></td>
                 <td>{c.isCash ? <span className="badge DOD">CASH</span> : c.isCreditHold ? <span className="badge PARTIAL">HOLD</span> : <span className="badge DELIVERED">OK</span>}</td>
                 <td>
                   <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => toggleActive(c)}>
@@ -216,6 +219,7 @@ export function Customers() {
           </tbody>
         </table>
       </div>
+      {rcClient && <RateCardsDialog client={rcClient} onClose={() => setRcClient(null)} />}
     </>
   );
 }
