@@ -384,6 +384,12 @@ export const api = {
   bulkServiceAreas: (rows: Record<string, string>[], defaultNetwork = 'SELF') =>
     request<{ imported: number; failed: number; errors: { pincode: string; error: string }[] }>(
       '/api/v1/pincodes/service-areas/bulk', { method: 'POST', body: JSON.stringify({ rows, defaultNetwork }) }),
+  bulkPincodeMapping: (rows: Record<string, any>[]) =>
+    request<{ imported: number; failed: number; errors: { pincode: string; error: string }[] }>(
+      '/api/v1/pincodes/mapping/bulk', { method: 'POST', body: JSON.stringify({ rows }) }),
+  bulkEdl: (network: string, rows: any[]) =>
+    request<{ network: string; imported: number }>('/api/v1/rate-cards/edl/bulk', { method: 'POST', body: JSON.stringify({ network, rows }) }),
+  listEdl: (network?: string) => request<any[]>(`/api/v1/rate-cards/edl${network ? `?network=${network}` : ''}`),
   listHubs: () => request<{ id: string; code: string; name: string; zone: string }[]>('/api/v1/hubs'),
 
   // ---- generic master data (Zone, Country, State, Product, Charge, …) ----

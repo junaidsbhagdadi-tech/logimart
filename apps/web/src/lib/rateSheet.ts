@@ -122,6 +122,70 @@ export async function parseRateWorkbook(file: File, family: 'CARGO' | 'COURIER')
   return { family, slabs, origins: [...origins], dests: [...dests], notes };
 }
 
+const band = (txt: any): [number, number] => {
+  const n = String(txt).match(/\d+/g) || [];
+  return n.length >= 2 ? [Number(n[0]), Number(n[1])] : [0, 0];
+};
+
+/** Parse the PINCODE MAPPING file → rows for /pincodes/mapping/bulk. Header-name driven. */
+export async function parsePincodeMapping(file: File): Promise<Record<string, any>[]> {
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: 'array' });
+  const ws = wb.Sheets[wb.SheetNames.find((n) => /pincode/i.test(n)) || wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, raw: true, blankrows: false });
+  let h = -1;
+  rows.forEach((r, i) => { const low = (r || []).map((x) => String(x ?? '').trim().toLowerCase()); if (low.includes('pincode') && (low.includes('dp zone') || low.includes('edl'))) h = i; });
+  if (h < 0) throw new Error('Header row (Pincode / DP ZONE / EDL) not found');
+  const header = rows[h].map((x) => String(x ?? '').trim().toLowerCase());
+  const col = (name: string) => header.indexOf(name);
+  const pinC = col('pincode');
+  const areaIdx = header.map((v, i) => (v === 'area' ? i : -1)).filter((i) => i >= 0);
+  const scC = col('service centre');
+  const cityC = areaIdx[0] ?? pinC + 1;
+  const areaNameC = areaIdx[1] ?? scC + 1;
+  const surfC = header.findIndex((v) => v.startsWith('surfac')); // "Surfacae Zone" typo-safe
+  const g = (r: any[], c: number) => { if (c < 0) return null; const v = r[c]; return v == null ? null : (typeof v === 'number' && v === Math.floor(v) ? String(v) : String(v).trim()); };
+  const out: Record<string, any>[] = [];
+  for (let i = h + 1; i < rows.length; i++) {
+    const r = rows[i] || [];
+    const pin = g(r, pinC);
+    if (!pin || !/^\d{6}$/.test(pin)) continue;
+    out.push({
+      pincode: pin, city: g(r, cityC), serviceCentre: g(r, scC), areaName: g(r, areaNameC), state: g(r, col('state')),
+      dpZone: g(r, col('dp zone')), surfaceZone: g(r, surfC), apexZone: g(r, col('apex zone')),
+      ecomZone: g(r, col('ecomzone')) ?? g(r, col('ecom zone')), edl: g(r, col('edl')),
+      edlDistanceKm: g(r, col('edl distance')), tat: g(r, col('tat')),
+    });
+  }
+  return out;
+}
+
+/** Parse the EDL Matrix file → cells for /rate-cards/edl/bulk. */
+export async function parseEdlMatrix(file: File): Promise<{ kmFrom: number; kmTo: number; wtFromKg: number; wtToKg: number; rate: number }[]> {
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: 'array' });
+  const rows = XLSX.utils.sheet_to_json<any[]>(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, blankrows: false });
+  // header row = the one with >=2 weight-band cells (contain "kg")
+  let hRow = -1; const wtCols: { col: number; from: number; to: number }[] = [];
+  rows.forEach((r, i) => {
+    const cells = (r || []).map((v, c) => ({ v: String(v ?? ''), c })).filter((x) => /\d+\s*-\s*\d+\s*kg/i.test(x.v));
+    if (cells.length > wtCols.length) { hRow = i; wtCols.length = 0; cells.forEach((x) => { const [f, t] = band(x.v); wtCols.push({ col: x.c, from: f, to: t }); }); }
+  });
+  if (hRow < 0) throw new Error('Weight-band header (e.g. "0-100 kgs") not found');
+  const out: { kmFrom: number; kmTo: number; wtFromKg: number; wtToKg: number; rate: number }[] = [];
+  for (let i = hRow + 1; i < rows.length; i++) {
+    const r = rows[i] || [];
+    const kmCell = (r || []).find((v) => /\d+\s*-\s*\d+\s*km/i.test(String(v ?? '')));
+    if (!kmCell) continue;
+    const [kf, kt] = band(kmCell);
+    for (const w of wtCols) {
+      const rate = Number(r[w.col]);
+      if (rate > 0) out.push({ kmFrom: kf, kmTo: kt, wtFromKg: w.from, wtToKg: w.to, rate });
+    }
+  }
+  return out;
+}
+
 /** Download a blank courier (DP/TDD/NDD) template: origin blocks × weight slabs × dest zones. */
 export function downloadCourierTemplate() {
   const dests = ['A', 'B', 'C', 'OTHER'];
