@@ -416,6 +416,8 @@ export const api = {
   listClients: () => request<Client[]>('/api/v1/clients'),
   createClient: (body: unknown) =>
     request<Client>('/api/v1/clients', { method: 'POST', body: JSON.stringify(body) }),
+  bulkCreateClients: (rows: Record<string, string>[]) =>
+    request<{ total: number; created: number; results: { name: string; code?: string; ok: boolean; error?: string }[] }>('/api/v1/clients/bulk', { method: 'POST', body: JSON.stringify({ rows }) }),
   updateClient: (id: string, body: unknown) =>
     request<Client>(`/api/v1/clients/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
 

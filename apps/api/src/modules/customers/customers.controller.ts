@@ -22,6 +22,13 @@ export class CustomersController {
     return this.customers.list();
   }
 
+  /** Bulk-create customers from an imported sheet. */
+  @Post('bulk')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  bulk(@Body() dto: { rows: any[] }) {
+    return this.customers.bulkCreate(dto.rows ?? []);
+  }
+
   // ---- sub-tabs (declared before ':id' catch-all is fine — these have extra segments) ----
   @Get(':id/fuel-surcharges')
   @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)

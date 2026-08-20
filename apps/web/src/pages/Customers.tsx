@@ -22,8 +22,29 @@ export function Customers() {
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
 
+  // bulk import
+  const BULK_COLS = 'accountCode,legalName,gstin,pan,addressLine,city,state,pincode,contactPerson,contactPhone,contactEmail,billingState,customerType,registerType,creditLimit,creditDays,isCash';
+  const [bulkText, setBulkText] = useState('');
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{ total: number; created: number; results: { name: string; code?: string; ok: boolean; error?: string }[] } | null>(null);
+
   const load = () => { api.listClients().then(setClients).catch((e) => setError(e.message)); };
   useEffect(load, []);
+
+  const bulkTemplate = () => {
+    const csv = BULK_COLS + '\nACME001,Acme Traders Pvt Ltd,29ABCDE1234F1Z5,ABCDE1234F,12 MG Road,Bengaluru,Karnataka,560001,Ravi,9900112233,ravi@acme.test,Karnataka,Customer,Registered,500000,30,false\n';
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    const a = document.createElement('a'); a.href = url; a.download = 'logimart-customers-template.csv'; a.click(); URL.revokeObjectURL(url);
+  };
+  const bulkImport = async () => {
+    setError(''); setBulkResult(null);
+    const rows = parseCsv(bulkText);
+    if (rows.length === 0) { setError('No rows. Paste CSV (with the header row) or upload a file.'); return; }
+    setBulkBusy(true);
+    try { setBulkResult(await api.bulkCreateClients(rows)); load(); }
+    catch (e: any) { setError(e.message); }
+    setBulkBusy(false);
+  };
 
   const set = (k: keyof typeof blank, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -155,6 +176,28 @@ export function Customers() {
       </div>
 
       <div className="card">
+        <h2>⬆ Bulk import customers (CSV)</h2>
+        <p className="muted" style={{ marginTop: -6 }}>One customer per row. Columns: <code>{BULK_COLS}</code>. First row is the header; <code>legalName</code> is required, code auto-generates if blank.</p>
+        <div className="row">
+          <button className="secondary" onClick={bulkTemplate}>⬇ Template</button>
+          <label className="secondary" style={{ padding: '10px 16px', borderRadius: 11, cursor: 'pointer', fontWeight: 600, fontSize: 13, border: '1px solid var(--border)' }}>
+            📎 Upload CSV<input type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) f.text().then(setBulkText); }} />
+          </label>
+        </div>
+        <textarea rows={6} value={bulkText} onChange={(e) => setBulkText(e.target.value)} placeholder={BULK_COLS + '\n…'} style={{ width: '100%', font: '13px monospace', padding: 12, border: '1px solid var(--border)', borderRadius: 11, marginTop: 12 }} />
+        <div className="row" style={{ marginTop: 12, justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="muted"><strong>{parseCsv(bulkText).length}</strong> row(s){bulkResult && <span style={{ marginLeft: 12, color: 'var(--ok)', fontWeight: 700 }}>✓ {bulkResult.created}/{bulkResult.total} created</span>}</div>
+          <button onClick={bulkImport} disabled={bulkBusy || parseCsv(bulkText).length === 0}>{bulkBusy ? 'Importing…' : `Import ${parseCsv(bulkText).length} customer(s)`}</button>
+        </div>
+        {bulkResult && bulkResult.results.some((r) => !r.ok) && (
+          <table style={{ marginTop: 12 }}>
+            <thead><tr><th>Customer</th><th>Status</th></tr></thead>
+            <tbody>{bulkResult.results.filter((r) => !r.ok).map((r, i) => <tr key={i}><td>{r.name}</td><td><span className="badge EXCEPTION">{r.error}</span></td></tr>)}</tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="card">
         <h2>Customers ({clients.length})</h2>
         <table>
           <thead><tr><th>Code</th><th>Name</th><th>GSTIN</th><th>PAN</th><th>City</th><th>Credit limit</th><th>Outstanding</th><th>Terms</th><th>Status</th><th>Active</th></tr></thead>
@@ -177,4 +220,17 @@ export function Customers() {
       </div>
     </>
   );
+}
+
+/** CSV → array of {header: value} rows (first line = header). */
+function parseCsv(text: string): Record<string, string>[] {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length < 2) return [];
+  const header = lines[0].split(',').map((h) => h.trim());
+  return lines.slice(1).map((line) => {
+    const cells = line.split(',');
+    const row: Record<string, string> = {};
+    header.forEach((h, i) => { row[h] = (cells[i] ?? '').trim(); });
+    return row;
+  });
 }

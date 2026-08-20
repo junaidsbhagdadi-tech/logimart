@@ -66,6 +66,37 @@ export class CustomersService {
     }
   }
 
+  /** Bulk-create customers from imported rows. Reuses create() per row; reports per-row status. */
+  async bulkCreate(rows: any[]) {
+    const bool = (v: any) => v === true || ['true', '1', 'yes', 'y'].includes(String(v ?? '').trim().toLowerCase());
+    const num = (v: any) => (v != null && String(v).trim() !== '' ? Number(v) : undefined);
+    const results: { name: string; code?: string; ok: boolean; error?: string }[] = [];
+    for (const r of rows) {
+      const legalName = String(r.legalName ?? r.name ?? '').trim();
+      if (!legalName) { results.push({ name: String(r.accountCode ?? '(blank)'), ok: false, error: 'legalName required' }); continue; }
+      try {
+        const c = await this.create({
+          legalName,
+          accountCode: r.accountCode || undefined,
+          gstin: r.gstin || undefined, pan: r.pan || undefined,
+          addressLine: r.addressLine || undefined, addressLine2: r.addressLine2 || undefined,
+          city: r.city || undefined, state: r.state || undefined, pincode: r.pincode || undefined,
+          contactName: r.contactName || undefined, contactPerson: r.contactPerson || undefined,
+          contactPhone: r.contactPhone || undefined, contactEmail: r.contactEmail || undefined,
+          tel1: r.tel1 || undefined, billingState: r.billingState || undefined,
+          serviceCentre: r.serviceCentre || undefined, origin: r.origin || undefined,
+          customerType: r.customerType || undefined, registerType: r.registerType || undefined,
+          creditLimit: num(r.creditLimit), creditDays: num(r.creditDays),
+          isCash: bool(r.isCash),
+        } as any);
+        results.push({ name: c.legalName, code: c.accountCode, ok: true });
+      } catch (e: any) {
+        results.push({ name: legalName, ok: false, error: e?.message ?? 'error' });
+      }
+    }
+    return { total: rows.length, created: results.filter((x) => x.ok).length, results };
+  }
+
   list() {
     return this.prisma.b2bClient.findMany({ orderBy: { legalName: 'asc' } });
   }
