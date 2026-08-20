@@ -13,6 +13,7 @@ import { Track } from './pages/Track';
 import { Customers } from './pages/Customers';
 import { FtlRates } from './pages/FtlRates';
 import { ZoneUploads } from './pages/ZoneUploads';
+import { VendorBills } from './pages/VendorBills';
 import { BillWorksheet } from './pages/BillWorksheet';
 import { Pickups } from './pages/Pickups';
 import { Manifests } from './pages/Manifests';
@@ -82,6 +83,7 @@ export function App() {
         <Route path="/service-mapping" element={isAdminFin ? <ServiceMap /> : <Navigate to="/" replace />} />
         <Route path="/sales" element={isAdminFin ? <Sales /> : <Navigate to="/" replace />} />
         <Route path="/ftl-rates" element={isAdminFin ? <FtlRates /> : <Navigate to="/" replace />} />
+        <Route path="/vendor-bills" element={isAdminFin ? <VendorBills /> : <Navigate to="/" replace />} />
         <Route path="/zone-uploads" element={canMaster ? <ZoneUploads /> : <Navigate to="/" replace />} />
         <Route path="/tax" element={isAdminFin ? <TaxFiling /> : <Navigate to="/" replace />} />
         <Route path="/receivables" element={isAdminFin ? <Receivables /> : <Navigate to="/" replace />} />

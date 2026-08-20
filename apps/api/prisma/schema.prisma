@@ -329,6 +329,42 @@ model CustomerRateCardSlab {
   @@map("customer_rate_card_slabs")
 }
 
+/// Vendor bill line (what a vendor charged us) — AWB-wise, for profit/loss vs our sell.
+/// Uploaded from the "Vendor bill file" format; matched to our shipment by forwarding AWB.
+model VendorBill {
+  id            BigInt    @id @default(autoincrement())
+  vendorCode    String
+  product       String?
+  productType   String?
+  awb           String    // carrier / vendor AWB
+  forwardingNo  String?
+  pickupDate    DateTime?
+  origin        String?
+  destination   String?
+  actWeight     Decimal?  @db.Decimal(10, 3)
+  chrgWeight    Decimal?  @db.Decimal(10, 3)
+  pcs           Int?
+  // ---- vendor cost heads ----
+  freight       Decimal   @default(0) @db.Decimal(12, 2)
+  fs            Decimal   @default(0) @db.Decimal(12, 2) // fuel surcharge
+  caf           Decimal   @default(0) @db.Decimal(12, 2)
+  awbCharge     Decimal   @default(0) @db.Decimal(12, 2)
+  greenTax      Decimal   @default(0) @db.Decimal(12, 2)
+  edl           Decimal   @default(0) @db.Decimal(12, 2)
+  fov           Decimal   @default(0) @db.Decimal(12, 2)
+  tdd           Decimal   @default(0) @db.Decimal(12, 2)
+  topay         Decimal   @default(0) @db.Decimal(12, 2)
+  total         Decimal   @default(0) @db.Decimal(12, 2)
+  totalWithGst  Decimal   @default(0) @db.Decimal(12, 2)
+  destPincode   String?
+  declaredValue Decimal?  @db.Decimal(14, 2)
+  createdAt     DateTime  @default(now())
+
+  @@unique([vendorCode, awb])
+  @@index([awb])
+  @@map("vendor_bills")
+}
+
 // ============================ MASTER AWB (Shipment) ============================
 
 enum ServiceMode {

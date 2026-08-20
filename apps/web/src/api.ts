@@ -390,6 +390,9 @@ export const api = {
   bulkEdl: (network: string, rows: any[]) =>
     request<{ network: string; imported: number }>('/api/v1/rate-cards/edl/bulk', { method: 'POST', body: JSON.stringify({ network, rows }) }),
   listEdl: (network?: string) => request<any[]>(`/api/v1/rate-cards/edl${network ? `?network=${network}` : ''}`),
+  listVendorBills: (vendorCode?: string) => request<any[]>(`/api/v1/vendor-bills${vendorCode ? `?vendorCode=${vendorCode}` : ''}`),
+  bulkVendorBills: (rows: any[]) => request<{ imported: number; failed: number; errors: any[] }>('/api/v1/vendor-bills/bulk', { method: 'POST', body: JSON.stringify({ rows }) }),
+  getPnl: (from?: string, to?: string) => request<{ count: number; totalSell: number; totalCost: number; totalMargin: number; rows: any[] }>(`/api/v1/billing/pnl${from || to ? `?${from ? `from=${from}` : ''}${to ? `&to=${to}` : ''}` : ''}`),
   listHubs: () => request<{ id: string; code: string; name: string; zone: string }[]>('/api/v1/hubs'),
 
   // ---- generic master data (Zone, Country, State, Product, Charge, …) ----

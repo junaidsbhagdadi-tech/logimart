@@ -220,6 +220,38 @@ export class InvoiceService {
   }
 
   /**
+   * AWB-wise profit/loss: vendor cost (uploaded vendor bills) vs our sell (rate engine).
+   * Matches a vendor bill to our shipment by carrier waybill (bdWaybill) or our AWB.
+   */
+  async pnl(from?: string, to?: string) {
+    const where: any = {};
+    if (from || to) where.pickupDate = { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) };
+    const bills = await this.prisma.vendorBill.findMany({ where, orderBy: { createdAt: 'desc' }, take: 5000 });
+    const rows: any[] = [];
+    let totSell = 0, totCost = 0;
+    for (const b of bills) {
+      const ship = await this.prisma.shipment.findFirst({
+        where: { OR: [{ bdWaybill: b.awb }, { awb: b.awb }] },
+        include: { pieces: true, client: { select: { legalName: true, accountCode: true } } },
+      });
+      let sell = 0, ourAwb: string | null = null, customer: string | null = null;
+      if (ship) {
+        const ch = await this.rates.chargesForShipment(ship, ship.pieces);
+        sell = ch ? +(ch.subtotal * (1 + GST_RATE)).toFixed(2) : 0;
+        ourAwb = ship.awb; customer = ship.client?.legalName ?? null;
+      }
+      const cost = Number(b.totalWithGst || b.total);
+      totSell += sell; totCost += cost;
+      rows.push({
+        vendorAwb: b.awb, ourAwb, customer, vendorCode: b.vendorCode, product: b.product,
+        origin: b.origin, destination: b.destination, chrgWeight: Number(b.chrgWeight ?? 0),
+        cost: +cost.toFixed(2), sell, margin: +(sell - cost).toFixed(2), matched: !!ship,
+      });
+    }
+    return { count: rows.length, totalSell: +totSell.toFixed(2), totalCost: +totCost.toFixed(2), totalMargin: +(totSell - totCost).toFixed(2), rows };
+  }
+
+  /**
    * GST e-invoice registration. SANDBOX: generates a 64-char IRN + ack number.
    * Wire an IRP/GSP API here for production (NIC IRP via a GSP).
    */

@@ -51,6 +51,7 @@ export function Layout() {
       { to: '/claims', icon: '🛡', label: 'Claims', show: isAdminFin },
       { to: '/customers', icon: '👥', label: 'Customers', show: isAdminFin },
       { to: '/vendors', icon: '🏢', label: 'Vendors', show: isAdminFin },
+      { to: '/vendor-bills', icon: '🚚', label: 'Vendor Bills & P&L', show: isAdminFin },
       { to: '/service-mapping', icon: '🔀', label: 'Service Mapping', show: isAdminFin },
       { to: '/documents', icon: '📁', label: 'Documents', show: isAdminFin },
       { to: '/sales', icon: '📈', label: 'Sales', show: isAdminFin },

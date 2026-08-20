@@ -160,6 +160,55 @@ export async function parsePincodeMapping(file: File): Promise<Record<string, an
   return out;
 }
 
+const excelDate = (v: any): string | null => {
+  if (v == null || v === '') return null;
+  if (typeof v === 'number' && v > 1000) { const ms = Math.round((v - 25569) * 86400000); return new Date(ms).toISOString().slice(0, 10); }
+  const d = new Date(v); return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+};
+
+/** Parse the "Vendor bill" file → rows for /vendor-bills/bulk. Handles the two AWB columns
+ *  (tracking AWB vs AWB charge) by header position. */
+export async function parseVendorBill(file: File): Promise<Record<string, any>[]> {
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: 'array' });
+  const rows = XLSX.utils.sheet_to_json<any[]>(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, blankrows: false });
+  let h = -1;
+  rows.forEach((r, i) => { const low = (r || []).map((x) => String(x ?? '').trim().toLowerCase()); if (low.some((v) => v.includes('vendor')) && low.includes('awb') && low.some((v) => v.includes('freight'))) h = i; });
+  if (h < 0) throw new Error('Header row (Vendor Code / AWB / Freight) not found');
+  const header = rows[h].map((x) => String(x ?? '').trim().toLowerCase());
+  const idx = (pred: (v: string) => boolean, nth = 0) => { let c = 0; for (let i = 0; i < header.length; i++) if (pred(header[i])) { if (c === nth) return i; c++; } return -1; };
+  const col = (name: string) => header.indexOf(name);
+  const awbIdxs = header.map((v, i) => (v === 'awb' ? i : -1)).filter((i) => i >= 0);
+  const c = {
+    vendorCode: idx((v) => v.includes('vendor')), product: col('product'), productType: idx((v) => v.includes('product type')),
+    awb: awbIdxs[0] ?? col('awb'), forwardingNo: idx((v) => v.includes('forwarding')), pickupDate: idx((v) => v.includes('pick')),
+    origin: col('origin'), destination: col('destination'), actWeight: idx((v) => v.includes('act') && v.includes('weight')),
+    chrgWeight: idx((v) => v.includes('chrg') || (v.includes('charg') && v.includes('weight'))), pcs: col('pcs'),
+    freight: col('freight'), fs: idx((v) => v.trim() === 'fs'), caf: col('caf'), awbCharge: awbIdxs[1] ?? -1,
+    greenTax: idx((v) => v.includes('green')), edl: col('edl'), fov: col('fov'), tdd: col('tdd'), topay: col('topay'),
+    total: idx((v) => v.trim() === 'total'), totalWithGst: idx((v) => v.includes('total') && v.includes('gst')),
+    destPincode: idx((v) => v.includes('pincode')), declaredValue: idx((v) => v.includes('declared')),
+  };
+  const g = (r: any[], i: number) => (i < 0 ? null : r[i]);
+  const out: Record<string, any>[] = [];
+  for (let i = h + 1; i < rows.length; i++) {
+    const r = rows[i] || [];
+    const awb = g(r, c.awb); const vc = g(r, c.vendorCode);
+    if (!awb || !vc) continue;
+    out.push({
+      vendorCode: String(vc).trim(), product: g(r, c.product), productType: g(r, c.productType),
+      awb: String(typeof awb === 'number' && awb === Math.floor(awb) ? awb : awb).trim(),
+      forwardingNo: g(r, c.forwardingNo), pickupDate: excelDate(g(r, c.pickupDate)),
+      origin: g(r, c.origin), destination: g(r, c.destination), actWeight: g(r, c.actWeight), chrgWeight: g(r, c.chrgWeight), pcs: g(r, c.pcs),
+      freight: g(r, c.freight), fs: g(r, c.fs), caf: g(r, c.caf), awbCharge: g(r, c.awbCharge), greenTax: g(r, c.greenTax),
+      edl: g(r, c.edl), fov: g(r, c.fov), tdd: g(r, c.tdd), topay: g(r, c.topay), total: g(r, c.total), totalWithGst: g(r, c.totalWithGst),
+      destPincode: g(r, c.destPincode) != null ? String(Math.trunc(Number(g(r, c.destPincode)) || 0) || g(r, c.destPincode)) : null,
+      declaredValue: g(r, c.declaredValue),
+    });
+  }
+  return out;
+}
+
 /** Parse the EDL Matrix file → cells for /rate-cards/edl/bulk. */
 export async function parseEdlMatrix(file: File): Promise<{ kmFrom: number; kmTo: number; wtFromKg: number; wtToKg: number; rate: number }[]> {
   const buf = await file.arrayBuffer();

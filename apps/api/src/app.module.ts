@@ -16,6 +16,7 @@ import { ComplianceModule } from './modules/compliance/compliance.module';
 import { TrackingModule } from './modules/tracking/tracking.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { RateCardsModule } from './modules/ratecards/ratecards.module';
+import { VendorBillsModule } from './modules/vendorbills/vendorbills.module';
 import { StatsModule } from './modules/stats/stats.module';
 import { ManifestsModule } from './modules/manifests/manifests.module';
 import { PickupsModule } from './modules/pickups/pickups.module';
@@ -71,6 +72,7 @@ const webDist = join(__dirname, '..', '..', 'web', 'dist');
     TrackingModule,
     CustomersModule,
     RateCardsModule,
+    VendorBillsModule,
     StatsModule,
     ManifestsModule,
     PickupsModule,

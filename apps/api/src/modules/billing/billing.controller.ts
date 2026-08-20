@@ -65,6 +65,13 @@ export class BillingController {
     return this.invoices.billWorksheet(Number(clientId), from, to);
   }
 
+  /** AWB-wise profit/loss: vendor cost (uploaded bills) vs our sell (rate engine). */
+  @Get('billing/pnl')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  pnl(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.invoices.pnl(from, to);
+  }
+
   /** Receivables aging across all clients (current / 1-30 / 31-60 / 61-90 / 90+). */
   @Get('billing/aging')
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
