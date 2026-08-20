@@ -275,6 +275,7 @@ model CustomerRateCard {
   volDiscountPct    Decimal   @default(0) @db.Decimal(6, 2)   // "Volume weight Discount option"
   handlingBands     Json      @default("[]")                  // [{fromKg,toKg,perPcs}] weight-banded per-pcs
   ospCharge         Decimal   @default(0) @db.Decimal(12, 2)  // oversize (air): dim>119cm or pcs>69kg
+  charges           Json      @default("{}")                  // master-driven accessorials: { CHARGE_code: { value, min } }
   // ---- standard surcharge heads (customer bill) ----
   awbCharge         Decimal   @default(0) @db.Decimal(12, 2)  // AIRWAYBILL CHARGES (flat / shipment)
   emergencyCharge   Decimal   @default(0) @db.Decimal(12, 2)  // Emergency Situation Surcharge

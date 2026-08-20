@@ -362,32 +362,65 @@ export class RateService {
     const fuelPct = await this.cardFuelPct(card);
     const fuel = r2(freight * (fuelPct / 100));
     const invVal = Number(shipment.shipmentValue ?? shipment.declaredValue ?? 0);
+    // Accessorial values are master-driven: read from the card's `charges` JSON keyed by
+    // CHARGE code, falling back to the legacy fixed column so existing cards bill unchanged.
+    const CJ: any = card.charges || {};
+    const cget = (code: string, k: 'value' | 'min', legacy: any) => {
+      const j = CJ[code] ?? CJ[code.toUpperCase()];
+      const v = j && j[k] != null && j[k] !== '' ? Number(j[k]) : Number(legacy ?? 0);
+      return isNaN(v) ? 0 : v;
+    };
     let fov = 0;
-    if (Number(card.fovPct) > 0 || Number(card.fovMin) > 0) fov = r2(Math.max((invVal * Number(card.fovPct)) / 100, Number(card.fovMin)));
+    const fovPct = cget('FOV', 'value', card.fovPct), fovMin = cget('FOV', 'min', card.fovMin);
+    if (fovPct > 0 || fovMin > 0) fov = r2(Math.max((invVal * fovPct) / 100, fovMin));
     // ODA: the network EDL matrix wins when the destination is an EDL location; else the card's ODA.
     let oda = 0;
     let odaLabel = 'ODA';
     const destPin = shipment.destPincode ? await this.prisma.pincode.findUnique({ where: { pincode: shipment.destPincode } }) : null;
     const edl = await this.edlCharge(this.deriveNetwork(shipment), destPin, chargeableKg);
+    const odaFlat = cget('ODA', 'value', card.odaFlat), odaMin = cget('ODA', 'min', card.odaMin);
+    const odaPerKg = CJ.ODA?.perKg != null && CJ.ODA?.perKg !== '' ? Number(CJ.ODA.perKg) : Number(card.odaPerKg ?? 0);
     if (edl > 0) { oda = edl; odaLabel = 'EDL (ODA)'; }
-    else if (shipment.isOda && (Number(card.odaFlat) > 0 || Number(card.odaPerKg) > 0 || Number(card.odaMin) > 0)) {
-      oda = r2(Math.max(Number(card.odaFlat) + Number(card.odaPerKg) * chargeableKg, Number(card.odaMin)));
+    else if (shipment.isOda && (odaFlat > 0 || odaPerKg > 0 || odaMin > 0)) {
+      oda = r2(Math.max(odaFlat + odaPerKg * chargeableKg, odaMin));
     }
-    const topay = shipment.paymentTerm === 'TO_PAY' ? r2(Number(card.topayCharge)) : 0;
-    const appt = shipment.apptDelivery ? r2(Number(card.apptCharge)) : 0;
-    const loading = r2(Number(card.loadingCharge));
-    const unloading = r2(Number(card.unloadingCharge));
-    const docket = r2(Number(card.docketCharge));
-    const awb = r2(Number(card.awbCharge));
-    const emergency = r2(Number(card.emergencyCharge));
-    const environment = r2(Number(card.environmentCharge));
+    const topay = shipment.paymentTerm === 'TO_PAY' ? r2(cget('TOPAY', 'value', card.topayCharge)) : 0;
+    const appt = shipment.apptDelivery ? r2(cget('APPT', 'value', card.apptCharge)) : 0;
+    const loading = r2(cget('LOADING', 'value', card.loadingCharge));
+    const unloading = r2(cget('UNLOADING', 'value', card.unloadingCharge));
+    const docket = r2(cget('DOCKET', 'value', card.docketCharge));
+    const awb = r2(cget('AWB', 'value', card.awbCharge));
+    const emergency = r2(cget('EMERGENCY', 'value', card.emergencyCharge));
+    const environment = r2(cget('ENVIRONMENT', 'value', card.environmentCharge));
     // handling: weight-banded ₹/pcs; OSP: oversize (dim>119cm or pcs>69kg)
     const pcs = pieces.length;
     const bands: any[] = Array.isArray(card.handlingBands) ? card.handlingBands : [];
     const hb = bands.find((b) => chargeableKg >= Number(b.fromKg ?? 0) && chargeableKg <= Number(b.toKg ?? 1e9));
     const handling = hb ? r2(Number(hb.perPcs ?? 0) * pcs) : 0;
     const oversize = pieces.some((p) => Number(p.deadKg) > 69 || [p.lengthCm, p.widthCm, p.heightCm].some((d) => Number(d || 0) > 119));
-    const osp = oversize ? r2(Number(card.ospCharge)) : 0;
+    const osp = oversize ? r2(cget('OSP', 'value', card.ospCharge)) : 0;
+
+    // Custom charges: any CHARGE-master code configured on the card beyond the built-in heads.
+    const BUILT_IN = new Set(['FOV', 'ODA', 'TOPAY', 'APPT', 'LOADING', 'UNLOADING', 'DOCKET', 'AWB', 'EMERGENCY', 'ENVIRONMENT', 'ENVIRONMENTAL', 'OSP', 'FSC', 'FUEL', 'FREIGHT']);
+    const customLines: { head: string; amount: number }[] = [];
+    let customTotal = 0;
+    if (Object.keys(CJ).length) {
+      const master = await this.prisma.masterEntry.findMany({ where: { type: 'CHARGE', active: true } });
+      for (const cm of master) {
+        const code = cm.code.toUpperCase();
+        if (BUILT_IN.has(code)) continue;
+        const conf = CJ[cm.code] ?? CJ[code];
+        const v = conf && conf.value != null && conf.value !== '' ? Number(conf.value) : 0;
+        if (!v) continue;
+        const baseOn = String((cm.attrs as any)?.baseOn || 'FLAT').toUpperCase();
+        let amt = baseOn === 'FREIGHT' ? (freight * v) / 100
+          : baseOn.includes('VALUE') ? Math.max((invVal * v) / 100, Number(conf.min ?? 0))
+          : baseOn.includes('WEIGHT') ? v * chargeableKg
+          : v; // FLAT
+        amt = r2(amt);
+        if (amt > 0) { customLines.push({ head: cm.name, amount: amt }); customTotal += amt; }
+      }
+    }
 
     const lines = [{ head: `Freight (${priced.basis})`, amount: freight }];
     if (fuel > 0) lines.push({ head: `Fuel ${fuelPct}%`, amount: fuel });
@@ -403,7 +436,8 @@ export class RateService {
     if (loading > 0) lines.push({ head: 'Loading', amount: loading });
     if (unloading > 0) lines.push({ head: 'Unloading', amount: unloading });
     if (docket > 0) lines.push({ head: 'Docket', amount: docket });
-    const subtotal = r2(freight + fuel + fov + oda + awb + emergency + environment + handling + osp + topay + appt + loading + unloading + docket);
+    for (const cl of customLines) lines.push(cl);
+    const subtotal = r2(freight + fuel + fov + oda + awb + emergency + environment + handling + osp + topay + appt + loading + unloading + docket + customTotal);
     return {
       chargeableKg, freight, fuel, fov, oda, docket, handling, topay, appt, loading, unloading,
       awb, emergency, environment, osp,

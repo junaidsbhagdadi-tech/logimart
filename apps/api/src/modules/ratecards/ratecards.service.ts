@@ -85,6 +85,7 @@ export class RateCardsService {
       volDiscountPct: dec(num(d.volDiscountPct)),
       handlingBands: Array.isArray(d.handlingBands) ? d.handlingBands : [],
       ospCharge: dec(num(d.ospCharge)),
+      charges: d.charges && typeof d.charges === 'object' ? d.charges : {},
       awbCharge: dec(num(d.awbCharge)),
       emergencyCharge: dec(num(d.emergencyCharge)),
       environmentCharge: dec(num(d.environmentCharge)),

@@ -17,6 +17,7 @@ export function RateCardsDialog({ client, onClose }: { client: Client; onClose: 
   const [zones, setZones] = useState<string[]>([]);
   const [vendors, setVendors] = useState<any[]>([]);
   const [mechs, setMechs] = useState<any[]>([]);
+  const [chargeMaster, setChargeMaster] = useState<any[]>([]);
   const [editing, setEditing] = useState<any | null>(null); // card object, or { _new: true }
   const [uploading, setUploading] = useState(false);
   const [err, setErr] = useState('');
@@ -28,6 +29,7 @@ export function RateCardsDialog({ client, onClose }: { client: Client; onClose: 
     api.listMaster('ZONE').then((z) => setZones(z.map((x) => x.code))).catch(() => {});
     api.listVendors().then((v) => setVendors(v.filter((x) => x.isActive !== false))).catch(() => {});
     api.listMaster('FUEL_MECHANISM').then(setMechs).catch(() => {});
+    api.listMaster('CHARGE').then(setChargeMaster).catch(() => {});
   }, [client.id]);
 
   const del = async (id: string) => {
@@ -53,7 +55,7 @@ export function RateCardsDialog({ client, onClose }: { client: Client; onClose: 
         {editing ? (
           <RateCardEditor
             client={client} card={editing._new ? null : editing}
-            products={products} zones={zones.length ? zones : ['N', 'E', 'W', 'S', 'NE1']} vendors={vendors} mechs={mechs}
+            products={products} zones={zones.length ? zones : ['N', 'E', 'W', 'S', 'NE1']} vendors={vendors} mechs={mechs} chargeMaster={chargeMaster}
             onCancel={() => setEditing(null)}
             onSaved={() => { setEditing(null); load(); }}
           />
@@ -263,9 +265,25 @@ function RateUpload({ client, products, vendors, onCancel, onSaved }: {
 }
 
 /** Create / edit a rate card (header + zone×slab grid). */
-function RateCardEditor({ client, card, products, zones, vendors, mechs, onCancel, onSaved }: {
-  client: Client; card: any | null; products: any[]; zones: string[]; vendors: any[]; mechs: any[]; onCancel: () => void; onSaved: () => void;
+function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeMaster, onCancel, onSaved }: {
+  client: Client; card: any | null; products: any[]; zones: string[]; vendors: any[]; mechs: any[]; chargeMaster: any[]; onCancel: () => void; onSaved: () => void;
 }) {
+  // Accessorial charges are master-driven. Codes handled elsewhere are excluded here.
+  const EXCLUDE = new Set(['FSC', 'FUEL', 'FREIGHT']);
+  const chargeDefs = chargeMaster.filter((c) => !EXCLUDE.has(String(c.code).toUpperCase()));
+  const LEGACY: Record<string, any> = {
+    FOV: { value: card?.fovPct, min: card?.fovMin }, ODA: { value: card?.odaFlat, perKg: card?.odaPerKg, min: card?.odaMin },
+    TOPAY: { value: card?.topayCharge }, APPT: { value: card?.apptCharge }, LOADING: { value: card?.loadingCharge },
+    UNLOADING: { value: card?.unloadingCharge }, DOCKET: { value: card?.docketCharge }, AWB: { value: card?.awbCharge },
+    EMERGENCY: { value: card?.emergencyCharge }, ENVIRONMENT: { value: card?.environmentCharge }, OSP: { value: card?.ospCharge },
+  };
+  const [chg, setChg] = useState<Record<string, any>>(() => {
+    const seed: Record<string, any> = {};
+    for (const c of chargeMaster) { const k = String(c.code).toUpperCase(); if (LEGACY[k]) seed[c.code] = LEGACY[k]; }
+    return { ...seed, ...(card?.charges || {}) };
+  });
+  const setCharge = (code: string, field: string, v: string) => setChg((p) => ({ ...p, [code]: { ...(p[code] || {}), [field]: v } }));
+  const baseOf = (c: any) => String(c.attrs?.baseOn || 'FLAT').toUpperCase();
   const productMode = (code: string) => {
     const p = products.find((x) => x.code === code); const g = String(p?.attrs?.groupType || '').toUpperCase();
     return g.includes('AIR') ? 'AIR' : g.includes('SURFACE') ? 'SURFACE' : g.includes('EXPRESS') ? 'EXPRESS' : '';
@@ -309,7 +327,7 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, onCance
     if (!h.product) { setErr('Pick a product.'); return; }
     const slabs: any[] = [];
     for (const r of rows) for (const z of zones) { const v = r.rates[z]; if (v !== undefined && v !== '' && Number(v) > 0) slabs.push({ zone: z, rateType: r.rateType, weight: Number(r.weight || 0), rate: Number(v) }); }
-    const body = { clientId: client.id, ...h, vendor: h.network === 'SELF' ? null : (h.vendor || h.network), slabs };
+    const body = { clientId: client.id, ...h, vendor: h.network === 'SELF' ? null : (h.vendor || h.network), slabs, charges: chg };
     setBusy(true);
     try {
       if (card) await api.updateCustomerCard(card.id, body); else await api.createCustomerCard(body);
@@ -369,13 +387,36 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, onCance
         </div>
       </div>
 
-      {/* accessorials */}
+      {/* accessorials — driven by the CHARGE master */}
+      <div className="card" style={{ padding: 12, marginTop: 12 }}>
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <strong>Accessorial Charges</strong>
+          <span className="muted" style={{ fontSize: 11 }}>from the Charges master — add a charge type there and it appears here.</span>
+        </div>
+        {!chargeDefs.length ? <p className="muted" style={{ fontSize: 12 }}>No charge types in the master yet. Add them in Masters → Charges.</p> : (
+          <div className="grid cols-4" style={{ gap: 12, marginTop: 8 }}>
+            {chargeDefs.map((c) => {
+              const base = baseOf(c); const pct = base === 'FREIGHT' || base.includes('VALUE');
+              const unit = pct ? '%' : base.includes('WEIGHT') ? '₹/kg' : '₹';
+              return (
+                <div key={c.code}>
+                  <label style={{ fontSize: 12 }}>{c.name} <span className="muted">({unit})</span></label>
+                  <input type="number" step="0.001" value={chg[c.code]?.value ?? ''} onChange={(e) => setCharge(c.code, 'value', e.target.value)} placeholder="0" />
+                  {(pct || String(c.code).toUpperCase() === 'ODA') && (
+                    <input type="number" style={{ marginTop: 4 }} value={chg[c.code]?.min ?? ''} onChange={(e) => setCharge(c.code, 'min', e.target.value)} placeholder="min ₹ (opt)" />
+                  )}
+                  {String(c.code).toUpperCase() === 'ODA' && (
+                    <input type="number" style={{ marginTop: 4 }} value={chg[c.code]?.perKg ?? ''} onChange={(e) => setCharge(c.code, 'perKg', e.target.value)} placeholder="₹/kg (opt)" />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>ODA uses the vendor EDL matrix when the destination is an EDL pincode; the flat/kg/min here apply otherwise. FSC is set above.</p>
+      </div>
+
       <div className="grid cols-4" style={{ gap: 12, marginTop: 12 }}>
-        <NumF label="FOV %" k="fovPct" step="0.001" /><NumF label="FOV min (₹)" k="fovMin" />
-        <NumF label="ODA flat (₹)" k="odaFlat" /><NumF label="ODA /kg (₹)" k="odaPerKg" />
-        <NumF label="ODA min (₹)" k="odaMin" /><NumF label="To-Pay (₹)" k="topayCharge" />
-        <NumF label="Appointment (₹)" k="apptCharge" /><NumF label="Docket (₹)" k="docketCharge" />
-        <NumF label="Loading (₹)" k="loadingCharge" /><NumF label="Unloading (₹)" k="unloadingCharge" />
         <div><label style={{ fontSize: 12 }}>Valid from</label><input type="date" value={h.validFrom} onChange={(e) => set('validFrom', e.target.value)} /></div>
         <div><label style={{ fontSize: 12 }}>Valid to</label><input type="date" value={h.validTo} onChange={(e) => set('validTo', e.target.value)} /></div>
       </div>
