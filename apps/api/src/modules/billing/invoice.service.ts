@@ -42,6 +42,14 @@ export class InvoiceService {
       include: { pieces: { select: { status: true, deadKg: true, volKg: true, lengthCm: true, widthCm: true, heightCm: true } } },
     });
 
+    // Re-bill guard: never invoice a shipment that already appears on an invoice line.
+    const alreadyBilled = new Set(
+      (await this.prisma.invoiceLineItem.findMany({
+        where: { shipmentId: { in: shipments.map((s) => s.id) } },
+        select: { shipmentId: true },
+      })).map((l) => l.shipmentId.toString()),
+    );
+
     const lines: {
       shipmentId: bigint;
       chargeableKg: number;
@@ -51,6 +59,7 @@ export class InvoiceService {
     let subtotal = 0;
 
     for (const s of shipments) {
+      if (alreadyBilled.has(s.id.toString())) continue; // already invoiced
       const delivered = s.pieces.filter((p) => p.status === 'DELIVERED');
       if (delivered.length === 0) continue; // nothing billable yet
       const charges = await this.rates.chargesForShipment(s, delivered);

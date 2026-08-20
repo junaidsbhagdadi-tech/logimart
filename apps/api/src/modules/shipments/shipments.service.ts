@@ -26,13 +26,17 @@ export class ShipmentsService {
 
   /**
    * Xpresion-style AWB: prefix + a continuous 10-digit running number (no year),
-   * e.g. LMT1000000045 — matches the carrier "letter + 10 digits" waybill format.
-   * Base 1000000000 keeps every AWB a fixed 10 digits from the first booking.
+   * e.g. L1000000045. Uses an atomic row-locked counter so concurrent bookings never
+   * collide (the previous count()-based scheme could hand two bookings the same number).
+   * Seeded above any existing count-based AWB on first use.
    */
   private async nextAwb(): Promise<string> {
-    const count = await this.prisma.shipment.count();
-    const seq = 1000000000 + count + 1;
-    return `${COMPANY.awbPrefix}${seq}`;
+    const c = await this.prisma.counter.upsert({
+      where: { name: 'awb' },
+      create: { name: 'awb', value: BigInt(1000000100) },
+      update: { value: { increment: BigInt(1) } },
+    });
+    return `${COMPANY.awbPrefix}${c.value}`;
   }
 
   /**

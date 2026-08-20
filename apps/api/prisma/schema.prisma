@@ -635,6 +635,14 @@ enum Region {
   NORTHEAST
 }
 
+/// Atomic counters (e.g. AWB sequence) — row-locked increment avoids race collisions.
+model Counter {
+  name  String @id
+  value BigInt @default(0)
+
+  @@map("counters")
+}
+
 model Pincode {
   pincode String  @id
   city    String
