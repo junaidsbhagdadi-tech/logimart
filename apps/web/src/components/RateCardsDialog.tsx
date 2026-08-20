@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
+import type { ParseResult } from '../lib/rateSheet'; // value fns are lazy-imported (keeps xlsx out of the main bundle)
 
 // Fallbacks if masters are empty.
 const SLAB_TYPES = ['INITIAL', 'UPTO', 'ADDITIONAL', 'PLUS', 'PLUSKG'];
@@ -17,6 +18,7 @@ export function RateCardsDialog({ client, onClose }: { client: Client; onClose: 
   const [vendors, setVendors] = useState<any[]>([]);
   const [mechs, setMechs] = useState<any[]>([]);
   const [editing, setEditing] = useState<any | null>(null); // card object, or { _new: true }
+  const [uploading, setUploading] = useState(false);
   const [err, setErr] = useState('');
 
   const load = () => api.listCustomerCards(client.id).then(setCards).catch((e) => setErr(e.message));
@@ -55,9 +57,13 @@ export function RateCardsDialog({ client, onClose }: { client: Client; onClose: 
             onCancel={() => setEditing(null)}
             onSaved={() => { setEditing(null); load(); }}
           />
+        ) : uploading ? (
+          <RateUpload client={client} products={products} vendors={vendors} onCancel={() => setUploading(false)} onSaved={() => { setUploading(false); load(); }} />
         ) : (
           <>
-            <div className="row" style={{ justifyContent: 'flex-end', marginBottom: 12 }}>
+            <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginBottom: 12 }}>
+              <button className="secondary" onClick={async () => { (await import('../lib/rateSheet')).downloadCargoTemplate(); }}>⬇ Cargo template</button>
+              <button className="secondary" onClick={() => setUploading(true)}>⬆ Upload rates</button>
               <button onClick={() => setEditing({ _new: true })}>＋ Add Rate Card</button>
             </div>
             {!cards.length && <p className="muted">No rate cards yet. Click “Add Rate Card” to create one per network (SELF / vendor) &amp; product.</p>}
@@ -147,6 +153,101 @@ function CardView({ card, zones, onEdit, onDelete }: { card: any; zones: string[
           </table>
         </div>
       ) : <p className="muted" style={{ fontSize: 12 }}>No slabs defined.</p>}
+    </div>
+  );
+}
+
+/** Upload a filled rate matrix → create a card. Pick target (network + product), drop the file. */
+function RateUpload({ client, products, vendors, onCancel, onSaved }: {
+  client: Client; products: any[]; vendors: any[]; onCancel: () => void; onSaved: () => void;
+}) {
+  const family = (code: string) => (['DP', 'TDD', 'NDD'].includes(String(code).toUpperCase()) ? 'COURIER' : 'CARGO');
+  const productMode = (code: string) => {
+    const g = String(products.find((x) => x.code === code)?.attrs?.groupType || '').toUpperCase();
+    return g.includes('AIR') ? 'AIR' : g.includes('SURFACE') ? 'SURFACE' : '';
+  };
+  const [network, setNetwork] = useState('SELF');
+  const [product, setProduct] = useState(products[0]?.code ?? '');
+  const [fuelPct, setFuelPct] = useState('');
+  const [fovPct, setFovPct] = useState('');
+  const [fovMin, setFovMin] = useState('');
+  const [minChargeableKg, setMinChargeableKg] = useState('');
+  const [minFreight, setMinFreight] = useState('');
+  const [result, setResult] = useState<ParseResult | null>(null);
+  const [fileName, setFileName] = useState('');
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+
+  const fam = family(product);
+  const onFile = async (f?: File) => {
+    if (!f) return;
+    setErr(''); setResult(null); setFileName(f.name);
+    try {
+      const { parseRateWorkbook } = await import('../lib/rateSheet');
+      setResult(await parseRateWorkbook(f, fam as any));
+    } catch (e: any) { setErr('Parse failed: ' + e.message); }
+  };
+  const create = async () => {
+    setErr('');
+    if (!product) { setErr('Pick a product.'); return; }
+    const slabs = result?.slabs ?? [];
+    if (!slabs.length && fam === 'CARGO') { setErr('No rates parsed — upload a filled cargo matrix.'); return; }
+    setBusy(true);
+    try {
+      await api.createCustomerCard({
+        clientId: client.id, network, vendor: network === 'SELF' ? null : network, product, mode: productMode(product),
+        fuelPct: fuelPct || 0, fovPct: fovPct || 0, fovMin: fovMin || 0, minChargeableKg: minChargeableKg || 0, minFreight: minFreight || 0,
+        slabs,
+      });
+      onSaved();
+    } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  };
+
+  return (
+    <div>
+      <h3 style={{ marginTop: 4 }}>⬆ Upload rate matrix</h3>
+      {err && <div className="error">{err}</div>}
+      <div className="grid cols-3" style={{ gap: 12 }}>
+        <div>
+          <label style={{ fontSize: 12 }}>Network</label>
+          <select value={network} onChange={(e) => setNetwork(e.target.value)}>
+            <option value="SELF">SELF</option>
+            {vendors.map((v) => <option key={v.id} value={(v.vendorCode || v.name).toUpperCase()}>{v.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={{ fontSize: 12 }}>Product *</label>
+          <select value={product} onChange={(e) => { setProduct(e.target.value); setResult(null); }}>
+            {products.map((p) => <option key={p.code} value={p.code}>{p.code} — {p.name}</option>)}
+          </select>
+        </div>
+        <div><label style={{ fontSize: 12 }}>Family</label><input value={fam} disabled /></div>
+        <div><label style={{ fontSize: 12 }}>Fuel %</label><input type="number" value={fuelPct} onChange={(e) => setFuelPct(e.target.value)} /></div>
+        <div><label style={{ fontSize: 12 }}>FOV %</label><input type="number" value={fovPct} onChange={(e) => setFovPct(e.target.value)} /></div>
+        <div><label style={{ fontSize: 12 }}>FOV min ₹</label><input type="number" value={fovMin} onChange={(e) => setFovMin(e.target.value)} /></div>
+        <div><label style={{ fontSize: 12 }}>Min chargeable kg</label><input type="number" step="0.001" value={minChargeableKg} onChange={(e) => setMinChargeableKg(e.target.value)} /></div>
+        <div><label style={{ fontSize: 12 }}>Min freight ₹</label><input type="number" value={minFreight} onChange={(e) => setMinFreight(e.target.value)} /></div>
+      </div>
+
+      <div className="card" style={{ padding: 12, marginTop: 12 }}>
+        <label style={{ fontSize: 12 }}>Rate matrix file (.xlsx / .xlsb)</label>
+        <input type="file" accept=".xlsx,.xlsb,.xls,.csv" onChange={(e) => onFile(e.target.files?.[0])} />
+        {result && (
+          <div style={{ marginTop: 10, fontSize: 13 }}>
+            <div><b>{fileName}</b> — family <b>{result.family}</b></div>
+            <div>Origins: {result.origins.length || '—'} · Dests: {result.dests.length || '—'} · <b>{result.slabs.length}</b> rate cells parsed</div>
+            {result.notes.map((n, i) => <div key={i} className="muted" style={{ marginTop: 4 }}>⚠ {n}</div>)}
+            {result.slabs.length > 0 && (
+              <div className="muted" style={{ marginTop: 4 }}>e.g. {result.slabs.slice(0, 3).map((s) => `${s.originZone}→${s.zone} ₹${s.rate}/kg`).join(' · ')}…</div>
+            )}
+          </div>
+        )}
+        {fam === 'COURIER' && <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>Courier (DP/TDD/NDD) matrix parsing is pending a filled sample. You can still create the card header and add its 250/500g slabs manually via Edit.</p>}
+      </div>
+
+      <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+        <button className="secondary" onClick={onCancel}>Cancel</button>
+        <button onClick={create} disabled={busy}>{busy ? 'Creating…' : 'Create card from upload'}</button>
+      </div>
     </div>
   );
 }

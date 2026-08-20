@@ -9,7 +9,10 @@ import { AppModule } from './app.module';
 };
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
+  const { json, urlencoded } = await import('express');
+  app.use(json({ limit: '60mb' }));           // large bulk uploads (21k-row pincode mapping etc.)
+  app.use(urlencoded({ extended: true, limit: '60mb' }));
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }),
   );
