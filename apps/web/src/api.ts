@@ -442,6 +442,11 @@ export const api = {
   getFuelPrice: () => request<{ fuelType: string; current: number | null; effectiveFrom: string | null; history: any[] }>('/api/v1/fuel-price'),
   setFuelPrice: (body: unknown) => request('/api/v1/fuel-price', { method: 'POST', body: JSON.stringify(body) }),
 
+  // ---- carrier rate cards (billing-app style: weight-bracket by zone per product/service) ----
+  listCarrierRateCards: (clientId?: string) => request<any[]>(`/api/v1/carrier-rate-cards${clientId ? `?clientId=${clientId}` : ''}`),
+  createCarrierRateCard: (body: unknown) => request('/api/v1/carrier-rate-cards', { method: 'POST', body: JSON.stringify(body) }),
+  delCarrierRateCard: (id: string) => request(`/api/v1/carrier-rate-cards/${id}`, { method: 'DELETE' }),
+
   // ---- rate matrix (weight-slab tariff) ----
   listRateSlabs: (clientId?: string) => request<any[]>(`/api/v1/rate-slabs${clientId ? `?clientId=${clientId}` : ''}`),
   addRateSlab: (body: unknown) => request('/api/v1/rate-slabs', { method: 'POST', body: JSON.stringify(body) }),

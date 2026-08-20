@@ -29,6 +29,7 @@ import { BluedartModule } from './modules/bluedart/bluedart.module';
 import { RateMatrixModule } from './modules/ratematrix/ratematrix.module';
 import { FuelModule } from './modules/fuel/fuel.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { CarrierRatesModule } from './modules/carrierrates/carrierrates.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
 import { RiderModule } from './modules/rider/rider.module';
@@ -84,6 +85,7 @@ const webDist = join(__dirname, '..', '..', 'web', 'dist');
     RateMatrixModule,
     FuelModule,
     AdminModule,
+    CarrierRatesModule,
     UploadsModule,
     FeedbackModule,
     RiderModule,

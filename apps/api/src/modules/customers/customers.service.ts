@@ -20,7 +20,18 @@ export class CustomersService {
     return `${initials}${String(count + 1).padStart(3, '0')}`;
   }
 
+  // GSTIN format (billing-app parity): 2-digit state + 5 letters + 4 digits + letter + entity + Z + checksum
+  private static GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+
   async create(dto: CreateClientDto) {
+    if (dto.gstin) {
+      const g = dto.gstin.trim().toUpperCase();
+      if (!CustomersService.GSTIN_RE.test(g)) throw new ConflictException(`Invalid GSTIN format: ${dto.gstin}`);
+      if (!dto.allowSameGstin) {
+        const dup = await this.prisma.b2bClient.findFirst({ where: { gstin: g }, select: { legalName: true } });
+        if (dup) throw new ConflictException(`GSTIN ${g} already used by ${dup.legalName}. Tick "allow same GSTIN" to override.`);
+      }
+    }
     const accountCode = dto.accountCode ?? (await this.nextAccountCode(dto.legalName));
     try {
       return await this.prisma.b2bClient.create({
@@ -52,6 +63,9 @@ export class CustomersService {
           invoiceFormat: dto.invoiceFormat,
           customerType: dto.customerType ?? undefined,
           registerType: dto.registerType ?? undefined,
+          email2: dto.email2,
+          billingCycle: dto.billingCycle ?? undefined,
+          allowSameGstin: dto.allowSameGstin ?? false,
           creditLimit: new Prisma.Decimal(dto.creditLimit ?? 0),
           creditDays: dto.creditDays ?? 30,
           isOneTime: dto.isOneTime ?? false,

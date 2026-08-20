@@ -29,6 +29,9 @@ export class CreateClientDto {
   @IsOptional() @IsString() invoiceFormat?: string;
   @IsOptional() @IsString() customerType?: string; // Customer | Agent
   @IsOptional() @IsString() registerType?: string; // Registered | Un Registered | B2B | B2C
+  @IsOptional() @IsEmail() email2?: string;
+  @IsOptional() @IsString() billingCycle?: string; // MONTHLY | FORTNIGHTLY | WEEKLY
+  @IsOptional() @IsBoolean() allowSameGstin?: boolean;
   @IsOptional() @IsNumber() @Min(0) creditLimit?: number;
   @IsOptional() @IsInt() @Min(0) creditDays?: number;
   @IsOptional() @IsBoolean() isOneTime?: boolean;
