@@ -2,8 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import type { ParseResult } from '../lib/rateSheet'; // value fns are lazy-imported (keeps xlsx out of the main bundle)
 
-// Fallbacks if masters are empty.
+// Cargo slab types (₹/kg style) vs courier/DP slab types (gram-banded).
 const SLAB_TYPES = ['INITIAL', 'UPTO', 'ADDITIONAL', 'PLUS', 'PLUSKG'];
+const COURIER_SLAB_TYPES = ['FIRST250', 'FIRST500', 'ADD500'];
+const COURIER_ZONES = ['A', 'B', 'C', 'OTHER'];
+// DP / TDD / NDD price on gram slabs × A/B/C/OTHER zones; everything else is cargo (₹/kg × wide zone matrix).
+const COURIER_PRODUCTS = new Set(['DP', 'TDD', 'NDD']);
+const isCourierProduct = (code: any) => COURIER_PRODUCTS.has(String(code ?? '').toUpperCase());
+// Fixed weight (kg) implied by each courier slab type.
+const COURIER_SLAB_KG: Record<string, string> = { FIRST250: '0.25', FIRST500: '0.5', ADD500: '0.5' };
 const num = (v: any) => (v != null && v !== '' ? Number(v) : 0);
 const money = (v: any) => `₹${Number(v ?? 0).toLocaleString('en-IN')}`;
 
@@ -148,7 +155,7 @@ function CardView({ card, zones, onEdit, onDelete }: { card: any; zones: string[
               {rows.map((r, i) => (
                 <tr key={i}>
                   <td><strong>{r.rateType}</strong></td>
-                  <td>{r.rateType === 'PLUSKG' || r.rateType === 'PLUS' ? `${num(r.weight)}kg step` : `${num(r.weight)}kg`}</td>
+                  <td>{COURIER_SLAB_KG[String(r.rateType).toUpperCase()] ? `${Math.round(num(r.weight) * 1000)}g` : r.rateType === 'PLUSKG' || r.rateType === 'PLUS' ? `${num(r.weight)}kg step` : `${num(r.weight)}kg`}</td>
                   {cols.map((z) => <td key={z}>{r.rates[z] != null ? money(r.rates[z]) : '—'}</td>)}
                 </tr>
               ))}
@@ -301,8 +308,26 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
     validFrom: card?.validFrom ? String(card.validFrom).slice(0, 10) : '', validTo: card?.validTo ? String(card.validTo).slice(0, 10) : '',
     isActive: card?.isActive !== false,
   }));
+  // Courier (DP/TDD/NDD) vs cargo drives the slab structure: gram bands × A/B/C/OTHER, or ₹/kg × wide zone matrix.
+  const fam: 'COURIER' | 'CARGO' = isCourierProduct(h.product) ? 'COURIER' : 'CARGO';
+  const zoneCols = fam === 'COURIER' ? COURIER_ZONES : zones;
+  const slabTypes = fam === 'COURIER' ? COURIER_SLAB_TYPES : SLAB_TYPES;
+  const courierDefaultRows = () => [
+    { rateType: 'FIRST500', weight: '0.5', rates: {} },
+    { rateType: 'ADD500', weight: '0.5', rates: {} },
+  ];
+  const cargoDefaultRows = () => [
+    { rateType: 'INITIAL', weight: '0.5', rates: {} },
+    { rateType: 'PLUSKG', weight: '1', rates: {} },
+  ];
+
   const set = (k: string, v: any) => setH((p: any) => ({ ...p, [k]: v }));
-  const onProduct = (code: string) => setH((p: any) => ({ ...p, product: code, mode: productMode(code) || p.mode }));
+  const onProduct = (code: string) => {
+    setH((p: any) => ({ ...p, product: code, mode: productMode(code) || p.mode }));
+    // A brand-new card follows the product's family; reset the (still-default) grid so DP gets
+    // gram slabs + A/B/C/OTHER and cargo gets ₹/kg. Editing an existing card keeps its slabs.
+    if (!card) setRows(isCourierProduct(code) ? courierDefaultRows() : cargoDefaultRows());
+  };
 
   // slab rows: {rateType, weight, rates:{zone:val}}
   const initRows = () => {
@@ -311,15 +336,17 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
       card.slabs.forEach((s: any) => { const k = `${s.rateType}|${s.weight}`; if (!m.has(k)) m.set(k, { rateType: s.rateType, weight: String(s.weight), rates: {} }); m.get(k).rates[s.zone] = String(s.rate); });
       return [...m.values()];
     }
-    return [
-      { rateType: 'INITIAL', weight: '0.5', rates: {} },
-      { rateType: 'PLUSKG', weight: '1', rates: {} },
-    ];
+    return isCourierProduct(h.product) ? courierDefaultRows() : cargoDefaultRows();
   };
   const [rows, setRows] = useState<any[]>(initRows);
   const setCell = (i: number, z: string, v: string) => setRows((rs) => rs.map((r, idx) => idx === i ? { ...r, rates: { ...r.rates, [z]: v } } : r));
-  const setRow = (i: number, k: string, v: string) => setRows((rs) => rs.map((r, idx) => idx === i ? { ...r, [k]: v } : r));
-  const addRow = () => setRows((rs) => [...rs, { rateType: 'PLUSKG', weight: '1', rates: {} }]);
+  const setRow = (i: number, k: string, v: string) => setRows((rs) => rs.map((r, idx) => {
+    if (idx !== i) return r;
+    // A courier slab type has a fixed weight band (250g/500g) — snap it so the engine matches.
+    if (k === 'rateType' && COURIER_SLAB_KG[v]) return { ...r, rateType: v, weight: COURIER_SLAB_KG[v] };
+    return { ...r, [k]: v };
+  }));
+  const addRow = () => setRows((rs) => [...rs, fam === 'COURIER' ? { rateType: 'ADD500', weight: '0.5', rates: {} } : { rateType: 'PLUSKG', weight: '1', rates: {} }]);
   const delRow = (i: number) => setRows((rs) => rs.filter((_, idx) => idx !== i));
 
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
@@ -327,7 +354,7 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
     setErr('');
     if (!h.product) { setErr('Pick a product.'); return; }
     const slabs: any[] = [];
-    for (const r of rows) for (const z of zones) { const v = r.rates[z]; if (v !== undefined && v !== '' && Number(v) > 0) slabs.push({ zone: z, rateType: r.rateType, weight: Number(r.weight || 0), rate: Number(v) }); }
+    for (const r of rows) for (const z of zoneCols) { const v = r.rates[z]; if (v !== undefined && v !== '' && Number(v) > 0) slabs.push({ zone: z, rateType: r.rateType, weight: Number(r.weight || 0), rate: Number(v) }); }
     const body = { clientId: client.id, ...h, vendor: h.network === 'SELF' ? null : (h.vendor || h.network), slabs, charges: chg };
     setBusy(true);
     try {
@@ -422,32 +449,40 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
         <div><label style={{ fontSize: 12 }}>Valid to</label><input type="date" value={h.validTo} onChange={(e) => set('validTo', e.target.value)} /></div>
       </div>
 
-      {/* zone × slab grid */}
+      {/* zone × slab grid — DP/courier: gram bands × A/B/C/OTHER · cargo: ₹/kg × zone matrix */}
       <div className="card" style={{ padding: 12, marginTop: 12 }}>
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-          <strong>Zone × Weight Slab Rates (₹)</strong>
+          <strong>{fam === 'COURIER' ? 'DP / Courier Slab Rates (₹) — gram bands × zones' : 'Zone × Weight Slab Rates (₹)'}</strong>
           <button className="secondary" onClick={addRow} style={{ padding: '3px 10px', fontSize: 12 }}>＋ Slab</button>
         </div>
         <div style={{ overflowX: 'auto', marginTop: 8 }}>
           <table style={{ fontSize: 13 }}>
-            <thead><tr><th>Slab type</th><th>Weight/unit (kg)</th>{zones.map((z) => <th key={z}>{z}</th>)}<th></th></tr></thead>
+            <thead><tr><th>Slab type</th><th>{fam === 'COURIER' ? 'Band' : 'Weight/unit (kg)'}</th>{zoneCols.map((z) => <th key={z}>{z}</th>)}<th></th></tr></thead>
             <tbody>
               {rows.map((r, i) => (
                 <tr key={i}>
                   <td>
                     <select value={r.rateType} onChange={(e) => setRow(i, 'rateType', e.target.value)}>
-                      {SLAB_TYPES.map((t) => <option key={t}>{t}</option>)}
+                      {(slabTypes.includes(r.rateType) ? slabTypes : [...slabTypes, r.rateType]).map((t) => <option key={t}>{t}</option>)}
                     </select>
                   </td>
-                  <td><input type="number" step="0.001" value={r.weight} onChange={(e) => setRow(i, 'weight', e.target.value)} style={{ width: 80 }} /></td>
-                  {zones.map((z) => <td key={z}><input type="number" value={r.rates[z] ?? ''} onChange={(e) => setCell(i, z, e.target.value)} style={{ width: 70 }} placeholder="—" /></td>)}
+                  <td>
+                    {fam === 'COURIER'
+                      ? <span className="muted" style={{ fontSize: 12 }}>{Math.round(num(r.weight) * 1000)} g</span>
+                      : <input type="number" step="0.001" value={r.weight} onChange={(e) => setRow(i, 'weight', e.target.value)} style={{ width: 80 }} />}
+                  </td>
+                  {zoneCols.map((z) => <td key={z}><input type="number" value={r.rates[z] ?? ''} onChange={(e) => setCell(i, z, e.target.value)} style={{ width: 70 }} placeholder="—" /></td>)}
                   <td>{rows.length > 1 && <button className="secondary" style={{ padding: '2px 8px', fontSize: 12 }} onClick={() => delRow(i)}>✕</button>}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        <p className="muted" style={{ fontSize: 11, marginTop: 6 }}>INITIAL = base up to its weight · PLUSKG = ₹/kg beyond · UPTO = tiered flat table · PLUS/ADDITIONAL = per block.</p>
+        <p className="muted" style={{ fontSize: 11, marginTop: 6 }}>
+          {fam === 'COURIER'
+            ? 'FIRST250 = flat up to 250g · FIRST500 = flat up to 500g · ADD500 = per additional 500g. Zones A/B/C/OTHER come from each pincode’s DP zone.'
+            : 'INITIAL = base up to its weight · PLUSKG = ₹/kg beyond · UPTO = tiered flat table · PLUS/ADDITIONAL = per block.'}
+        </p>
       </div>
 
       <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
