@@ -70,6 +70,19 @@ export class CustomersController {
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
   delAddr(@Param('rowId') rowId: string) { return this.customers.delAddr(Number(rowId)); }
 
+  // ---- wallet + walk-in (static paths declared before ':id') ----
+  @Post('walkin')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  ensureWalkin() { return this.customers.ensureWalkin(); }
+
+  @Get(':id/wallet')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  walletInfo(@Param('id') id: string) { return this.customers.walletInfo(Number(id)); }
+
+  @Post(':id/wallet/topup')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  walletTopup(@Param('id') id: string, @Body() d: { amount: number; note?: string }) { return this.customers.walletTopup(Number(id), Number(d.amount), d.note); }
+
   @Get(':id')
   @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
   get(@Param('id') id: string) {

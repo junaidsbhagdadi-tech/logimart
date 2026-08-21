@@ -303,6 +303,14 @@ export const api = {
     request<{ message: string }>(`/api/v1/shipments/${awb}/dod/handover`, { method: 'POST' }),
   collectFreight: (awb: string, amount: number) =>
     request<{ message: string }>(`/api/v1/shipments/${awb}/collect-freight`, { method: 'POST', body: JSON.stringify({ amount }) }),
+  payAtBooking: (awb: string, amount: number, method: 'CASH' | 'WALLET') =>
+    request<{ awb: string; method: string; amount: number; walletBalance: number | null; customer: string; accountCode: string; collectedAt: string; message: string }>(
+      `/api/v1/shipments/${awb}/pay`, { method: 'POST', body: JSON.stringify({ amount, method }) }),
+  // ---- wallet + walk-in ----
+  ensureWalkin: () => request<any>('/api/v1/clients/walkin', { method: 'POST' }),
+  getWallet: (id: string | number) => request<{ clientId: string; legalName: string; accountType: string; walletBalance: number }>(`/api/v1/clients/${id}/wallet`),
+  walletTopup: (id: string | number, amount: number, note?: string) =>
+    request<{ clientId: string; topup: number; walletBalance: number }>(`/api/v1/clients/${id}/wallet/topup`, { method: 'POST', body: JSON.stringify({ amount, note }) }),
 
   // ---- finance ----
   rateQuote: (awb: string) => request<RateQuote>(`/api/v1/shipments/${awb}/rate-quote`),

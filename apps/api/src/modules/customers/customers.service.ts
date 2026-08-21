@@ -198,4 +198,32 @@ export class CustomersService {
     } });
   }
   delAddr(rowId: number) { return this.prisma.customerAddress.delete({ where: { id: BigInt(rowId) } }); }
+
+  // ============ wallet + walk-in ============
+
+  /** Get-or-create the singleton cash walk-in customer (isCash, one-time). */
+  async ensureWalkin() {
+    const existing = await this.prisma.b2bClient.findUnique({ where: { accountCode: 'WALKIN' } });
+    if (existing) return existing;
+    return this.prisma.b2bClient.create({
+      data: { legalName: 'Walk-in / Counter (Cash)', accountCode: 'WALKIN', isCash: true, isOneTime: true, accountType: 'CASH', customerType: 'Customer' },
+    });
+  }
+
+  async walletInfo(id: number) {
+    const c = await this.prisma.b2bClient.findUnique({ where: { id: BigInt(id) }, select: { id: true, legalName: true, accountType: true, walletBalance: true } });
+    if (!c) throw new NotFoundException('Client not found');
+    return { clientId: c.id, legalName: c.legalName, accountType: c.accountType, walletBalance: Number(c.walletBalance) };
+  }
+
+  /** Top up a customer's prepaid wallet. Records a ledger entry (audit). */
+  async walletTopup(id: number, amount: number, note?: string) {
+    const c = await this.prisma.b2bClient.findUnique({ where: { id: BigInt(id) } });
+    if (!c) throw new NotFoundException('Client not found');
+    if (!(amount > 0)) throw new ConflictException('Top-up amount must be positive.');
+    const balance = +(Number(c.walletBalance) + amount).toFixed(2);
+    await this.prisma.b2bClient.update({ where: { id: c.id }, data: { walletBalance: new Prisma.Decimal(balance) } });
+    await this.prisma.ledgerEntry.create({ data: { clientId: c.id, entryType: note ? `wallet_topup:${note}` : 'wallet_topup', amount: new Prisma.Decimal(-amount), balanceAfter: new Prisma.Decimal(balance) } });
+    return { clientId: c.id, topup: amount, walletBalance: balance };
+  }
 }

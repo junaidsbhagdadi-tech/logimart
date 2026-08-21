@@ -286,6 +286,37 @@ export class ShipmentsService {
     return { ...updated, message: `₹${amount} freight collected for ${awb}.` };
   }
 
+  /**
+   * Booking-time payment (cash counter / wallet). CASH records the amount; WALLET debits
+   * the customer's prepaid wallet (blocks on insufficient balance) + posts a ledger entry.
+   * Returns receipt data.
+   */
+  async payAtBooking(awb: string, dto: { amount: number; method?: string }, userId: bigint) {
+    const s = await this.prisma.shipment.findUnique({
+      where: { awb },
+      select: { id: true, clientId: true, freightCollectedAt: true, client: { select: { legalName: true, accountCode: true, walletBalance: true } } },
+    });
+    if (!s) throw new NotFoundException(`AWB ${awb} not found`);
+    if (s.freightCollectedAt) throw new ForbiddenException(`Payment already recorded for ${awb}.`);
+    const amount = Number(dto.amount);
+    if (!(amount > 0)) throw new ForbiddenException('Amount must be greater than zero.');
+    const method = String(dto.method || 'CASH').toUpperCase() === 'WALLET' ? 'WALLET' : 'CASH';
+
+    let walletBalance: number | null = null;
+    if (method === 'WALLET') {
+      const bal = Number(s.client.walletBalance);
+      if (bal < amount) throw new ForbiddenException(`Insufficient wallet balance: ₹${bal} available, ₹${amount} required.`);
+      walletBalance = +(bal - amount).toFixed(2);
+      await this.prisma.b2bClient.update({ where: { id: s.clientId }, data: { walletBalance: new Prisma.Decimal(walletBalance) } });
+      await this.prisma.ledgerEntry.create({ data: { clientId: s.clientId, entryType: `wallet_debit:${awb}`, amount: new Prisma.Decimal(amount), balanceAfter: new Prisma.Decimal(walletBalance) } });
+    }
+    await this.prisma.shipment.update({
+      where: { id: s.id },
+      data: { freightCollected: new Prisma.Decimal(amount), freightCollectedAt: new Date(), freightCollectedById: userId },
+    });
+    return { awb, method, amount, walletBalance, customer: s.client.legalName, accountCode: s.client.accountCode, collectedAt: new Date(), message: `₹${amount} collected via ${method} for ${awb}.` };
+  }
+
   /** Recent shipments, optionally scoped to a single client, with light rollup. */
   /** Xpresion-style AWB Entry List rows (flat, filter/grid-friendly). */
   async awbList(clientId: bigint | undefined, limit: number) {

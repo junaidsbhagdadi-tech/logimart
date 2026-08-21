@@ -99,6 +99,13 @@ export class ShipmentsController {
     return this.shipments.collectFreight(awb, dto.amount, BigInt(req.user.sub));
   }
 
+  /** Booking-time payment at the counter: cash or wallet debit. Returns receipt data. */
+  @Post(':awb/pay')
+  @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  payAtBooking(@Param('awb') awb: string, @Body() dto: { amount: number; method?: string }, @Req() req: any) {
+    return this.shipments.payAtBooking(awb, dto, BigInt(req.user.sub));
+  }
+
   /** MPS labels for every child box. ?format=zpl | json (default json). */
   @Get(':awb/print-mps-labels')
   async labelsForAwb(@Param('awb') awb: string) {

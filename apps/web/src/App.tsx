@@ -14,6 +14,7 @@ import { Customers } from './pages/Customers';
 import { FtlRates } from './pages/FtlRates';
 import { ZoneUploads } from './pages/ZoneUploads';
 import { VendorBills } from './pages/VendorBills';
+import { WalkIn } from './pages/WalkIn';
 import { BillWorksheet } from './pages/BillWorksheet';
 import { Pickups } from './pages/Pickups';
 import { Manifests } from './pages/Manifests';
@@ -67,6 +68,7 @@ export function App() {
         <Route path="/create" element={<CreateShipment />} />
         <Route path="/awb-list" element={<AwbEntryList />} />
         <Route path="/bulk" element={<BulkBooking />} />
+        <Route path="/walk-in" element={isAdminFin || canMaster ? <WalkIn /> : <Navigate to="/" replace />} />
         <Route path="/scan" element={<Scan />} />
         <Route path="/drs" element={<Drs />} />
         <Route path="/bulk-pod" element={<BulkPod />} />

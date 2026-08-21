@@ -96,6 +96,7 @@ model B2bClient {
   creditLimit     Decimal  @default(0) @db.Decimal(14, 2)
   creditDays      Int      @default(30) // Net 30 / Net 60
   outstandingBal  Decimal  @default(0) @db.Decimal(14, 2)
+  walletBalance   Decimal  @default(0) @db.Decimal(14, 2) // prepaid wallet (accountType WALLET) — debited at booking
   isCreditHold    Boolean  @default(false)
   isActive        Boolean  @default(true)
   isOneTime       Boolean  @default(false) // walk-in / ad-hoc, non-contract
