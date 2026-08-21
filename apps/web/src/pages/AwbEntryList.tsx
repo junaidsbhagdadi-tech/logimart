@@ -57,7 +57,7 @@ export function AwbEntryList() {
 
   return (
     <>
-      <h1>📝 AWB Entry List</h1>
+      <h1>📝 Shipment List</h1>
       {error && <div className="error">{error}</div>}
 
       <div className="card" style={{ padding: 16 }}>
@@ -66,7 +66,7 @@ export function AwbEntryList() {
             <button className="secondary" onClick={load} title="Refresh">⟳ Refresh</button>
             {Object.values(filters).some(Boolean) && <button className="secondary" onClick={() => setFilters({})}>Clear filters</button>}
           </div>
-          <Link to="/create"><button>➕ New AWB</button></Link>
+          <Link to="/create"><button>➕ New Shipment</button></Link>
         </div>
 
         <div style={{ overflowX: 'auto' }}>

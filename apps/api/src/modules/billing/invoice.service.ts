@@ -73,27 +73,19 @@ export class InvoiceService {
 
     for (const s of shipments) {
       if (alreadyBilled.has(s.id.toString())) continue; // already invoiced
-      const delivered = s.pieces.filter((p) => p.status === 'DELIVERED');
-      if (delivered.length === 0) continue; // nothing billable yet
-      const charges = await this.rates.chargesForShipment(s, delivered);
+      if (s.status === 'CANCELLED') continue; // skip cancelled
+      // Bill on booking (AWB-list basis): full shipment charges, not delivery-gated.
+      const charges = await this.rates.chargesForShipment(s, s.pieces);
       if (!charges) continue; // no rate configured -> skip
 
       const chargeableKg = charges.chargeableKg;
       const amount = charges.subtotal; // freight + surcharges (or FTL/manual), pre-GST
-      const isShort = delivered.length < s.pieceCount;
-      lines.push({
-        shipmentId: s.id,
-        chargeableKg,
-        amount,
-        disputeReason: isShort
-          ? `structural_review: short delivery, billed ${delivered.length}/${s.pieceCount} boxes`
-          : null,
-      });
+      lines.push({ shipmentId: s.id, chargeableKg, amount, disputeReason: null });
       subtotal += amount;
     }
 
     if (lines.length === 0) {
-      throw new BadRequestException('No billable (delivered) shipments in this period.');
+      throw new BadRequestException('No billable shipments in this period. Check that the customer has a rate card / rates set for these AWBs.');
     }
 
     const tax = +(subtotal * GST_RATE).toFixed(2);
