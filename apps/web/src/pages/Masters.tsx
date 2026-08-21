@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
+import { Modal } from '../components/Modal';
 
 type Field = { key: string; label: string; type?: 'text' | 'number' | 'select' | 'checkbox'; options?: string[]; attr?: boolean };
 type MasterDef = { key: string; label: string; icon: string; fields: Field[] };
@@ -111,14 +112,15 @@ export function Masters() {
   const setVal = (f: Field, v: any) =>
     setForm((prev) => (f.attr ? { ...prev, attrs: { ...(prev.attrs || {}), [f.key]: v } } : { ...prev, [f.key]: v }));
 
-  const editRow = (r: any) => { setForm({ code: r.code, name: r.name, attrs: { ...r.attrs } }); setEditing(true); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const editRow = (r: any) => { setForm({ code: r.code, name: r.name, attrs: { ...r.attrs } }); setEditing(true); setShowForm(true); };
+  const openAdd = () => { setForm({}); setEditing(false); setError(''); setShowForm(true); };
 
   const save = async () => {
     setError(''); setMsg('');
     if (!form.code || !form.name) { setError('Code and name are required.'); return; }
     try {
       await api.saveMaster(typeKey, { code: form.code, name: form.name, attrs: form.attrs || {} });
-      setMsg(`✓ Saved ${form.code}`); setForm({}); setEditing(false); load();
+      setMsg(`✓ Saved ${form.code}`); setForm({}); setEditing(false); setShowForm(false); load();
     } catch (e: any) { setError(e.message); }
   };
   const del = async (code: string) => {
@@ -127,6 +129,11 @@ export function Masters() {
   };
 
   const [upBusy, setUpBusy] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [csvText, setCsvText] = useState('');
+  const [impRes, setImpRes] = useState<{ code: string; ok: boolean; error?: string }[]>([]);
+  const [impBusy, setImpBusy] = useState(false);
+
   const uploadProducts = async (f?: File) => {
     if (!f) return; setError(''); setMsg(''); setUpBusy(true);
     try {
@@ -136,6 +143,27 @@ export function Masters() {
       for (const r of rows) { try { await api.saveMaster('PRODUCT', r); ok++; } catch { /* skip */ } }
       setMsg(`✓ Uploaded ${ok} / ${rows.length} products`); load();
     } catch (e: any) { setError(e.message); } finally { setUpBusy(false); }
+  };
+
+  // Generic CSV bulk import for the selected master type (merged from the old Import page).
+  const csvCols = () => def.fields.map((f) => f.key).join(',');
+  const dlCsvTemplate = () => {
+    const url = URL.createObjectURL(new Blob([csvCols() + '\n'], { type: 'text/csv' }));
+    const a = document.createElement('a'); a.href = url; a.download = `logimart-${typeKey.toLowerCase()}-template.csv`; a.click(); URL.revokeObjectURL(url);
+  };
+  const runCsvImport = async () => {
+    setError(''); setImpRes([]);
+    const rows = parseCsv(csvText);
+    if (!rows.length) { setError('No rows. Paste CSV (with a header row) or upload a file.'); return; }
+    setImpBusy(true);
+    const res: { code: string; ok: boolean; error?: string }[] = [];
+    for (const r of rows) {
+      const { code, name, ...attrs } = r;
+      if (!code) continue;
+      try { await api.saveMaster(typeKey, { code, name: name || code, attrs }); res.push({ code, ok: true }); }
+      catch (e: any) { res.push({ code, ok: false, error: e.message }); }
+    }
+    setImpRes(res); setImpBusy(false); setCsvText(''); load();
   };
 
   const attrCols = def.fields.filter((f) => f.attr && f.type !== 'checkbox').slice(0, 3);
@@ -160,17 +188,38 @@ export function Masters() {
       {error && <div className="error">{error}</div>}
       {msg && <div className="card" style={{ borderLeft: '4px solid var(--ok)' }}>{msg}</div>}
 
-      {typeKey === 'PRODUCT' && (
-        <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <strong>⬆ Upload products</strong>
-          <span className="muted" style={{ fontSize: 12 }}>Product Code · Name · Type · Service template</span>
-          <input type="file" accept=".xlsx,.xls,.csv" disabled={upBusy} onChange={(e) => uploadProducts(e.target.files?.[0])} />
-          {upBusy && <span className="muted">Uploading…</span>}
-        </div>
-      )}
-
       <div className="card">
-        <h2>{editing ? `Edit ${def.label}` : `Add ${def.label}`}</h2>
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <h2 style={{ margin: 0 }}>{def.icon} {def.label}</h2>
+            <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>Add one, or bulk-import a CSV. Columns: <code>{csvCols()}</code></p>
+          </div>
+          <div className="row" style={{ gap: 8 }}>
+            <button onClick={openAdd}>＋ Add {def.label}</button>
+            <button className="secondary" onClick={dlCsvTemplate}>⬇ CSV template</button>
+            {typeKey === 'PRODUCT' && (
+              <label className="secondary" style={{ padding: '9px 14px', borderRadius: 11, cursor: 'pointer', fontWeight: 600, fontSize: 13, border: '1px solid var(--border)' }}>
+                ⬆ Product .xlsx<input type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} disabled={upBusy} onChange={(e) => uploadProducts(e.target.files?.[0])} />
+              </label>
+            )}
+          </div>
+        </div>
+        <details style={{ marginTop: 10 }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 600 }}>⬆ Bulk import CSV</summary>
+          <div className="row" style={{ marginTop: 10 }}>
+            <label className="secondary" style={{ padding: '9px 14px', borderRadius: 11, cursor: 'pointer', fontWeight: 600, fontSize: 13, border: '1px solid var(--border)' }}>
+              📎 Upload CSV<input type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) f.text().then(setCsvText); }} />
+            </label>
+          </div>
+          <textarea rows={6} value={csvText} onChange={(e) => setCsvText(e.target.value)} placeholder={csvCols() + '\n…'} style={{ width: '100%', font: '13px monospace', padding: 12, border: '1px solid var(--border)', borderRadius: 11, marginTop: 10 }} />
+          <div className="row" style={{ marginTop: 10, justifyContent: 'flex-end' }}>
+            <button onClick={runCsvImport} disabled={impBusy || !csvText.trim()}>{impBusy ? 'Importing…' : `Import into ${def.label}`}</button>
+          </div>
+          {impRes.length > 0 && <div className="muted" style={{ marginTop: 8 }}>✓ {impRes.filter((r) => r.ok).length}/{impRes.length} imported{impRes.some((r) => !r.ok) ? ` — failed: ${impRes.filter((r) => !r.ok).map((r) => r.code).join(', ')}` : ''}</div>}
+        </details>
+      </div>
+
+      {showForm && <Modal title={`${editing ? 'Edit' : 'Add'} ${def.label}`} width={760} onClose={() => { setShowForm(false); setEditing(false); setForm({}); }}>
         <div className="grid cols-3">
           {def.fields.map((f) => (
             <div key={f.key}>
@@ -190,9 +239,9 @@ export function Masters() {
             </div>
           ))}
         </div>
-        <div className="row" style={{ marginTop: 12 }}>
-          <button onClick={save}>{editing ? 'Update' : '+ Add'} {def.label}</button>
-          {editing && <button className="secondary" onClick={() => { setForm({}); setEditing(false); }}>Cancel</button>}
+        <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+          <button className="secondary" onClick={() => { setShowForm(false); setEditing(false); setForm({}); }}>Cancel</button>
+          <button onClick={save}>{editing ? 'Update' : 'Add'} {def.label}</button>
         </div>
 
         {typeKey === 'FUEL_MECHANISM' && (
@@ -218,7 +267,7 @@ export function Masters() {
             )}
           </div>
         )}
-      </div>
+      </Modal>}
 
       <div className="card">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
@@ -252,4 +301,26 @@ export function Masters() {
       </div>
     </>
   );
+}
+
+function splitLine(line: string): string[] {
+  const out: string[] = []; let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') { inQ = !inQ; continue; }
+    if (ch === ',' && !inQ) { out.push(cur); cur = ''; continue; }
+    cur += ch;
+  }
+  out.push(cur); return out;
+}
+function parseCsv(text: string): Record<string, string>[] {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length < 2) return [];
+  const header = splitLine(lines[0]).map((h) => h.trim());
+  return lines.slice(1).map((line) => {
+    const cells = splitLine(line);
+    const row: Record<string, string> = {};
+    header.forEach((h, i) => { row[h] = (cells[i] ?? '').trim(); });
+    return row;
+  });
 }

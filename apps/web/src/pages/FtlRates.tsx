@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, Client } from '../api';
+import { Modal } from '../components/Modal';
 
 const FTL_TYPES = ['8ft', '10ft', '14ft', '17ft', '20ft', '32FT SXL', '32ft MXL'];
 const ftlBlank = { clientId: '', originZone: 'SOUTH', destZone: 'SOUTH', vehicleType: '32FT SXL', flatRate: '', fuelPct: '' };
@@ -10,6 +11,7 @@ export function FtlRates() {
   const [clients, setClients] = useState<Client[]>([]);
   const [ftlRows, setFtlRows] = useState<any[]>([]);
   const [ftlForm, setFtlForm] = useState({ ...ftlBlank });
+  const [showAdd, setShowAdd] = useState(false);
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
 
@@ -30,7 +32,7 @@ export function FtlRates() {
         originZone: ftlForm.originZone, destZone: ftlForm.destZone, vehicleType: ftlForm.vehicleType,
         flatRate: +ftlForm.flatRate, fuelPct: ftlForm.fuelPct ? +ftlForm.fuelPct : 0,
       });
-      setMsg('FTL rate added'); setFtlForm({ ...ftlBlank }); load();
+      setMsg('FTL rate added'); setFtlForm({ ...ftlBlank }); setShowAdd(false); load();
     } catch (e: any) { setError(e.message); }
   };
 
@@ -41,8 +43,11 @@ export function FtlRates() {
       {error && <div className="error">{error}</div>}
       {msg && <div className="card" style={{ borderLeft: '4px solid var(--ok)' }}>{msg}</div>}
 
-      <div className="card">
-        <h2>Add FTL rate</h2>
+      <div className="row" style={{ justifyContent: 'flex-end', marginBottom: 4 }}>
+        <button onClick={() => { setFtlForm({ ...ftlBlank }); setShowAdd(true); }}>＋ Add FTL rate</button>
+      </div>
+
+      {showAdd && <Modal title="Add FTL Rate" width={720} onClose={() => setShowAdd(false)}>
         <div className="grid cols-3">
           <div>
             <label>Customer (blank = generic/one-time)</label>
@@ -62,8 +67,11 @@ export function FtlRates() {
           <div><label>Flat rate ₹ (per trip) *</label><input type="number" value={ftlForm.flatRate} onChange={(e) => setFtl('flatRate', e.target.value)} /></div>
           <div><label>Fuel %</label><input type="number" value={ftlForm.fuelPct} onChange={(e) => setFtl('fuelPct', e.target.value)} /></div>
         </div>
-        <button style={{ marginTop: 12 }} disabled={!ftlForm.flatRate} onClick={createFtl}>Add FTL rate</button>
-      </div>
+        <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+          <button className="secondary" onClick={() => setShowAdd(false)}>Cancel</button>
+          <button disabled={!ftlForm.flatRate} onClick={createFtl}>Add FTL rate</button>
+        </div>
+      </Modal>}
 
       <div className="card">
         <table>

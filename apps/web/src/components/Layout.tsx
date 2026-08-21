@@ -62,7 +62,6 @@ export function Layout() {
       { to: '/master-data', icon: '🌐', label: 'Serviceability', show: canMaster },
       { to: '/zone-uploads', icon: '📍', label: 'Zone & EDL Upload', show: canMaster },
       { to: '/masters', icon: '🗃', label: 'Masters', show: canMaster },
-      { to: '/import', icon: '📤', label: 'Import', show: canMaster },
       { to: '/tax', icon: '🧮', label: 'Tax Filing', show: isAdminFin },
     ] },
     { title: 'Insights & Admin', items: [

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, Client } from '../api';
 import { CustomerSubTab } from '../components/CustomerSubTab';
+import { Modal } from '../components/Modal';
 import { RateCardsDialog } from '../components/RateCardsDialog';
 
 const blank = {
@@ -18,6 +19,7 @@ export function Customers() {
   const [clients, setClients] = useState<Client[]>([]);
   const [form, setForm] = useState({ ...blank });
   const [tab, setTab] = useState<Tab>('Personal Information');
+  const [showAdd, setShowAdd] = useState(false);
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
 
@@ -88,6 +90,7 @@ export function Customers() {
       }) as Client;
       setMsg(`✓ Created ${c.legalName} (${c.accountCode})`);
       setForm({ ...blank });
+      setShowAdd(false);
       load();
     } catch (e: any) { setError(e.message); }
   };
@@ -98,7 +101,11 @@ export function Customers() {
       {error && <div className="error">{error}</div>}
       {msg && <div className="card" style={{ borderLeft: '4px solid var(--ok)' }}>{msg}</div>}
 
-      <div className="card">
+      <div className="row" style={{ justifyContent: 'flex-end', marginBottom: 4 }}>
+        <button onClick={() => { setForm({ ...blank }); setTab('Personal Information'); setShowAdd(true); }}>＋ Add Customer</button>
+      </div>
+
+      {showAdd && <Modal title="Customer" width={980} onClose={() => setShowAdd(false)}>
         <div className="tabbar">
           {TABS.map((t) => (
             <button key={t} className={'tab' + (t === tab ? ' active' : '') + (t !== 'Personal Information' ? ' soon' : '')} onClick={() => setTab(t)}>{t}</button>
@@ -173,7 +180,7 @@ export function Customers() {
         {tab === 'Other Charges' && <CustomerSubTab clients={clients} kind="charges" />}
         {tab === 'Customer Volumetric' && <CustomerSubTab clients={clients} kind="vol" />}
         {tab === 'Customer Address' && <CustomerSubTab clients={clients} kind="addr" />}
-      </div>
+      </Modal>}
 
       <div className="card">
         <h2>⬆ Bulk import customers (CSV)</h2>
