@@ -297,15 +297,34 @@ export class RateService {
     );
   }
 
-  /** Effective FSC % for a card: FLAT uses fuelPct; DYNAMIC reads its FUEL_MECHANISM master (diesel-linked). */
+  /**
+   * Effective FSC % for a card.
+   * DYNAMIC  -> its diesel-linked FUEL_MECHANISM master.
+   * FLAT     -> an explicit % on the card wins; if blank, inherit a master FLAT mechanism —
+   *             the one the card references, else the one flagged default — so every air card
+   *             can share one fuel % set once in Masters.
+   */
   private async cardFuelPct(card: any): Promise<number> {
-    if (String(card.fuelMode ?? 'FLAT').toUpperCase() !== 'DYNAMIC') return Number(card.fuelPct ?? 0);
-    let basePct = 0, baseFuel = 0, step = 0, cap = 0;
-    if (card.fuelMechanism) {
-      const m = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'FUEL_MECHANISM', code: card.fuelMechanism } } });
-      const a: any = m?.attrs || {};
-      basePct = Number(a.basePct ?? 0); baseFuel = Number(a.baseFuelPrice ?? 0); step = Number(a.stepPerRupee ?? 0); cap = Number(a.maxPct ?? 0);
-    }
+    if (String(card.fuelMode ?? 'FLAT').toUpperCase() === 'DYNAMIC') return this.mechanismPct(card.fuelMechanism);
+    const flat = Number(card.fuelPct ?? 0);
+    if (flat > 0) return flat;
+    const mechs = await this.prisma.masterEntry.findMany({ where: { type: 'FUEL_MECHANISM', active: true } });
+    const m = card.fuelMechanism ? mechs.find((x) => x.code === card.fuelMechanism) : mechs.find((x) => (x.attrs as any)?.isDefault);
+    return m ? this.pctFromMechanism(m) : 0;
+  }
+
+  /** FSC % from a FUEL_MECHANISM master code (0 if missing). */
+  private async mechanismPct(code?: string | null): Promise<number> {
+    if (!code) return 0;
+    const m = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'FUEL_MECHANISM', code } } });
+    return m ? this.pctFromMechanism(m) : 0;
+  }
+
+  /** FSC % implied by a mechanism row — FLAT reads its percentage; DYNAMIC indexes off current diesel. */
+  private async pctFromMechanism(m: any): Promise<number> {
+    const a: any = m.attrs || {};
+    if (String(a.mode ?? 'FLAT').toUpperCase() !== 'DYNAMIC') return Number(a.percentage ?? 0);
+    const basePct = Number(a.basePct ?? 0), baseFuel = Number(a.baseFuelPrice ?? 0), step = Number(a.stepPerRupee ?? 0), cap = Number(a.maxPct ?? 0);
     const diesel = await this.currentDieselPrice();
     const rise = baseFuel > 0 ? diesel - baseFuel : 0;
     const raw = basePct + rise * step;

@@ -303,7 +303,7 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
     mode: card?.mode ?? '', service: card?.service ?? '', label: card?.label ?? '',
     volumetricDivisor: card?.volumetricDivisor ?? 5000, cft: card?.cft ?? 0, minChargeableKg: card?.minChargeableKg ?? 0,
     minFreight: card?.minFreight ?? 0, addlWeightUnitG: card?.addlWeightUnitG ?? 1000,
-    fuelMode: card?.fuelMode ?? 'FLAT', fuelPct: card?.fuelPct ?? 0, fuelMechanism: card?.fuelMechanism ?? '',
+    fuelMode: card?.fuelMode ?? 'FLAT', fuelPct: card?.fuelPct ?? '', fuelMechanism: card?.fuelMechanism ?? '',
     fovPct: card?.fovPct ?? 0, fovMin: card?.fovMin ?? 0, odaFlat: card?.odaFlat ?? 0, odaPerKg: card?.odaPerKg ?? 0, odaMin: card?.odaMin ?? 0,
     topayCharge: card?.topayCharge ?? 0, apptCharge: card?.apptCharge ?? 0, loadingCharge: card?.loadingCharge ?? 0,
     unloadingCharge: card?.unloadingCharge ?? 0, docketCharge: card?.docketCharge ?? 0,
@@ -406,7 +406,7 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
             <select value={h.fuelMode} onChange={(e) => set('fuelMode', e.target.value)}><option>FLAT</option><option>DYNAMIC</option></select>
           </div>
           {h.fuelMode === 'FLAT'
-            ? <div><label style={{ fontSize: 12 }}>Fuel % <span className="muted">(flat — Air/Express/DP)</span></label><input type="number" value={h.fuelPct} onChange={(e) => set('fuelPct', e.target.value)} style={{ width: 100 }} /></div>
+            ? <div><label style={{ fontSize: 12 }}>Fuel % <span className="muted">(flat — Air/Express/DP · blank → inherit master default)</span></label><input type="number" value={h.fuelPct} onChange={(e) => set('fuelPct', e.target.value)} placeholder="inherit" style={{ width: 120 }} /></div>
             : <div><label style={{ fontSize: 12 }}>Diesel surcharge mechanism <span className="muted">(Surface)</span></label>
                 <select value={h.fuelMechanism} onChange={(e) => set('fuelMechanism', e.target.value)}>
                   <option value="">Select mechanism</option>
