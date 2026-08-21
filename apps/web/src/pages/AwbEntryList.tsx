@@ -4,7 +4,7 @@ import { api } from '../api';
 
 type Row = {
   awb: string; bookDate: string; shipperName: string; customerCode: string; customerName: string;
-  consigneeName: string; destination: string; product: string; vendor: string;
+  consigneeName: string; destination: string; product: string; vendor: string; forwardingAwb: string | null;
   actualWeight: number; chargeWeight: number; pieces: number; deliveryVendor: string; status: string;
 };
 
@@ -18,6 +18,7 @@ const COLS: { key: keyof Row; label: string; num?: boolean }[] = [
   { key: 'destination', label: 'Destination' },
   { key: 'product', label: 'Product' },
   { key: 'vendor', label: 'Vendor' },
+  { key: 'forwardingAwb', label: 'Fwd AWB' },
   { key: 'actualWeight', label: 'Actual Weight', num: true },
   { key: 'chargeWeight', label: 'Charge Weight', num: true },
   { key: 'pieces', label: 'Pieces', num: true },
@@ -94,6 +95,7 @@ export function AwbEntryList() {
                   <td>{r.destination || '—'}</td>
                   <td>{r.product || '—'}</td>
                   <td>{r.vendor || '—'}</td>
+                  <td>{r.forwardingAwb || '—'}</td>
                   <td>{r.actualWeight.toFixed(3)}</td>
                   <td>{r.chargeWeight.toFixed(3)}</td>
                   <td>{r.pieces}</td>
