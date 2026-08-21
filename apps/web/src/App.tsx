@@ -15,6 +15,7 @@ import { FtlRates } from './pages/FtlRates';
 import { ZoneUploads } from './pages/ZoneUploads';
 import { VendorBills } from './pages/VendorBills';
 import { WalkIn } from './pages/WalkIn';
+import { AwbPrint } from './pages/AwbPrint';
 import { BillWorksheet } from './pages/BillWorksheet';
 import { Pickups } from './pages/Pickups';
 import { Manifests } from './pages/Manifests';
@@ -63,6 +64,7 @@ export function App() {
       <Route path="/track/:awb" element={<Track />} />
       <Route path="/deliver" element={<Deliver />} />
       <Route path="/invoices/:id/print" element={<InvoicePrint />} />
+      <Route path="/shipments/:awb/awb-print" element={<AwbPrint />} />
       <Route element={<Layout />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/create" element={<CreateShipment />} />

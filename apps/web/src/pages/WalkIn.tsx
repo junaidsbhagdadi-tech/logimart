@@ -239,7 +239,8 @@ function Receipt({ r, onClose }: { r: any; onClose: () => void }) {
           <div style={{ textAlign: 'center', marginTop: 10, fontSize: 11 }} className="muted">Thank you!</div>
         </div>
         <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
-          <button className="secondary" onClick={() => window.print()}>🖨 Print</button>
+          <a href={`/shipments/${r.awb}/awb-print`} target="_blank" rel="noreferrer"><button className="secondary">🖨 Print AWB</button></a>
+          <button className="secondary" onClick={() => window.print()}>🖨 Receipt</button>
           <button onClick={onClose}>Done</button>
         </div>
       </div>

@@ -168,6 +168,7 @@ export function ShipmentDetail() {
           {canAssign && s.bdWaybill && <button className="secondary" onClick={trackBd}>🔎 BlueDart track</button>}
           {canReweigh && <button className="secondary" onClick={() => { setReweighMode((v) => !v); setMsg(''); }}>⚖ {reweighMode ? 'Cancel re-weigh' : 'Re-weigh'}</button>}
           <Link to={`/shipments/${s.awb}/labels`}><button>🏷 Print labels</button></Link>
+          <a href={`/shipments/${s.awb}/awb-print`} target="_blank" rel="noreferrer"><button>🖨 Print AWB</button></a>
         </div>
       </div>
 
