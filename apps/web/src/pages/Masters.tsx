@@ -28,7 +28,7 @@ const MASTERS: MasterDef[] = [
   { key: 'FUEL_MECHANISM', label: 'Fuel / Diesel Surcharge', icon: '⛽', fields: [
     F('code', 'Code'), F('name', 'Name'),
     F('mode', 'Mode', { attr: true, type: 'select', options: ['FLAT', 'DYNAMIC'] }),
-    F('isDefault', 'Default (blank-% air cards inherit this)', { attr: true, type: 'checkbox' }),
+    F('isDefault', 'Default for its mode (cards with blank fuel inherit — FLAT→air, DYNAMIC→surface)', { attr: true, type: 'checkbox' }),
     F('percentage', 'Flat %  (FLAT)', { attr: true, type: 'number' }),
     F('basePct', 'Base %  (DYNAMIC)', { attr: true, type: 'number' }),
     F('baseFuelPrice', 'Base diesel ₹/L — reference price (DYNAMIC)', { attr: true, type: 'number' }),

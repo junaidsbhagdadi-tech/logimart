@@ -305,17 +305,19 @@ export class RateService {
    *             can share one fuel % set once in Masters.
    */
   private async cardFuelPct(card: any): Promise<number> {
-    if (String(card.fuelMode ?? 'FLAT').toUpperCase() === 'DYNAMIC') return this.mechanismPct(card.fuelMechanism);
-    const flat = Number(card.fuelPct ?? 0);
-    if (flat > 0) return flat;
+    const wantDynamic = String(card.fuelMode ?? 'FLAT').toUpperCase() === 'DYNAMIC';
+    // FLAT: an explicit % on the card wins outright.
+    if (!wantDynamic) { const flat = Number(card.fuelPct ?? 0); if (flat > 0) return flat; }
     const mechs = await this.prisma.masterEntry.findMany({ where: { type: 'FUEL_MECHANISM', active: true } });
+    // An explicitly-linked mechanism wins (either mode).
     if (card.fuelMechanism) { const r = mechs.find((x) => x.code === card.fuelMechanism); if (r) return this.pctFromMechanism(r); }
-    // Inherit a FLAT default. A vendor/network-specific air default beats the all-vendors default,
-    // so air fuel can vary per carrier (BLUEDART vs DTDC) while still supporting one shared value.
+    // Otherwise inherit the default mechanism of the SAME family — DYNAMIC (diesel/Surface) or FLAT
+    // (air/Express/DP) — with a network-specific default beating the all-vendors one. This is why a
+    // Surface card follows the diesel mechanism automatically (base % + diesel rise) without per-card linking.
     const net = String(card.network ?? 'SELF').toUpperCase();
-    const flatDefaults = mechs.filter((x) => { const a: any = x.attrs || {}; return a.isDefault && String(a.mode ?? 'FLAT').toUpperCase() !== 'DYNAMIC'; });
-    const m = flatDefaults.find((x) => String((x.attrs as any)?.network ?? '').trim().toUpperCase() === net)
-           || flatDefaults.find((x) => !String((x.attrs as any)?.network ?? '').trim());
+    const defaults = mechs.filter((x) => { const a: any = x.attrs || {}; return a.isDefault && (String(a.mode ?? 'FLAT').toUpperCase() === 'DYNAMIC') === wantDynamic; });
+    const m = defaults.find((x) => String((x.attrs as any)?.network ?? '').trim().toUpperCase() === net)
+           || defaults.find((x) => !String((x.attrs as any)?.network ?? '').trim());
     return m ? this.pctFromMechanism(m) : 0;
   }
 

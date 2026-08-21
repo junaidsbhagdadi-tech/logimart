@@ -407,9 +407,9 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
           </div>
           {h.fuelMode === 'FLAT'
             ? <div><label style={{ fontSize: 12 }}>Fuel % <span className="muted">(flat — Air/Express/DP · blank → inherit master default)</span></label><input type="number" value={h.fuelPct} onChange={(e) => set('fuelPct', e.target.value)} placeholder="inherit" style={{ width: 120 }} /></div>
-            : <div><label style={{ fontSize: 12 }}>Diesel surcharge mechanism <span className="muted">(Surface)</span></label>
+            : <div><label style={{ fontSize: 12 }}>Diesel surcharge mechanism <span className="muted">(Surface · blank → default)</span></label>
                 <select value={h.fuelMechanism} onChange={(e) => set('fuelMechanism', e.target.value)}>
-                  <option value="">Select mechanism</option>
+                  <option value="">Inherit default diesel mechanism</option>
                   {mechs.map((m) => <option key={m.code} value={m.code}>{m.code} — {m.name}</option>)}
                 </select>
               </div>}
