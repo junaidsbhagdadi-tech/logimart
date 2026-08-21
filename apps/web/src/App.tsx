@@ -12,7 +12,6 @@ import { InvoiceDetail } from './pages/InvoiceDetail';
 import { Track } from './pages/Track';
 import { Customers } from './pages/Customers';
 import { FtlRates } from './pages/FtlRates';
-import { ZoneUploads } from './pages/ZoneUploads';
 import { VendorBills } from './pages/VendorBills';
 import { WalkIn } from './pages/WalkIn';
 import { AwbPrint } from './pages/AwbPrint';
@@ -32,7 +31,7 @@ import { Claims } from './pages/Claims';
 import { Documents } from './pages/Documents';
 import { Receivables } from './pages/Receivables';
 import { AuditLog } from './pages/AuditLog';
-import { MasterData } from './pages/MasterData';
+import { Pincodes } from './pages/Pincodes';
 import { Masters } from './pages/Masters';
 import { Deliver } from './pages/Deliver';
 import { BulkBooking } from './pages/BulkBooking';
@@ -87,13 +86,15 @@ export function App() {
         <Route path="/sales" element={isAdminFin ? <Sales /> : <Navigate to="/" replace />} />
         <Route path="/ftl-rates" element={isAdminFin ? <FtlRates /> : <Navigate to="/" replace />} />
         <Route path="/vendor-bills" element={isAdminFin ? <VendorBills /> : <Navigate to="/" replace />} />
-        <Route path="/zone-uploads" element={canMaster ? <ZoneUploads /> : <Navigate to="/" replace />} />
+        <Route path="/pincodes" element={canMaster ? <Pincodes /> : <Navigate to="/" replace />} />
+        {/* old split routes → merged Pincodes screen (keep stale bookmarks working) */}
+        <Route path="/master-data" element={<Navigate to="/pincodes" replace />} />
+        <Route path="/zone-uploads" element={<Navigate to="/pincodes" replace />} />
         <Route path="/tax" element={isAdminFin ? <TaxFiling /> : <Navigate to="/" replace />} />
         <Route path="/receivables" element={isAdminFin ? <Receivables /> : <Navigate to="/" replace />} />
         <Route path="/notes" element={isAdminFin ? <Notes /> : <Navigate to="/" replace />} />
         <Route path="/claims" element={isAdminFin ? <Claims /> : <Navigate to="/" replace />} />
         <Route path="/documents" element={isAdminFin ? <Documents /> : <Navigate to="/" replace />} />
-        <Route path="/master-data" element={canMaster ? <MasterData /> : <Navigate to="/" replace />} />
         <Route path="/masters" element={canMaster ? <Masters /> : <Navigate to="/" replace />} />
         <Route path="/reports" element={canReports ? <Reports /> : <Navigate to="/" replace />} />
         <Route path="/audit" element={user?.role === 'SYS_ADMIN' ? <AuditLog /> : <Navigate to="/" replace />} />

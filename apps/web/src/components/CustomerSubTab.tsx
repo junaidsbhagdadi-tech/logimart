@@ -64,6 +64,15 @@ const CONFIG: Record<Kind, { fields: Field[]; cols: string[] }> = {
   },
 };
 
+// Fuel / Other-Charges / Volumetric here feed the LEGACY weight-slab tariff only. When a customer
+// has a rate card (👁 Cards), the card's FSC / FOV / volumetric wins and these rows are ignored —
+// so they are not a duplicate charge, just the fallback for un-migrated slab customers.
+const LEGACY_NOTE: Partial<Record<Kind, string>> = {
+  fuel: 'Applies to the legacy weight-slab tariff only. If this customer has a rate card (👁 Cards), the card’s FSC wins and this is ignored — set fuel on the rate card instead.',
+  charges: 'Applies to the legacy weight-slab tariff only. Rate-card customers get FOV/accessorials from the card (👁 Cards); these rows are the fallback for un-migrated slab customers.',
+  vol: 'Applies to the legacy weight-slab tariff only. Rate-card customers use the card’s volumetric divisor; this is the fallback for un-migrated slab customers.',
+};
+
 const CALLS = {
   fuel: { list: api.listFuel, add: api.addFuel, del: api.delFuel },
   charges: { list: api.listCharges, add: api.addCharge, del: api.delCharge },
@@ -108,6 +117,11 @@ export function CustomerSubTab({ clients, kind }: { clients: Client[]; kind: Kin
   return (
     <>
       {error && <div className="error">{error}</div>}
+      {LEGACY_NOTE[kind] && (
+        <div className="card" style={{ borderLeft: '4px solid var(--warn)', marginBottom: 10, fontSize: 12.5 }}>
+          ⚠ {LEGACY_NOTE[kind]}
+        </div>
+      )}
       <div className="grid cols-3" style={{ marginBottom: 8 }}>
         <div>
           <label>Customer *</label>

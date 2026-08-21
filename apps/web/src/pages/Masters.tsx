@@ -7,6 +7,10 @@ type MasterDef = { key: string; label: string; icon: string; fields: Field[] };
 
 const F = (key: string, label: string, extra: Partial<Field> = {}): Field => ({ key, label, type: 'text', ...extra });
 
+// Charge codes the rate card owns as built-in heads — must NOT be recreated as CHARGE-master rows
+// (billing skips them, so a duplicate FSC/FUEL/etc. here does nothing and invites double-fuel confusion).
+const RESERVED_CHARGE = new Set(['FSC', 'FUEL', 'FREIGHT', 'FOV', 'ODA', 'TOPAY', 'APPT', 'LOADING', 'UNLOADING', 'DOCKET', 'AWB', 'EMERGENCY', 'ENVIRONMENT', 'ENVIRONMENTAL', 'OSP']);
+
 // Each master type = a config of fields. `attr:true` fields live in the JSON `attrs`;
 // code/name are the natural key + label. Adding a master = adding a config entry.
 const MASTERS: MasterDef[] = [
@@ -118,6 +122,13 @@ export function Masters() {
   const save = async () => {
     setError(''); setMsg('');
     if (!form.code || !form.name) { setError('Code and name are required.'); return; }
+    // Built-in charge heads are applied by the rate card (fuel/FOV/ODA/AWB/…). A CHARGE-master
+    // row reusing one of these codes is silently ignored by billing — block it to avoid confusion
+    // (and the fuel double-charge trap). Configure these on the customer's rate card instead.
+    if (typeKey === 'CHARGE' && RESERVED_CHARGE.has(String(form.code).trim().toUpperCase())) {
+      setError(`"${String(form.code).toUpperCase()}" is a built-in charge handled by the rate card (fuel/FOV/ODA/AWB/etc.). Set it on the customer's rate card — a Charges-master row with this code is ignored by billing.`);
+      return;
+    }
     try {
       await api.saveMaster(typeKey, { code: form.code, name: form.name, attrs: form.attrs || {} });
       setMsg(`✓ Saved ${form.code}`); setForm({}); setEditing(false); setShowForm(false); load();
@@ -193,6 +204,7 @@ export function Masters() {
           <div>
             <h2 style={{ margin: 0 }}>{def.icon} {def.label}</h2>
             <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>Add one, or bulk-import a CSV. Columns: <code>{csvCols()}</code></p>
+            {typeKey === 'CHARGE' && <p className="muted" style={{ fontSize: 12, margin: '4px 0 0', color: 'var(--warn)' }}>Fuel (FSC), FOV, ODA, AWB & other built-in heads live on the <strong>rate card</strong> — don't recreate them here.</p>}
           </div>
           <div className="row" style={{ gap: 8 }}>
             <button onClick={openAdd}>＋ Add {def.label}</button>

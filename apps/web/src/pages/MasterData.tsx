@@ -85,7 +85,6 @@ export function MasterData() {
 
   return (
     <>
-      <h1>🗺 Serviceability &amp; Hubs</h1>
       {error && <div className="error">{error}</div>}
       {msg && <div className="card" style={{ borderLeft: '4px solid var(--ok)' }}>{msg}</div>}
 

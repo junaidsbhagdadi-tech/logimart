@@ -9,8 +9,7 @@ export function ZoneUploads() {
 
   return (
     <>
-      <h1>🌐 Zone &amp; EDL Uploads</h1>
-      <p className="muted" style={{ marginTop: -14 }}>Load the pincode → per-product zone mapping and the EDL (ODA) matrix. These drive booking zone resolution and ODA billing.</p>
+      <p className="muted" style={{ marginTop: 0 }}>Load the pincode → per-product zone mapping and the EDL (ODA) matrix. These drive booking zone resolution and ODA billing.</p>
       <PincodeMappingCard />
       <EdlMatrixCard vendors={vendors} />
     </>
