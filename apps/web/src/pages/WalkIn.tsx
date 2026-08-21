@@ -11,7 +11,7 @@ const BLANK = {
   consigneeName: '', consigneePhone: '', consigneeGstin: '', consigneeAddr: '', consigneePincode: '', consigneeCity: '', consigneeState: '',
   // shipment
   product: '', originHubId: '', destHubId: '', deadKg: '', pieces: '1', lengthCm: '', widthCm: '', heightCm: '',
-  declaredValue: '', shipmentValue: '', goodsDesc: '', agreedFreight: '',
+  declaredValue: '', shipmentValue: '', goodsDesc: '', agreedFreight: '', manualAwb: '',
 };
 
 /** Counter / walk-in quick-book with full booking fields (shipper/consignee address + GSTIN,
@@ -80,6 +80,7 @@ export function WalkIn() {
       const created: any = await api.createShipment({
         clientId, serviceMode: serviceModeFor(form.product), originHubId: Number(form.originHubId), destHubId: Number(form.destHubId),
         originZone: originHub?.zone || 'NORTH', destZone: 'AUTO', product: form.product, destPincode: form.consigneePincode || undefined,
+        manualAwb: form.manualAwb.trim() || undefined,
         // shipper
         shipperName: form.senderName || undefined, shipperPhone: form.senderPhone || undefined, shipperMobile: form.senderMobile || form.senderPhone || undefined,
         shipperGstin: form.senderGstin || undefined, shipperAddress1: form.senderAddr1 || undefined, shipperAddress2: form.senderAddr2 || undefined,
@@ -184,6 +185,7 @@ export function WalkIn() {
           <div><label>Origin hub</label><select value={form.originHubId} onChange={(e) => set('originHubId', e.target.value)}>{hubs.map((h) => <option key={h.id} value={h.id}>{h.code}</option>)}</select></div>
           <div><label>Dest hub</label><select value={form.destHubId} onChange={(e) => set('destHubId', e.target.value)}>{hubs.map((h) => <option key={h.id} value={h.id}>{h.code}</option>)}</select></div>
           <Fld label="Weight (kg) *" k="deadKg" type="number" /><Fld label="Pieces" k="pieces" type="number" />
+          <div><label>Manual AWB <span className="muted">(pre-printed / hand-written)</span></label><input value={form.manualAwb} onChange={(e) => set('manualAwb', e.target.value)} placeholder="blank = auto-generate" /></div>
           <div className="grid cols-3" style={{ gap: 6 }}>
             <div><label>L cm</label><input type="number" value={form.lengthCm} onChange={(e) => set('lengthCm', e.target.value)} /></div>
             <div><label>W cm</label><input type="number" value={form.widthCm} onChange={(e) => set('widthCm', e.target.value)} /></div>

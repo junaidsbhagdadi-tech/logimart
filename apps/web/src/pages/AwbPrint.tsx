@@ -243,7 +243,19 @@ const PRINT_CSS = `
 .note table.amt tr.grand td { font-size:13px; background:#f0f0f0; }
 .note .foot { font-size:8.5px; color:#333; margin-top:6px; text-align:center; }
 .note.excelex .logo, .note.excelex .sub, .note.excelex .party .ph b { color:#12459c; }
+/* Cargo (APEX / SURFACE) prints larger for readability */
+.note.cargo { width: 1060px; font-size: 13px; }
+.note.cargo .frame td { padding: 8px 11px; }
+.note.cargo .party div { line-height: 1.75; }
+.note.cargo .logo { font-size: 18px; }
+.note.cargo .sub { font-size: 13px; }
+.note.cargo .awbno { font-size: 16px; }
+.note.cargo .strip { padding:5px 9px; font-size:12px; }
+.note.cargo .receiver { padding:12px; line-height:2.4; font-size:12.5px; }
+.note.cargo table.amt td, .note.cargo table.amt th { padding:6px 10px; font-size:12.5px; }
+.note.cargo table.grid td { padding:6px 9px; }
 @media print {
+  .note.cargo { width:100%; font-size:12.5px; }
   .no-print { display:none !important; }
   .awb-print { padding:0; }
   .note { width:100%; }

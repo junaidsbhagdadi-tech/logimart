@@ -72,6 +72,7 @@ export function CreateShipment() {
 
   const [pieces, setPieces] = useState<PieceForm[]>([{ ...blank }]);
   const [manualFreight, setManualFreight] = useState('');
+  const [manualAwb, setManualAwb] = useState('');
   const [paymentTerm, setPaymentTerm] = useState<'PREPAID' | 'TO_PAY'>('PREPAID');
   const [freightToCollect, setFreightToCollect] = useState('');
   const [isDod, setIsDod] = useState(false);
@@ -170,6 +171,7 @@ export function CreateShipment() {
         departureAt: ftl.departureAt ? new Date(ftl.departureAt).toISOString() : undefined,
         arrivalAt: ftl.arrivalAt ? new Date(ftl.arrivalAt).toISOString() : undefined,
         manualFreight: manualFreight ? +manualFreight : undefined,
+        manualAwb: manualAwb.trim() || undefined,
         ewbNo: needEway && ewbNo ? ewbNo : undefined,
         product: product || undefined,
         docType,
@@ -357,6 +359,7 @@ export function CreateShipment() {
           <div><label>City</label><input value={c.consigneeCity} onChange={(e) => setCf('consigneeCity', e.target.value)} placeholder={destInfo?.city || ''} /></div>
           <div><label>Invoice / declared value ₹</label><input type="number" value={c.declaredValue} onChange={(e) => setCf('declaredValue', e.target.value)} /></div>
           <div><label>Agreed freight ₹ (one-time — overrides rate card)</label><input type="number" value={manualFreight} onChange={(e) => setManualFreight(e.target.value)} placeholder="optional" /></div>
+          <div><label>Manual AWB <span className="muted">(pre-printed / hand-written — blank = auto)</span></label><input value={manualAwb} onChange={(e) => setManualAwb(e.target.value)} placeholder="e.g. 2030236" /></div>
           <div><label>HSN</label><input value={c.hsnCode} onChange={(e) => setCf('hsnCode', e.target.value)} /></div>
           <div style={{ gridColumn: 'span 2' }}><label>Goods description</label><input value={c.goodsDesc} onChange={(e) => setCf('goodsDesc', e.target.value)} /></div>
         </div>
