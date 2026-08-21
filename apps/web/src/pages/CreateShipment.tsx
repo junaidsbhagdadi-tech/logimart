@@ -80,8 +80,11 @@ export function CreateShipment() {
   const [dodAmount, setDodAmount] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [vendors, setVendors] = useState<any[]>([]);
+  const [cwTouched, setCwTouched] = useState(false);
 
   useEffect(() => { if (!ownClientId) api.listClients().then(setClients).catch(() => {}); }, [ownClientId]);
+  useEffect(() => { api.listVendors().then((v) => setVendors(v.filter((x: any) => x.isActive !== false))).catch(() => {}); }, []);
   useEffect(() => {
     api.listHubs().then((hs) => {
       setHubs(hs);
@@ -111,7 +114,7 @@ export function CreateShipment() {
       const info = await api.lookupPincode(p).catch(() => null);
       setDestInfo(info);
       // auto-fetch city + state from the pincode master
-      if (info?.city) setC((prev) => ({ ...prev, consigneeCity: info.city! }));
+      if (info) setC((prev) => ({ ...prev, consigneeCity: info.city ?? prev.consigneeCity, consigneeState: info.state ?? prev.consigneeState }));
       // which carrier products serve this pincode? auto-pick the fastest BlueDart product.
       const opts = await api.serviceOptions(p).catch(() => []);
       setSvcOptions(opts);
@@ -121,6 +124,13 @@ export function CreateShipment() {
     } else { setDestInfo(null); setSvcOptions([]); }
   };
 
+  const lookShipper = async (p: string) => {
+    setS('shipperPincode', p);
+    if (/^\d{6}$/.test(p)) {
+      const info = await api.lookupPincode(p).catch(() => null);
+      if (info) setShp((prev) => ({ ...prev, shipperCity: info.city ?? prev.shipperCity, shipperState: info.state ?? prev.shipperState }));
+    }
+  };
   const setCf = (k: keyof typeof c, v: string) => setC((p) => ({ ...p, [k]: v }));
   const update = (i: number, k: keyof PieceForm, v: string) =>
     setPieces((ps) => ps.map((p, idx) => (idx === i ? { ...p, [k]: v } : p)));
@@ -207,6 +217,12 @@ export function CreateShipment() {
 
   const totalDead = pieces.reduce((s, p) => s + (+p.deadKg || 0), 0);
   const totalVol = pieces.reduce((s, p) => s + volOf(p), 0);
+  // Charge weight auto-calculates from the boxes (max of actual dead vs volumetric); editable to override.
+  useEffect(() => {
+    if (cwTouched) return;
+    const m = Math.max(totalDead, totalVol);
+    setChargeWeight(m > 0 ? String(+m.toFixed(3)) : '');
+  }, [totalDead, totalVol, cwTouched]);
   const EWB_THRESHOLD = 50000;
   const needEway = Number(c.declaredValue) >= EWB_THRESHOLD;
 
@@ -329,7 +345,7 @@ export function CreateShipment() {
 
           <div><label>Address 1</label><input value={shp.shipperAddress1} onChange={(e) => setS('shipperAddress1', e.target.value)} /></div>
           <div><label>Address 2</label><input value={shp.shipperAddress2} onChange={(e) => setS('shipperAddress2', e.target.value)} /></div>
-          <div><label>Pincode</label><input value={shp.shipperPincode} maxLength={6} onChange={(e) => setS('shipperPincode', e.target.value)} /></div>
+          <div><label>Pincode <span className="muted">(auto city/state)</span></label><input value={shp.shipperPincode} maxLength={6} onChange={(e) => lookShipper(e.target.value)} /></div>
           <div><label>City</label><input value={shp.shipperCity} onChange={(e) => setS('shipperCity', e.target.value)} /></div>
 
           <div><label>State</label><input value={shp.shipperState} onChange={(e) => setS('shipperState', e.target.value)} /></div>
@@ -356,7 +372,9 @@ export function CreateShipment() {
           <div><label>Phone</label><input value={c.consigneePhone} onChange={(e) => setCf('consigneePhone', e.target.value)} /></div>
           <div><label>GSTIN</label><input value={c.consigneeGstin} onChange={(e) => setCf('consigneeGstin', e.target.value)} /></div>
           <div style={{ gridColumn: 'span 2' }}><label>Address</label><input value={c.consigneeAddress} onChange={(e) => setCf('consigneeAddress', e.target.value)} /></div>
+          <div><label>Pincode <span className="muted">(auto city/state)</span></label><input value={destPin} maxLength={6} onChange={(e) => lookDest(e.target.value)} placeholder="e.g. 110001" /></div>
           <div><label>City</label><input value={c.consigneeCity} onChange={(e) => setCf('consigneeCity', e.target.value)} placeholder={destInfo?.city || ''} /></div>
+          <div><label>State</label><input value={c.consigneeState} onChange={(e) => setCf('consigneeState', e.target.value)} placeholder={destInfo?.state || ''} /></div>
           <div><label>Invoice / declared value ₹</label><input type="number" value={c.declaredValue} onChange={(e) => setCf('declaredValue', e.target.value)} /></div>
           <div><label>Agreed freight ₹ (one-time — overrides rate card)</label><input type="number" value={manualFreight} onChange={(e) => setManualFreight(e.target.value)} placeholder="optional" /></div>
           <div><label>Manual AWB <span className="muted">(pre-printed / hand-written — blank = auto)</span></label><input value={manualAwb} onChange={(e) => setManualAwb(e.target.value)} placeholder="e.g. 2030236" /></div>
@@ -381,10 +399,18 @@ export function CreateShipment() {
             </select>
           </div>
           <div>
-            <label>Charge weight (kg)</label>
-            <input type="number" value={chargeWeight} onChange={(e) => setChargeWeight(e.target.value)} placeholder={`${Math.max(totalDead, totalVol).toFixed(2)} (dead/vol max)`} />
+            <label>Charge weight (kg) <span className="muted">— auto from boxes; edit to override</span></label>
+            <input type="number" value={chargeWeight} onChange={(e) => { setCwTouched(true); setChargeWeight(e.target.value); }} placeholder={`${Math.max(totalDead, totalVol).toFixed(2)} (dead/vol max)`} />
+            {cwTouched && <button className="secondary" style={{ marginTop: 4, padding: '2px 8px', fontSize: 11 }} onClick={() => setCwTouched(false)}>↺ auto</button>}
           </div>
-          <div><label>Vendor</label><input value={svc.vendor} onChange={(e) => setSvc({ ...svc, vendor: e.target.value })} placeholder="SELF or carrier" /></div>
+          <div>
+            <label>Vendor</label>
+            <select value={svc.vendor} onChange={(e) => setSvc({ ...svc, vendor: e.target.value })}>
+              <option value="">SELF</option>
+              {vendors.map((v) => <option key={v.id} value={v.vendorCode || v.name}>{v.vendorCode} — {v.name}</option>)}
+              {svc.vendor && !vendors.some((v) => (v.vendorCode || v.name) === svc.vendor) && svc.vendor !== '' && <option value={svc.vendor}>{svc.vendor}</option>}
+            </select>
+          </div>
           <div><label>Service</label><input value={svc.service} onChange={(e) => setSvc({ ...svc, service: e.target.value })} placeholder="SELF / DHL / …" /></div>
           <div><label>Shipment value ₹</label><input type="number" value={svc.shipmentValue} onChange={(e) => setSvc({ ...svc, shipmentValue: e.target.value })} /></div>
           <div><label>Reference No.</label><input value={svc.referenceNo} onChange={(e) => setSvc({ ...svc, referenceNo: e.target.value })} /></div>
