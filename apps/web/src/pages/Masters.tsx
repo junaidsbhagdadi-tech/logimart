@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { Modal } from '../components/Modal';
+import { AirFuelDefaults } from '../components/AirFuelDefaults';
 
 type Field = { key: string; label: string; type?: 'text' | 'number' | 'select' | 'checkbox'; options?: string[]; attr?: boolean };
 type MasterDef = { key: string; label: string; icon: string; fields: Field[] };
@@ -224,6 +225,8 @@ export function Masters() {
           {impRes.length > 0 && <div className="muted" style={{ marginTop: 8 }}>✓ {impRes.filter((r) => r.ok).length}/{impRes.length} imported{impRes.some((r) => !r.ok) ? ` — failed: ${impRes.filter((r) => !r.ok).map((r) => r.code).join(', ')}` : ''}</div>}
         </details>
       </div>
+
+      {typeKey === 'FUEL_MECHANISM' && <AirFuelDefaults onSaved={load} />}
 
       {showForm && <Modal title={`${editing ? 'Edit' : 'Add'} ${def.label}`} width={760} onClose={() => { setShowForm(false); setEditing(false); setForm({}); }}>
         <div className="grid cols-3">

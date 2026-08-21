@@ -309,7 +309,13 @@ export class RateService {
     const flat = Number(card.fuelPct ?? 0);
     if (flat > 0) return flat;
     const mechs = await this.prisma.masterEntry.findMany({ where: { type: 'FUEL_MECHANISM', active: true } });
-    const m = card.fuelMechanism ? mechs.find((x) => x.code === card.fuelMechanism) : mechs.find((x) => (x.attrs as any)?.isDefault);
+    if (card.fuelMechanism) { const r = mechs.find((x) => x.code === card.fuelMechanism); if (r) return this.pctFromMechanism(r); }
+    // Inherit a FLAT default. A vendor/network-specific air default beats the all-vendors default,
+    // so air fuel can vary per carrier (BLUEDART vs DTDC) while still supporting one shared value.
+    const net = String(card.network ?? 'SELF').toUpperCase();
+    const flatDefaults = mechs.filter((x) => { const a: any = x.attrs || {}; return a.isDefault && String(a.mode ?? 'FLAT').toUpperCase() !== 'DYNAMIC'; });
+    const m = flatDefaults.find((x) => String((x.attrs as any)?.network ?? '').trim().toUpperCase() === net)
+           || flatDefaults.find((x) => !String((x.attrs as any)?.network ?? '').trim());
     return m ? this.pctFromMechanism(m) : 0;
   }
 
