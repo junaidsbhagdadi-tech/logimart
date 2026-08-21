@@ -424,7 +424,12 @@ export class RateService {
 
     const lines = [{ head: `Freight (${priced.basis})`, amount: freight }];
     if (fuel > 0) lines.push({ head: `Fuel ${fuelPct}%`, amount: fuel });
-    if (fov > 0) lines.push({ head: `FOV ${Number(card.fovPct)}% on ₹${invVal}`, amount: fov });
+    if (fov > 0) {
+      // Label from the EFFECTIVE FOV (charges JSON), not the stale card.fovPct column — otherwise a
+      // card that bills 0.2% via `charges` mis-shows "FOV 0%". Flag when the ₹ minimum dominated.
+      const byMin = (invVal * fovPct) / 100 < fovMin;
+      lines.push({ head: byMin ? `FOV (min ₹${fovMin})` : `FOV ${fovPct}% on ₹${invVal}`, amount: fov });
+    }
     if (oda > 0) lines.push({ head: odaLabel, amount: oda });
     if (awb > 0) lines.push({ head: 'Airwaybill charges', amount: awb });
     if (emergency > 0) lines.push({ head: 'Emergency surcharge', amount: emergency });
