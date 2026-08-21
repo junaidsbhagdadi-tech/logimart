@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
+import { Modal } from '../components/Modal';
 
 const MODES = ['FTL', 'PTL', 'AIR', 'TRAIN'];
 const blank = {
@@ -12,6 +13,7 @@ const blank = {
 export function Vendors() {
   const [rows, setRows] = useState<any[]>([]);
   const [form, setForm] = useState({ ...blank });
+  const [showAdd, setShowAdd] = useState(false);
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
 
@@ -23,7 +25,7 @@ export function Vendors() {
 
   const create = async () => {
     setError(''); setMsg('');
-    try { await api.createVendor(form); setMsg(`Vendor ${form.name} added`); setForm({ ...blank }); load(); }
+    try { await api.createVendor(form); setMsg(`Vendor ${form.name} added`); setForm({ ...blank }); setShowAdd(false); load(); }
     catch (e: any) { setError(e.message); }
   };
 
@@ -58,8 +60,11 @@ export function Vendors() {
         {upBusy && <span className="muted">Uploading…</span>}
       </div>
 
-      <div className="card">
-        <h2>Add vendor</h2>
+      <div className="row" style={{ justifyContent: 'flex-end', marginBottom: 4 }}>
+        <button onClick={() => { setForm({ ...blank }); setShowAdd(true); }}>＋ Add Vendor</button>
+      </div>
+
+      {showAdd && <Modal title="Add Vendor" width={880} onClose={() => setShowAdd(false)}>
         <div className="grid cols-4">
           <div><label>Vendor Code</label><input value={form.vendorCode} onChange={(e) => setForm({ ...form, vendorCode: e.target.value.toUpperCase() })} /></div>
           <div><label>Vendor Name *</label><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
@@ -113,8 +118,11 @@ export function Vendors() {
             ))}
           </div>
         </div>
-        <button style={{ marginTop: 12 }} disabled={!form.name} onClick={create}>Add vendor</button>
-      </div>
+        <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+          <button className="secondary" onClick={() => setShowAdd(false)}>Cancel</button>
+          <button disabled={!form.name} onClick={create}>Add vendor</button>
+        </div>
+      </Modal>}
 
       <div className="card">
         <table>
