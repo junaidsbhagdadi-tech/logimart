@@ -18,12 +18,21 @@ export function ShipmentDetail() {
   const [rw, setRw] = useState<Record<number, string>>({});
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
+  const [vendors, setVendors] = useState<any[]>([]);
+  const [fwd, setFwd] = useState({ vendor: '', forwardingAwb: '' });
 
   const load = () => {
     if (!awb) return;
-    api.getShipment(awb).then(setS).catch((e) => setError(e.message));
+    api.getShipment(awb).then((sh) => { setS(sh); setFwd({ vendor: sh.vendor || '', forwardingAwb: sh.forwardingAwb || '' }); }).catch((e) => setError(e.message));
   };
   useEffect(load, [awb]);
+  useEffect(() => { if (canHandover) api.listVendors().then((v) => setVendors(v.filter((x: any) => x.isActive !== false))).catch(() => {}); }, [canHandover]);
+
+  const forward = async () => {
+    setError(''); setMsg('');
+    try { const r = await api.setForwarding(awb!, { vendor: fwd.vendor || undefined, forwardingAwb: fwd.forwardingAwb || undefined }); setMsg(r.message); load(); }
+    catch (e: any) { setError(e.message); }
+  };
 
   const getQuote = async () => {
     setError('');
@@ -174,6 +183,26 @@ export function ShipmentDetail() {
 
       {error && <div className="error">{error}</div>}
       {msg && <div className="card" style={{ borderLeft: '4px solid var(--brand)' }}>{msg}</div>}
+
+      {canHandover && (
+        <div className="card">
+          <h2>🚚 Forward to vendor</h2>
+          <p className="muted" style={{ fontSize: 12, marginTop: -6 }}>Record which vendor carried this AWB and the forwarding (carrier) AWB reference. BlueDart auto-fetches once integrated.</p>
+          <div className="grid cols-3" style={{ gap: 12, alignItems: 'flex-end' }}>
+            <div>
+              <label>Vendor</label>
+              <select value={fwd.vendor} onChange={(e) => setFwd((f) => ({ ...f, vendor: e.target.value }))}>
+                <option value="">— select —</option>
+                {vendors.map((v) => <option key={v.id} value={v.vendorCode || v.name}>{v.vendorCode} — {v.name}</option>)}
+              </select>
+            </div>
+            <div><label>Forwarding AWB <span className="muted">(vendor's carrier AWB)</span></label><input value={fwd.forwardingAwb} onChange={(e) => setFwd((f) => ({ ...f, forwardingAwb: e.target.value }))} placeholder="e.g. 58001396353" /></div>
+            <div><button onClick={forward}>Save hand-off</button></div>
+          </div>
+          {(s.vendor || s.forwardingAwb) && <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>Current: {s.vendor || '—'}{s.forwardingAwb ? ` · fwd AWB ${s.forwardingAwb}` : ''}{s.forwardingAt ? ` · ${new Date(s.forwardingAt).toLocaleString('en-IN')}` : ''}</div>}
+        </div>
+      )}
+
       {quote && (
         <div className="card" style={{ borderLeft: '4px solid var(--brand)' }}>
           <strong>Rate quote</strong> — {quote.chargeableKg} kg chargeable{quote.isOda ? ' · ODA' : ''}

@@ -235,6 +235,64 @@ export async function parseEdlMatrix(file: File): Promise<{ kmFrom: number; kmTo
   return out;
 }
 
+const findHeader = (rows: any[][], must: string[]): { h: number; header: string[] } => {
+  for (let i = 0; i < rows.length; i++) {
+    const low = (rows[i] || []).map((x) => String(x ?? '').trim().toLowerCase());
+    if (must.every((m) => low.some((v) => v.includes(m)))) return { h: i, header: low };
+  }
+  throw new Error(`Header row (${must.join(', ')}) not found`);
+};
+const groupFromProduct = (name?: string, code?: string): string => {
+  const n = String(name ?? '').toUpperCase(), c = String(code ?? '').toUpperCase();
+  if (n.includes('AIR') || ['APEX', 'TAPEX', 'IPORT'].includes(c)) return 'Air';
+  if (n.includes('TRAIN')) return 'Train';
+  return 'Surface';
+};
+
+/** Parse the Product template (Product Code / Name / Type / Service) → master rows. */
+export async function parseProductSheet(file: File): Promise<{ code: string; name: string; attrs: any }[]> {
+  const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+  const rows = XLSX.utils.sheet_to_json<any[]>(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, blankrows: false });
+  const { h, header } = findHeader(rows, ['product code', 'product name']);
+  const col = (kw: string) => header.findIndex((v) => v.includes(kw));
+  const ci = { code: col('product code'), name: col('product name'), type: col('product type'), svc: col('service') };
+  const out: { code: string; name: string; attrs: any }[] = [];
+  for (let i = h + 1; i < rows.length; i++) {
+    const r = rows[i] || [];
+    const code = String(r[ci.code] ?? '').trim();
+    if (!code) continue;
+    const name = String(r[ci.name] ?? '').trim();
+    out.push({ code, name, attrs: { productType: r[ci.type] ? String(r[ci.type]).trim() : null, service: ci.svc >= 0 && r[ci.svc] ? String(r[ci.svc]).trim() : null, groupType: groupFromProduct(name, code) } });
+  }
+  return out;
+}
+
+/** Parse the Vendor template → vendor rows for /vendors. */
+export async function parseVendorSheet(file: File): Promise<any[]> {
+  const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+  const rows = XLSX.utils.sheet_to_json<any[]>(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, blankrows: false });
+  const { h, header } = findHeader(rows, ['vendor code', 'vendor name']);
+  const col = (kw: string) => header.findIndex((v) => v.includes(kw));
+  const s = (r: any[], c: number) => (c >= 0 && r[c] != null && r[c] !== '' ? String(r[c]).trim() : undefined);
+  const ci = {
+    code: col('vendor code'), name: col('vendor name'), addr: col('address'), tel1: header.findIndex((v) => v.includes('phone 1')),
+    tel2: header.findIndex((v) => v.includes('phone 2')), person: col('contact person'), addr2: header.findIndex((v) => v.includes('address 2')),
+    email: col('email'), fax: col('fax'), mobile: col('mobile'), origin: col('origin'), currency: col('currency'), gst: col('gst'),
+  };
+  const out: any[] = [];
+  for (let i = h + 1; i < rows.length; i++) {
+    const r = rows[i] || [];
+    const code = s(r, ci.code);
+    if (!code) continue;
+    out.push({
+      vendorCode: code, name: s(r, ci.name) || code, modes: 'AIR,SURFACE', addressLine: s(r, ci.addr), tel1: s(r, ci.tel1), tel2: s(r, ci.tel2),
+      contactPerson: s(r, ci.person), addressLine2: s(r, ci.addr2), contactEmail: s(r, ci.email), fax: s(r, ci.fax), contactPhone: s(r, ci.mobile),
+      origin: s(r, ci.origin), currency: s(r, ci.currency) || 'INR', gstin: s(r, ci.gst), isActive: true,
+    });
+  }
+  return out;
+}
+
 /** Download a blank courier (DP/TDD/NDD) template: origin blocks × weight slabs × dest zones. */
 export function downloadCourierTemplate() {
   const dests = ['A', 'B', 'C', 'OTHER'];

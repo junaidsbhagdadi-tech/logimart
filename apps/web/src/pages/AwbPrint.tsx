@@ -83,7 +83,7 @@ function ExcelExNote({ s, q }: { s: any; q: any }) {
             <div>GSTIN: {s.shipperGstin || s.consignorGstin || ''}</div>
           </td>
           <td style={{ width: '50%' }} className="party">
-            <div className="ph">DESTINATION: {s.destZone || ''} &nbsp; ONFWD NO: {s.bdWaybill || ''}</div>
+            <div className="ph">DESTINATION: {s.destZone || ''} &nbsp; ONFWD NO: {s.forwardingAwb || s.bdWaybill || ''}</div>
             <div className="ph"><b>CONSIGNEE</b></div>
             <div>{s.consigneeName || ''}</div>
             <div>{s.consigneeAddress || ''} {s.consigneeCity || ''}</div>
@@ -193,7 +193,7 @@ function CargoNote({ s, q, surface }: { s: any; q: any; surface: boolean }) {
               </tr>
             </tbody></table>
             <div className="strip">P/U Date: {d10(s.createdAt)} &nbsp; Pcs: {s.pieceCount} &nbsp; Decl. Value: {rup(s.declaredValue || s.shipmentValue)}</div>
-            <div className="strip">Description: {s.goodsDesc || ''} &nbsp; Ref: {s.referenceNo || ''}</div>
+            <div className="strip">Description: {s.goodsDesc || ''} &nbsp; Fwd AWB: {s.forwardingAwb || s.bdWaybill || ''} &nbsp; Ref: {s.referenceNo || ''}</div>
             <div style={{ textAlign: 'center', margin: '6px 0' }}><Barcode value={s.awb} /><div className="awbno">{s.awb}</div></div>
             <div className="strip">Transaction Type: {s.paymentTerm === 'TO_PAY' ? 'To-Pay' : 'Cash / Credit'} &nbsp; {surface ? 'ODA ☐  SUB PRODUCT CODE ____' : 'EDL ☐  PACK TYPE ____'}</div>
             <div className="receiver">

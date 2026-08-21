@@ -84,6 +84,9 @@ export interface Shipment {
   charges?: { code: string; name: string; amount: number }[] | null;
   bdWaybill?: string | null;
   bdStatus?: string | null;
+  vendor?: string | null;
+  forwardingAwb?: string | null;
+  forwardingAt?: string | null;
   // DOD (Draft on Delivery)
   isDod?: boolean;
   dodAmount?: string | null;
@@ -303,6 +306,9 @@ export const api = {
     request<{ message: string }>(`/api/v1/shipments/${awb}/dod/handover`, { method: 'POST' }),
   collectFreight: (awb: string, amount: number) =>
     request<{ message: string }>(`/api/v1/shipments/${awb}/collect-freight`, { method: 'POST', body: JSON.stringify({ amount }) }),
+  setForwarding: (awb: string, body: { vendor?: string; forwardingAwb?: string }) =>
+    request<{ awb: string; vendor: string | null; forwardingAwb: string | null; message: string }>(
+      `/api/v1/shipments/${awb}/forwarding`, { method: 'POST', body: JSON.stringify(body) }),
   payAtBooking: (awb: string, amount: number, method: 'CASH' | 'WALLET') =>
     request<{ awb: string; method: string; amount: number; walletBalance: number | null; customer: string; accountCode: string; collectedAt: string; message: string }>(
       `/api/v1/shipments/${awb}/pay`, { method: 'POST', body: JSON.stringify({ amount, method }) }),

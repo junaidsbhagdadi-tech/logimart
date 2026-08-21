@@ -231,7 +231,7 @@ export class InvoiceService {
     let totSell = 0, totCost = 0;
     for (const b of bills) {
       const ship = await this.prisma.shipment.findFirst({
-        where: { OR: [{ bdWaybill: b.awb }, { awb: b.awb }] },
+        where: { OR: [{ forwardingAwb: b.awb }, { bdWaybill: b.awb }, { awb: b.awb }] },
         include: { pieces: true, client: { select: { legalName: true, accountCode: true } } },
       });
       let sell = 0, ourAwb: string | null = null, customer: string | null = null;

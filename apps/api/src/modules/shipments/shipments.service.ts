@@ -317,6 +317,27 @@ export class ShipmentsService {
     return { awb, method, amount, walletBalance, customer: s.client.legalName, accountCode: s.client.accountCode, collectedAt: new Date(), message: `₹${amount} collected via ${method} for ${awb}.` };
   }
 
+  /**
+   * Hand-off to a vendor: record which vendor carried the shipment + the vendor/carrier AWB
+   * (forwarding AWB) as a reference. Links our AWB to the carrier's — used by vendor-bill P&L
+   * matching. (BlueDart auto-fetches this once the integration is live.)
+   */
+  async setForwarding(awb: string, dto: { vendor?: string; forwardingAwb?: string }) {
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true } });
+    if (!s) throw new NotFoundException(`AWB ${awb} not found`);
+    const forwardingAwb = dto.forwardingAwb ? String(dto.forwardingAwb).trim() : null;
+    const updated = await this.prisma.shipment.update({
+      where: { id: s.id },
+      data: {
+        vendor: dto.vendor ? String(dto.vendor).trim() : undefined,
+        forwardingAwb,
+        forwardingAt: forwardingAwb ? new Date() : undefined,
+      },
+      select: { awb: true, vendor: true, forwardingAwb: true, forwardingAt: true },
+    });
+    return { ...updated, message: `${awb} forwarded${updated.vendor ? ' via ' + updated.vendor : ''}${forwardingAwb ? ' — ref ' + forwardingAwb : ''}.` };
+  }
+
   /** Recent shipments, optionally scoped to a single client, with light rollup. */
   /** Xpresion-style AWB Entry List rows (flat, filter/grid-friendly). */
   async awbList(clientId: bigint | undefined, limit: number) {

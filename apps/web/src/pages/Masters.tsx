@@ -126,6 +126,18 @@ export function Masters() {
     try { await api.deleteMaster(typeKey, code); load(); } catch (e: any) { setError(e.message); }
   };
 
+  const [upBusy, setUpBusy] = useState(false);
+  const uploadProducts = async (f?: File) => {
+    if (!f) return; setError(''); setMsg(''); setUpBusy(true);
+    try {
+      const { parseProductSheet } = await import('../lib/rateSheet');
+      const rows = await parseProductSheet(f);
+      let ok = 0;
+      for (const r of rows) { try { await api.saveMaster('PRODUCT', r); ok++; } catch { /* skip */ } }
+      setMsg(`✓ Uploaded ${ok} / ${rows.length} products`); load();
+    } catch (e: any) { setError(e.message); } finally { setUpBusy(false); }
+  };
+
   const attrCols = def.fields.filter((f) => f.attr && f.type !== 'checkbox').slice(0, 3);
   const boolCols = def.fields.filter((f) => f.attr && f.type === 'checkbox').slice(0, 3);
   const s = q.trim().toLowerCase();
@@ -147,6 +159,15 @@ export function Masters() {
 
       {error && <div className="error">{error}</div>}
       {msg && <div className="card" style={{ borderLeft: '4px solid var(--ok)' }}>{msg}</div>}
+
+      {typeKey === 'PRODUCT' && (
+        <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <strong>⬆ Upload products</strong>
+          <span className="muted" style={{ fontSize: 12 }}>Product Code · Name · Type · Service template</span>
+          <input type="file" accept=".xlsx,.xls,.csv" disabled={upBusy} onChange={(e) => uploadProducts(e.target.files?.[0])} />
+          {upBusy && <span className="muted">Uploading…</span>}
+        </div>
+      )}
 
       <div className="card">
         <h2>{editing ? `Edit ${def.label}` : `Add ${def.label}`}</h2>

@@ -483,7 +483,9 @@ model Shipment {
   chargeWeight   Decimal?  @db.Decimal(10, 3)
   charges        Json?     // [{ code, name, amount }] — accessorials picked from the Charges master
 
-  // ---- carrier hand-off (BlueDart) ----
+  // ---- carrier hand-off ----
+  forwardingAwb  String?   // vendor/carrier AWB entered at hand-off (any vendor); BlueDart auto-fetched once integrated
+  forwardingAt   DateTime?
   bdWaybill      String?   // BlueDart waybill (AWB) number returned on hand-off
   bdStatus       String?   // last BlueDart status pulled via tracking
   bdHandedAt     DateTime?

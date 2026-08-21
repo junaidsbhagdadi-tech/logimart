@@ -34,11 +34,29 @@ export function Vendors() {
     catch (e: any) { setError(e.message); }
   };
 
+  const [upBusy, setUpBusy] = useState(false);
+  const uploadVendors = async (f?: File) => {
+    if (!f) return; setError(''); setMsg(''); setUpBusy(true);
+    try {
+      const { parseVendorSheet } = await import('../lib/rateSheet');
+      const vrows = await parseVendorSheet(f);
+      let ok = 0;
+      for (const v of vrows) { try { await api.createVendor(v); ok++; } catch { /* dup / skip */ } }
+      setMsg(`✓ Uploaded ${ok} / ${vrows.length} vendors (existing codes skipped)`); load();
+    } catch (e: any) { setError(e.message); } finally { setUpBusy(false); }
+  };
+
   return (
     <>
       <h1>Vendors</h1>
       {error && <div className="error">{error}</div>}
       {msg && <div className="card" style={{ borderLeft: '4px solid var(--brand)' }}>{msg}</div>}
+      <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <strong>⬆ Upload vendors</strong>
+        <span className="muted" style={{ fontSize: 12 }}>Vendor Code · Name · Address · Phones · Contact · Email · GST · Currency template</span>
+        <input type="file" accept=".xlsx,.xls,.csv" disabled={upBusy} onChange={(e) => uploadVendors(e.target.files?.[0])} />
+        {upBusy && <span className="muted">Uploading…</span>}
+      </div>
 
       <div className="card">
         <h2>Add vendor</h2>
