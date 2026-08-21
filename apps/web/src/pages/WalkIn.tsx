@@ -66,6 +66,10 @@ export function WalkIn() {
     if (!form.product) { setErr('Pick a product.'); return; }
     if (!form.deadKg) { setErr('Enter weight.'); return; }
     if (pay === 'WALLET' && !walletClientId) { setErr('Select a wallet customer.'); return; }
+    // "As Agreed" (or any non-numeric text) = freight negotiated, no amount keyed / collected.
+    const af = String(form.agreedFreight || '').trim();
+    const afNum = Number(af);
+    const isAgreed = af !== '' && isNaN(afNum);
     setBusy(true);
     try {
       const clientId = pay === 'WALLET' ? Number(walletClientId) : Number((await api.ensureWalkin()).id);
@@ -86,22 +90,29 @@ export function WalkIn() {
         // consignment
         goodsDesc: form.goodsDesc || undefined, declaredValue: form.declaredValue ? Number(form.declaredValue) : undefined, shipmentValue: form.shipmentValue ? Number(form.shipmentValue) : undefined,
         consignorGstin: form.senderGstin || undefined,
-        manualFreight: form.agreedFreight ? Number(form.agreedFreight) : undefined,
+        manualFreight: (!isAgreed && af !== '') ? afNum : undefined,
+        referenceNo: isAgreed ? `Freight: ${af}` : undefined,
         pieces: Array.from({ length: nPcs }, () => ({ deadKg: Number(form.deadKg) / nPcs, ...dims })),
       });
       const awb = created.awb;
-      let amount = form.agreedFreight ? Number(form.agreedFreight) : 0;
+      const receiptBase = {
+        awb, product: form.product, sender: form.senderName, senderGstin: form.senderGstin,
+        consignee: form.consigneeName, consigneeGstin: form.consigneeGstin, destPincode: form.consigneePincode,
+        destCity: form.consigneeCity, deadKg: form.deadKg, pieces: form.pieces, at: new Date().toLocaleString('en-IN'),
+      };
+      // "As Agreed" → booked, no amount keyed, no payment taken.
+      if (isAgreed) {
+        setReceipt({ ...receiptBase, agreedText: af, method: 'AS AGREED', amount: null, customer: pay === 'WALLET' ? (clients.find((c) => String(c.id) === walletClientId) as any)?.legalName : 'Walk-in (Cash)' });
+        setForm((f) => ({ ...BLANK, originHubId: f.originHubId, destHubId: f.destHubId }));
+        setBusy(false); return;
+      }
+      let amount = af !== '' ? afNum : 0;
       let quote: any = null;
       if (!amount) { try { quote = await api.rateQuote(awb); amount = quote.grandTotal; } catch { /* no rate */ } }
-      if (!amount) { setErr(`Booked ${awb}, but no rate found — enter an Agreed freight and re-book, or collect manually.`); setBusy(false); return; }
+      if (!amount) { setErr(`Booked ${awb}, but no rate found — enter an Agreed freight (₹ or “As Agreed”) and re-book, or collect manually.`); setBusy(false); return; }
       const paid = await api.payAtBooking(awb, amount, pay);
       if (pay === 'WALLET') setWallet({ walletBalance: paid.walletBalance ?? 0 });
-      setReceipt({
-        awb, amount, method: pay, customer: paid.customer, quote, product: form.product,
-        sender: form.senderName, senderGstin: form.senderGstin, consignee: form.consigneeName, consigneeGstin: form.consigneeGstin,
-        destPincode: form.consigneePincode, destCity: form.consigneeCity, deadKg: form.deadKg, pieces: form.pieces,
-        walletBalance: paid.walletBalance, at: new Date().toLocaleString('en-IN'),
-      });
+      setReceipt({ ...receiptBase, amount, method: pay, customer: paid.customer, quote, walletBalance: paid.walletBalance });
       setForm((f) => ({ ...BLANK, originHubId: f.originHubId, destHubId: f.destHubId }));
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
@@ -180,7 +191,10 @@ export function WalkIn() {
           </div>
           <Fld label="Invoice / shipment value ₹" k="shipmentValue" type="number" /><Fld label="Declared value ₹" k="declaredValue" type="number" />
           <div style={{ gridColumn: 'span 1' }}><label>Goods description</label><input value={form.goodsDesc} onChange={(e) => set('goodsDesc', e.target.value)} /></div>
-          <Fld label="Agreed freight ₹ (optional — overrides rate)" k="agreedFreight" type="number" ph="rate card if blank" />
+          <div>
+            <label>Agreed freight <span className="muted">(₹ amount, blank = rate card, or “As Agreed”)</span></label>
+            <input value={form.agreedFreight} onChange={(e) => set('agreedFreight', e.target.value)} placeholder='amount or "As Agreed"' />
+          </div>
         </div>
         <div className="row" style={{ marginTop: 14, justifyContent: 'flex-end' }}>
           <button onClick={book} disabled={busy}>{busy ? 'Booking…' : `Book & take ${pay === 'WALLET' ? 'wallet' : 'cash'} payment`}</button>
@@ -217,7 +231,9 @@ function Receipt({ r, onClose }: { r: any; onClose: () => void }) {
             </tbody></table>
           )}
           <div style={{ borderTop: '1px solid #333', marginTop: 8, paddingTop: 8, display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: 15 }}>
-            <span>PAID ({r.method})</span><span>{money(r.amount)}</span>
+            {r.amount == null
+              ? <><span>FREIGHT</span><span>{r.agreedText || 'As Agreed'}</span></>
+              : <><span>PAID ({r.method})</span><span>{money(r.amount)}</span></>}
           </div>
           {r.method === 'WALLET' && r.walletBalance != null && <div className="muted" style={{ textAlign: 'right', fontSize: 12, marginTop: 2 }}>Wallet balance: {money(r.walletBalance)}</div>}
           <div style={{ textAlign: 'center', marginTop: 10, fontSize: 11 }} className="muted">Thank you!</div>
