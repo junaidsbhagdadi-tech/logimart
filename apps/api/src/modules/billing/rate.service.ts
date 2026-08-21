@@ -423,7 +423,9 @@ export class RateService {
     }
 
     const lines = [{ head: `Freight (${priced.basis})`, amount: freight }];
-    if (fuel > 0) lines.push({ head: `Fuel ${fuelPct}%`, amount: fuel });
+    // DYNAMIC FSC is diesel-indexed (Surface) → label it "Diesel Surcharge"; FLAT (Air/Express/DP) stays "Fuel".
+    const fscLabel = String(card.fuelMode ?? 'FLAT').toUpperCase() === 'DYNAMIC' ? 'Diesel Surcharge' : 'Fuel';
+    if (fuel > 0) lines.push({ head: `${fscLabel} ${fuelPct}%`, amount: fuel });
     if (fov > 0) {
       // Label from the EFFECTIVE FOV (charges JSON), not the stale card.fovPct column — otherwise a
       // card that bills 0.2% via `charges` mis-shows "FOV 0%". Flag when the ₹ minimum dominated.

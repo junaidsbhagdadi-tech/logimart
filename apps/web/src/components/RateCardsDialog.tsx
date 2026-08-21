@@ -111,7 +111,9 @@ function CardView({ card, zones, onEdit, onDelete }: { card: any; zones: string[
   }, [card]);
 
   const chips: { k: string; v: string }[] = [];
-  chips.push({ k: 'FSC', v: card.fuelMode === 'DYNAMIC' ? `Dynamic${card.fuelMechanism ? ` (${card.fuelMechanism})` : ''}` : `${num(card.fuelPct)}%` });
+  chips.push(card.fuelMode === 'DYNAMIC'
+    ? { k: 'Diesel', v: `Indexed${card.fuelMechanism ? ` (${card.fuelMechanism})` : ''}` }
+    : { k: 'Fuel', v: `${num(card.fuelPct)}%` });
   if (num(card.fovPct) || num(card.fovMin)) chips.push({ k: 'FOV', v: `${num(card.fovPct)}%${num(card.fovMin) ? ` · min ${money(card.fovMin)}` : ''}` });
   if (num(card.odaFlat) || num(card.odaPerKg) || num(card.odaMin)) chips.push({ k: 'ODA', v: `${money(card.odaFlat)}${num(card.odaPerKg) ? ` +${money(card.odaPerKg)}/kg` : ''}${num(card.odaMin) ? ` · min ${money(card.odaMin)}` : ''}` });
   if (num(card.topayCharge)) chips.push({ k: 'To-Pay', v: money(card.topayCharge) });
@@ -404,14 +406,14 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
             <select value={h.fuelMode} onChange={(e) => set('fuelMode', e.target.value)}><option>FLAT</option><option>DYNAMIC</option></select>
           </div>
           {h.fuelMode === 'FLAT'
-            ? <div><label style={{ fontSize: 12 }}>Fuel %</label><input type="number" value={h.fuelPct} onChange={(e) => set('fuelPct', e.target.value)} style={{ width: 100 }} /></div>
-            : <div><label style={{ fontSize: 12 }}>Fuel mechanism</label>
+            ? <div><label style={{ fontSize: 12 }}>Fuel % <span className="muted">(flat — Air/Express/DP)</span></label><input type="number" value={h.fuelPct} onChange={(e) => set('fuelPct', e.target.value)} style={{ width: 100 }} /></div>
+            : <div><label style={{ fontSize: 12 }}>Diesel surcharge mechanism <span className="muted">(Surface)</span></label>
                 <select value={h.fuelMechanism} onChange={(e) => set('fuelMechanism', e.target.value)}>
                   <option value="">Select mechanism</option>
                   {mechs.map((m) => <option key={m.code} value={m.code}>{m.code} — {m.name}</option>)}
                 </select>
               </div>}
-          <span className="muted" style={{ fontSize: 11 }}>Air ≠ Surface ≠ vendor — set per card.</span>
+          <span className="muted" style={{ fontSize: 11 }}>FLAT = fixed fuel % (Air/Express/DP) · DYNAMIC = diesel-indexed surcharge (Surface). Set per card.</span>
         </div>
       </div>
 

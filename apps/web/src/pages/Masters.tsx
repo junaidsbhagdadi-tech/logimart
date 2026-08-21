@@ -24,7 +24,7 @@ const MASTERS: MasterDef[] = [
     F('gstReverse', 'GST reverse', { attr: true, type: 'checkbox' }),
   ] },
   { key: 'PRODUCT_TYPE', label: 'Product Type', icon: '🏷', fields: [F('code', 'Type code'), F('name', 'Type name')] },
-  { key: 'FUEL_MECHANISM', label: 'Fuel Mechanism', icon: '⛽', fields: [
+  { key: 'FUEL_MECHANISM', label: 'Fuel / Diesel Surcharge', icon: '⛽', fields: [
     F('code', 'Code'), F('name', 'Name'),
     F('mode', 'Mode', { attr: true, type: 'select', options: ['FLAT', 'DYNAMIC'] }),
     F('percentage', 'Flat %  (FLAT)', { attr: true, type: 'number' }),
@@ -65,13 +65,6 @@ const MASTERS: MasterDef[] = [
   { key: 'INSTRUCTION', label: 'Instruction', icon: '📝', fields: [F('code', 'Code'), F('name', 'Instruction')] },
   { key: 'BANK', label: 'Bank', icon: '🏦', fields: [F('code', 'Code'), F('name', 'Bank name'), F('ifsc', 'IFSC', { attr: true }), F('branch', 'Branch', { attr: true })] },
   { key: 'FLIGHT', label: 'Flight', icon: '✈️', fields: [F('code', 'Flight code'), F('name', 'Flight / carrier'), F('airline', 'Airline', { attr: true })] },
-  { key: 'FUEL_SETUP', label: 'Fuel Setup', icon: '⛽', fields: [
-    F('code', 'Entry code'), F('name', 'Label'),
-    F('customer', 'Customer', { attr: true }), F('vendor', 'Vendor', { attr: true }), F('productCode', 'Product', { attr: true }),
-    F('destination', 'Destination', { attr: true }), F('service', 'Service', { attr: true }),
-    F('fromDate', 'From date', { attr: true }), F('toDate', 'To date', { attr: true }),
-    F('percentage', 'Fuel %', { attr: true, type: 'number' }),
-  ] },
   { key: 'TAX_SETUP', label: 'Tax Setup', icon: '🧮', fields: [
     F('code', 'Entry code'), F('name', 'Label'),
     F('customer', 'Customer', { attr: true }), F('productCode', 'Product', { attr: true }),
@@ -267,7 +260,7 @@ export function Masters() {
               <button className="secondary" onClick={saveDiesel} disabled={!newDiesel}>Set price</button>
               <span className="muted" style={{ fontSize: 12 }}>In force: <strong>{diesel != null ? `₹${diesel}/L` : 'not set'}</strong> — drives every DYNAMIC card.</span>
             </div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--navy)' }}>Effective fuel surcharge = {feff.toFixed(2)}%</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--navy)' }}>Effective {fmode === 'DYNAMIC' ? 'diesel surcharge' : 'fuel surcharge'} = {feff.toFixed(2)}%</div>
             {fmode === 'DYNAMIC' && (
               Number(fa.baseFuelPrice) > 0
                 ? <p className="muted" style={{ marginTop: 6, marginBottom: 0 }}>
