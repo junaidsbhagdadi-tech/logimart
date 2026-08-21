@@ -16,6 +16,8 @@ export function ShipmentDetail() {
   const [podFile, setPodFile] = useState<File | null>(null);
   const [reweighMode, setReweighMode] = useState(false);
   const [rw, setRw] = useState<Record<number, string>>({});
+  const [rwd, setRwd] = useState<Record<number, { l: string; w: string; h: string }>>({});
+  const setDim = (seq: number, k: 'l' | 'w' | 'h', v: string) => setRwd((m) => ({ ...m, [seq]: { ...(m[seq] || { l: '', w: '', h: '' }), [k]: v } }));
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
   const [vendors, setVendors] = useState<any[]>([]);
@@ -135,9 +137,15 @@ export function ShipmentDetail() {
   const submitReweigh = async () => {
     if (!s) return;
     const lines = s.pieces
-      .filter((p) => rw[p.sequenceNo] && +rw[p.sequenceNo] > 0)
-      .map((p) => ({ sequenceNo: p.sequenceNo, actualKg: +rw[p.sequenceNo] }));
-    if (lines.length === 0) { setError('Enter at least one re-weighed box weight.'); return; }
+      .filter((p) => (rw[p.sequenceNo] && +rw[p.sequenceNo] > 0) || rwd[p.sequenceNo])
+      .map((p: any) => ({
+        sequenceNo: p.sequenceNo,
+        actualKg: rw[p.sequenceNo] && +rw[p.sequenceNo] > 0 ? +rw[p.sequenceNo] : +p.deadKg,
+        lengthCm: rwd[p.sequenceNo]?.l ? +rwd[p.sequenceNo].l : (p.lengthCm ? +p.lengthCm : undefined),
+        widthCm: rwd[p.sequenceNo]?.w ? +rwd[p.sequenceNo].w : (p.widthCm ? +p.widthCm : undefined),
+        heightCm: rwd[p.sequenceNo]?.h ? +rwd[p.sequenceNo].h : (p.heightCm ? +p.heightCm : undefined),
+      }));
+    if (lines.length === 0) { setError('Enter at least one re-weighed box weight or dimension.'); return; }
     setError(''); setMsg('');
     try {
       const res = await api.reweigh(awb!, lines);
@@ -148,7 +156,7 @@ export function ShipmentDetail() {
       } else {
         setMsg(`Re-weigh saved: ${res.bookedChargeableKg}kg → ${res.actualChargeableKg}kg. Freight delta ₹${res.freightDelta} — no note raised.`);
       }
-      setReweighMode(false); setRw({});
+      setReweighMode(false); setRw({}); setRwd({});
       load();
     } catch (e: any) { setError(e.message); }
   };
@@ -330,10 +338,10 @@ export function ShipmentDetail() {
           <h2 style={{ margin: 0 }}>Pieces</h2>
           {reweighMode && <button onClick={submitReweigh}>Submit re-weigh →</button>}
         </div>
-        {reweighMode && <p className="muted" style={{ fontSize: 13 }}>Enter the actual dead weight caught at the hub. A debit note is raised for any freight increase (per-kg billing).</p>}
+        {reweighMode && <p className="muted" style={{ fontSize: 13 }}>Enter the actual dead weight and/or corrected dimensions caught at the hub. A debit note is raised for any freight increase (per-kg billing).</p>}
         <table>
           <thead>
-            <tr><th>Child ID</th><th>Box</th><th>Dead kg</th><th>Vol kg</th>{reweighMode && <th>Actual kg</th>}<th>Status</th></tr>
+            <tr><th>Child ID</th><th>Box</th><th>Dead kg</th><th>Vol kg</th>{reweighMode && <><th>Actual kg</th><th>L cm</th><th>W cm</th><th>H cm</th></>}<th>Status</th></tr>
           </thead>
           <tbody>
             {s.pieces.map((p) => (
@@ -343,10 +351,13 @@ export function ShipmentDetail() {
                 <td>{p.deadKg}</td>
                 <td>{p.volKg}</td>
                 {reweighMode && (
-                  <td>
-                    <input type="number" step="0.001" style={{ width: 90 }} placeholder={String(p.deadKg)}
-                      value={rw[p.sequenceNo] ?? ''} onChange={(e) => setRw((m) => ({ ...m, [p.sequenceNo]: e.target.value }))} />
-                  </td>
+                  <>
+                    <td><input type="number" step="0.001" style={{ width: 80 }} placeholder={String(p.deadKg)}
+                      value={rw[p.sequenceNo] ?? ''} onChange={(e) => setRw((m) => ({ ...m, [p.sequenceNo]: e.target.value }))} /></td>
+                    <td><input type="number" style={{ width: 60 }} placeholder={String((p as any).lengthCm ?? '')} value={rwd[p.sequenceNo]?.l ?? ''} onChange={(e) => setDim(p.sequenceNo, 'l', e.target.value)} /></td>
+                    <td><input type="number" style={{ width: 60 }} placeholder={String((p as any).widthCm ?? '')} value={rwd[p.sequenceNo]?.w ?? ''} onChange={(e) => setDim(p.sequenceNo, 'w', e.target.value)} /></td>
+                    <td><input type="number" style={{ width: 60 }} placeholder={String((p as any).heightCm ?? '')} value={rwd[p.sequenceNo]?.h ?? ''} onChange={(e) => setDim(p.sequenceNo, 'h', e.target.value)} /></td>
+                  </>
                 )}
                 <td><span className={`badge ${p.status}`}>{p.status}</span></td>
               </tr>

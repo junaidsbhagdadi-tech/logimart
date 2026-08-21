@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, Client } from '../api';
 import { COMPANY } from '../company';
+import { expandCity } from '../lib/cityCodes';
 
 const money = (v: any) => `₹${Number(v ?? 0).toLocaleString('en-IN')}`;
 
@@ -27,6 +28,11 @@ export function WalkIn() {
 
   const [form, setForm] = useState({ ...BLANK });
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const [boxes, setBoxes] = useState<{ deadKg: string; l: string; w: string; h: string }[]>([{ deadKg: '', l: '', w: '', h: '' }]);
+  const setBox = (i: number, k: string, v: string) => setBoxes((bs) => bs.map((b, idx) => (idx === i ? { ...b, [k]: v } : b)));
+  const addBox = () => setBoxes((bs) => [...bs, { deadKg: '', l: '', w: '', h: '' }]);
+  const delBox = (i: number) => setBoxes((bs) => bs.filter((_, idx) => idx !== i));
+  const boxDead = boxes.reduce((s, b) => s + (Number(b.deadKg) || 0), 0);
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -51,8 +57,8 @@ export function WalkIn() {
     try {
       const p: any = await api.lookupPincode(pincode);
       if (p?.city || p?.state) setForm((f) => which === 'sender'
-        ? { ...f, senderCity: p.city ?? f.senderCity, senderState: p.state ?? f.senderState }
-        : { ...f, consigneeCity: p.city ?? f.consigneeCity, consigneeState: p.state ?? f.consigneeState });
+        ? { ...f, senderCity: p.city ? expandCity(p.city) : f.senderCity, senderState: p.state ?? f.senderState }
+        : { ...f, consigneeCity: p.city ? expandCity(p.city) : f.consigneeCity, consigneeState: p.state ?? f.consigneeState });
     } catch { /* unknown pincode */ }
   };
 
@@ -64,7 +70,7 @@ export function WalkIn() {
   const book = async () => {
     setErr(''); setReceipt(null);
     if (!form.product) { setErr('Pick a product.'); return; }
-    if (!form.deadKg) { setErr('Enter weight.'); return; }
+    if (boxDead <= 0) { setErr('Enter at least one box weight.'); return; }
     if (pay === 'WALLET' && !walletClientId) { setErr('Select a wallet customer.'); return; }
     // "As Agreed" (or any non-numeric text) = freight negotiated, no amount keyed / collected.
     const af = String(form.agreedFreight || '').trim();
@@ -74,9 +80,10 @@ export function WalkIn() {
     try {
       const clientId = pay === 'WALLET' ? Number(walletClientId) : Number((await api.ensureWalkin()).id);
       const originHub = hubs.find((h) => String(h.id) === form.originHubId);
-      const nPcs = Math.max(1, Number(form.pieces) || 1);
-      const dims = (form.lengthCm && form.widthCm && form.heightCm)
-        ? { lengthCm: Number(form.lengthCm), widthCm: Number(form.widthCm), heightCm: Number(form.heightCm) } : {};
+      const pieces = boxes.filter((b) => Number(b.deadKg) > 0).map((b) => ({
+        deadKg: Number(b.deadKg),
+        ...(b.l && b.w && b.h ? { lengthCm: Number(b.l), widthCm: Number(b.w), heightCm: Number(b.h) } : {}),
+      }));
       const created: any = await api.createShipment({
         clientId, serviceMode: serviceModeFor(form.product), originHubId: Number(form.originHubId), destHubId: Number(form.destHubId),
         originZone: originHub?.zone || 'NORTH', destZone: 'AUTO', product: form.product, destPincode: form.consigneePincode || undefined,
@@ -93,18 +100,18 @@ export function WalkIn() {
         consignorGstin: form.senderGstin || undefined,
         manualFreight: (!isAgreed && af !== '') ? afNum : undefined,
         referenceNo: isAgreed ? `Freight: ${af}` : undefined,
-        pieces: Array.from({ length: nPcs }, () => ({ deadKg: Number(form.deadKg) / nPcs, ...dims })),
+        pieces,
       });
       const awb = created.awb;
       const receiptBase = {
         awb, product: form.product, sender: form.senderName, senderGstin: form.senderGstin,
         consignee: form.consigneeName, consigneeGstin: form.consigneeGstin, destPincode: form.consigneePincode,
-        destCity: form.consigneeCity, deadKg: form.deadKg, pieces: form.pieces, at: new Date().toLocaleString('en-IN'),
+        destCity: form.consigneeCity, deadKg: boxDead, pieces: pieces.length, at: new Date().toLocaleString('en-IN'),
       };
       // "As Agreed" → booked, no amount keyed, no payment taken.
       if (isAgreed) {
         setReceipt({ ...receiptBase, agreedText: af, method: 'AS AGREED', amount: null, customer: pay === 'WALLET' ? (clients.find((c) => String(c.id) === walletClientId) as any)?.legalName : 'Walk-in (Cash)' });
-        setForm((f) => ({ ...BLANK, originHubId: f.originHubId, destHubId: f.destHubId }));
+        setForm((f) => ({ ...BLANK, originHubId: f.originHubId, destHubId: f.destHubId })); setBoxes([{ deadKg: "", l: "", w: "", h: "" }]);
         setBusy(false); return;
       }
       let amount = af !== '' ? afNum : 0;
@@ -114,7 +121,7 @@ export function WalkIn() {
       const paid = await api.payAtBooking(awb, amount, pay);
       if (pay === 'WALLET') setWallet({ walletBalance: paid.walletBalance ?? 0 });
       setReceipt({ ...receiptBase, amount, method: pay, customer: paid.customer, quote, walletBalance: paid.walletBalance });
-      setForm((f) => ({ ...BLANK, originHubId: f.originHubId, destHubId: f.destHubId }));
+      setForm((f) => ({ ...BLANK, originHubId: f.originHubId, destHubId: f.destHubId })); setBoxes([{ deadKg: "", l: "", w: "", h: "" }]);
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
 
@@ -184,18 +191,35 @@ export function WalkIn() {
           </div>
           <div><label>Origin hub</label><select value={form.originHubId} onChange={(e) => set('originHubId', e.target.value)}>{hubs.map((h) => <option key={h.id} value={h.id}>{h.code}</option>)}</select></div>
           <div><label>Dest hub</label><select value={form.destHubId} onChange={(e) => set('destHubId', e.target.value)}>{hubs.map((h) => <option key={h.id} value={h.id}>{h.code}</option>)}</select></div>
-          <Fld label="Weight (kg) *" k="deadKg" type="number" /><Fld label="Pieces" k="pieces" type="number" />
           <div><label>Manual AWB <span className="muted">(pre-printed / hand-written)</span></label><input value={form.manualAwb} onChange={(e) => set('manualAwb', e.target.value)} placeholder="blank = auto-generate" /></div>
-          <div className="grid cols-3" style={{ gap: 6 }}>
-            <div><label>L cm</label><input type="number" value={form.lengthCm} onChange={(e) => set('lengthCm', e.target.value)} /></div>
-            <div><label>W cm</label><input type="number" value={form.widthCm} onChange={(e) => set('widthCm', e.target.value)} /></div>
-            <div><label>H cm</label><input type="number" value={form.heightCm} onChange={(e) => set('heightCm', e.target.value)} /></div>
-          </div>
           <Fld label="Invoice / shipment value ₹" k="shipmentValue" type="number" /><Fld label="Declared value ₹" k="declaredValue" type="number" />
           <div style={{ gridColumn: 'span 1' }}><label>Goods description</label><input value={form.goodsDesc} onChange={(e) => set('goodsDesc', e.target.value)} /></div>
           <div>
             <label>Agreed freight <span className="muted">(₹ amount, blank = rate card, or “As Agreed”)</span></label>
             <input value={form.agreedFreight} onChange={(e) => set('agreedFreight', e.target.value)} placeholder='amount or "As Agreed"' />
+          </div>
+        </div>
+        <div className="card" style={{ padding: 12, marginTop: 12 }}>
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+            <strong>📦 Boxes ({boxes.length}) — total {boxDead || 0} kg</strong>
+            <button className="secondary" onClick={addBox} style={{ padding: '3px 10px', fontSize: 12 }}>＋ Add box</button>
+          </div>
+          <div style={{ overflowX: 'auto', marginTop: 8 }}>
+            <table style={{ fontSize: 13 }}>
+              <thead><tr><th>#</th><th>Dead kg *</th><th>L cm</th><th>W cm</th><th>H cm</th><th></th></tr></thead>
+              <tbody>
+                {boxes.map((b, i) => (
+                  <tr key={i}>
+                    <td>{i + 1}</td>
+                    <td><input type="number" step="0.001" value={b.deadKg} onChange={(e) => setBox(i, 'deadKg', e.target.value)} style={{ width: 90 }} /></td>
+                    <td><input type="number" value={b.l} onChange={(e) => setBox(i, 'l', e.target.value)} style={{ width: 70 }} /></td>
+                    <td><input type="number" value={b.w} onChange={(e) => setBox(i, 'w', e.target.value)} style={{ width: 70 }} /></td>
+                    <td><input type="number" value={b.h} onChange={(e) => setBox(i, 'h', e.target.value)} style={{ width: 70 }} /></td>
+                    <td>{boxes.length > 1 && <button className="secondary" style={{ padding: '2px 8px', fontSize: 12 }} onClick={() => delBox(i)}>✕</button>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
         <div className="row" style={{ marginTop: 14, justifyContent: 'flex-end' }}>

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api, Client } from '../api';
 import { useAuth } from '../auth';
 import { mapMode, modeLabel } from '../productMode';
+import { expandCity } from '../lib/cityCodes';
 
 interface PieceForm { deadKg: string; lengthCm: string; widthCm: string; heightCm: string; }
 const blank: PieceForm = { deadKg: '', lengthCm: '', widthCm: '', heightCm: '' };
@@ -113,8 +114,8 @@ export function CreateShipment() {
     if (/^\d{6}$/.test(p)) {
       const info = await api.lookupPincode(p).catch(() => null);
       setDestInfo(info);
-      // auto-fetch city + state from the pincode master
-      if (info) setC((prev) => ({ ...prev, consigneeCity: info.city ?? prev.consigneeCity, consigneeState: info.state ?? prev.consigneeState }));
+      // auto-fetch city + state from the pincode master (expand city code → full name)
+      if (info) setC((prev) => ({ ...prev, consigneeCity: info.city ? expandCity(info.city) : prev.consigneeCity, consigneeState: info.state ?? prev.consigneeState }));
       // which carrier products serve this pincode? auto-pick the fastest BlueDart product.
       const opts = await api.serviceOptions(p).catch(() => []);
       setSvcOptions(opts);
@@ -128,7 +129,7 @@ export function CreateShipment() {
     setS('shipperPincode', p);
     if (/^\d{6}$/.test(p)) {
       const info = await api.lookupPincode(p).catch(() => null);
-      if (info) setShp((prev) => ({ ...prev, shipperCity: info.city ?? prev.shipperCity, shipperState: info.state ?? prev.shipperState }));
+      if (info) setShp((prev) => ({ ...prev, shipperCity: info.city ? expandCity(info.city) : prev.shipperCity, shipperState: info.state ?? prev.shipperState }));
     }
   };
   const setCf = (k: keyof typeof c, v: string) => setC((p) => ({ ...p, [k]: v }));
@@ -254,18 +255,14 @@ export function CreateShipment() {
             </div>
           )}
           <div>
-            <label>Product *</label>
-            <input
-              list="lm-products"
-              value={prodText}
-              placeholder="search product…"
-              onChange={(e) => {
-                const v = e.target.value; setProdText(v);
-                const m = products.find((p) => `${p.code} — ${p.name}${p.type ? ` (${p.type})` : ''}` === v || p.code.toLowerCase() === v.toLowerCase() || p.name.toLowerCase() === v.toLowerCase());
-                setProduct(m ? m.code : '');
-              }}
-            />
-            <datalist id="lm-products">{products.map((p) => <option key={p.code} value={`${p.code} — ${p.name}${p.type ? ` (${p.type})` : ''}`} />)}</datalist>
+            <label>Product * <span className="muted">({products.length})</span></label>
+            <select
+              value={product}
+              onChange={(e) => { const code = e.target.value; setProduct(code); const m = products.find((p) => p.code === code); setProdText(m ? `${m.code} — ${m.name}` : ''); }}
+            >
+              <option value="">Select product</option>
+              {products.map((p) => <option key={p.code} value={p.code}>{p.code} — {p.name}{p.type ? ` (${p.type})` : ''}</option>)}
+            </select>
             <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
               Mode: <strong>{modeLabel(serviceMode)}</strong>{product && !selProduct?.mode ? ' (default — set this product’s mode in Masters)' : ''}
             </div>
