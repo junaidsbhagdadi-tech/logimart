@@ -32,6 +32,20 @@ export class PincodesService {
     return this.prisma.pincode.findMany({ orderBy: [{ tier: 'asc' }, { city: 'asc' }], take: Math.min(limit, 1000) });
   }
 
+  /** Directory completeness — total pincodes + how many carry each product zone (DP/Apex/Surface/Ecom). */
+  async stats() {
+    const [total, dp, apex, surface, ecom, oda, states] = await Promise.all([
+      this.prisma.pincode.count(),
+      this.prisma.pincode.count({ where: { dpZone: { not: null } } }),
+      this.prisma.pincode.count({ where: { apexZone: { not: null } } }),
+      this.prisma.pincode.count({ where: { surfaceZone: { not: null } } }),
+      this.prisma.pincode.count({ where: { ecomZone: { not: null } } }),
+      this.prisma.pincode.count({ where: { isOda: true } }),
+      this.prisma.pincode.findMany({ distinct: ['state'], select: { state: true } }),
+    ]);
+    return { total, byProduct: { dp, apex, surface, ecom }, oda, states: states.length };
+  }
+
   /** Add / update a serviceable pincode (city, state, region, tier, ODA). */
   create(dto: { pincode: string; city: string; state: string; region: any; tier: number; isOda?: boolean }) {
     const data = {

@@ -22,6 +22,14 @@ export class PincodesController {
     return this.pincodes.list(limit ? Number(limit) : 200);
   }
 
+  /** Directory completeness stats (total + per-product zone coverage). Declared before ':pincode'. */
+  @Get('stats')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  stats() {
+    return this.pincodes.stats();
+  }
+
   /** Add / update a serviceable pincode. */
   @Post()
   @UseGuards(RolesGuard)
