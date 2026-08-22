@@ -399,7 +399,15 @@ export class RateService {
     const invVal = Number(shipment.shipmentValue ?? shipment.declaredValue ?? 0);
     // Accessorial values are master-driven: read from the card's `charges` JSON keyed by
     // CHARGE code, falling back to the legacy fixed column so existing cards bill unchanged.
-    const CJ: any = card.charges || {};
+    // Apex/Surface use one STANDARD accessorial set shared by ALL vendors (STD_ACCESSORIAL master);
+    // any value on the card itself overrides the standard for that card.
+    let CJ: any = card.charges || {};
+    const stdMode = isCourier ? null : surface ? 'SURFACE' : 'APEX';
+    if (stdMode) {
+      const std = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'STD_ACCESSORIAL', code: stdMode } } });
+      const stdCharges = (std?.attrs as any)?.charges;
+      if (stdCharges && typeof stdCharges === 'object') CJ = { ...stdCharges, ...CJ };
+    }
     const cget = (code: string, k: 'value' | 'min', legacy: any) => {
       const j = CJ[code] ?? CJ[code.toUpperCase()];
       const v = j && j[k] != null && j[k] !== '' ? Number(j[k]) : Number(legacy ?? 0);

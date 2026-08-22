@@ -357,7 +357,7 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
     if (!h.product) { setErr('Pick a product.'); return; }
     const slabs: any[] = [];
     for (const r of rows) for (const z of zoneCols) { const v = r.rates[z]; if (v !== undefined && v !== '' && Number(v) > 0) slabs.push({ zone: z, rateType: r.rateType, weight: Number(r.weight || 0), rate: Number(v) }); }
-    const body = { clientId: client.id, ...h, vendor: h.network === 'SELF' ? null : (h.vendor || h.network), slabs, charges: chg };
+    const body = { clientId: client.id, ...h, mode: productMode(h.product) || h.mode, vendor: h.network === 'SELF' ? null : (h.vendor || h.network), slabs, charges: chg };
     setBusy(true);
     try {
       if (card) await api.updateCustomerCard(card.id, body); else await api.createCustomerCard(body);
@@ -393,7 +393,7 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
             {products.map((p) => <option key={p.code} value={p.code}>{p.code} — {p.name}</option>)}
           </select>
         </div>
-        <div><label style={{ fontSize: 12 }}>Mode</label><input value={h.mode} onChange={(e) => set('mode', e.target.value)} placeholder="AIR/SURFACE" /></div>
+        <div><label style={{ fontSize: 12 }}>Mode <span className="muted">(from product)</span></label><input value={productMode(h.product) || h.mode || '—'} disabled /></div>
         <div><label style={{ fontSize: 12 }}>Service</label><input value={h.service} onChange={(e) => set('service', e.target.value)} placeholder="NDD/SDD (opt)" /></div>
 
         <NumF label="Volumetric ÷ (your choice · cm³/CFT surface · max 27000)" k="volumetricDivisor" max={27000} />
@@ -424,7 +424,7 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
       <div className="card" style={{ padding: 12, marginTop: 12 }}>
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
           <strong>Accessorial Charges</strong>
-          <span className="muted" style={{ fontSize: 11 }}>from the Charges master — add a charge type there and it appears here.</span>
+          <span className="muted" style={{ fontSize: 11 }}>Apex/Surface inherit the <strong>Standard Charges</strong> (all vendors) — leave blank to use them; a value here overrides for this card.</span>
         </div>
         {!chargeDefs.length ? <p className="muted" style={{ fontSize: 12 }}>No charge types in the master yet. Add them in Masters → Charges.</p> : (
           <div className="grid cols-4" style={{ gap: 12, marginTop: 8 }}>

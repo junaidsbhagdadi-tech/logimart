@@ -35,6 +35,7 @@ import { Receivables } from './pages/Receivables';
 import { AuditLog } from './pages/AuditLog';
 import { Pincodes } from './pages/Pincodes';
 import { Masters } from './pages/Masters';
+import { StandardCharges } from './pages/StandardCharges';
 import { Deliver } from './pages/Deliver';
 import { BulkBooking } from './pages/BulkBooking';
 import { Reports } from './pages/Reports';
@@ -115,6 +116,7 @@ export function App() {
         <Route path="/claims" element={isAdminFin ? <Claims /> : <Navigate to="/" replace />} />
         <Route path="/documents" element={isAdminFin ? <Documents /> : <Navigate to="/" replace />} />
         <Route path="/masters" element={canMaster ? <Masters /> : <Navigate to="/" replace />} />
+        <Route path="/standard-charges" element={canMaster ? <StandardCharges /> : <Navigate to="/" replace />} />
         <Route path="/reports" element={canReports ? <Reports /> : <Navigate to="/" replace />} />
         <Route path="/audit" element={user?.role === 'SYS_ADMIN' ? <AuditLog /> : <Navigate to="/" replace />} />
         <Route path="/users" element={user?.role === 'SYS_ADMIN' ? <Users /> : <Navigate to="/" replace />} />
