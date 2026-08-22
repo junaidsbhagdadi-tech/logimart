@@ -46,6 +46,9 @@ export class InvoiceService {
     if (client.isCash) {
       throw new BadRequestException(`${client.legalName} is a CASH customer — invoices are not generated (paid at booking/delivery).`);
     }
+    if (client.accountType === 'WALLET') {
+      throw new BadRequestException(`${client.legalName} is a WALLET (prepaid) customer — charges are deducted from the wallet at booking, so no invoice is generated.`);
+    }
 
     const shipments = await this.prisma.shipment.findMany({
       where: {
@@ -180,6 +183,10 @@ export class InvoiceService {
   async billWorksheet(clientId: number, from?: string, to?: string) {
     const client = await this.prisma.b2bClient.findUnique({ where: { id: BigInt(clientId) } });
     if (!client) throw new NotFoundException('Client not found');
+    // Cash / Wallet (prepaid) customers are settled at booking — never part of the billing run.
+    if (client.isCash || client.accountType === 'WALLET') {
+      return { columns: BILL_COLUMNS, client: { accountCode: client.accountCode, legalName: client.legalName }, count: 0, rows: [] };
+    }
     const where: any = { clientId: client.id };
     if (from || to) where.createdAt = { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) };
     const shipments = await this.prisma.shipment.findMany({
@@ -235,8 +242,10 @@ export class InvoiceService {
     for (const b of bills) {
       const ship = await this.prisma.shipment.findFirst({
         where: { OR: [{ forwardingAwb: b.awb }, { bdWaybill: b.awb }, { awb: b.awb }] },
-        include: { pieces: true, client: { select: { legalName: true, accountCode: true } } },
+        include: { pieces: true, client: { select: { legalName: true, accountCode: true, isCash: true, accountType: true } } },
       });
+      // Cash / Wallet (prepaid) shipments are settled at booking — excluded from P&L.
+      if (ship?.client && (ship.client.isCash || ship.client.accountType === 'WALLET')) continue;
       let sell = 0, ourAwb: string | null = null, customer: string | null = null;
       if (ship) {
         const ch = await this.rates.chargesForShipment(ship, ship.pieces);
