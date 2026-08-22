@@ -389,10 +389,11 @@ export class ShipmentsService {
       where: clientId != null ? { clientId } : undefined,
       orderBy: { createdAt: 'desc' },
       take: Math.min(limit, 500),
-      include: { client: { select: { legalName: true, accountCode: true } } },
+      include: { client: { select: { legalName: true, accountCode: true } }, _count: { select: { invoiceLines: true } } },
     });
     return shipments.map((s) => ({
       awb: s.awb,
+      invoiced: s._count.invoiceLines > 0,
       bookDate: s.createdAt,
       shipperName: s.client.legalName, // client is the shipper unless a separate shipper is captured
       customerCode: s.client.accountCode,
@@ -485,6 +486,7 @@ export class ShipmentsService {
         pieces: { orderBy: { sequenceNo: 'asc' } },
         client: true,
         pods: { orderBy: { deliveredAt: 'desc' }, take: 1 },
+        invoiceLines: { select: { invoiceId: true, invoice: { select: { invoiceNo: true } } }, take: 1 },
       },
     });
     if (!shipment) throw new NotFoundException(`AWB ${awb} not found`);
@@ -492,6 +494,8 @@ export class ShipmentsService {
     const delivered = shipment.pieces.filter((p) => p.status === 'DELIVERED').length;
     return {
       ...shipment,
+      invoiced: shipment.invoiceLines.length > 0,
+      invoiceNo: shipment.invoiceLines[0]?.invoice?.invoiceNo ?? null,
       rollup: {
         pieceCount: shipment.pieceCount,
         delivered,

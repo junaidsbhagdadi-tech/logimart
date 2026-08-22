@@ -180,7 +180,7 @@ export function ShipmentDetail() {
   return (
     <>
       <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h1>{s.awb}</h1>
+        <h1>{s.awb} {(s as any).invoiced && <span className="badge CANCELLED" title={`Invoiced${(s as any).invoiceNo ? ` on ${(s as any).invoiceNo}` : ''} — locked for editing`} style={{ fontSize: 12, verticalAlign: 'middle' }}>🔒 {(s as any).invoiceNo ?? 'INVOICED'}</span>}</h1>
         <div className="row">
           <button className="secondary" onClick={load}>↻ Refresh</button>
           <button className="secondary" onClick={getQuote}>₹ Rate quote</button>

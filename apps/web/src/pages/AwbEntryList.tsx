@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../api';
 
 type Row = {
-  awb: string; bookDate: string; shipperName: string; customerCode: string; customerName: string;
+  awb: string; invoiced?: boolean; bookDate: string; shipperName: string; customerCode: string; customerName: string;
   consigneeName: string; destination: string; product: string; vendor: string; forwardingAwb: string | null;
   actualWeight: number; chargeWeight: number; pieces: number; deliveryVendor: string; status: string;
 };
@@ -86,7 +86,7 @@ export function AwbEntryList() {
             <tbody>
               {slice.map((r) => (
                 <tr key={r.awb}>
-                  <td><Link to={`/shipments/${r.awb}`}><strong>{r.awb}</strong></Link></td>
+                  <td><Link to={`/shipments/${r.awb}`}><strong>{r.awb}</strong></Link>{r.invoiced && <span title="Invoiced — locked for editing" style={{ marginLeft: 6 }}>🔒</span>}</td>
                   <td>{fmtDate(r.bookDate)}</td>
                   <td>{r.shipperName}</td>
                   <td>{r.customerCode}</td>
