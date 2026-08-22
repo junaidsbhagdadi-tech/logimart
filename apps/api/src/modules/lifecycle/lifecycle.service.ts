@@ -7,7 +7,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 export const LIFECYCLE = [
   { code: 'MAN', label: 'Manifested', mile: 'first' },
   { code: 'PKD', label: 'Picked', mile: 'first' },
-  { code: 'ORD', label: 'Origin hub received', mile: 'first' },
+  { code: 'ORD', label: 'Origin hub received', mile: 'mid' },
   { code: 'DPD', label: 'Departed origin', mile: 'mid' },
   { code: 'DRD', label: 'Destination received', mile: 'mid' },
   { code: 'OFD', label: 'Out for delivery', mile: 'last' },
