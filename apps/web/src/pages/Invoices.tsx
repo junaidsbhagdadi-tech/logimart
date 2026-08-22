@@ -130,7 +130,11 @@ export function Invoices() {
           ))}
         </div>
 
-        {filtered.length === 0 ? <p className="muted">No invoices match.</p> : (
+        {filtered.length === 0 ? (
+          invoices.length === 0
+            ? <p className="muted">No invoices yet — use <b>Generate consolidated invoice</b> above to bill a customer's delivered shipments for a period, and it'll show up here.</p>
+            : <p className="muted">No invoices match these filters. <button className="secondary" style={{ padding: '2px 8px', fontSize: 12 }} onClick={() => { setFClient(''); setFFrom(''); setFTo(''); setQ(''); }}>Clear filters</button></p>
+        ) : (
           <div style={{ overflowX: 'auto' }}>
             <table>
               <thead>
