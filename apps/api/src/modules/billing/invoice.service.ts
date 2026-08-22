@@ -3,6 +3,7 @@ import { InvoiceStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RateService } from './rate.service';
+import { COMPANY } from '../../config/company';
 
 const GST_RATE = 0.18; // India GST
 
@@ -102,7 +103,7 @@ export class InvoiceService {
     const total = +(subtotal + tax).toFixed(2);
 
     // Place of supply → CGST+SGST (intra-state) vs IGST (inter-state).
-    const carrierState = process.env.COMPANY_STATE_CODE ?? '07'; // Delhi (Excelex Express Logistics LLP)
+    const carrierState = COMPANY.stateCode; // Delhi (Excelex) — fixed to the legal entity
     const clientState = client.gstin && client.gstin.length >= 2 ? client.gstin.slice(0, 2) : null;
     const intraState = clientState ? clientState === carrierState : true;
     const cgst = intraState ? +(tax / 2).toFixed(2) : 0;
@@ -194,7 +195,7 @@ export class InvoiceService {
       include: { pieces: { select: { status: true, deadKg: true, volKg: true, lengthCm: true, widthCm: true, heightCm: true } } },
     });
 
-    const carrierState = process.env.COMPANY_STATE_CODE ?? '07';
+    const carrierState = COMPANY.stateCode;
     const clientState = client.gstin && client.gstin.length >= 2 ? client.gstin.slice(0, 2) : null;
     const intraState = clientState ? clientState === carrierState : true;
     const vendorCode = (v?: string | null) => (v && String(v).toUpperCase().startsWith('BLUEDART') ? 'BDR' : (v || 'SELF'));

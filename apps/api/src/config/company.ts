@@ -23,7 +23,7 @@ export const COMPANY = {
   gstin: process.env.COMPANY_GSTIN ?? '07AAIFE6185E1ZC',
   pan: 'AAIFE6185E',
   cin: 'AAU-3745',
-  stateCode: process.env.COMPANY_STATE_CODE ?? '07', // Delhi
+  stateCode: '07', // Delhi (Excelex). Fixed to the legal entity — not env-driven, so GST intra/inter is always correct.
 
   // AWB / LR prefix used when generating master waybill numbers.
   // Single-letter prefix + 10-digit running number (Xpresion-style), e.g. L1000000045.
