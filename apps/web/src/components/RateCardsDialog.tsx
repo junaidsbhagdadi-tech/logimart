@@ -426,16 +426,20 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
         {!chargeDefs.length ? <p className="muted" style={{ fontSize: 12 }}>No charge types in the master yet. Add them in Masters → Charges.</p> : (
           <div className="grid cols-4" style={{ gap: 12, marginTop: 8 }}>
             {chargeDefs.map((c) => {
-              const base = baseOf(c); const pct = base === 'FREIGHT' || base.includes('VALUE');
-              const unit = pct ? '%' : base.includes('WEIGHT') ? '₹/kg' : '₹';
+              const code = String(c.code).toUpperCase();
+              // Fixed rules override the master baseOn: Emergency = % of freight, Appointment = ₹/kg + min.
+              const isEmergency = code === 'EMERGENCY', isAppt = code === 'APPT', isOda = code === 'ODA';
+              const base = baseOf(c); const pct = isEmergency || base === 'FREIGHT' || base.includes('VALUE');
+              const unit = isEmergency ? '% of freight' : isAppt ? '₹/kg' : pct ? '%' : base.includes('WEIGHT') ? '₹/kg' : '₹';
+              const showMin = isOda || isAppt || base.includes('VALUE');
               return (
                 <div key={c.code}>
                   <label style={{ fontSize: 12 }}>{c.name} <span className="muted">({unit})</span></label>
-                  <input type="number" step="0.001" value={chg[c.code]?.value ?? ''} onChange={(e) => setCharge(c.code, 'value', e.target.value)} placeholder="0" />
-                  {(pct || String(c.code).toUpperCase() === 'ODA') && (
+                  <input type="number" step="0.001" value={chg[c.code]?.value ?? ''} onChange={(e) => setCharge(c.code, 'value', e.target.value)} placeholder={isAppt ? '₹/kg' : '0'} />
+                  {showMin && (
                     <input type="number" style={{ marginTop: 4 }} value={chg[c.code]?.min ?? ''} onChange={(e) => setCharge(c.code, 'min', e.target.value)} placeholder="min ₹ (opt)" />
                   )}
-                  {String(c.code).toUpperCase() === 'ODA' && (
+                  {isOda && (
                     <input type="number" style={{ marginTop: 4 }} value={chg[c.code]?.perKg ?? ''} onChange={(e) => setCharge(c.code, 'perKg', e.target.value)} placeholder="₹/kg (opt)" />
                   )}
                 </div>
@@ -443,7 +447,7 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
             })}
           </div>
         )}
-        <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>ODA uses the vendor EDL matrix when the destination is an EDL pincode; the flat/kg/min here apply otherwise. FSC is set above.</p>
+        <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>ODA / EDL apply to <strong>cargo only</strong> (never DP/courier) — EDL matrix wins on EDL pincodes, else the flat/kg/min here. Emergency = % of freight; Appointment = ₹/kg (chargeable) or its min. FSC is set above.</p>
       </div>
 
       <div className="grid cols-4" style={{ gap: 12, marginTop: 12 }}>

@@ -304,18 +304,20 @@ export class RateService {
    *             the one the card references, else the one flagged default — so every air card
    *             can share one fuel % set once in Masters.
    */
-  private async cardFuelPct(card: any): Promise<number> {
-    const wantDynamic = String(card.fuelMode ?? 'FLAT').toUpperCase() === 'DYNAMIC';
+  private async cardFuelPct(card: any, surface: boolean): Promise<number> {
+    // DSC (diesel-indexed) applies ONLY to surface products; air / express / DP always use flat FSC.
+    const wantDynamic = surface && String(card.fuelMode ?? 'FLAT').toUpperCase() === 'DYNAMIC';
     // FLAT: an explicit % on the card wins outright.
     if (!wantDynamic) { const flat = Number(card.fuelPct ?? 0); if (flat > 0) return flat; }
     const mechs = await this.prisma.masterEntry.findMany({ where: { type: 'FUEL_MECHANISM', active: true } });
-    // An explicitly-linked mechanism wins (either mode).
-    if (card.fuelMechanism) { const r = mechs.find((x) => x.code === card.fuelMechanism); if (r) return this.pctFromMechanism(r); }
+    const isDyn = (m: any) => String((m.attrs as any)?.mode ?? 'FLAT').toUpperCase() === 'DYNAMIC';
+    // An explicitly-linked mechanism wins only if it matches the required family (keeps air off diesel).
+    if (card.fuelMechanism) { const r = mechs.find((x) => x.code === card.fuelMechanism); if (r && isDyn(r) === wantDynamic) return this.pctFromMechanism(r); }
     // Otherwise inherit the default mechanism of the SAME family — DYNAMIC (diesel/Surface) or FLAT
     // (air/Express/DP) — with a network-specific default beating the all-vendors one. This is why a
     // Surface card follows the diesel mechanism automatically (base % + diesel rise) without per-card linking.
     const net = String(card.network ?? 'SELF').toUpperCase();
-    const defaults = mechs.filter((x) => { const a: any = x.attrs || {}; return a.isDefault && (String(a.mode ?? 'FLAT').toUpperCase() === 'DYNAMIC') === wantDynamic; });
+    const defaults = mechs.filter((x) => (x.attrs as any)?.isDefault && isDyn(x) === wantDynamic);
     const m = defaults.find((x) => String((x.attrs as any)?.network ?? '').trim().toUpperCase() === net)
            || defaults.find((x) => !String((x.attrs as any)?.network ?? '').trim());
     return m ? this.pctFromMechanism(m) : 0;
@@ -385,8 +387,14 @@ export class RateService {
     const priced = this.priceSlabs(zoneSlabs.length ? zoneSlabs : card.slabs, chargeableKg);
     if (!priced) return null;
 
+    // Product family gates a few rules: DP/TDD/NDD are courier (no ODA/EDL); surface enables DSC.
+    const prod = String(shipment.product ?? card.product ?? '').toUpperCase();
+    const isCourier = ['DP', 'TDD', 'NDD'].includes(prod);
+    const surface = this.isSurface(shipment.serviceMode) || String(card.mode ?? '').toUpperCase().includes('SURFACE');
+
     const freight = r2(Math.max(priced.freight, Number(card.minFreight ?? 0)));
-    const fuelPct = await this.cardFuelPct(card);
+    const useDsc = surface && String(card.fuelMode ?? 'FLAT').toUpperCase() === 'DYNAMIC';
+    const fuelPct = await this.cardFuelPct(card, surface);
     const fuel = r2(freight * (fuelPct / 100));
     const invVal = Number(shipment.shipmentValue ?? shipment.declaredValue ?? 0);
     // Accessorial values are master-driven: read from the card's `charges` JSON keyed by
@@ -400,24 +408,30 @@ export class RateService {
     let fov = 0;
     const fovPct = cget('FOV', 'value', card.fovPct), fovMin = cget('FOV', 'min', card.fovMin);
     if (fovPct > 0 || fovMin > 0) fov = r2(Math.max((invVal * fovPct) / 100, fovMin));
-    // ODA: the network EDL matrix wins when the destination is an EDL location; else the card's ODA.
+    // ODA / EDL apply to CARGO products only — never to DP/courier.
+    // For cargo: the network EDL matrix wins when the destination is an EDL location; else the card's ODA.
     let oda = 0;
     let odaLabel = 'ODA';
-    const destPin = shipment.destPincode ? await this.prisma.pincode.findUnique({ where: { pincode: shipment.destPincode } }) : null;
-    const edl = await this.edlCharge(this.deriveNetwork(shipment), destPin, chargeableKg);
-    const odaFlat = cget('ODA', 'value', card.odaFlat), odaMin = cget('ODA', 'min', card.odaMin);
-    const odaPerKg = CJ.ODA?.perKg != null && CJ.ODA?.perKg !== '' ? Number(CJ.ODA.perKg) : Number(card.odaPerKg ?? 0);
-    if (edl > 0) { oda = edl; odaLabel = 'EDL (ODA)'; }
-    else if (shipment.isOda && (odaFlat > 0 || odaPerKg > 0 || odaMin > 0)) {
-      oda = r2(Math.max(odaFlat + odaPerKg * chargeableKg, odaMin));
+    if (!isCourier) {
+      const destPin = shipment.destPincode ? await this.prisma.pincode.findUnique({ where: { pincode: shipment.destPincode } }) : null;
+      const edl = await this.edlCharge(this.deriveNetwork(shipment), destPin, chargeableKg);
+      const odaFlat = cget('ODA', 'value', card.odaFlat), odaMin = cget('ODA', 'min', card.odaMin);
+      const odaPerKg = CJ.ODA?.perKg != null && CJ.ODA?.perKg !== '' ? Number(CJ.ODA.perKg) : Number(card.odaPerKg ?? 0);
+      if (edl > 0) { oda = edl; odaLabel = 'EDL (ODA)'; }
+      else if (shipment.isOda && (odaFlat > 0 || odaPerKg > 0 || odaMin > 0)) {
+        oda = r2(Math.max(odaFlat + odaPerKg * chargeableKg, odaMin));
+      }
     }
     const topay = shipment.paymentTerm === 'TO_PAY' ? r2(cget('TOPAY', 'value', card.topayCharge)) : 0;
-    const appt = shipment.apptDelivery ? r2(cget('APPT', 'value', card.apptCharge)) : 0;
+    // Appointment delivery: per-kg (chargeable) with a ₹ minimum. (value = ₹/kg, min = floor ₹)
+    const apptMin = CJ.APPT?.min != null && CJ.APPT?.min !== '' ? Number(CJ.APPT.min) : 0;
+    const appt = shipment.apptDelivery ? r2(Math.max(cget('APPT', 'value', card.apptCharge) * chargeableKg, apptMin)) : 0;
     const loading = r2(cget('LOADING', 'value', card.loadingCharge));
     const unloading = r2(cget('UNLOADING', 'value', card.unloadingCharge));
     const docket = r2(cget('DOCKET', 'value', card.docketCharge));
     const awb = r2(cget('AWB', 'value', card.awbCharge));
-    const emergency = r2(cget('EMERGENCY', 'value', card.emergencyCharge));
+    // Emergency surcharge: a % of freight (not a flat ₹).
+    const emergency = r2(freight * cget('EMERGENCY', 'value', card.emergencyCharge) / 100);
     const environment = r2(cget('ENVIRONMENT', 'value', card.environmentCharge));
     // handling: weight-banded ₹/pcs; OSP: oversize (dim>119cm or pcs>69kg)
     const pcs = pieces.length;
@@ -450,8 +464,8 @@ export class RateService {
     }
 
     const lines = [{ head: `Freight (${priced.basis})`, amount: freight }];
-    // DYNAMIC FSC is diesel-indexed (Surface) → label it "Diesel Surcharge"; FLAT (Air/Express/DP) stays "Fuel".
-    const fscLabel = String(card.fuelMode ?? 'FLAT').toUpperCase() === 'DYNAMIC' ? 'Diesel Surcharge' : 'Fuel';
+    // Diesel Surcharge only for surface (DSC); air/express/DP show flat "Fuel".
+    const fscLabel = useDsc ? 'Diesel Surcharge' : 'Fuel';
     if (fuel > 0) lines.push({ head: `${fscLabel} ${fuelPct}%`, amount: fuel });
     if (fov > 0) {
       // Label from the EFFECTIVE FOV (charges JSON), not the stale card.fovPct column — otherwise a
@@ -461,12 +475,12 @@ export class RateService {
     }
     if (oda > 0) lines.push({ head: odaLabel, amount: oda });
     if (awb > 0) lines.push({ head: 'Airwaybill charges', amount: awb });
-    if (emergency > 0) lines.push({ head: 'Emergency surcharge', amount: emergency });
+    if (emergency > 0) lines.push({ head: `Emergency surcharge ${cget('EMERGENCY', 'value', card.emergencyCharge)}% of freight`, amount: emergency });
     if (environment > 0) lines.push({ head: 'Environmental surcharge', amount: environment });
     if (handling > 0) lines.push({ head: 'Handling', amount: handling });
     if (osp > 0) lines.push({ head: 'OSP (oversize)', amount: osp });
     if (topay > 0) lines.push({ head: 'To-Pay charge', amount: topay });
-    if (appt > 0) lines.push({ head: 'Appointment delivery', amount: appt });
+    if (appt > 0) lines.push({ head: `Appointment delivery (${cget('APPT', 'value', card.apptCharge)}/kg${apptMin ? `, min ₹${apptMin}` : ''})`, amount: appt });
     if (loading > 0) lines.push({ head: 'Loading', amount: loading });
     if (unloading > 0) lines.push({ head: 'Unloading', amount: unloading });
     if (docket > 0) lines.push({ head: 'Docket', amount: docket });
