@@ -79,9 +79,19 @@ export function ShipmentDetail() {
 
   const recordPod = async () => {
     if (!s) return;
-    const delivered = s.rollup.delivered;
-    const short = delivered < s.rollup.pieceCount;
-    if (short && !confirm(`Only ${delivered}/${s.rollup.pieceCount} boxes delivered. Record a SHORT delivery POD?`)) return;
+    const total = s.rollup.pieceCount;
+    // Ask how many boxes were actually delivered — DEFAULT to full delivery (all boxes).
+    // A SHORT POD is the exception (fewer than total), not the norm.
+    let delivered = total;
+    if (total > 1) {
+      const ans = prompt(`How many of the ${total} boxes were delivered?`, String(total));
+      if (ans == null) return; // cancelled
+      const n = Math.floor(Number(ans));
+      if (!Number.isFinite(n) || n < 0 || n > total) { setError(`Enter a number between 0 and ${total}.`); return; }
+      delivered = n;
+    }
+    const short = delivered < total;
+    if (short && !confirm(`SHORT delivery: only ${delivered}/${total} boxes delivered. Record it?`)) return;
     setError('');
     setMsg('');
     try {
