@@ -424,7 +424,7 @@ export const api = {
   // ---- milestone lifecycle (First / Mid / Last mile) ----
   lifecycleSummary: () => request<{ counts: Record<string, number>; lifecycle: { code: string; label: string; mile: string }[] }>('/api/v1/lifecycle/summary'),
   lifecycleList: (code?: string, limit = 100) => request<any[]>(`/api/v1/lifecycle/list?limit=${limit}${code ? `&code=${code}` : ''}`),
-  lifecycleScan: (body: { awbs: string[]; code: string; remark?: string; podDataUrl?: string; bagCode?: string }) =>
+  lifecycleScan: (body: { awbs: string[]; code: string; remark?: string; podDataUrl?: string; bagCode?: string; location?: string }) =>
     request<{ code: string; updated: number; done: string[]; missing: string[]; locked?: string[] }>('/api/v1/lifecycle/scan', { method: 'POST', body: JSON.stringify(body) }),
   lifecycleDetail: (awb: string) =>
     request<{
@@ -432,9 +432,9 @@ export const api = {
       origin: string; destination: string; currentLocation: string | null; orderDate: string;
       currentCode: string; currentLabel: string; remarks: string | null; edd: string | null;
       serviceType: string | null; tripRoute: string | null; pickupRider: string | null; deliveryRider: string | null;
-      deliveryPod: string | null; consignee: { name?: string | null; phone?: string | null; address?: string | null; city?: string | null };
+      deliveryPod: string | null; pickupPod: string | null; consignee: { name?: string | null; phone?: string | null; address?: string | null; city?: string | null };
       pieces: { childId: string; sequenceNo: number; deadKg: string; volKg: string; status: string; lengthCm: string | null; widthCm: string | null; heightCm: string | null }[];
-      scans: { at: string; code: string; label: string; by: string | null; reason: string | null; remark: string | null }[];
+      scans: { at: string; code: string; label: string; location: string | null; by: string | null; reason: string | null; remark: string | null }[];
     }>(`/api/v1/lifecycle/detail/${encodeURIComponent(awb)}`),
   lifecycleReset: (awb: string) => request<{ awb: string; reset: boolean }>(`/api/v1/lifecycle/reset/${encodeURIComponent(awb)}`, { method: 'POST' }),
   lifecycleTrack: (awb: string) =>

@@ -44,7 +44,7 @@ export class LifecycleService {
 
   /** Record a milestone scan for one or more AWBs. DLD requires a POD image. Terminal states
    *  (DLD/RTD/CAN) are locked once set — only a super admin can move a shipment off them. */
-  async scan(dto: { awbs: string[]; code: string; hubId?: number; remark?: string; podDataUrl?: string; bagCode?: string }, userId?: bigint, role?: string) {
+  async scan(dto: { awbs: string[]; code: string; hubId?: number; location?: string; remark?: string; podDataUrl?: string; bagCode?: string }, userId?: bigint, role?: string) {
     const code = String(dto.code || '').trim().toUpperCase();
     if (!CODES.has(code)) throw new BadRequestException(`Unknown status code ${code}.`);
     const awbs = (dto.awbs || []).map((a) => String(a).trim().toUpperCase()).filter(Boolean);
@@ -65,11 +65,13 @@ export class LifecycleService {
         data: {
           statusCode: code, statusAt: new Date(), status: TO_ENUM[code],
           ...(code === 'DLD' && dto.podDataUrl ? { podUrl: dto.podDataUrl } : {}),
+          ...(code === 'PKD' && dto.podDataUrl ? { pickupPodUrl: dto.podDataUrl } : {}),
+          ...(dto.location ? { currentLocation: dto.location } : {}),
           ...(dto.bagCode ? { bagCode: dto.bagCode } : {}),
           ...(['UDL', 'RTO', 'CAN'].includes(code) ? { exceptionFlag: dto.remark || code } : {}),
         },
       });
-      await this.prisma.scanLog.create({ data: { awb, eventType: code, remark: dto.remark || null, scannedById: userId ?? null } });
+      await this.prisma.scanLog.create({ data: { awb, eventType: code, remark: dto.remark || null, serviceCenter: dto.location || null, scannedById: userId ?? null } });
       done.push(awb);
     }
     return { code, updated: done.length, done, missing, locked };
@@ -120,7 +122,7 @@ export class LifecycleService {
       shipper: s.shipperName ?? null,
       origin: [s.originLocation, s.originHub?.code].filter(Boolean).join(' - ') || s.originZone,
       destination: [s.consigneeCity, s.destHub?.code].filter(Boolean).join(' - ') || s.destZone,
-      currentLocation: s.destHub ? `${s.destHub.name} - ${s.destHub.code}` : null,
+      currentLocation: s.currentLocation ?? (s.destHub ? `${s.destHub.name} - ${s.destHub.code}` : null),
       orderDate: manAt,
       currentCode: s.statusCode ?? 'MAN',
       currentLabel: labelOf(String(s.statusCode ?? 'MAN')),
@@ -131,9 +133,10 @@ export class LifecycleService {
       pickupRider: riderOf('PKD'),
       deliveryRider: riderOf('OFD', 'DLD'),
       deliveryPod: s.podUrl ?? null,
+      pickupPod: s.pickupPodUrl ?? null,
       consignee: { name: s.consigneeName, phone: s.consigneePhone, address: s.consigneeAddress, city: s.consigneeCity },
       pieces: s.pieces,
-      scans: logs.map((l) => ({ at: l.scanAt, code: l.eventType, label: labelOf(l.eventType), by: uname(l.scannedById), reason: ['UDL', 'RTO', 'CAN'].includes(l.eventType) ? l.remark : null, remark: l.remark })),
+      scans: logs.map((l) => ({ at: l.scanAt, code: l.eventType, label: labelOf(l.eventType), location: l.serviceCenter ?? null, by: uname(l.scannedById), reason: ['UDL', 'RTO', 'CAN'].includes(l.eventType) ? l.remark : null, remark: l.remark })),
     };
   }
 

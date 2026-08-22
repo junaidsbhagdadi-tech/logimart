@@ -89,6 +89,7 @@ export function TrackDetail() {
               <Field label="Trip Route" value={d.tripRoute} />
               <Field label="Pickup Rider" value={d.pickupRider} color="var(--brand)" />
               <Field label="Delivery Rider" value={d.deliveryRider} color="var(--brand)" />
+              <Field label="Pickup POD" value={d.pickupPod ? <a href={d.pickupPod} target="_blank" rel="noreferrer">🖼 view</a> : '—'} />
               <Field label="Delivery POD" value={d.deliveryPod ? <a href={d.deliveryPod} target="_blank" rel="noreferrer">🖼 view</a> : '—'} />
             </div>
             <div className="row" style={{ gap: 8, marginTop: 16 }}>
@@ -130,7 +131,7 @@ export function TrackDetail() {
                   {d.scans.map((s, i) => (
                     <tr key={i}>
                       <td style={{ whiteSpace: 'nowrap' }}>{dtFmt(s.at)}</td>
-                      <td>{d.currentLocation ?? '—'}</td>
+                      <td>{s.location ?? '—'}</td>
                       <td>{s.by ?? '—'}</td>
                       <td><strong>{s.code}</strong> — {s.label}</td>
                       <td>{s.reason ?? '—'}</td>

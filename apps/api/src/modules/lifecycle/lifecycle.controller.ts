@@ -40,7 +40,7 @@ export class LifecycleController {
 
   @Post('scan')
   @Roles(...OPS)
-  scan(@Body() dto: { awbs: string[]; code: string; hubId?: number; remark?: string; podDataUrl?: string; bagCode?: string }, @Req() req: any) {
+  scan(@Body() dto: { awbs: string[]; code: string; hubId?: number; location?: string; remark?: string; podDataUrl?: string; bagCode?: string }, @Req() req: any) {
     return this.svc.scan(dto, req.user?.sub ? BigInt(req.user.sub) : undefined, req.user?.role);
   }
 

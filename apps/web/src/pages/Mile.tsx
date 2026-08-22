@@ -4,15 +4,18 @@ import { api } from '../api';
 const MILE_LABEL: Record<string, string> = { first: 'First Mile', mid: 'Mid Mile', last: 'Last Mile' };
 
 /** One scan screen: scan/enter AWB(s) → set a milestone code. Bulk = textarea, pod = POD upload (DLD). */
-export function MileScan({ title, code, bulk, pod, hint }: { title: string; code: string; bulk?: boolean; pod?: boolean; hint?: string }) {
+export function MileScan({ title, code, bulk, pod, pickupPod, hub, hint }: { title: string; code: string; bulk?: boolean; pod?: boolean; pickupPod?: boolean; hub?: boolean; hint?: string }) {
   const [awb, setAwb] = useState('');
   const [remark, setRemark] = useState('');
   const [podData, setPodData] = useState('');
   const [podName, setPodName] = useState('');
+  const [hubs, setHubs] = useState<{ id: string; code: string; name: string }[]>([]);
+  const [location, setLocation] = useState('');
   const [msg, setMsg] = useState(''); const [err, setErr] = useState('');
   const [log, setLog] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (hub) api.listHubs().then(setHubs).catch(() => {}); }, [hub]);
 
   const readFile = (f?: File) => {
     if (!f) return;
@@ -28,7 +31,7 @@ export function MileScan({ title, code, bulk, pod, hint }: { title: string; code
     if (pod && !podData) { setErr('POD image is mandatory to mark Delivered (JPG / PNG / PDF).'); return; }
     setBusy(true);
     try {
-      const r = await api.lifecycleScan({ awbs, code, remark: remark || undefined, podDataUrl: pod ? podData : undefined });
+      const r = await api.lifecycleScan({ awbs, code, remark: remark || undefined, podDataUrl: (pod || pickupPod) && podData ? podData : undefined, location: location || undefined });
       setMsg(`✓ ${code}: ${r.updated}/${awbs.length} updated${r.missing.length ? ` · not found: ${r.missing.join(', ')}` : ''}${r.locked?.length ? ` · 🔒 out of sequence / terminal (super-admin only): ${r.locked.join(', ')}` : ''}`);
       if (r.done.length) setLog((l) => [`${new Date().toLocaleTimeString()} · ${code} · ${r.done.join(', ')}`, ...l].slice(0, 40));
       setAwb(''); setRemark(''); setPodData(''); setPodName('');
@@ -54,8 +57,24 @@ export function MileScan({ title, code, bulk, pod, hint }: { title: string; code
             <input ref={inputRef} autoFocus value={awb} onChange={(e) => setAwb(e.target.value.toUpperCase())} onKeyDown={(e) => { if (e.key === 'Enter' && !pod) submit(); }} placeholder="L1000000123" />
           </>
         )}
+        {hub && (
+          <div style={{ marginTop: 10 }}>
+            <label>Hub / location</label>
+            <select value={location} onChange={(e) => setLocation(e.target.value)}>
+              <option value="">— select hub —</option>
+              {hubs.map((h) => <option key={h.id} value={`${h.name} - ${h.code}`}>{h.code} — {h.name}</option>)}
+            </select>
+          </div>
+        )}
         {(code === 'UDL') && (
           <div style={{ marginTop: 10 }}><label>Reason</label><input value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="Customer not available / refused…" /></div>
+        )}
+        {pickupPod && (
+          <div style={{ marginTop: 10 }}>
+            <label>Pickup POD image (JPG / PNG / PDF) — <span className="muted">optional</span></label>
+            <input type="file" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" onChange={(e) => readFile(e.target.files?.[0])} />
+            {podName && <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>📎 {podName}</span>}
+          </div>
         )}
         {pod && (
           <div style={{ marginTop: 10 }}>
