@@ -61,6 +61,32 @@ export class VendorsService {
     return this.prisma.serviceMapping.delete({ where: { id: BigInt(id) } });
   }
 
+  /**
+   * Auto-pick a carrier at booking from Service Mapping: the active mapping whose weight band
+   * contains the shipment's chargeable weight (max 0 = open-ended), matching service when given.
+   * A single-piece-only mapping applies only to single-piece shipments; others apply to any.
+   * Ties break to the tightest (most specific) band.
+   */
+  async resolveCarrier(params: { weight: number; service?: string; singlePiece?: boolean }) {
+    const w = Number(params.weight ?? 0);
+    const rows = await this.prisma.serviceMapping.findMany({ where: { isActive: true } });
+    const eq = (a?: string, b?: string) => !a || (b != null && String(a).toUpperCase() === String(b).toUpperCase());
+    const band = (m: any) => (Number(m.maxWeight ?? 0) > 0 ? Number(m.maxWeight) - Number(m.minWeight ?? 0) : 1e9);
+    const matches = rows
+      .filter((m) => {
+        const min = Number(m.minWeight ?? 0), max = Number(m.maxWeight ?? 0);
+        const inBand = w >= min && (max <= 0 || w <= max);
+        const svcOk = eq(params.service, m.serviceType);
+        const spOk = m.isSinglePiece ? params.singlePiece === true : true;
+        return inBand && svcOk && spOk;
+      })
+      .sort((a, b) => band(a) - band(b));
+    const best = matches[0];
+    return best
+      ? { vendor: best.vendor, billingVendor: best.billingVendor, vendorLink: best.vendorLink, serviceType: best.serviceType, minWeight: Number(best.minWeight), maxWeight: Number(best.maxWeight) }
+      : null;
+  }
+
   async list() {
     const vendors = await this.prisma.vendor.findMany({
       orderBy: { name: 'asc' },

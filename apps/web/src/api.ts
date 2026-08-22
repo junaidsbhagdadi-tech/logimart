@@ -501,6 +501,9 @@ export const api = {
     request(`/api/v1/vendors/payments/${paymentId}/paid`, { method: 'PATCH' }),
   // ---- service mapping ----
   listServiceMappings: () => request<any[]>('/api/v1/vendors/service-mappings'),
+  resolveCarrier: (weight: number, service?: string, singlePiece?: boolean) =>
+    request<{ vendor: string; billingVendor?: string; vendorLink?: string; serviceType?: string; minWeight?: number; maxWeight?: number } | null>(
+      `/api/v1/vendors/service-mappings/resolve?weight=${weight}${service ? `&service=${encodeURIComponent(service)}` : ''}${singlePiece != null ? `&singlePiece=${singlePiece}` : ''}`),
   addServiceMapping: (body: unknown) => request('/api/v1/vendors/service-mappings', { method: 'POST', body: JSON.stringify(body) }),
   delServiceMapping: (id: string) => request(`/api/v1/vendors/service-mappings/${id}`, { method: 'DELETE' }),
 

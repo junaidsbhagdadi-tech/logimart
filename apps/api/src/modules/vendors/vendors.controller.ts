@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles } from '../../common/rbac/roles.decorator';
@@ -24,6 +24,16 @@ export class VendorsController {
   @Get('service-mappings')
   listMappings() {
     return this.vendors.listMappings();
+  }
+
+  /** Auto-pick a carrier for a shipment by chargeable weight (+ optional service / single-piece). */
+  @Get('service-mappings/resolve')
+  resolveCarrier(@Query('weight') weight?: string, @Query('service') service?: string, @Query('singlePiece') singlePiece?: string) {
+    return this.vendors.resolveCarrier({
+      weight: Number(weight ?? 0),
+      service: service || undefined,
+      singlePiece: singlePiece === 'true' ? true : singlePiece === 'false' ? false : undefined,
+    });
   }
 
   @Post('service-mappings')

@@ -83,6 +83,8 @@ export function CreateShipment() {
   const [busy, setBusy] = useState(false);
   const [vendors, setVendors] = useState<any[]>([]);
   const [cwTouched, setCwTouched] = useState(false);
+  const [autoCarrier, setAutoCarrier] = useState<{ vendor: string; minWeight?: number; maxWeight?: number } | null>(null);
+  const [vendorTouched, setVendorTouched] = useState(false);
 
   useEffect(() => { if (!ownClientId) api.listClients().then(setClients).catch(() => {}); }, [ownClientId]);
   useEffect(() => { api.listVendors().then((v) => setVendors(v.filter((x: any) => x.isActive !== false))).catch(() => {}); }, []);
@@ -224,6 +226,17 @@ export function CreateShipment() {
     const m = Math.max(totalDead, totalVol);
     setChargeWeight(m > 0 ? String(+m.toFixed(3)) : '');
   }, [totalDead, totalVol, cwTouched]);
+  // Auto-pick the carrier from Service Mapping by chargeable weight (+ single-piece), unless the
+  // operator has manually chosen a vendor.
+  const chargeableKg = chargeWeight ? +chargeWeight : Math.max(totalDead, totalVol);
+  useEffect(() => {
+    if (!chargeableKg || chargeableKg <= 0) { setAutoCarrier(null); return; }
+    let cancelled = false;
+    api.resolveCarrier(chargeableKg, undefined, pieces.length === 1)
+      .then((m) => { if (cancelled) return; setAutoCarrier(m); if (m && !vendorTouched) setSvc((s) => ({ ...s, vendor: m.vendor })); })
+      .catch(() => { if (!cancelled) setAutoCarrier(null); });
+    return () => { cancelled = true; };
+  }, [chargeableKg, pieces.length, vendorTouched]);
   const EWB_THRESHOLD = 50000;
   const needEway = Number(c.declaredValue) >= EWB_THRESHOLD;
 
@@ -402,11 +415,19 @@ export function CreateShipment() {
           </div>
           <div>
             <label>Vendor</label>
-            <select value={svc.vendor} onChange={(e) => setSvc({ ...svc, vendor: e.target.value })}>
+            <select value={svc.vendor} onChange={(e) => { setVendorTouched(true); setSvc({ ...svc, vendor: e.target.value }); }}>
               <option value="">SELF</option>
               {vendors.map((v) => <option key={v.id} value={v.vendorCode || v.name}>{v.vendorCode} — {v.name}</option>)}
               {svc.vendor && !vendors.some((v) => (v.vendorCode || v.name) === svc.vendor) && svc.vendor !== '' && <option value={svc.vendor}>{svc.vendor}</option>}
             </select>
+            {autoCarrier && !vendorTouched && (
+              <div className="muted" style={{ fontSize: 11, marginTop: 4, color: 'var(--brand)' }}>
+                🔀 Auto-picked from Service Mapping{autoCarrier.maxWeight ? ` (band ${autoCarrier.minWeight}–${autoCarrier.maxWeight}kg)` : ''}
+              </div>
+            )}
+            {vendorTouched && autoCarrier && (
+              <button className="secondary" style={{ marginTop: 4, padding: '2px 8px', fontSize: 11 }} onClick={() => { setVendorTouched(false); setSvc((s) => ({ ...s, vendor: autoCarrier.vendor })); }}>↺ auto-pick</button>
+            )}
           </div>
           <div><label>Service</label><input value={svc.service} onChange={(e) => setSvc({ ...svc, service: e.target.value })} placeholder="SELF / DHL / …" /></div>
           <div><label>Shipment value ₹</label><input type="number" value={svc.shipmentValue} onChange={(e) => setSvc({ ...svc, shipmentValue: e.target.value })} /></div>
