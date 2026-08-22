@@ -10,6 +10,7 @@ import { Labels } from './pages/Labels';
 import { Invoices } from './pages/Invoices';
 import { InvoiceDetail } from './pages/InvoiceDetail';
 import { Track } from './pages/Track';
+import { TrackDetail } from './pages/TrackDetail';
 import { Customers } from './pages/Customers';
 import { FtlRates } from './pages/FtlRates';
 import { VendorBills } from './pages/VendorBills';
@@ -63,6 +64,8 @@ export function App() {
       <Route path="/shipments/:awb/awb-print" element={<AwbPrint />} />
       <Route element={<Layout />}>
         <Route path="/" element={<Dashboard />} />
+        <Route path="/tracker" element={<TrackDetail />} />
+        <Route path="/tracker/:awb" element={<TrackDetail />} />
         <Route path="/create" element={<CreateShipment />} />
         <Route path="/awb-list" element={<AwbEntryList />} />
         <Route path="/bulk" element={<BulkBooking />} />

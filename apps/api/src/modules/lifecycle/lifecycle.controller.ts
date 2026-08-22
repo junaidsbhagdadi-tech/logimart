@@ -24,6 +24,16 @@ export class LifecycleController {
   @Roles(...OPS)
   track(@Param('awb') awb: string) { return this.svc.track(awb); }
 
+  /** Rich tracking detail for the dedicated tracker page. */
+  @Get('detail/:awb')
+  @Roles(...OPS)
+  detail(@Param('awb') awb: string) { return this.svc.trackDetail(awb); }
+
+  /** Super-admin only: wipe a shipment's scan history and reset it to MAN. */
+  @Post('reset/:awb')
+  @Roles(UserRole.SYS_ADMIN)
+  reset(@Param('awb') awb: string) { return this.svc.reset(awb); }
+
   @Get('bags')
   @Roles(...OPS)
   bags() { return this.svc.bags(); }

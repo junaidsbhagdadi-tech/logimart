@@ -30,6 +30,7 @@ export function Layout() {
   const groups: Group[] = [
     { title: 'Overview', items: [
       { to: '/', icon: '📊', label: 'Dashboard', end: true },
+      { to: '/tracker', icon: '🧭', label: 'Track Shipment' },
     ] },
     { title: 'Operations', items: [
       { to: '/create', icon: '➕', label: 'New Shipment' },
@@ -96,7 +97,7 @@ export function Layout() {
     e.preventDefault();
     const q = awb.trim();
     if (!q) return;
-    nav(`/shipments/${encodeURIComponent(q)}`);
+    nav(`/tracker/${encodeURIComponent(q)}`);
     setAwb('');
   };
 

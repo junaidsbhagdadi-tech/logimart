@@ -426,6 +426,17 @@ export const api = {
   lifecycleList: (code?: string, limit = 100) => request<any[]>(`/api/v1/lifecycle/list?limit=${limit}${code ? `&code=${code}` : ''}`),
   lifecycleScan: (body: { awbs: string[]; code: string; remark?: string; podDataUrl?: string; bagCode?: string }) =>
     request<{ code: string; updated: number; done: string[]; missing: string[]; locked?: string[] }>('/api/v1/lifecycle/scan', { method: 'POST', body: JSON.stringify(body) }),
+  lifecycleDetail: (awb: string) =>
+    request<{
+      awb: string; forwardingAwb: string | null; payMode: string; shipper: string | null;
+      origin: string; destination: string; currentLocation: string | null; orderDate: string;
+      currentCode: string; currentLabel: string; remarks: string | null; edd: string | null;
+      serviceType: string | null; tripRoute: string | null; pickupRider: string | null; deliveryRider: string | null;
+      deliveryPod: string | null; consignee: { name?: string | null; phone?: string | null; address?: string | null; city?: string | null };
+      pieces: { childId: string; sequenceNo: number; deadKg: string; volKg: string; status: string; lengthCm: string | null; widthCm: string | null; heightCm: string | null }[];
+      scans: { at: string; code: string; label: string; by: string | null; reason: string | null; remark: string | null }[];
+    }>(`/api/v1/lifecycle/detail/${encodeURIComponent(awb)}`),
+  lifecycleReset: (awb: string) => request<{ awb: string; reset: boolean }>(`/api/v1/lifecycle/reset/${encodeURIComponent(awb)}`, { method: 'POST' }),
   lifecycleTrack: (awb: string) =>
     request<{ awb: string; statusCode: string; currentLabel: string; statusAt: string | null; originZone: string; destZone: string; consigneeName?: string; consigneeCity?: string; expectedDelivery?: string | null; timeline: { code: string; label: string; at: string; remark?: string | null }[] }>(`/api/v1/lifecycle/track/${encodeURIComponent(awb)}`),
   lifecycleBag: (body: { bagCode: string; awbs: string[] }) => request<{ bagCode: string; bagged: number }>('/api/v1/lifecycle/bag', { method: 'POST', body: JSON.stringify(body) }),

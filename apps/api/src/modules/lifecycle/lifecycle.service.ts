@@ -92,6 +92,62 @@ export class LifecycleService {
     return { ...shipment, currentLabel: labelOf(String(shipment.statusCode || 'MAN')), timeline };
   }
 
+  /** Rich tracking detail for the dedicated tracker page (header + milestone stepper + scan grid). */
+  async trackDetail(awbRaw: string) {
+    const awb = String(awbRaw || '').trim().toUpperCase();
+    const labelOf = (c: string) => LIFECYCLE.find((l) => l.code === c)?.label || c;
+    const s = await this.prisma.shipment.findUnique({
+      where: { awb },
+      include: {
+        originHub: { select: { code: true, name: true } }, destHub: { select: { code: true, name: true } },
+        pieces: { orderBy: { sequenceNo: 'asc' }, select: { childId: true, sequenceNo: true, deadKg: true, volKg: true, status: true, lengthCm: true, widthCm: true, heightCm: true } },
+      },
+    });
+    if (!s) throw new BadRequestException(`AWB ${awb} not found.`);
+    const logs = await this.prisma.scanLog.findMany({ where: { awb }, orderBy: { scanAt: 'desc' } });
+    const userIds = [...new Set(logs.map((l) => l.scannedById).filter((x): x is bigint => !!x))];
+    const users = userIds.length ? await this.prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, fullName: true } }) : [];
+    const uname = (id: bigint | null) => (id ? users.find((u) => u.id === id)?.fullName ?? null : null);
+    const mile = logs.filter((l) => CODES.has(l.eventType));
+    const riderOf = (...codes: string[]) => { for (const c of codes) { const l = mile.find((x) => x.eventType === c); if (l) return uname(l.scannedById); } return null; };
+    const payMode = s.isDod ? 'DOD' : s.paymentTerm === 'TO_PAY' ? 'FOD' : 'PPD';
+    const manAt = mile.find((l) => l.eventType === 'MAN')?.scanAt ?? s.createdAt;
+
+    return {
+      awb: s.awb,
+      forwardingAwb: s.forwardingAwb ?? null,
+      payMode,
+      shipper: s.shipperName ?? null,
+      origin: [s.originLocation, s.originHub?.code].filter(Boolean).join(' - ') || s.originZone,
+      destination: [s.consigneeCity, s.destHub?.code].filter(Boolean).join(' - ') || s.destZone,
+      currentLocation: s.destHub ? `${s.destHub.name} - ${s.destHub.code}` : null,
+      orderDate: manAt,
+      currentCode: s.statusCode ?? 'MAN',
+      currentLabel: labelOf(String(s.statusCode ?? 'MAN')),
+      remarks: s.exceptionFlag ?? null,
+      edd: s.expectedDelivery ?? null,
+      serviceType: s.product ?? s.service ?? null,
+      tripRoute: [s.originHub?.code, s.destHub?.code].filter(Boolean).join(' → ') || null,
+      pickupRider: riderOf('PKD'),
+      deliveryRider: riderOf('OFD', 'DLD'),
+      deliveryPod: s.podUrl ?? null,
+      consignee: { name: s.consigneeName, phone: s.consigneePhone, address: s.consigneeAddress, city: s.consigneeCity },
+      pieces: s.pieces,
+      scans: logs.map((l) => ({ at: l.scanAt, code: l.eventType, label: labelOf(l.eventType), by: uname(l.scannedById), reason: ['UDL', 'RTO', 'CAN'].includes(l.eventType) ? l.remark : null, remark: l.remark })),
+    };
+  }
+
+  /** Super-admin: wipe a shipment's scan history and reset it to MAN (undo test/erroneous scans). */
+  async reset(awbRaw: string) {
+    const awb = String(awbRaw || '').trim().toUpperCase();
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true } });
+    if (!s) throw new BadRequestException(`AWB ${awb} not found.`);
+    await this.prisma.scanLog.deleteMany({ where: { awb } });
+    await this.prisma.shipment.update({ where: { id: s.id }, data: { statusCode: 'MAN', status: ShipmentStatus.CREATED, statusAt: new Date(), podUrl: null, exceptionFlag: null } });
+    await this.prisma.scanLog.create({ data: { awb, eventType: 'MAN', remark: 'Reset' } });
+    return { awb, reset: true };
+  }
+
   /** Counts by milestone code (for the mile dashboards). */
   async summary() {
     const rows = await this.prisma.shipment.groupBy({ by: ['statusCode'], _count: { _all: true } });
