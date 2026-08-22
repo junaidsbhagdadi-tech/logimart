@@ -74,7 +74,7 @@ export class RateCardsService {
       mode: d.mode || null,
       service: d.service || null,
       label: d.label || null,
-      volumetricDivisor: dec(num(d.volumetricDivisor, 5000)),
+      volumetricDivisor: dec(Math.min(27000, num(d.volumetricDivisor, 5000))), // hard cap 27000
       cft: dec(num(d.cft)),
       minChargeableKg: dec(num(d.minChargeableKg)),
       minFreight: dec(num(d.minFreight)),
