@@ -138,6 +138,39 @@ export class CustomersService {
     });
   }
 
+  /**
+   * Delete a customer. Blocked if the customer has transactional history
+   * (shipments / invoices / ledger / notes / claims) — those must stay for audit.
+   * A "clean" customer (only master-data config) is removed along with its config rows.
+   */
+  async remove(id: number) {
+    const cid = BigInt(id);
+    const c = await this.prisma.b2bClient.findUnique({
+      where: { id: cid },
+      include: { _count: { select: { shipments: true, invoices: true, ledger: true, notes: true, claims: true } } },
+    });
+    if (!c) throw new NotFoundException('Client not found');
+    const blockers: string[] = [];
+    if (c._count.shipments) blockers.push(`${c._count.shipments} shipment(s)`);
+    if (c._count.invoices) blockers.push(`${c._count.invoices} invoice(s)`);
+    if (c._count.ledger) blockers.push(`${c._count.ledger} ledger entr(ies)`);
+    if (c._count.notes) blockers.push(`${c._count.notes} debit/credit note(s)`);
+    if (c._count.claims) blockers.push(`${c._count.claims} claim(s)`);
+    if (blockers.length) {
+      throw new ConflictException(`${c.legalName} has ${blockers.join(', ')} — deactivate instead of deleting.`);
+    }
+    // Clean customer: remove its master-data config, then the customer.
+    return this.prisma.$transaction([
+      this.prisma.customerFuelSurcharge.deleteMany({ where: { clientId: cid } }),
+      this.prisma.customerOtherCharge.deleteMany({ where: { clientId: cid } }),
+      this.prisma.customerVolumetric.deleteMany({ where: { clientId: cid } }),
+      this.prisma.customerAddress.deleteMany({ where: { clientId: cid } }),
+      this.prisma.customerRateCard.deleteMany({ where: { clientId: cid } }),
+      this.prisma.rateCard.deleteMany({ where: { clientId: cid } }),
+      this.prisma.b2bClient.delete({ where: { id: cid } }),
+    ]).then(() => ({ ok: true, id }));
+  }
+
   // ============ sub-tabs (per customer) ============
   private dec(n: any) { return new Prisma.Decimal(n ?? 0); }
   private date(s?: string) { return s ? new Date(s) : null; }

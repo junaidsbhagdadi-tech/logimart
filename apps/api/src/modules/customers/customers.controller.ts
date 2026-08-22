@@ -94,4 +94,10 @@ export class CustomersController {
   update(@Param('id') id: string, @Body() dto: UpdateClientDto) {
     return this.customers.update(Number(id), dto);
   }
+
+  @Delete(':id')
+  @Roles(UserRole.SYS_ADMIN)
+  remove(@Param('id') id: string) {
+    return this.customers.remove(Number(id));
+  }
 }

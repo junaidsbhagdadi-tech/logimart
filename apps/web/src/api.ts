@@ -476,6 +476,8 @@ export const api = {
     request<{ total: number; created: number; results: { name: string; code?: string; ok: boolean; error?: string }[] }>('/api/v1/clients/bulk', { method: 'POST', body: JSON.stringify({ rows }) }),
   updateClient: (id: string, body: unknown) =>
     request<Client>(`/api/v1/clients/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteClient: (id: string | number) =>
+    request<{ ok: boolean; id: number }>(`/api/v1/clients/${id}`, { method: 'DELETE' }),
 
   // ---- customer sub-tabs ----
   listFuel: (clientId: string) => request<any[]>(`/api/v1/clients/${clientId}/fuel-surcharges`),

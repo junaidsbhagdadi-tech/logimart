@@ -31,8 +31,34 @@ export function Customers() {
   const [bulkResult, setBulkResult] = useState<{ total: number; created: number; results: { name: string; code?: string; ok: boolean; error?: string }[] } | null>(null);
   const [rcClient, setRcClient] = useState<Client | null>(null);
 
-  const load = () => { api.listClients().then(setClients).catch((e) => setError(e.message)); };
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const load = () => { api.listClients().then(setClients).catch((e) => setError(e.message)); setSel(new Set()); };
   useEffect(load, []);
+
+  const toggleSel = (id: string) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const allSelected = clients.length > 0 && sel.size === clients.length;
+  const toggleSelAll = () => setSel(allSelected ? new Set() : new Set(clients.map((c) => String(c.id))));
+
+  const removeOne = async (c: Client) => {
+    if (!confirm(`Delete customer ${c.legalName}? This cannot be undone.`)) return;
+    setError(''); setMsg('');
+    try { await api.deleteClient(c.id); setMsg(`Deleted ${c.legalName}.`); load(); }
+    catch (e: any) { setError(e.message); }
+  };
+
+  const bulkDelete = async () => {
+    if (sel.size === 0) return;
+    if (!confirm(`Delete ${sel.size} customer${sel.size > 1 ? 's' : ''}? This cannot be undone. Customers with shipments/invoices are kept (deactivate those instead).`)) return;
+    setError(''); setMsg('');
+    let ok = 0; const failed: string[] = [];
+    for (const id of sel) {
+      const c = clients.find((x) => String(x.id) === id);
+      try { await api.deleteClient(id); ok++; }
+      catch (e: any) { failed.push(c?.legalName ?? id); }
+    }
+    setMsg(`Deleted ${ok} customer${ok !== 1 ? 's' : ''}.${failed.length ? ` Kept ${failed.length} with history: ${failed.slice(0, 3).join(', ')}${failed.length > 3 ? '…' : ''}` : ''}`);
+    load();
+  };
 
   const bulkTemplate = () => {
     const csv = BULK_COLS + '\nACME001,Acme Traders Pvt Ltd,29ABCDE1234F1Z5,ABCDE1234F,12 MG Road,Bengaluru,Karnataka,560001,Ravi,9900112233,ravi@acme.test,Karnataka,Customer,Registered,500000,30,false\n';
@@ -224,11 +250,21 @@ export function Customers() {
 
       <div className="card">
         <h2>Customers ({clients.length})</h2>
+        {sel.size > 0 && (
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-soft, #f2f4f7)', borderRadius: 8, padding: '8px 12px', marginBottom: 10 }}>
+            <span><strong>{sel.size}</strong> selected</span>
+            <div className="row" style={{ gap: 8 }}>
+              <button className="secondary" style={{ padding: '4px 12px', fontSize: 13 }} onClick={() => setSel(new Set())}>Clear</button>
+              <button style={{ padding: '4px 12px', fontSize: 13, background: '#c0392b' }} onClick={bulkDelete}>🗑 Delete selected</button>
+            </div>
+          </div>
+        )}
         <table>
-          <thead><tr><th>Code</th><th>Name</th><th>GSTIN</th><th>PAN</th><th>City</th><th>Credit limit</th><th>Outstanding</th><th>Terms</th><th>Rate Cards</th><th>Status</th><th>Active</th></tr></thead>
+          <thead><tr><th style={{ width: 32 }}><input type="checkbox" checked={allSelected} onChange={toggleSelAll} style={{ width: 'auto' }} /></th><th>Code</th><th>Name</th><th>GSTIN</th><th>PAN</th><th>City</th><th>Credit limit</th><th>Outstanding</th><th>Terms</th><th>Rate Cards</th><th>Status</th><th>Active</th></tr></thead>
           <tbody>
             {clients.map((c) => (
-              <tr key={c.id} style={{ opacity: c.isActive === false ? 0.5 : 1 }}>
+              <tr key={c.id} style={{ opacity: c.isActive === false ? 0.5 : 1, ...(sel.has(String(c.id)) ? { background: 'var(--bg-soft, #f2f4f7)' } : {}) }}>
+                <td><input type="checkbox" checked={sel.has(String(c.id))} onChange={() => toggleSel(String(c.id))} style={{ width: 'auto' }} /></td>
                 <td>{c.accountCode}</td><td><strong>{c.legalName}</strong></td><td>{c.gstin ?? '—'}</td><td>{c.pan ?? '—'}</td>
                 <td>{c.city ?? '—'}</td><td>₹{c.creditLimit}</td><td>₹{c.outstandingBal}</td>
                 <td>Net {c.creditDays}</td>
@@ -237,10 +273,11 @@ export function Customers() {
                   <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} title="View / edit rate cards" onClick={() => setRcClient(c)}>👁 Cards</button>
                 </td>
                 <td>{c.isCash ? <span className="badge DOD">CASH</span> : c.isCreditHold ? <span className="badge PARTIAL">HOLD</span> : <span className="badge DELIVERED">OK</span>}</td>
-                <td>
-                  <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => toggleActive(c)}>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  <button className="secondary" style={{ padding: '4px 10px', fontSize: 12, marginRight: 6 }} onClick={() => toggleActive(c)}>
                     {c.isActive === false ? 'Activate' : 'Deactivate'}
                   </button>
+                  <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} title="Delete customer" onClick={() => removeOne(c)}>🗑</button>
                 </td>
               </tr>
             ))}
