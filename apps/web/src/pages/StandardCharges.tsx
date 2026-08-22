@@ -62,8 +62,8 @@ export function StandardCharges() {
               const showMin = isOda || isAppt || base.includes('VALUE');
               return (
                 <div key={c.code}>
-                  <label style={{ fontSize: 12 }}>{c.name} <span className="muted">({unit})</span></label>
-                  <input type="number" step="0.001" value={cur[c.code]?.value ?? ''} onChange={(e) => setCharge(c.code, 'value', e.target.value)} placeholder={isAppt ? '₹/kg' : '0'} />
+                  <label style={{ fontSize: 12 }}>{isOda ? `ODA — ${c.name}` : c.name} <span className="muted">({isOda ? 'flat + ₹/kg, min' : unit})</span></label>
+                  <input type="number" step="0.001" value={cur[c.code]?.value ?? ''} onChange={(e) => setCharge(c.code, 'value', e.target.value)} placeholder={isOda ? 'flat ₹' : isAppt ? '₹/kg' : '0'} />
                   {showMin && <input type="number" style={{ marginTop: 4 }} value={cur[c.code]?.min ?? ''} onChange={(e) => setCharge(c.code, 'min', e.target.value)} placeholder="min ₹ (opt)" />}
                   {isOda && <input type="number" style={{ marginTop: 4 }} value={cur[c.code]?.perKg ?? ''} onChange={(e) => setCharge(c.code, 'perKg', e.target.value)} placeholder="₹/kg (opt)" />}
                 </div>
