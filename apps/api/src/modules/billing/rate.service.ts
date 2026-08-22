@@ -287,12 +287,27 @@ export class RateService {
     });
     if (!cards.length) return null;
     const prod = String(shipment.product ?? '').toUpperCase();
-    const net = this.deriveNetwork(shipment);
     const byProduct = cards.filter((c) => !prod || String(c.product).toUpperCase() === prod);
     const pool = byProduct.length ? byProduct : cards;
+
+    // Canonical network "brand" for a vendor/network string, resolved via the Vendor master so
+    // vendor code / name / service variants of the same carrier match (e.g. BLUEDART-SFC ↔ BDR ↔
+    // BLUEDART all collapse to BLUEDART). Non-BlueDart resolves to the vendor code.
+    const vendors = await this.prisma.vendor.findMany({ select: { vendorCode: true, name: true } });
+    const norm = (s: any) => String(s ?? '').replace(/[^a-z0-9]/gi, '').toUpperCase();
+    const brand = (s: any): string => {
+      const n = norm(s);
+      if (!n || n === 'SELF') return n;
+      const v = vendors.find((x) => { const c = norm(x.vendorCode), nm = norm(x.name); return c === n || nm === n || (c && n.includes(c)) || (nm && n.includes(nm)) || (c && c.includes(n)); });
+      const nameN = v ? norm(v.name) : n;
+      if (nameN.includes('BLUEDART') || n.includes('BLUEDART')) return 'BLUEDART';
+      return v ? norm(v.vendorCode) : n;
+    };
+
+    const shipBrand = brand(shipment.vendor);
     return (
-      pool.find((c) => String(c.network).toUpperCase() === net) ||
-      pool.find((c) => String(c.network).toUpperCase() === 'SELF') ||
+      (shipBrand && shipBrand !== 'SELF' ? pool.find((c) => norm(c.network) !== 'SELF' && brand(c.network) === shipBrand) : undefined) ||
+      pool.find((c) => norm(c.network) === 'SELF') ||
       pool[0]
     );
   }
