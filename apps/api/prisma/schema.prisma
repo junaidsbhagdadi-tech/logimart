@@ -407,10 +407,10 @@ model Shipment {
   clientId     BigInt
   client       B2bClient      @relation(fields: [clientId], references: [id])
   serviceMode  ServiceMode
-  originHubId  BigInt
-  originHub    Hub            @relation("originHub", fields: [originHubId], references: [id])
-  destHubId    BigInt
-  destHub      Hub            @relation("destHub", fields: [destHubId], references: [id])
+  originHubId  BigInt?        // optional — direct city-to-city B2B lanes skip the hubs
+  originHub    Hub?           @relation("originHub", fields: [originHubId], references: [id])
+  destHubId    BigInt?
+  destHub      Hub?           @relation("destHub", fields: [destHubId], references: [id])
   originZone   String
   destZone     String
   pieceCount   Int

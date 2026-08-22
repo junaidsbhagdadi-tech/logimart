@@ -22,7 +22,7 @@ const CODES = new Set<string>(LIFECYCLE.map((l) => l.code));
 // Terminal states (DLD/RTD/CAN) have no next. A super admin may override any transition.
 const NEXT: Record<string, string[]> = {
   MAN: ['PKD', 'CAN'],
-  PKD: ['ORD'],
+  PKD: ['ORD', 'OFD'], // OFD = direct city-to-city (no hub); ORD = hub-routed
   ORD: ['DPD'],
   DPD: ['DRD'],
   DRD: ['OFD'],

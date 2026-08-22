@@ -199,7 +199,7 @@ export class ReportsService {
     const hubs = await this.prisma.hub.findMany({ select: { id: true, name: true, code: true } });
     const nm = new Map(hubs.map((h) => [h.id.toString(), `${h.code} — ${h.name}`]));
     const rows = g
-      .map((x) => ({ location: nm.get(x.originHubId.toString()) || x.originHubId.toString(), shipments: x._count._all, deadKg: Number(x._sum.totalDeadKg || 0).toFixed(2) }))
+      .map((x) => ({ location: (x.originHubId != null && (nm.get(x.originHubId.toString()) || x.originHubId.toString())) || 'Direct (no hub)', shipments: x._count._all, deadKg: Number(x._sum.totalDeadKg || 0).toFixed(2) }))
       .sort((a, b) => b.shipments - a.shipments);
     return { columns: [{ key: 'location', label: 'Origin location' }, { key: 'shipments', label: 'Shipments' }, { key: 'deadKg', label: 'Dead kg' }], rows };
   }

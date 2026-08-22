@@ -39,7 +39,7 @@ export class ComplianceService {
         gstin: s.consigneeGstin ?? null,
         phone: s.consigneePhone ?? null,
       },
-      route: { from: s.originHub.name, to: s.destHub.name, lane: `${s.originZone} -> ${s.destZone}` },
+      route: { from: s.originHub?.name ?? s.originZone, to: s.destHub?.name ?? s.destZone, lane: `${s.originZone} -> ${s.destZone}` },
       serviceMode: s.serviceMode,
       goods: { description: s.goodsDesc ?? 'General goods', hsnCode: s.hsnCode ?? null },
       declaredValue: s.declaredValue,

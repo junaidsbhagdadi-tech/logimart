@@ -30,7 +30,7 @@ export class TrackingService {
       status: s.status,
       statusCode: s.statusCode ?? 'MAN',
       currentLabel: labelOf(String(s.statusCode ?? 'MAN')),
-      destination: s.destHub.name,
+      destination: s.destHub?.name ?? s.consigneeCity ?? s.destZone,
       pieceCount: s.pieceCount,
       delivered,
       isShort: delivered > 0 && delivered < s.pieceCount,

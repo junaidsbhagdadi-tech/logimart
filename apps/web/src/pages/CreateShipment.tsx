@@ -147,8 +147,8 @@ export function CreateShipment() {
       const res = await api.createShipment({
         clientId: Number(clientId),
         serviceMode,
-        originHubId: originHubId ? Number(originHubId) : 1,
-        destHubId: destHubId ? Number(destHubId) : 2,
+        originHubId: originHubId ? Number(originHubId) : undefined,
+        destHubId: destHubId ? Number(destHubId) : undefined,
         originZone: originInfo?.region ?? 'SOUTH',
         destZone: destInfo?.region ?? 'SOUTH',
         originPincode: originPin || undefined,
@@ -283,14 +283,16 @@ export function CreateShipment() {
           {hubs.length > 0 && (
             <>
               <div>
-                <label>Origin hub</label>
+                <label>Origin hub <span className="muted">(optional — blank = direct)</span></label>
                 <select value={originHubId} onChange={(e) => setOriginHubId(e.target.value ? +e.target.value : '')}>
+                  <option value="">— Direct (no hub) —</option>
                   {hubs.map((hb) => <option key={hb.id} value={hb.id}>{hb.code} — {hb.name}</option>)}
                 </select>
               </div>
               <div>
-                <label>Destination hub</label>
+                <label>Destination hub <span className="muted">(optional — blank = direct)</span></label>
                 <select value={destHubId} onChange={(e) => setDestHubId(e.target.value ? +e.target.value : '')}>
+                  <option value="">— Direct (no hub) —</option>
                   {hubs.map((hb) => <option key={hb.id} value={hb.id}>{hb.code} — {hb.name}</option>)}
                 </select>
               </div>
@@ -414,12 +416,13 @@ export function CreateShipment() {
             {cwTouched && <button className="secondary" style={{ marginTop: 4, padding: '2px 8px', fontSize: 11 }} onClick={() => setCwTouched(false)}>↺ auto</button>}
           </div>
           <div>
-            <label>Vendor</label>
-            <select value={svc.vendor} onChange={(e) => { setVendorTouched(true); setSvc({ ...svc, vendor: e.target.value }); }}>
-              <option value="">SELF</option>
-              {vendors.map((v) => <option key={v.id} value={v.vendorCode || v.name}>{v.vendorCode} — {v.name}</option>)}
-              {svc.vendor && !vendors.some((v) => (v.vendorCode || v.name) === svc.vendor) && svc.vendor !== '' && <option value={svc.vendor}>{svc.vendor}</option>}
-            </select>
+            <label>Vendor <span className="muted">(type 3-letter code, e.g. BDR)</span></label>
+            <input list="lm-vendor-codes" value={svc.vendor} placeholder="SELF or vendor code"
+              onChange={(e) => { setVendorTouched(true); setSvc({ ...svc, vendor: e.target.value.toUpperCase() }); }} />
+            <datalist id="lm-vendor-codes">
+              {vendors.map((v) => <option key={v.id} value={(v.vendorCode || v.name).toUpperCase()}>{v.vendorCode} — {v.name}</option>)}
+            </datalist>
+            {(() => { const vc = svc.vendor.trim().toUpperCase(); const m = vendors.find((v) => String(v.vendorCode || '').toUpperCase() === vc); return vc && vc !== 'SELF' && m ? <div className="muted" style={{ fontSize: 11, marginTop: 4, color: 'var(--ok, #16a34a)' }}>✓ {m.name}</div> : null; })()}
             {autoCarrier && !vendorTouched && (
               <div className="muted" style={{ fontSize: 11, marginTop: 4, color: 'var(--brand)' }}>
                 🔀 Auto-picked from Service Mapping{autoCarrier.maxWeight ? ` (band ${autoCarrier.minWeight}–${autoCarrier.maxWeight}kg)` : ''}

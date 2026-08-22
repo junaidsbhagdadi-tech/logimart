@@ -34,8 +34,8 @@ export class CreateShipmentDto {
   @IsEnum(ServiceMode)
   serviceMode!: ServiceMode;
 
-  @IsInt() originHubId!: number;
-  @IsInt() destHubId!: number;
+  @IsOptional() @IsInt() originHubId?: number; // optional — direct city-to-city lanes skip hubs
+  @IsOptional() @IsInt() destHubId?: number;
   @IsString() originZone!: string;
   @IsString() destZone!: string;
   @IsOptional() @IsString() originPincode?: string; // if set, derives originZone (region)
