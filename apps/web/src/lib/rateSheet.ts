@@ -10,7 +10,7 @@ export type ParseResult = {
 };
 
 // Cargo (Apex/Surface) zones vs courier (DP/TDD/NDD) zones.
-const CARGO_ZONE = /^(N[1-4]|C[1-2]|W[1-3]|S[1-3]|NE[1-3])$/i;
+const CARGO_ZONE = /^(N[1-4]|NE[1-3]|C[1-2]|W[1-3]|S[1-3]|E[1-3])$/i;
 
 // The 18 transit zones, ordered as in the TAT sheet.
 export const TAT_ZONES = ['N1', 'N2', 'N3', 'N4', 'C1', 'C2', 'W1', 'W2', 'W3', 'S1', 'S2', 'S3', 'E1', 'E2', 'E3', 'NE1', 'NE2', 'NE3'];
