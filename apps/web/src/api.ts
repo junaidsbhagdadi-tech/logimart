@@ -627,10 +627,13 @@ export const api = {
     request<{
       awb: string;
       status: string;
+      statusCode: string;
+      currentLabel: string;
       destination: string;
       pieceCount: number;
       delivered: number;
       isShort: boolean;
+      expectedDelivery?: string | null;
       timeline: { checkpoint: string; label: string; at: string }[];
     }>(`/api/v1/track/${awb}`),
 };
