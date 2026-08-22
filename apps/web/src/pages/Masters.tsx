@@ -37,11 +37,11 @@ const MASTERS: MasterDef[] = [
   ] },
   { key: 'CHARGE', label: 'Charges', icon: '💱', fields: [
     F('code', 'Charge code'), F('name', 'Charge name'),
-    F('baseOn', 'Calculated on', { attr: true, type: 'select', options: ['FLAT', 'Actual Weight', 'Freight', 'Shipment Value', 'ODA'] }),
+    F('baseOn', 'Calculated on', { attr: true, type: 'select', options: ['FLAT', 'Chargeable Weight', 'Actual Weight', 'Freight', 'Shipment Value', 'ODA'] }),
     F('rate', 'Rate', { attr: true, type: 'number' }),
     F('hsn', 'HSN', { attr: true }),
     F('sequence', 'Sequence', { attr: true, type: 'number' }),
-    F('applyFuel', 'Apply fuel', { attr: true, type: 'checkbox' }),
+    F('applyFuel', 'FSC applicable (apply fuel)', { attr: true, type: 'checkbox' }),
     F('taxOnFuel', 'Tax on fuel', { attr: true, type: 'checkbox' }),
     F('tax', 'Apply tax', { attr: true, type: 'checkbox' }),
   ] },

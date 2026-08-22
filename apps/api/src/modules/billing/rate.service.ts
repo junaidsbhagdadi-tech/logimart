@@ -395,7 +395,7 @@ export class RateService {
     const freight = r2(Math.max(priced.freight, Number(card.minFreight ?? 0)));
     const useDsc = surface && String(card.fuelMode ?? 'FLAT').toUpperCase() === 'DYNAMIC';
     const fuelPct = await this.cardFuelPct(card, surface);
-    const fuel = r2(freight * (fuelPct / 100));
+    let fuel = r2(freight * (fuelPct / 100));
     const invVal = Number(shipment.shipmentValue ?? shipment.declaredValue ?? 0);
     // Accessorial values are master-driven: read from the card's `charges` JSON keyed by
     // CHARGE code, falling back to the legacy fixed column so existing cards bill unchanged.
@@ -453,6 +453,7 @@ export class RateService {
     const BUILT_IN = new Set(['FOV', 'ODA', 'TOPAY', 'APPT', 'LOADING', 'UNLOADING', 'DOCKET', 'AWB', 'EMERGENCY', 'ENVIRONMENT', 'ENVIRONMENTAL', 'OSP', 'FSC', 'FUEL', 'FREIGHT']);
     const customLines: { head: string; amount: number }[] = [];
     let customTotal = 0;
+    let fuelableExtra = 0; // custom charges flagged "FSC applicable" — fuel is charged on these too
     if (Object.keys(CJ).length) {
       const master = await this.prisma.masterEntry.findMany({ where: { type: 'CHARGE', active: true } });
       for (const cm of master) {
@@ -461,15 +462,18 @@ export class RateService {
         const conf = CJ[cm.code] ?? CJ[code];
         const v = conf && conf.value != null && conf.value !== '' ? Number(conf.value) : 0;
         if (!v) continue;
+        // "Chargeable/Actual Weight" bill per chargeable kg; Freight/Value are %; else FLAT ₹.
         const baseOn = String((cm.attrs as any)?.baseOn || 'FLAT').toUpperCase();
         let amt = baseOn === 'FREIGHT' ? (freight * v) / 100
           : baseOn.includes('VALUE') ? Math.max((invVal * v) / 100, Number(conf.min ?? 0))
           : baseOn.includes('WEIGHT') ? v * chargeableKg
           : v; // FLAT
         amt = r2(amt);
-        if (amt > 0) { customLines.push({ head: cm.name, amount: amt }); customTotal += amt; }
+        if (amt > 0) { customLines.push({ head: cm.name, amount: amt }); customTotal += amt; if ((cm.attrs as any)?.applyFuel) fuelableExtra += amt; }
       }
     }
+    // Charges marked "FSC applicable" add to the fuel-surcharge base.
+    if (fuelableExtra > 0 && fuelPct > 0) fuel = r2(fuel + (fuelableExtra * fuelPct) / 100);
 
     const lines = [{ head: `Freight (${priced.basis})`, amount: freight }];
     // Diesel Surcharge only for surface (DSC); air/express/DP show flat "Fuel".
