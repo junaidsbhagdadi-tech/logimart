@@ -102,13 +102,13 @@ export class InvoiceService {
     const total = +(subtotal + tax).toFixed(2);
 
     // Place of supply → CGST+SGST (intra-state) vs IGST (inter-state).
-    const carrierState = process.env.COMPANY_STATE_CODE ?? '29'; // Karnataka
+    const carrierState = process.env.COMPANY_STATE_CODE ?? '07'; // Delhi (Excelex Express Logistics LLP)
     const clientState = client.gstin && client.gstin.length >= 2 ? client.gstin.slice(0, 2) : null;
     const intraState = clientState ? clientState === carrierState : true;
     const cgst = intraState ? +(tax / 2).toFixed(2) : 0;
     const sgst = intraState ? +(tax / 2).toFixed(2) : 0;
     const igst = intraState ? 0 : tax;
-    const placeOfSupply = stateName(clientState) ?? client.city ?? stateName(carrierState) ?? 'Karnataka';
+    const placeOfSupply = stateName(clientState) ?? client.city ?? stateName(carrierState) ?? 'Delhi';
 
     const invoiceNo = `INV-${client.accountCode}-${new Date(periodEnd).toISOString().slice(0, 7)}-${Date.now()
       .toString()
@@ -194,7 +194,7 @@ export class InvoiceService {
       include: { pieces: { select: { status: true, deadKg: true, volKg: true, lengthCm: true, widthCm: true, heightCm: true } } },
     });
 
-    const carrierState = process.env.COMPANY_STATE_CODE ?? '29';
+    const carrierState = process.env.COMPANY_STATE_CODE ?? '07';
     const clientState = client.gstin && client.gstin.length >= 2 ? client.gstin.slice(0, 2) : null;
     const intraState = clientState ? clientState === carrierState : true;
     const vendorCode = (v?: string | null) => (v && String(v).toUpperCase().startsWith('BLUEDART') ? 'BDR' : (v || 'SELF'));

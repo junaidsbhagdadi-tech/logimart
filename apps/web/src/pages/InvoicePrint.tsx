@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api, Invoice } from '../api';
 import { COMPANY } from '../company';
-import { Logo } from '../components/Logo';
 
 /** Indian-system number to words (rupees). */
 function rupeesInWords(n: number): string {
@@ -113,11 +112,11 @@ export function InvoicePrint() {
             <div><span className="lbl">Place of Supply:</span> {inv.placeOfSupply ?? c?.state ?? '—'}</div>
           </div>
           <div className="pad" style={{ flex: 1 }}>
-            <div style={{ marginBottom: 4 }}><Logo height={34} /></div>
-            <div style={{ fontWeight: 700 }}>{COMPANY.legalName}</div>
-            <div className="k">{COMPANY.addressLines.join(', ')}</div>
+            <div style={{ fontWeight: 800, fontSize: 14 }}>{COMPANY.legalName}</div>
+            <div className="k">{COMPANY.addressLines.join(' ')}</div>
             <div className="k">{COMPANY.phones}{COMPANY.email ? ` · ${COMPANY.email}` : ''}</div>
-            {COMPANY.pan && <div><span className="lbl">PAN No.:</span> {COMPANY.pan}</div>}
+            {(COMPANY as any).cin && <div><span className="lbl">CIN:</span> {(COMPANY as any).cin}{COMPANY.pan ? <>  ·  <span className="lbl">PAN No.:</span> {COMPANY.pan}</> : null}</div>}
+            {!(COMPANY as any).cin && COMPANY.pan && <div><span className="lbl">PAN No.:</span> {COMPANY.pan}</div>}
             <div><span className="lbl">GST No.:</span> {COMPANY.gstin}</div>
             <div><span className="lbl">HSN/SAC:</span> {inv.sacCode ?? COMPANY.sacCode}</div>
           </div>

@@ -4,23 +4,26 @@
  * details (legal name, address, GSTIN, AWB/LR prefix) once provided.
  */
 export const COMPANY = {
-  legalName: 'Logimart Logistics Pvt Ltd', // TODO(logimart): confirm exact legal name
+  legalName: 'EXCELEX EXPRESS LOGISTICS LLP', // billing legal entity (LogiMart is the operating brand)
   brand: 'Logimart',
   tagline: 'Surface & Domestic Air Cargo',
   address: {
-    line1: 'TODO(logimart): address line 1',
-    line2: 'TODO(logimart): address line 2',
-    city: 'TODO(logimart): city',
-    pincode: 'TODO',
+    line1: 'Office No. 27/2, Road No. 2, Block A, Near Aeroporto Hotel',
+    line2: 'Mahipalpur',
+    city: 'New Delhi',
+    pincode: '110037',
     country: 'India',
   },
-  phones: ['TODO(logimart): phone'],
-  emails: ['TODO(logimart): email'],
-  website: 'TODO(logimart): website',
-  contact: { name: 'TODO(logimart): contact name', title: 'TODO(logimart): title' },
+  phones: ['011-71859599'],
+  emails: ['accounts@excelexlog.com'],
+  website: '',
+  contact: { name: '', title: '' },
 
-  // Carrier GSTIN for LR / e-way bill / e-invoice. TODO(logimart): set real GSTIN.
-  gstin: process.env.COMPANY_GSTIN ?? 'TODO_LOGIMART_GSTIN',
+  // Carrier GSTIN for LR / e-way bill / e-invoice.
+  gstin: process.env.COMPANY_GSTIN ?? '07AAIFE6185E1ZC',
+  pan: 'AAIFE6185E',
+  cin: 'AAU-3745',
+  stateCode: process.env.COMPANY_STATE_CODE ?? '07', // Delhi
 
   // AWB / LR prefix used when generating master waybill numbers.
   // Single-letter prefix + 10-digit running number (Xpresion-style), e.g. L1000000045.

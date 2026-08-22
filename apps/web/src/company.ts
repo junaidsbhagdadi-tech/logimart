@@ -1,22 +1,23 @@
-// Carrier identity for printed documents (mirror of apps/api config/company.ts).
-// TODO(logimart): replace placeholders with Logimart's real details.
+// Billing / carrier legal entity for printed documents (mirror of apps/api config/company.ts).
+// LogiMart is the operating software/brand; the invoicing legal entity is Excelex Express Logistics LLP.
 export const COMPANY = {
-  legalName: 'Logimart Logistics Pvt Ltd', // TODO(logimart): confirm exact legal name
+  legalName: 'EXCELEX EXPRESS LOGISTICS LLP',
   tagline: 'Surface & Domestic Air Cargo',
   addressLines: [
-    'TODO(logimart): address line 1',
-    'TODO(logimart): address line 2, City - PIN',
+    'Office No. 27/2, Road No. 2, Block A, Near Aeroporto Hotel,',
+    'Mahipalpur, New Delhi - 110037',
   ],
-  phones: 'TODO(logimart): phone',
-  email: 'TODO(logimart): email',
-  gstin: 'TODO_LOGIMART_GSTIN',
-  cin: '', // TODO(logimart): CIN if applicable
-  pan: 'TODO_LOGIMART_PAN', // TODO(logimart): PAN
+  phones: '011-71859599',
+  email: 'accounts@excelexlog.com',
+  gstin: '07AAIFE6185E1ZC',
+  cin: 'AAU-3745',
+  pan: 'AAIFE6185E',
+  stateCode: '07', // Delhi — drives CGST/SGST (intra) vs IGST (inter) on the invoice
   sacCode: '996812', // SAC for goods transport / courier services
-  jurisdiction: 'Delhi', // legal jurisdiction printed in T&C — TODO(logimart): confirm
-  // Bank details for the invoice NEFT/RTGS footer — ICICI (from the invoice-format attachment).
+  jurisdiction: 'Delhi',
+  // Bank details for the invoice NEFT/RTGS footer — ICICI (real, per the invoice format).
   bank: {
-    beneficiary: 'Logimart Logistics Pvt Ltd', // TODO(logimart): confirm beneficiary name on the account
+    beneficiary: 'EXCELEX EXPRESS LOGISTICS LLP',
     name: 'ICICI BANK',
     accountNo: '347405000806',
     ifsc: 'ICIC0003474',
@@ -27,7 +28,8 @@ export const COMPANY = {
   terms: [
     'Payment should be made within 7 days from the date of Invoice; delayed payment will attract interest @ 24% P.A.',
     'All disputes are subject to Delhi jurisdiction only.',
-    'Cheque / Draft should be made in favour of "Logimart Logistics Pvt Ltd".',
+    'Cheque / Draft should be made in favour of "EXCELEX EXPRESS LOGISTICS LLP".',
+    'Excelex EX liability is as per the clause specified on the reverse of the airway bill.',
     'Any discrepancy in this invoice must be communicated in writing within 7 days of the date of invoice.',
     'This is a computer-generated invoice and does not require a signature.',
   ],
