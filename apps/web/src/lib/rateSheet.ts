@@ -11,6 +11,45 @@ export type ParseResult = {
 
 // Cargo (Apex/Surface) zones vs courier (DP/TDD/NDD) zones.
 const CARGO_ZONE = /^(N[1-4]|C[1-2]|W[1-3]|S[1-3]|NE[1-3])$/i;
+
+// The 18 transit zones, ordered as in the TAT sheet.
+export const TAT_ZONES = ['N1', 'N2', 'N3', 'N4', 'C1', 'C2', 'W1', 'W2', 'W3', 'S1', 'S2', 'S3', 'E1', 'E2', 'E3', 'NE1', 'NE2', 'NE3'];
+
+/**
+ * Parse a Transit-TAT workbook (one sheet per mode: SURFACE, APEX/AIR) into
+ * { MODE: { originZone: { destZone: days } } }. Robust to cell offset — finds each
+ * sheet's zone header row and the origin column, then reads the day matrix.
+ */
+export async function parseTatWorkbook(file: File): Promise<Record<string, Record<string, Record<string, number>>>> {
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: 'array' });
+  const out: Record<string, Record<string, Record<string, number>>> = {};
+  for (const name of wb.SheetNames) {
+    const raw = name.trim().toUpperCase();
+    const mode = raw === 'AIR' ? 'APEX' : raw;
+    if (mode !== 'SURFACE' && mode !== 'APEX') continue;
+    const rows = XLSX.utils.sheet_to_json<any[]>(wb.Sheets[name], { header: 1, raw: true, blankrows: false });
+    let hdrRow = -1, hdrScore = -1;
+    rows.forEach((r, i) => { const s = (r || []).filter((v) => CARGO_ZONE.test(String(v ?? '').trim())).length; if (s > hdrScore) { hdrScore = s; hdrRow = i; } });
+    if (hdrRow < 0) continue;
+    const hdr = (rows[hdrRow] || []).map((v) => String(v ?? '').trim().toUpperCase());
+    const destCols: { idx: number; zone: string }[] = [];
+    hdr.forEach((v, idx) => { if (CARGO_ZONE.test(v)) destCols.push({ idx, zone: v }); });
+    if (!destCols.length) continue;
+    const firstDest = destCols[0].idx;
+    const matrix: Record<string, Record<string, number>> = {};
+    for (let i = hdrRow + 1; i < rows.length; i++) {
+      const r = rows[i] || [];
+      let origin = '';
+      for (let c = 0; c < firstDest; c++) { const v = String(r[c] ?? '').trim().toUpperCase(); if (CARGO_ZONE.test(v)) { origin = v; break; } }
+      if (!origin) continue;
+      matrix[origin] = {};
+      for (const d of destCols) { const n = num(r[d.idx]); if (n > 0) matrix[origin][d.zone] = n; }
+    }
+    out[mode] = matrix;
+  }
+  return out;
+}
 const COURIER_ZONE = /^(A|B|C|OTHER)$/i;
 
 const num = (v: any): number => {

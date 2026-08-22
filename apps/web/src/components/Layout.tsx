@@ -59,7 +59,7 @@ export function Layout() {
     { title: 'Masters & Setup', items: [
       { to: '/ftl-rates', icon: '🚛', label: 'FTL Rates', show: isAdminFin },
       { to: '/service-mapping', icon: '🔀', label: 'Service Mapping', show: canMaster },
-      { to: '/pincodes', icon: '📍', label: 'Pincodes', show: canMaster },
+      { to: '/pincodes', icon: '📍', label: 'Pincodes and TAT', show: canMaster },
       { to: '/masters', icon: '🗃', label: 'Masters', show: canMaster },
       { to: '/tax', icon: '🧮', label: 'Tax Filing', show: isAdminFin },
     ] },
