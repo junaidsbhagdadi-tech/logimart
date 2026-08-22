@@ -523,6 +523,8 @@ export const api = {
   listVendors: () => request<any[]>('/api/v1/vendors'),
   getVendor: (id: string) => request<any>(`/api/v1/vendors/${id}`),
   createVendor: (body: unknown) => request('/api/v1/vendors', { method: 'POST', body: JSON.stringify(body) }),
+  updateVendor: (id: string, body: unknown) => request(`/api/v1/vendors/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteVendor: (id: string) => request(`/api/v1/vendors/${id}`, { method: 'DELETE' }),
   addVendorPayment: (id: string, body: unknown) =>
     request(`/api/v1/vendors/${id}/payments`, { method: 'POST', body: JSON.stringify(body) }),
   markVendorPaid: (paymentId: string) =>

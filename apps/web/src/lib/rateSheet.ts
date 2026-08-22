@@ -416,3 +416,50 @@ export function exportRateCardsXlsx(clientName: string, cards: any[]): void {
 
   XLSX.writeFile(wb, `ratecards-${clientName.replace(/[^a-z0-9]+/gi, '_')}.xlsx`);
 }
+
+/** Parse a customer-code-wise cargo rate workbook. Layout: columns CUSTOMER · VENDOR · PRODUCT ·
+ *  Origin\Dest · <18 dest-zone columns>. Each block = one (customer, vendor, product); the block's
+ *  rows are origin zones with a ₹/kg rate per dest zone. Returns one entry per block. */
+export async function parseBulkCargoRates(file: File): Promise<{ customerCode: string; vendor: string; product: string; slabs: ParsedSlab[] }[]> {
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: 'array' });
+  const out: { customerCode: string; vendor: string; product: string; slabs: ParsedSlab[] }[] = [];
+  const findCol = (hdr: string[], ...keys: string[]) => hdr.findIndex((h) => keys.some((k) => h.includes(k)));
+
+  for (const sheetName of wb.SheetNames) {
+    const rows = XLSX.utils.sheet_to_json<any[]>(wb.Sheets[sheetName], { header: 1, raw: true, blankrows: false });
+    // header row = the one with the most dest-zone codes
+    let hdrRow = -1, best = 0;
+    rows.forEach((r, i) => { const n = (r || []).filter((v) => CARGO_ZONE.test(String(v ?? '').trim())).length; if (n > best) { best = n; hdrRow = i; } });
+    if (hdrRow < 0) continue;
+    const hdr = (rows[hdrRow] || []).map((v) => String(v ?? '').trim().toUpperCase());
+    const custCol = findCol(hdr, 'CUSTOM');
+    const vendCol = findCol(hdr, 'VENDOR');
+    const prodCol = findCol(hdr, 'PRODUCT');
+    const originCol = findCol(hdr, 'ORIGIN', 'DEST');
+    const destCols: { idx: number; zone: string }[] = [];
+    hdr.forEach((v, idx) => { if (CARGO_ZONE.test(v)) destCols.push({ idx, zone: v }); });
+    if (prodCol < 0 || originCol < 0 || !destCols.length) continue;
+
+    let cur: { customerCode: string; vendor: string; product: string; slabs: ParsedSlab[] } | null = null;
+    for (let i = hdrRow + 1; i < rows.length; i++) {
+      const r = rows[i] || [];
+      const prod = String(r[prodCol] ?? '').trim();
+      if (prod) { // new block
+        if (cur && cur.slabs.length) out.push(cur);
+        cur = {
+          customerCode: String(r[custCol] ?? '').trim(),
+          vendor: String(r[vendCol] ?? '').trim().toUpperCase(),
+          product: prod.toUpperCase(),
+          slabs: [],
+        };
+      }
+      if (!cur) continue;
+      const origin = String(r[originCol] ?? '').replace(/\s+/g, '').toUpperCase();
+      if (!CARGO_ZONE.test(origin)) continue;
+      for (const d of destCols) { const rate = num(r[d.idx]); if (rate > 0) cur.slabs.push({ originZone: origin, zone: d.zone, rateType: 'PLUSKG', weight: 1, rate }); }
+    }
+    if (cur && cur.slabs.length) out.push(cur);
+  }
+  return out;
+}

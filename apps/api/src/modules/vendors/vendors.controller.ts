@@ -53,6 +53,18 @@ export class VendorsController {
     return this.vendors.get(Number(id));
   }
 
+  @Patch(':id')
+  @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  update(@Param('id') id: string, @Body() dto: any) {
+    return this.vendors.update(Number(id), dto);
+  }
+
+  @Delete(':id')
+  @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  remove(@Param('id') id: string) {
+    return this.vendors.remove(Number(id));
+  }
+
   @Post(':id/payments')
   addPayment(@Param('id') id: string, @Body() dto: any) {
     return this.vendors.addPayment(Number(id), dto);

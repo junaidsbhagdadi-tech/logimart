@@ -6,6 +6,29 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class VendorsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private vendorData(dto: any) {
+    return {
+      name: dto.name,
+      modes: (dto.modes || []).join?.(',') ?? dto.modes ?? '',
+      gstin: dto.gstin, pan: dto.pan, addressLine: dto.addressLine, city: dto.city, state: dto.state, pincode: dto.pincode,
+      contactName: dto.contactName, contactPhone: dto.contactPhone, contactEmail: dto.contactEmail,
+      vendorCode: dto.vendorCode || null, contactPerson: dto.contactPerson || null, addressLine2: dto.addressLine2 || null,
+      tel1: dto.tel1 || null, tel2: dto.tel2 || null, fax: dto.fax || null, website: dto.website || null, mode: dto.mode || null,
+      fuelHead: dto.fuelHead || null, currency: dto.currency || 'INR', origin: dto.origin || null, vendorZip: dto.vendorZip || null,
+      isGlobal: !!dto.isGlobal, gstEnabled: !!dto.gstEnabled, volRoundOff: !!dto.volRoundOff,
+    };
+  }
+
+  async update(id: number, dto: any) {
+    await this.get(id);
+    return this.prisma.vendor.update({ where: { id: BigInt(id) }, data: this.vendorData(dto) });
+  }
+
+  async remove(id: number) {
+    await this.get(id);
+    return this.prisma.vendor.delete({ where: { id: BigInt(id) } });
+  }
+
   create(dto: any) {
     return this.prisma.vendor.create({
       data: {

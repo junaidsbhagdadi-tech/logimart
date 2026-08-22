@@ -14,6 +14,7 @@ export function Vendors() {
   const [rows, setRows] = useState<any[]>([]);
   const [form, setForm] = useState({ ...blank });
   const [showAdd, setShowAdd] = useState(false);
+  const [editing, setEditing] = useState<any | null>(null);
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
 
@@ -23,10 +24,24 @@ export function Vendors() {
   const toggleMode = (m: string) =>
     setForm((f) => ({ ...f, modes: f.modes.includes(m) ? f.modes.filter((x) => x !== m) : [...f.modes, m] }));
 
+  const openEdit = (v: any) => {
+    setEditing(v);
+    setForm({ ...blank, ...v, modes: typeof v.modes === 'string' ? v.modes.split(',').filter(Boolean) : (v.modes || []) });
+    setShowAdd(true); setError(''); setMsg('');
+  };
+
   const create = async () => {
     setError(''); setMsg('');
-    try { await api.createVendor(form); setMsg(`Vendor ${form.name} added`); setForm({ ...blank }); setShowAdd(false); load(); }
-    catch (e: any) { setError(e.message); }
+    try {
+      if (editing) { await api.updateVendor(editing.id, form); setMsg(`Vendor ${form.name} updated`); }
+      else { await api.createVendor(form); setMsg(`Vendor ${form.name} added`); }
+      setForm({ ...blank }); setEditing(null); setShowAdd(false); load();
+    } catch (e: any) { setError(e.message); }
+  };
+
+  const remove = async (v: any) => {
+    if (!confirm(`Delete vendor ${v.name}? This cannot be undone.`)) return;
+    try { await api.deleteVendor(v.id); load(); } catch (e: any) { setError(e.message); }
   };
 
   const addAdvance = async (id: string) => {
@@ -61,10 +76,10 @@ export function Vendors() {
       </div>
 
       <div className="row" style={{ justifyContent: 'flex-end', marginBottom: 4 }}>
-        <button onClick={() => { setForm({ ...blank }); setShowAdd(true); }}>＋ Add Vendor</button>
+        <button onClick={() => { setEditing(null); setForm({ ...blank }); setShowAdd(true); }}>＋ Add Vendor</button>
       </div>
 
-      {showAdd && <Modal title="Add Vendor" width={880} onClose={() => setShowAdd(false)}>
+      {showAdd && <Modal title={editing ? `Edit ${editing.name}` : 'Add Vendor'} width={880} onClose={() => { setShowAdd(false); setEditing(null); }}>
         <div className="grid cols-4">
           <div><label>Vendor Code</label><input value={form.vendorCode} onChange={(e) => setForm({ ...form, vendorCode: e.target.value.toUpperCase() })} /></div>
           <div><label>Vendor Name *</label><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
@@ -120,7 +135,7 @@ export function Vendors() {
         </div>
         <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
           <button className="secondary" onClick={() => setShowAdd(false)}>Cancel</button>
-          <button disabled={!form.name} onClick={create}>Add vendor</button>
+          <button disabled={!form.name} onClick={create}>{editing ? 'Update vendor' : 'Add vendor'}</button>
         </div>
       </Modal>}
 
@@ -137,7 +152,11 @@ export function Vendors() {
                 <td>{v.pan ?? '—'}</td>
                 <td>₹{Number(v.advancePaid).toLocaleString('en-IN')}</td>
                 <td>{v.advancePending > 0 ? <span className="badge PARTIAL">₹{Number(v.advancePending).toLocaleString('en-IN')}</span> : '—'}</td>
-                <td><button className="secondary" onClick={() => addAdvance(v.id)}>+ Advance</button></td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  <button className="secondary" style={{ padding: '4px 10px', fontSize: 12, marginRight: 6 }} onClick={() => addAdvance(v.id)}>+ Advance</button>
+                  <button className="secondary" style={{ padding: '4px 10px', fontSize: 12, marginRight: 6 }} onClick={() => openEdit(v)}>✎ Edit</button>
+                  <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => remove(v)}>🗑</button>
+                </td>
               </tr>
             ))}
             {rows.length === 0 && <tr><td colSpan={8} className="muted">No vendors yet.</td></tr>}
