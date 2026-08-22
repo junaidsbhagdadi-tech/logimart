@@ -65,6 +65,13 @@ export class BillingController {
     return this.invoices.billWorksheet(Number(clientId), from, to);
   }
 
+  /** Head-wise charge breakup of billed AWBs (freight/fuel/fov/oda/…) for Excel export. */
+  @Get('billing/charge-breakup')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  chargeBreakup(@Query('clientId') clientId?: string, @Query('from') from?: string, @Query('to') to?: string) {
+    return this.invoices.chargeBreakup(clientId ? Number(clientId) : undefined, from, to);
+  }
+
   /** AWB-wise profit/loss: vendor cost (uploaded bills) vs our sell (rate engine). */
   @Get('billing/pnl')
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)

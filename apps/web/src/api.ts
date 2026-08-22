@@ -333,6 +333,14 @@ export const api = {
   billWorksheet: (clientId: string | number, from?: string, to?: string) =>
     request<{ columns: { header: string; key: string }[]; client: { accountCode: string; legalName: string }; count: number; rows: Record<string, any>[] }>(
       `/api/v1/billing/bill-worksheet?clientId=${clientId}${from ? `&from=${from}` : ''}${to ? `&to=${to}` : ''}`),
+  chargeBreakup: (clientId?: string | number, from?: string, to?: string) =>
+    request<{
+      client: { legalName: string; accountCode: string; gstin: string | null } | null;
+      from: string | null; to: string | null;
+      heads: { key: string; label: string }[];
+      rows: { invoiceNo: string; awb: string; bookingDate: string | null; destination: string; vendor: string; product: string; chargeableKg: number; heads: Record<string, number>; taxable: number; gstPct: number; gst: number; total: number }[];
+      summary: { invoices: number; awbs: number; chargeableKg: number; headTotals: Record<string, number>; taxable: number; cgst: number; sgst: number; igst: number; grandTotal: number };
+    }>(`/api/v1/billing/charge-breakup?${[clientId ? `clientId=${clientId}` : '', from ? `from=${from}` : '', to ? `to=${to}` : ''].filter(Boolean).join('&')}`),
   listInvoices: () => request<Invoice[]>('/api/v1/billing/invoices'),
   getInvoice: (id: string) => request<Invoice>(`/api/v1/billing/invoices/${id}`),
   generateInvoice: (clientId: number, periodStart: string, periodEnd: string) =>

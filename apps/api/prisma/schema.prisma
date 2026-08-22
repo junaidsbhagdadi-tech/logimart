@@ -744,6 +744,7 @@ model InvoiceLineItem {
   freight       Decimal  @default(0) @db.Decimal(14, 2) // base freight (the invoice "Amount" column)
   fuel          Decimal  @default(0) @db.Decimal(14, 2) // fuel surcharge portion
   otherCharges  Decimal  @default(0) @db.Decimal(14, 2) // FOV/ODA/docket/handling/etc.
+  breakup       Json?    // full head-by-head charge breakdown as billed (freight/fuel/fov/oda/docket/handling/awb/…)
   isDisputed    Boolean  @default(false) // locks THIS line, not the whole invoice
   disputeReason String?
 

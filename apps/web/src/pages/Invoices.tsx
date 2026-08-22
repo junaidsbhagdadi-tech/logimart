@@ -60,6 +60,51 @@ export function Invoices() {
   };
   const printAll = () => { filtered.slice(0, 30).forEach((i) => window.open(`/invoices/${i.id}/print`, '_blank')); };
 
+  // Head-wise charge-breakup Excel (freight/fuel/fov/oda/docket/handling/awb/…).
+  const [bkBusy, setBkBusy] = useState(false);
+  const chargeBreakupXls = async () => {
+    setError(''); setMsg(''); setBkBusy(true);
+    try {
+      const clientId = fClient ? clients.find((c) => c.accountCode === fClient)?.id : undefined;
+      const data = await api.chargeBreakup(clientId, fFrom || undefined, fTo || undefined);
+      if (!data.rows.length) { setError('No billed AWBs match these filters — generate an invoice first, or widen the date range.'); return; }
+      const XLSX = await import('xlsx');
+      const dd = (s: string | null) => (s ? new Date(s).toLocaleDateString('en-GB') : '');
+      const headCols = data.heads;
+
+      // Sheet 1 — per-AWB detail
+      const head1 = ['SNo', 'Invoice No.', 'AWB No.', 'Booking Date', 'Destination', 'Vendor', 'Product', 'Chg. Wt (kg)',
+        ...headCols.map((h) => h.label), 'Taxable Value', 'GST %', 'GST Amount', 'Total'];
+      const body1 = data.rows.map((r, i) => [
+        i + 1, r.invoiceNo, r.awb, dd(r.bookingDate), r.destination, r.vendor, r.product, r.chargeableKg,
+        ...headCols.map((h) => r.heads[h.key] ?? 0), r.taxable, `${r.gstPct}%`, r.gst, r.total,
+      ]);
+      const s = data.summary;
+      const totalRow = ['', '', `TOTAL — ${s.awbs} AWBs`, '', '', '', '', s.chargeableKg,
+        ...headCols.map((h) => s.headTotals[h.key] ?? 0), s.taxable, '', +(s.cgst + s.sgst + s.igst).toFixed(2), s.grandTotal];
+      const ws1 = XLSX.utils.aoa_to_sheet([['Charge Breakup — billed AWBs'], [], head1, ...body1, [], totalRow]);
+      ws1['!cols'] = head1.map((h) => ({ wch: Math.max(10, String(h).length + 2) }));
+
+      // Sheet 2 — head-wise summary
+      const sumRows: any[][] = [
+        ['Customer', data.client ? `${data.client.legalName} (${data.client.accountCode})` : 'All customers'],
+        ['Period', `${data.from ? dd(data.from) : '—'} to ${data.to ? dd(data.to) : '—'}`],
+        ['Invoices', s.invoices], ['AWBs', s.awbs], ['Chargeable Weight (kg)', s.chargeableKg], [],
+        ...headCols.map((h) => [h.label, s.headTotals[h.key] ?? 0]),
+        ['Taxable Value', s.taxable], ['CGST', s.cgst], ['SGST', s.sgst], ['IGST', s.igst], ['Grand Total', s.grandTotal],
+      ];
+      const ws2 = XLSX.utils.aoa_to_sheet([['Charge Summary'], [], ...sumRows]);
+      ws2['!cols'] = [{ wch: 26 }, { wch: 34 }];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws1, 'Charge Breakup');
+      XLSX.utils.book_append_sheet(wb, ws2, 'Summary');
+      const tag = data.client?.accountCode ?? 'all';
+      XLSX.writeFile(wb, `charge-breakup-${tag}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      setMsg(`✓ Exported ${s.awbs} AWBs across ${s.invoices} invoice(s).`);
+    } catch (e: any) { setError(e.message); } finally { setBkBusy(false); }
+  };
+
   const generate = async () => {
     setError('');
     setMsg('');
@@ -109,6 +154,7 @@ export function Invoices() {
           <div className="row" style={{ gap: 8 }}>
             <button className="secondary" onClick={() => { setFClient(''); setFFrom(''); setFTo(''); setQ(''); }}>Reset</button>
             <button className="secondary" onClick={exportXls} disabled={!filtered.length}>⬇ Excel</button>
+            <button className="secondary" onClick={chargeBreakupXls} disabled={bkBusy} title="Head-wise charge breakup (freight/fuel/FOV/ODA/…) of billed AWBs">{bkBusy ? 'Exporting…' : '⬇ Charge breakup'}</button>
             <button onClick={printAll} disabled={!filtered.length}>🖨 Print all</button>
           </div>
         </div>

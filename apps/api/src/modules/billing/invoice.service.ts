@@ -70,6 +70,7 @@ export class InvoiceService {
       freight: number;
       fuel: number;
       otherCharges: number;
+      breakup: any;
       disputeReason: string | null;
     }[] = [];
     let subtotal = 0;
@@ -86,7 +87,7 @@ export class InvoiceService {
       const freight = +(Number(charges.freight ?? 0)).toFixed(2);
       const fuel = +(Number(charges.fuel ?? 0)).toFixed(2);
       const otherCharges = +(amount - freight - fuel).toFixed(2); // FOV/ODA/docket/handling/etc.
-      lines.push({ shipmentId: s.id, chargeableKg, amount, freight, fuel, otherCharges, disputeReason: null });
+      lines.push({ shipmentId: s.id, chargeableKg, amount, freight, fuel, otherCharges, breakup: charges as any, disputeReason: null });
       subtotal += amount;
     }
 
@@ -136,6 +137,7 @@ export class InvoiceService {
             freight: new Prisma.Decimal(l.freight),
             fuel: new Prisma.Decimal(l.fuel),
             otherCharges: new Prisma.Decimal(l.otherCharges),
+            breakup: l.breakup,
             disputeReason: l.disputeReason,
           })),
         },
@@ -300,6 +302,105 @@ export class InvoiceService {
     });
     if (!inv) throw new NotFoundException('Invoice not found');
     return inv;
+  }
+
+  /**
+   * Charge-breakup export data: one flat row per billed AWB with each charge head
+   * (freight/fuel/fov/oda/docket/handling/awb/…) in its own field, plus a head-wise
+   * summary. Filtered by client and/or period (matches the Invoice Printing panel).
+   * Heads come from the stored per-line breakup; legacy lines fall back to freight/
+   * fuel/other so nothing is lost.
+   */
+  async chargeBreakup(clientId?: number, from?: string, to?: string) {
+    const where: Prisma.InvoiceWhereInput = {};
+    if (clientId) where.clientId = BigInt(clientId);
+    if (from || to) where.periodEnd = { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) };
+
+    const invoices = await this.prisma.invoice.findMany({
+      where,
+      orderBy: { issuedAt: 'desc' },
+      include: {
+        client: { select: { legalName: true, accountCode: true, gstin: true } },
+        lines: { include: { shipment: { select: { awb: true, createdAt: true, consigneeCity: true, destZone: true, vendor: true, product: true } } } },
+      },
+    });
+
+    // canonical head order + labels
+    const HEADS: { key: string; label: string }[] = [
+      { key: 'freight', label: 'Freight' }, { key: 'fuel', label: 'Fuel Surcharge' },
+      { key: 'fov', label: 'FOV' }, { key: 'oda', label: 'ODA' },
+      { key: 'docket', label: 'Docket' }, { key: 'handling', label: 'Handling' },
+      { key: 'awb', label: 'AWB Chg' }, { key: 'appt', label: 'Appointment' },
+      { key: 'loading', label: 'Loading' }, { key: 'unloading', label: 'Unloading' },
+      { key: 'emergency', label: 'Emergency' }, { key: 'environment', label: 'Environment' },
+      { key: 'osp', label: 'OSP' }, { key: 'topay', label: 'To-Pay' },
+    ];
+    const n = (v: any) => +(Number(v ?? 0)).toFixed(2);
+
+    const rows: any[] = [];
+    const headTotals: Record<string, number> = {};
+    let taxableSum = 0, cgstSum = 0, sgstSum = 0, igstSum = 0, grandSum = 0, kgSum = 0;
+
+    for (const inv of invoices) {
+      const isIntra = n(inv.cgst) > 0 || n(inv.sgst) > 0;
+      for (const l of inv.lines) {
+        const bk: any = (l as any).breakup ?? null;
+        const heads: Record<string, number> = {};
+        for (const h of HEADS) {
+          let v = bk ? n(bk[h.key]) : 0;
+          // legacy fallback (no stored breakup): map the 3-way split
+          if (!bk) { if (h.key === 'freight') v = n(l.freight) || n(l.amount); else if (h.key === 'fuel') v = n(l.fuel); }
+          heads[h.key] = v;
+          headTotals[h.key] = +( (headTotals[h.key] ?? 0) + v ).toFixed(2);
+        }
+        // legacy "other" that isn't broken into heads → park under a generic Other bucket
+        if (!bk) {
+          const other = n(l.otherCharges);
+          if (other) { heads['other'] = other; headTotals['other'] = +((headTotals['other'] ?? 0) + other).toFixed(2); }
+        }
+        const taxable = n(l.amount);
+        const gst = +(taxable * GST_RATE).toFixed(2);
+        taxableSum += taxable; grandSum += taxable + gst; kgSum += n(l.chargeableKg);
+        if (isIntra) { cgstSum += gst / 2; sgstSum += gst / 2; } else { igstSum += gst; }
+        rows.push({
+          invoiceNo: inv.invoiceNo,
+          awb: l.shipment?.awb ?? String(l.shipmentId),
+          bookingDate: l.shipment?.createdAt ?? null,
+          destination: l.shipment?.consigneeCity ?? l.shipment?.destZone ?? '',
+          vendor: l.shipment?.vendor ?? '',
+          product: l.shipment?.product ?? '',
+          chargeableKg: n(l.chargeableKg),
+          heads,
+          taxable,
+          gstPct: 18,
+          gst,
+          total: +(taxable + gst).toFixed(2),
+        });
+      }
+    }
+
+    // only expose heads that are non-zero somewhere (+ generic Other if used)
+    const activeHeads = HEADS.filter((h) => (headTotals[h.key] ?? 0) !== 0);
+    if ((headTotals['other'] ?? 0) !== 0) activeHeads.push({ key: 'other', label: 'Other Charges' });
+
+    return {
+      client: invoices[0]?.client ?? null,
+      from: from ?? null,
+      to: to ?? null,
+      heads: activeHeads,
+      rows,
+      summary: {
+        invoices: invoices.length,
+        awbs: rows.length,
+        chargeableKg: +kgSum.toFixed(3),
+        headTotals,
+        taxable: +taxableSum.toFixed(2),
+        cgst: +cgstSum.toFixed(2),
+        sgst: +sgstSum.toFixed(2),
+        igst: +igstSum.toFixed(2),
+        grandTotal: +grandSum.toFixed(2),
+      },
+    };
   }
 
   /** Lock a single line under dispute; clean lines stay payable. */
