@@ -20,6 +20,7 @@ export function Customers() {
   const [form, setForm] = useState({ ...blank });
   const [tab, setTab] = useState<Tab>('Personal Information');
   const [showAdd, setShowAdd] = useState(false);
+  const [editing, setEditing] = useState<Client | null>(null);
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
 
@@ -62,36 +63,53 @@ export function Customers() {
     catch (e: any) { setError(e.message); }
   };
 
-  const create = async () => {
+  const openEdit = (c: Client) => {
+    setEditing(c); setTab('Personal Information'); setError(''); setMsg('');
+    setForm({
+      legalName: c.legalName ?? '', customerType: (c as any).customerType ?? 'Domestic', accountCode: c.accountCode ?? '',
+      contactPhone: (c as any).contactPhone ?? '', contactEmail: (c as any).contactEmail ?? '', email2: (c as any).email2 ?? '',
+      gstin: (c as any).gstin ?? '', pan: (c as any).pan ?? '', tanNo: (c as any).tanNo ?? '', iecCode: (c as any).iecCode ?? '',
+      addressLine: (c as any).addressLine ?? '', pincode: (c as any).pincode ?? '', city: (c as any).city ?? '', state: (c as any).state ?? '',
+      salesPerson: (c as any).salesPerson ?? '', accountType: (c as any).accountType ?? 'CREDIT', billingCycle: (c as any).billingCycle ?? 'MONTHLY',
+      allowSameGstin: !!(c as any).allowSameGstin, creditLimit: String((c as any).creditLimit ?? ''), creditDays: String((c as any).creditDays ?? '30'), isCash: !!(c as any).isCash,
+    });
+    setShowAdd(true);
+  };
+
+  const save = async () => {
     setError(''); setMsg('');
+    const payload = {
+      legalName: form.legalName,
+      customerType: form.customerType || undefined,
+      accountCode: form.accountCode || undefined,
+      contactPhone: form.contactPhone || undefined,
+      contactEmail: form.contactEmail || undefined,
+      email2: form.email2 || undefined,
+      gstin: form.gstin || undefined,
+      pan: form.pan || undefined,
+      tanNo: form.tanNo || undefined,
+      iecCode: form.iecCode || undefined,
+      addressLine: form.addressLine || undefined,
+      pincode: form.pincode || undefined,
+      city: form.city || undefined,
+      state: form.state || undefined,
+      salesPerson: form.salesPerson || undefined,
+      accountType: form.accountType || undefined,
+      billingCycle: form.billingCycle || undefined,
+      allowSameGstin: form.allowSameGstin,
+      isCash: form.accountType === 'WALLET' ? false : form.isCash,
+      creditLimit: form.creditLimit ? +form.creditLimit : 0,
+      creditDays: form.creditDays ? +form.creditDays : 30,
+    };
     try {
-      const c = await api.createClient({
-        legalName: form.legalName,
-        customerType: form.customerType || undefined,
-        accountCode: form.accountCode || undefined,
-        contactPhone: form.contactPhone || undefined,
-        contactEmail: form.contactEmail || undefined,
-        email2: form.email2 || undefined,
-        gstin: form.gstin || undefined,
-        pan: form.pan || undefined,
-        tanNo: form.tanNo || undefined,
-        iecCode: form.iecCode || undefined,
-        addressLine: form.addressLine || undefined,
-        pincode: form.pincode || undefined,
-        city: form.city || undefined,
-        state: form.state || undefined,
-        salesPerson: form.salesPerson || undefined,
-        accountType: form.accountType || undefined,
-        billingCycle: form.billingCycle || undefined,
-        allowSameGstin: form.allowSameGstin,
-        isCash: form.accountType === 'WALLET' ? false : form.isCash,
-        creditLimit: form.creditLimit ? +form.creditLimit : 0,
-        creditDays: form.creditDays ? +form.creditDays : 30,
-      }) as Client;
-      setMsg(`✓ Created ${c.legalName} (${c.accountCode})`);
-      setForm({ ...blank });
-      setShowAdd(false);
-      load();
+      if (editing) {
+        const c = await api.updateClient(editing.id, payload) as Client;
+        setMsg(`✓ Updated ${c.legalName}`);
+      } else {
+        const c = await api.createClient(payload) as Client;
+        setMsg(`✓ Created ${c.legalName} (${c.accountCode})`);
+      }
+      setForm({ ...blank }); setEditing(null); setShowAdd(false); load();
     } catch (e: any) { setError(e.message); }
   };
 
@@ -102,7 +120,7 @@ export function Customers() {
       {msg && <div className="card" style={{ borderLeft: '4px solid var(--ok)' }}>{msg}</div>}
 
       <div className="row" style={{ justifyContent: 'flex-end', marginBottom: 4 }}>
-        <button onClick={() => { setForm({ ...blank }); setTab('Personal Information'); setShowAdd(true); }}>＋ Add Customer</button>
+        <button onClick={() => { setEditing(null); setForm({ ...blank }); setTab('Personal Information'); setShowAdd(true); }}>＋ Add Customer</button>
       </div>
 
       {showAdd && <Modal title="Customer" width={980} onClose={() => setShowAdd(false)}>
@@ -114,7 +132,7 @@ export function Customers() {
 
         {tab === 'Personal Information' && (
           <>
-            <h2>Add New Customer <span className="muted" style={{ fontSize: 12, fontWeight: 500 }}>— create a new billing entity</span></h2>
+            <h2>{editing ? `Edit ${editing.legalName}` : 'Add New Customer'} <span className="muted" style={{ fontSize: 12, fontWeight: 500 }}>— {editing ? 'update this customer' : 'create a new billing entity'}</span></h2>
             <div className="grid cols-2">
               <div><label>Customer Name *</label><input value={form.legalName} onChange={(e) => set('legalName', e.target.value)} placeholder="Acme Logistics Pvt Ltd" /></div>
               <div>
@@ -171,7 +189,7 @@ export function Customers() {
             <div className="row" style={{ marginTop: 18, alignItems: 'center' }}>
               <div><label>Credit limit (₹)</label><input type="number" value={form.creditLimit} onChange={(e) => set('creditLimit', e.target.value)} style={{ width: 160 }} /></div>
               <div><label>Credit days</label><input type="number" value={form.creditDays} onChange={(e) => set('creditDays', e.target.value)} style={{ width: 120 }} /></div>
-              <button style={{ marginLeft: 'auto' }} disabled={!form.legalName} onClick={create}>Save Customer</button>
+              <button style={{ marginLeft: 'auto' }} disabled={!form.legalName} onClick={save}>{editing ? 'Update Customer' : 'Save Customer'}</button>
             </div>
           </>
         )}
@@ -214,7 +232,10 @@ export function Customers() {
                 <td>{c.accountCode}</td><td><strong>{c.legalName}</strong></td><td>{c.gstin ?? '—'}</td><td>{c.pan ?? '—'}</td>
                 <td>{c.city ?? '—'}</td><td>₹{c.creditLimit}</td><td>₹{c.outstandingBal}</td>
                 <td>Net {c.creditDays}</td>
-                <td><button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} title="View / edit rate cards" onClick={() => setRcClient(c)}>👁 Cards</button></td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  <button className="secondary" style={{ padding: '4px 10px', fontSize: 12, marginRight: 6 }} title="Edit customer" onClick={() => openEdit(c)}>✎ Edit</button>
+                  <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} title="View / edit rate cards" onClick={() => setRcClient(c)}>👁 Cards</button>
+                </td>
                 <td>{c.isCash ? <span className="badge DOD">CASH</span> : c.isCreditHold ? <span className="badge PARTIAL">HOLD</span> : <span className="badge DELIVERED">OK</span>}</td>
                 <td>
                   <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => toggleActive(c)}>

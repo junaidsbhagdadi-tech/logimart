@@ -222,7 +222,7 @@ function RateUpload({ client, products, vendors, onCancel, onSaved }: {
         <div>
           <label style={{ fontSize: 12 }}>Network</label>
           <select value={network} onChange={(e) => setNetwork(e.target.value)}>
-            <option value="SELF">SELF</option>
+            <option value="SELF">SELF / All networks</option>
             {vendors.map((v) => <option key={v.id} value={(v.vendorCode || v.name).toUpperCase()}>{v.name}</option>)}
           </select>
         </div>
@@ -382,7 +382,7 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
         <div>
           <label style={{ fontSize: 12 }}>Network</label>
           <select value={h.network} onChange={(e) => set('network', e.target.value)}>
-            <option value="SELF">SELF</option>
+            <option value="SELF">SELF / All networks</option>
             {vendors.map((v) => <option key={v.id} value={(v.vendorCode || v.name).toUpperCase()}>{v.name}</option>)}
           </select>
         </div>
