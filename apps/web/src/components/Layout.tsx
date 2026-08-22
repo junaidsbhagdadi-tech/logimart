@@ -44,6 +44,28 @@ export function Layout() {
       { to: '/pickups', icon: '📦', label: 'Pickups' },
       { to: '/manifests', icon: '🗺', label: 'Manifests', show: isOps },
     ] },
+    { title: 'First Mile', items: [
+      { to: '/fm', icon: '📊', label: 'Dashboard', end: true },
+      { to: '/fm/pickup-outscan', icon: '📍', label: 'Pickup Outscan' },
+      { to: '/fm/bulk-pickup-outscan', icon: '📥', label: 'Bulk Pickup Outscan' },
+      { to: '/fm/update-pickup', icon: '✏️', label: 'Update Pickup' },
+    ] },
+    { title: 'Mid Mile', items: [
+      { to: '/mm', icon: '📊', label: 'Dashboard', end: true },
+      { to: '/mm/inscan-shipment', icon: '📲', label: 'Inscan Shipment' },
+      { to: '/mm/bagging', icon: '🧳', label: 'Bagging' },
+      { to: '/mm/trips', icon: '🚛', label: 'Trips' },
+      { to: '/mm/unloaded-bags', icon: '📦', label: 'Unloaded Bags' },
+      { to: '/mm/inscan-trip', icon: '🧾', label: 'Inscan Trip' },
+    ] },
+    { title: 'Last Mile', items: [
+      { to: '/lm', icon: '📊', label: 'Dashboard', end: true },
+      { to: '/lm/inscan-shipment', icon: '📲', label: 'Inscan Shipment' },
+      { to: '/lm/inscan-trip', icon: '🧾', label: 'Inscan Trip' },
+      { to: '/lm/delivery-outscan', icon: '🛵', label: 'Delivery Outscan' },
+      { to: '/lm/update-delivery', icon: '✅', label: 'Update Delivery' },
+      { to: '/lm/bulk-delivery-update', icon: '📥', label: 'Bulk Delivery Update' },
+    ] },
     { title: 'Billing & CRM', items: [
       { to: '/invoices', icon: '🧾', label: 'Invoices' },
       { to: '/bill-worksheet', icon: '📋', label: 'Bill Worksheet', show: isAdminFin },

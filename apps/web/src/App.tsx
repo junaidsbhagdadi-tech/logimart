@@ -40,6 +40,7 @@ import { Scan } from './pages/Scan';
 import { Drs } from './pages/Drs';
 import { BulkPod } from './pages/BulkPod';
 import { Reports } from './pages/Reports';
+import { MileScan, MileDashboard, Bagging, UnloadedBags, DeliveryUpdate } from './pages/Mile';
 
 export function App() {
   const { user } = useAuth();
@@ -81,6 +82,25 @@ export function App() {
         <Route path="/my-tasks" element={<MyTasks />} />
         <Route path="/pickups" element={<Pickups />} />
         <Route path="/manifests" element={<Manifests />} />
+        {/* First Mile */}
+        <Route path="/fm" element={<MileDashboard mile="first" />} />
+        <Route path="/fm/pickup-outscan" element={<MileScan title="Pickup Outscan" code="PKD" hint="Scan each AWB the pickup staff collected → Picked (PKD)." />} />
+        <Route path="/fm/bulk-pickup-outscan" element={<MileScan title="Bulk Pickup Outscan" code="PKD" bulk hint="Paste all picked AWBs → Picked (PKD)." />} />
+        <Route path="/fm/update-pickup" element={<MileScan title="Update Pickup" code="PKD" hint="Re-confirm / update a pickup → Picked (PKD)." />} />
+        {/* Mid Mile */}
+        <Route path="/mm" element={<MileDashboard mile="mid" />} />
+        <Route path="/mm/inscan-shipment" element={<MileScan title="Inscan Shipment" code="ORD" hint="Inscan at the origin hub → Origin hub received (ORD)." />} />
+        <Route path="/mm/bagging" element={<Bagging />} />
+        <Route path="/mm/trips" element={<Manifests />} />
+        <Route path="/mm/unloaded-bags" element={<UnloadedBags />} />
+        <Route path="/mm/inscan-trip" element={<MileScan title="Inscan Trip (depart)" code="DPD" bulk hint="Scan AWBs loaded on the departing trip → Departed (DPD)." />} />
+        {/* Last Mile */}
+        <Route path="/lm" element={<MileDashboard mile="last" />} />
+        <Route path="/lm/inscan-shipment" element={<MileScan title="Inscan Shipment" code="DRD" hint="Inscan at destination hub → Destination received (DRD)." />} />
+        <Route path="/lm/inscan-trip" element={<MileScan title="Inscan Trip (arrival)" code="DRD" bulk hint="Scan AWBs arrived on the trip → Destination received (DRD)." />} />
+        <Route path="/lm/delivery-outscan" element={<MileScan title="Delivery Outscan" code="OFD" hint="Handing to delivery staff → Out for delivery (OFD)." />} />
+        <Route path="/lm/update-delivery" element={<DeliveryUpdate />} />
+        <Route path="/lm/bulk-delivery-update" element={<DeliveryUpdate bulk />} />
         <Route path="/customers" element={isAdminFin ? <Customers /> : <Navigate to="/" replace />} />
         <Route path="/vendors" element={isAdminFin ? <Vendors /> : <Navigate to="/" replace />} />
         <Route path="/vehicles" element={isAdminFin || canMaster ? <Vehicles /> : <Navigate to="/" replace />} />

@@ -414,6 +414,11 @@ model Shipment {
   destZone     String
   pieceCount   Int
   status       ShipmentStatus @default(CREATED)
+  // milestone lifecycle code: MAN → PKD → ORD → DPD → DRD → OFD → DLD | UDL
+  statusCode   String?        @default("MAN")
+  statusAt     DateTime?
+  podUrl       String?        @db.Text // proof-of-delivery image (data URI), mandatory at DLD
+  bagCode      String?        // mid-mile bag this shipment is bagged into
   // denormalized aggregate cache; source of truth = pieces
   totalDeadKg  Decimal        @default(0) @db.Decimal(10, 3)
   totalVolKg   Decimal        @default(0) @db.Decimal(10, 3)

@@ -156,6 +156,7 @@ export class ShipmentsService {
         destPincode: dto.destPincode,
         isOda,
         expectedDelivery,
+        statusCode: 'MAN', statusAt: new Date(),
         // ---- shipper (sender) ----
         shipperName: dto.shipperName || null,
         shipperContact: dto.shipperContact || null,

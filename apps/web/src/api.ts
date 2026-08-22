@@ -421,6 +421,14 @@ export const api = {
     request<{ awb: string; eventType: string; shipmentUpdated: boolean }>('/api/v1/opscan', { method: 'POST', body: JSON.stringify(body) }),
   listScans: (limit = 50) => request<{ id: string; awb: string; eventType: string; serviceCenter: string | null; scanAt: string }[]>(`/api/v1/opscan?limit=${limit}`),
 
+  // ---- milestone lifecycle (First / Mid / Last mile) ----
+  lifecycleSummary: () => request<{ counts: Record<string, number>; lifecycle: { code: string; label: string; mile: string }[] }>('/api/v1/lifecycle/summary'),
+  lifecycleList: (code?: string, limit = 100) => request<any[]>(`/api/v1/lifecycle/list?limit=${limit}${code ? `&code=${code}` : ''}`),
+  lifecycleScan: (body: { awbs: string[]; code: string; remark?: string; podDataUrl?: string; bagCode?: string }) =>
+    request<{ code: string; updated: number; done: string[]; missing: string[] }>('/api/v1/lifecycle/scan', { method: 'POST', body: JSON.stringify(body) }),
+  lifecycleBag: (body: { bagCode: string; awbs: string[] }) => request<{ bagCode: string; bagged: number }>('/api/v1/lifecycle/bag', { method: 'POST', body: JSON.stringify(body) }),
+  lifecycleBags: () => request<{ bagCode: string; shipments: number }[]>('/api/v1/lifecycle/bags'),
+
   // ---- BlueDart carrier integration ----
   bdStatus: () => request<{ configured: boolean; [k: string]: any }>('/api/v1/bluedart/status'),
   bdServiceable: (pincode: string) => request<any>(`/api/v1/bluedart/serviceable/${pincode}`),
