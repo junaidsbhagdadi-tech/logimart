@@ -22,10 +22,12 @@ export function ShipmentDetail() {
   const [msg, setMsg] = useState('');
   const [vendors, setVendors] = useState<any[]>([]);
   const [fwd, setFwd] = useState({ vendor: '', forwardingAwb: '' });
+  const [track, setTrack] = useState<{ code: string; label: string; at: string; remark?: string | null }[]>([]);
 
   const load = () => {
     if (!awb) return;
     api.getShipment(awb).then((sh) => { setS(sh); setFwd({ vendor: sh.vendor || '', forwardingAwb: sh.forwardingAwb || '' }); }).catch((e) => setError(e.message));
+    api.lifecycleTrack(awb).then((t) => setTrack(t.timeline || [])).catch(() => {});
   };
   useEffect(load, [awb]);
   useEffect(() => { if (canHandover) api.listVendors().then((v) => setVendors(v.filter((x: any) => x.isActive !== false))).catch(() => {}); }, [canHandover]);
@@ -250,6 +252,22 @@ export function ShipmentDetail() {
           {s.departureAt && <div><label>Departure</label>{new Date(s.departureAt).toLocaleString()}</div>}
           {s.arrivalAt && <div><label>Arrival</label>{new Date(s.arrivalAt).toLocaleString()}</div>}
         </div>
+      </div>
+
+      <div className="card">
+        <h2 style={{ marginBottom: 10 }}>🧭 Tracking timeline</h2>
+        {track.length === 0 ? <p className="muted">No scans recorded yet.</p> : (
+          <div style={{ position: 'relative', paddingLeft: 18 }}>
+            {track.map((t, i) => (
+              <div key={i} style={{ position: 'relative', paddingBottom: i === track.length - 1 ? 0 : 16 }}>
+                <span style={{ position: 'absolute', left: -18, top: 3, width: 10, height: 10, borderRadius: '50%', background: i === track.length - 1 ? 'var(--brand)' : 'var(--ok, #16a34a)' }} />
+                {i !== track.length - 1 && <span style={{ position: 'absolute', left: -14, top: 13, bottom: 0, width: 2, background: 'var(--border)' }} />}
+                <div style={{ fontWeight: 700, fontSize: 13 }}>{t.label} <span className="muted" style={{ fontWeight: 400 }}>({t.code})</span></div>
+                <div className="muted" style={{ fontSize: 12 }}>{new Date(t.at).toLocaleString('en-IN')}{t.remark ? ` · ${t.remark}` : ''}</div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {(s.paymentTerm === 'TO_PAY' || s.isDod) && (

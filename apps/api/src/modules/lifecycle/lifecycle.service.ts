@@ -13,43 +13,70 @@ export const LIFECYCLE = [
   { code: 'OFD', label: 'Out for delivery', mile: 'last' },
   { code: 'DLD', label: 'Delivered', mile: 'last' },
   { code: 'UDL', label: 'Undelivered', mile: 'last' },
+  { code: 'RTO', label: 'Return to Origin', mile: 'last' },
+  { code: 'RTD', label: 'Return Delivered', mile: 'last' },
+  { code: 'CAN', label: 'Cancelled', mile: 'last' },
 ] as const;
 const CODES = new Set<string>(LIFECYCLE.map((l) => l.code));
+// Terminal states — cannot be moved off once set, except by a super admin.
+const TERMINAL = new Set(['DLD', 'RTD', 'CAN']);
 const TO_ENUM: Record<string, ShipmentStatus> = {
   MAN: ShipmentStatus.CREATED, PKD: ShipmentStatus.PICKED_UP, ORD: ShipmentStatus.AT_HUB,
   DPD: ShipmentStatus.IN_TRANSIT, DRD: ShipmentStatus.AT_HUB, OFD: ShipmentStatus.OUT_FOR_DELIVERY,
   DLD: ShipmentStatus.DELIVERED, UDL: ShipmentStatus.EXCEPTION,
+  RTO: ShipmentStatus.IN_TRANSIT, RTD: ShipmentStatus.DELIVERED, CAN: ShipmentStatus.CANCELLED,
 };
 
 @Injectable()
 export class LifecycleService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Record a milestone scan for one or more AWBs. DLD requires a POD image. */
-  async scan(dto: { awbs: string[]; code: string; hubId?: number; remark?: string; podDataUrl?: string; bagCode?: string }, userId?: bigint) {
+  /** Record a milestone scan for one or more AWBs. DLD requires a POD image. Terminal states
+   *  (DLD/RTD/CAN) are locked once set — only a super admin can move a shipment off them. */
+  async scan(dto: { awbs: string[]; code: string; hubId?: number; remark?: string; podDataUrl?: string; bagCode?: string }, userId?: bigint, role?: string) {
     const code = String(dto.code || '').trim().toUpperCase();
     if (!CODES.has(code)) throw new BadRequestException(`Unknown status code ${code}.`);
     const awbs = (dto.awbs || []).map((a) => String(a).trim().toUpperCase()).filter(Boolean);
     if (!awbs.length) throw new BadRequestException('No AWB scanned.');
     if (code === 'DLD' && !dto.podDataUrl) throw new BadRequestException('POD image is mandatory to mark Delivered.');
+    const isSuper = String(role || '').toUpperCase() === 'SYS_ADMIN';
 
-    const done: string[] = []; const missing: string[] = [];
+    const done: string[] = []; const missing: string[] = []; const locked: string[] = [];
     for (const awb of awbs) {
-      const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true } });
+      const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, statusCode: true } });
       if (!s) { missing.push(awb); continue; }
+      // Guard terminal states: only a super admin can override DLD/RTD/CAN.
+      if (TERMINAL.has(String(s.statusCode || '').toUpperCase()) && s.statusCode !== code && !isSuper) { locked.push(awb); continue; }
       await this.prisma.shipment.update({
         where: { id: s.id },
         data: {
           statusCode: code, statusAt: new Date(), status: TO_ENUM[code],
           ...(code === 'DLD' && dto.podDataUrl ? { podUrl: dto.podDataUrl } : {}),
           ...(dto.bagCode ? { bagCode: dto.bagCode } : {}),
-          ...(code === 'UDL' ? { exceptionFlag: dto.remark || 'UNDELIVERED' } : {}),
+          ...(['UDL', 'RTO', 'CAN'].includes(code) ? { exceptionFlag: dto.remark || code } : {}),
         },
       });
       await this.prisma.scanLog.create({ data: { awb, eventType: code, remark: dto.remark || null, scannedById: userId ?? null } });
       done.push(awb);
     }
-    return { code, updated: done.length, done, missing };
+    return { code, updated: done.length, done, missing, locked };
+  }
+
+  /** Full scan timeline for one AWB (append-only history), oldest → newest, with labels.
+   *  Consumable by staff, customer panel, and public website tracking. */
+  async track(awbRaw: string) {
+    const awb = String(awbRaw || '').trim().toUpperCase();
+    const [shipment, logs] = await Promise.all([
+      this.prisma.shipment.findUnique({
+        where: { awb },
+        select: { awb: true, statusCode: true, statusAt: true, originZone: true, destZone: true, consigneeName: true, consigneeCity: true, expectedDelivery: true, product: true, vendor: true },
+      }),
+      this.prisma.scanLog.findMany({ where: { awb }, orderBy: { scanAt: 'asc' } }),
+    ]);
+    if (!shipment) throw new BadRequestException(`AWB ${awb} not found.`);
+    const labelOf = (c: string) => LIFECYCLE.find((l) => l.code === c)?.label || c;
+    const timeline = logs.map((l) => ({ code: l.eventType, label: labelOf(l.eventType), at: l.scanAt, remark: l.remark }));
+    return { ...shipment, currentLabel: labelOf(String(shipment.statusCode || 'MAN')), timeline };
   }
 
   /** Counts by milestone code (for the mile dashboards). */

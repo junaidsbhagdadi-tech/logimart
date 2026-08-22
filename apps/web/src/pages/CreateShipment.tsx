@@ -409,7 +409,7 @@ export function CreateShipment() {
             </select>
           </div>
           <div>
-            <label>Charge weight (kg) <span className="muted">— auto from boxes; edit to override</span></label>
+            <label>Chargeable weight (kg) <span className="muted">— max(actual dead, volumetric) from boxes; edit to override</span></label>
             <input type="number" value={chargeWeight} onChange={(e) => { setCwTouched(true); setChargeWeight(e.target.value); }} placeholder={`${Math.max(totalDead, totalVol).toFixed(2)} (dead/vol max)`} />
             {cwTouched && <button className="secondary" style={{ marginTop: 4, padding: '2px 8px', fontSize: 11 }} onClick={() => setCwTouched(false)}>↺ auto</button>}
           </div>
@@ -539,7 +539,7 @@ export function CreateShipment() {
         <h2>Boxes ({pieces.length}) — each becomes a child label</h2>
         <table>
           <thead>
-            <tr><th>#</th><th>Dead kg</th><th>L (cm)</th><th>W (cm)</th><th>H (cm)</th><th>Vol kg (÷5000)</th><th></th></tr>
+            <tr><th>#</th><th>Actual (dead) kg</th><th>L (cm)</th><th>W (cm)</th><th>H (cm)</th><th>Vol kg (÷5000)</th><th></th></tr>
           </thead>
           <tbody>
             {pieces.map((p, i) => (

@@ -36,7 +36,7 @@ import { Masters } from './pages/Masters';
 import { Deliver } from './pages/Deliver';
 import { BulkBooking } from './pages/BulkBooking';
 import { Reports } from './pages/Reports';
-import { MileScan, MileDashboard, Bagging, UnloadedBags, DeliveryUpdate } from './pages/Mile';
+import { MileScan, MileDashboard, Bagging, UnloadedBags, DeliveryUpdate, ManualScan } from './pages/Mile';
 
 export function App() {
   const { user } = useAuth();
@@ -93,6 +93,7 @@ export function App() {
         <Route path="/lm/delivery-outscan" element={<MileScan title="Delivery Outscan" code="OFD" hint="Handing to delivery staff → Out for delivery (OFD)." />} />
         <Route path="/lm/update-delivery" element={<DeliveryUpdate />} />
         <Route path="/lm/bulk-delivery-update" element={<DeliveryUpdate bulk />} />
+        <Route path="/lm/manual-scan" element={<ManualScan />} />
         <Route path="/customers" element={isAdminFin ? <Customers /> : <Navigate to="/" replace />} />
         <Route path="/vendors" element={isAdminFin ? <Vendors /> : <Navigate to="/" replace />} />
         <Route path="/vehicles" element={isAdminFin || canMaster ? <Vehicles /> : <Navigate to="/" replace />} />

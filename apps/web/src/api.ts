@@ -425,7 +425,9 @@ export const api = {
   lifecycleSummary: () => request<{ counts: Record<string, number>; lifecycle: { code: string; label: string; mile: string }[] }>('/api/v1/lifecycle/summary'),
   lifecycleList: (code?: string, limit = 100) => request<any[]>(`/api/v1/lifecycle/list?limit=${limit}${code ? `&code=${code}` : ''}`),
   lifecycleScan: (body: { awbs: string[]; code: string; remark?: string; podDataUrl?: string; bagCode?: string }) =>
-    request<{ code: string; updated: number; done: string[]; missing: string[] }>('/api/v1/lifecycle/scan', { method: 'POST', body: JSON.stringify(body) }),
+    request<{ code: string; updated: number; done: string[]; missing: string[]; locked?: string[] }>('/api/v1/lifecycle/scan', { method: 'POST', body: JSON.stringify(body) }),
+  lifecycleTrack: (awb: string) =>
+    request<{ awb: string; statusCode: string; currentLabel: string; statusAt: string | null; originZone: string; destZone: string; consigneeName?: string; consigneeCity?: string; expectedDelivery?: string | null; timeline: { code: string; label: string; at: string; remark?: string | null }[] }>(`/api/v1/lifecycle/track/${encodeURIComponent(awb)}`),
   lifecycleBag: (body: { bagCode: string; awbs: string[] }) => request<{ bagCode: string; bagged: number }>('/api/v1/lifecycle/bag', { method: 'POST', body: JSON.stringify(body) }),
   lifecycleBags: () => request<{ bagCode: string; shipments: number }[]>('/api/v1/lifecycle/bags'),
 

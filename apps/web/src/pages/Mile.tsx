@@ -29,7 +29,7 @@ export function MileScan({ title, code, bulk, pod, hint }: { title: string; code
     setBusy(true);
     try {
       const r = await api.lifecycleScan({ awbs, code, remark: remark || undefined, podDataUrl: pod ? podData : undefined });
-      setMsg(`✓ ${code}: ${r.updated}/${awbs.length} updated${r.missing.length ? ` · not found: ${r.missing.join(', ')}` : ''}`);
+      setMsg(`✓ ${code}: ${r.updated}/${awbs.length} updated${r.missing.length ? ` · not found: ${r.missing.join(', ')}` : ''}${r.locked?.length ? ` · 🔒 terminal, skipped: ${r.locked.join(', ')}` : ''}`);
       if (r.done.length) setLog((l) => [`${new Date().toLocaleTimeString()} · ${code} · ${r.done.join(', ')}`, ...l].slice(0, 40));
       setAwb(''); setRemark(''); setPodData(''); setPodName('');
       inputRef.current?.focus();
@@ -74,6 +74,74 @@ export function MileScan({ title, code, bulk, pod, hint }: { title: string; code
           {log.map((l, i) => <div key={i} className="muted" style={{ fontSize: 12, fontFamily: 'monospace' }}>{l}</div>)}
         </div>
       )}
+    </>
+  );
+}
+
+/** Manual scan update: choose any status code for one/many AWBs. DLD needs a POD; terminal states
+ *  (DLD/RTD/CAN) are locked server-side unless you're a super admin. */
+export function ManualScan() {
+  const [awb, setAwb] = useState('');
+  const [code, setCode] = useState('PKD');
+  const [remark, setRemark] = useState('');
+  const [podData, setPodData] = useState(''); const [podName, setPodName] = useState('');
+  const [codes, setCodes] = useState<{ code: string; label: string }[]>([]);
+  const [msg, setMsg] = useState(''); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
+  useEffect(() => { api.lifecycleSummary().then((r) => setCodes(r.lifecycle)).catch(() => {}); }, []);
+
+  const readFile = (f?: File) => {
+    if (!f) return;
+    if (!/(jpeg|jpg|png|pdf)$/i.test(f.name) && !/(image\/(jpeg|png)|application\/pdf)/.test(f.type)) { setErr('POD must be JPG, PNG or PDF.'); return; }
+    if (f.size > 6_000_000) { setErr('File too large (max ~6MB).'); return; }
+    const r = new FileReader(); r.onload = () => { setPodData(String(r.result)); setPodName(f.name); setErr(''); }; r.readAsDataURL(f);
+  };
+
+  const submit = async () => {
+    setErr(''); setMsg('');
+    const awbs = awb.split(/[\s,\n]+/).map((a) => a.trim()).filter(Boolean);
+    if (!awbs.length) { setErr('Enter one or more AWBs.'); return; }
+    if (code === 'DLD' && !podData) { setErr('POD image is mandatory for Delivered (JPG / PNG / PDF).'); return; }
+    setBusy(true);
+    try {
+      const r = await api.lifecycleScan({ awbs, code, remark: remark || undefined, podDataUrl: code === 'DLD' ? podData : undefined });
+      let m = `✓ ${code}: ${r.updated}/${awbs.length} updated`;
+      if (r.missing?.length) m += ` · not found: ${r.missing.join(', ')}`;
+      if (r.locked?.length) m += ` · 🔒 terminal (super-admin only): ${r.locked.join(', ')}`;
+      setMsg(m); setAwb(''); setRemark(''); setPodData(''); setPodName('');
+    } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  };
+
+  return (
+    <>
+      <h1>✍ Update Scans (manual)</h1>
+      <p className="muted" style={{ marginTop: -14 }}>Set any status for one or more AWBs. <strong>DLD/RTD/CAN are terminal</strong> — once set they can only be changed by a super admin.</p>
+      {err && <div className="error">{err}</div>}
+      {msg && <div className="card" style={{ borderLeft: '4px solid var(--ok)' }}>{msg}</div>}
+      <div className="card">
+        <div className="grid cols-2">
+          <div>
+            <label>Status</label>
+            <select value={code} onChange={(e) => setCode(e.target.value)}>
+              {codes.map((c) => <option key={c.code} value={c.code}>{c.code} — {c.label}</option>)}
+            </select>
+          </div>
+          <div><label>Remark <span className="muted">(optional)</span></label><input value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="reason / note" /></div>
+        </div>
+        <div style={{ marginTop: 10 }}>
+          <label>AWBs <span className="muted">(one per line, or comma/space separated)</span></label>
+          <textarea rows={4} value={awb} onChange={(e) => setAwb(e.target.value.toUpperCase())} placeholder="L1000000123&#10;L1000000124…" style={{ width: '100%', font: '13px monospace', padding: 12, border: '1px solid var(--border)', borderRadius: 11 }} />
+        </div>
+        {code === 'DLD' && (
+          <div style={{ marginTop: 10 }}>
+            <label>POD image (JPG / PNG / PDF) — <strong>mandatory</strong></label>
+            <input type="file" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" onChange={(e) => readFile(e.target.files?.[0])} />
+            {podName && <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>📎 {podName}</span>}
+          </div>
+        )}
+        <div className="row" style={{ justifyContent: 'flex-end', marginTop: 12 }}>
+          <button onClick={submit} disabled={busy}>{busy ? 'Updating…' : `Update → ${code}`}</button>
+        </div>
+      </div>
     </>
   );
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles } from '../../common/rbac/roles.decorator';
@@ -19,6 +19,11 @@ export class LifecycleController {
   @Roles(...OPS)
   list(@Query('code') code?: string, @Query('limit') limit?: string) { return this.svc.list(code, limit ? Number(limit) : 100); }
 
+  /** Full scan timeline for one AWB (staff view; also feeds customer panel / website tracking). */
+  @Get('track/:awb')
+  @Roles(...OPS)
+  track(@Param('awb') awb: string) { return this.svc.track(awb); }
+
   @Get('bags')
   @Roles(...OPS)
   bags() { return this.svc.bags(); }
@@ -26,7 +31,7 @@ export class LifecycleController {
   @Post('scan')
   @Roles(...OPS)
   scan(@Body() dto: { awbs: string[]; code: string; hubId?: number; remark?: string; podDataUrl?: string; bagCode?: string }, @Req() req: any) {
-    return this.svc.scan(dto, req.user?.sub ? BigInt(req.user.sub) : undefined);
+    return this.svc.scan(dto, req.user?.sub ? BigInt(req.user.sub) : undefined, req.user?.role);
   }
 
   @Post('bag')

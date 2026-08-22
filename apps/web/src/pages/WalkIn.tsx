@@ -206,7 +206,7 @@ export function WalkIn() {
           </div>
           <div style={{ overflowX: 'auto', marginTop: 8 }}>
             <table style={{ fontSize: 13 }}>
-              <thead><tr><th>#</th><th>Dead kg *</th><th>L cm</th><th>W cm</th><th>H cm</th><th></th></tr></thead>
+              <thead><tr><th>#</th><th>Actual (dead) kg *</th><th>L cm</th><th>W cm</th><th>H cm</th><th></th></tr></thead>
               <tbody>
                 {boxes.map((b, i) => (
                   <tr key={i}>
