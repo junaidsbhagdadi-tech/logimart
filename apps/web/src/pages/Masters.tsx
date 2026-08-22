@@ -12,6 +12,24 @@ const F = (key: string, label: string, extra: Partial<Field> = {}): Field => ({ 
 // (billing skips them, so a duplicate FSC/FUEL/etc. here does nothing and invites double-fuel confusion).
 const RESERVED_CHARGE = new Set(['FSC', 'FUEL', 'FREIGHT', 'FOV', 'ODA', 'TOPAY', 'APPT', 'LOADING', 'UNLOADING', 'DOCKET', 'AWB', 'EMERGENCY', 'ENVIRONMENT', 'ENVIRONMENTAL', 'OSP']);
 
+// Human labels for the CHARGE "Calculated on" basis. The stored VALUE stays machine-readable
+// for the rate engine (baseOn === 'FREIGHT' → % of freight, includes 'WEIGHT' → per kg, etc.).
+const BASEON_LABEL: Record<string, string> = {
+  'FLAT': 'Flat ₹', 'CHARGEABLE WEIGHT': '₹ per chargeable kg', 'ACTUAL WEIGHT': '₹ per actual kg',
+  'FREIGHT': '% of Freight', 'SHIPMENT VALUE': '% of Shipment Value', 'ODA': 'ODA (flat + ₹/kg, min)',
+};
+const baseOnLabel = (v?: string) => (v ? (BASEON_LABEL[String(v).toUpperCase()] ?? v) : '—');
+
+// Built-in charges are computed by the rate engine from the customer's rate card (or globally on
+// the Standard Charges screen) — the Charges-master row is a locked catalog entry only. Fixed
+// display basis so the "Calculated on" column is always accurate regardless of stored attrs.
+const RESERVED_BASIS: Record<string, string> = {
+  ODA: 'ODA (flat + ₹/kg, min)', APPT: '₹ per chargeable kg (min applies)', FOV: '% of Shipment Value (min)',
+  AWB: 'Flat ₹', OSP: 'Flat ₹ (oversize)', FSC: '% of Freight (fuel)', FUEL: '% of Freight (fuel)',
+  TOPAY: 'Flat ₹', DOCKET: 'Flat ₹', LOADING: 'Flat ₹', UNLOADING: 'Flat ₹',
+  EMERGENCY: '% of Freight', ENVIRONMENT: 'Flat ₹', ENVIRONMENTAL: 'Flat ₹',
+};
+
 // Each master type = a config of fields. `attr:true` fields live in the JSON `attrs`;
 // code/name are the natural key + label. Adding a master = adding a config entry.
 const MASTERS: MasterDef[] = [
@@ -121,7 +139,7 @@ export function Masters() {
     // row reusing one of these codes is silently ignored by billing — block it to avoid confusion
     // (and the fuel double-charge trap). Configure these on the customer's rate card instead.
     if (typeKey === 'CHARGE' && RESERVED_CHARGE.has(String(form.code).trim().toUpperCase())) {
-      setError(`"${String(form.code).toUpperCase()}" is a built-in charge handled by the rate card (fuel/FOV/ODA/AWB/etc.). Set it on the customer's rate card — a Charges-master row with this code is ignored by billing.`);
+      setError(`"${String(form.code).toUpperCase()}" is a built-in charge (fuel/FOV/ODA/APPT/AWB/etc.). Set its amount per customer on the rate card, or globally on the Standard Charges screen — a Charges-master row with this code is ignored by billing.`);
       return;
     }
     try {
@@ -240,7 +258,7 @@ export function Masters() {
               ) : f.type === 'select' ? (
                 <select value={val(f)} onChange={(e) => setVal(f, e.target.value)}>
                   <option value="">—</option>
-                  {f.options!.map((o) => <option key={o} value={o}>{o}</option>)}
+                  {f.options!.map((o) => <option key={o} value={o}>{typeKey === 'CHARGE' && f.key === 'baseOn' ? baseOnLabel(o) : o}</option>)}
                 </select>
               ) : (
                 <input type={f.type === 'number' ? 'number' : 'text'} value={val(f)} disabled={editing && f.key === 'code'} onChange={(e) => setVal(f, e.target.value)} />
@@ -293,17 +311,32 @@ export function Masters() {
             </tr>
           </thead>
           <tbody>
-            {filtered.slice(0, 300).map((r) => (
+            {filtered.slice(0, 300).map((r) => {
+              const isReservedCharge = typeKey === 'CHARGE' && RESERVED_CHARGE.has(String(r.code).toUpperCase());
+              return (
               <tr key={r.code}>
-                <td><strong>{r.code}</strong></td><td>{r.name}</td>
-                {attrCols.map((f) => <td key={f.key}>{r.attrs?.[f.key] ?? '—'}</td>)}
+                <td><strong>{r.code}</strong>{isReservedCharge && <span title="Built-in charge — amount set on the rate card / Standard Charges" style={{ marginLeft: 5 }}>🔒</span>}</td><td>{r.name}</td>
+                {attrCols.map((f) => (
+                  <td key={f.key}>{
+                    typeKey === 'CHARGE' && f.key === 'baseOn'
+                      ? (isReservedCharge ? (RESERVED_BASIS[String(r.code).toUpperCase()] ?? baseOnLabel(r.attrs?.baseOn)) : baseOnLabel(r.attrs?.baseOn))
+                      : (r.attrs?.[f.key] ?? '—')
+                  }</td>
+                ))}
                 {boolCols.map((f) => <td key={f.key}>{r.attrs?.[f.key] ? '✓' : '—'}</td>)}
                 <td style={{ whiteSpace: 'nowrap' }}>
-                  <button className="secondary" style={{ padding: '4px 10px', marginRight: 6 }} onClick={() => editRow(r)}>✎</button>
-                  <button className="secondary" style={{ padding: '4px 10px' }} onClick={() => del(r.code)}>🗑</button>
+                  {isReservedCharge ? (
+                    <button className="secondary" style={{ padding: '4px 10px' }} title="Built-in charge. Its amount is set per customer on the rate card, or globally on the Standard Charges screen — not here."
+                      onClick={() => { setMsg(''); setError(`"${r.code}" (${r.name}) is a built-in charge — its amount is set per customer on the rate card, or globally on the Standard Charges screen. It's locked here to avoid a double-charge.`); }}>🔒 Locked</button>
+                  ) : (
+                    <>
+                      <button className="secondary" style={{ padding: '4px 10px', marginRight: 6 }} onClick={() => editRow(r)}>✎</button>
+                      <button className="secondary" style={{ padding: '4px 10px' }} onClick={() => del(r.code)}>🗑</button>
+                    </>
+                  )}
                 </td>
               </tr>
-            ))}
+            ); })}
           </tbody>
         </table>
         {filtered.length === 0 && <p className="muted">No entries yet — add one above.</p>}
