@@ -36,9 +36,6 @@ import { Pincodes } from './pages/Pincodes';
 import { Masters } from './pages/Masters';
 import { Deliver } from './pages/Deliver';
 import { BulkBooking } from './pages/BulkBooking';
-import { Scan } from './pages/Scan';
-import { Drs } from './pages/Drs';
-import { BulkPod } from './pages/BulkPod';
 import { Reports } from './pages/Reports';
 import { MileScan, MileDashboard, Bagging, UnloadedBags, DeliveryUpdate } from './pages/Mile';
 
@@ -71,9 +68,6 @@ export function App() {
         <Route path="/awb-list" element={<AwbEntryList />} />
         <Route path="/bulk" element={<BulkBooking />} />
         <Route path="/walk-in" element={isAdminFin || canMaster ? <WalkIn /> : <Navigate to="/" replace />} />
-        <Route path="/scan" element={<Scan />} />
-        <Route path="/drs" element={<Drs />} />
-        <Route path="/bulk-pod" element={<BulkPod />} />
         <Route path="/shipments/:awb" element={<ShipmentDetail />} />
         <Route path="/shipments/:awb/labels" element={<Labels />} />
         <Route path="/invoices" element={<Invoices />} />
