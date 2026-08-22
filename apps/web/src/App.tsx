@@ -35,7 +35,6 @@ import { Receivables } from './pages/Receivables';
 import { AuditLog } from './pages/AuditLog';
 import { Pincodes } from './pages/Pincodes';
 import { Masters } from './pages/Masters';
-import { StandardCharges } from './pages/StandardCharges';
 import { BulkRateUpload } from './pages/BulkRateUpload';
 import { Deliver } from './pages/Deliver';
 import { BulkBooking } from './pages/BulkBooking';
@@ -117,7 +116,8 @@ export function App() {
         <Route path="/claims" element={isAdminFin ? <Claims /> : <Navigate to="/" replace />} />
         <Route path="/documents" element={isAdminFin ? <Documents /> : <Navigate to="/" replace />} />
         <Route path="/masters" element={canMaster ? <Masters /> : <Navigate to="/" replace />} />
-        <Route path="/standard-charges" element={canMaster ? <StandardCharges /> : <Navigate to="/" replace />} />
+        {/* Standard Charges merged into Masters → Charges (default rate/min per charge). Keep old bookmarks working. */}
+        <Route path="/standard-charges" element={<Navigate to="/masters" replace />} />
         <Route path="/bulk-rate-upload" element={canMaster ? <BulkRateUpload /> : <Navigate to="/" replace />} />
         <Route path="/reports" element={canReports ? <Reports /> : <Navigate to="/" replace />} />
         <Route path="/audit" element={user?.role === 'SYS_ADMIN' ? <AuditLog /> : <Navigate to="/" replace />} />

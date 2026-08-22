@@ -428,21 +428,23 @@ export class RateService {
     const fuelPct = await this.cardFuelPct(card, surface);
     let fuel = r2(freight * (fuelPct / 100));
     const invVal = Number(shipment.shipmentValue ?? shipment.declaredValue ?? 0);
-    // Accessorial values are master-driven: read from the card's `charges` JSON keyed by
-    // CHARGE code, falling back to the legacy fixed column so existing cards bill unchanged.
-    // Apex/Surface use one STANDARD accessorial set shared by ALL vendors (STD_ACCESSORIAL master);
-    // any value on the card itself overrides the standard for that card.
-    let CJ: any = card.charges || {};
-    const stdMode = isCourier ? null : surface ? 'SURFACE' : 'APEX';
-    if (stdMode) {
-      const std = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'STD_ACCESSORIAL', code: stdMode } } });
-      const stdCharges = (std?.attrs as any)?.charges;
-      if (stdCharges && typeof stdCharges === 'object') CJ = { ...stdCharges, ...CJ };
-    }
-    const cget = (code: string, k: 'value' | 'min', legacy: any) => {
-      const j = CJ[code] ?? CJ[code.toUpperCase()];
-      const v = j && j[k] != null && j[k] !== '' ? Number(j[k]) : Number(legacy ?? 0);
-      return isNaN(v) ? 0 : v;
+    // Accessorial DEFAULTS live on the CHARGE master (rate/min/perKg per code); a value on the
+    // customer's rate card OVERRIDES the default. CARGO (Apex/Surface) inherits the master default
+    // when the card leaves a charge blank; COURIER (DP/TDD/NDD) never inherits — its accessorials
+    // bill only when explicitly set on the rate card.
+    const cardCJ: any = card.charges || {};
+    const chargeRows = await this.prisma.masterEntry.findMany({ where: { type: 'CHARGE', active: true } });
+    const mdef: Record<string, any> = {};
+    if (!isCourier) for (const m of chargeRows) { const a: any = m.attrs || {}; mdef[m.code.toUpperCase()] = { value: a.rate, min: a.min, perKg: a.perKg }; }
+    // effective value: rate-card (if set) → master default (cargo only) → legacy fixed column.
+    const cget = (code: string, k: 'value' | 'min' | 'perKg', legacy: any) => {
+      const U = code.toUpperCase();
+      const c = cardCJ[code] ?? cardCJ[U];
+      if (c && c[k] != null && c[k] !== '') { const n = Number(c[k]); return isNaN(n) ? 0 : n; }
+      const d = mdef[U];
+      if (d && d[k] != null && d[k] !== '') { const n = Number(d[k]); return isNaN(n) ? 0 : n; }
+      const n = Number(legacy ?? 0);
+      return isNaN(n) ? 0 : n;
     };
     let fov = 0;
     const fovPct = cget('FOV', 'value', card.fovPct), fovMin = cget('FOV', 'min', card.fovMin);
@@ -455,7 +457,7 @@ export class RateService {
       const destPin = shipment.destPincode ? await this.prisma.pincode.findUnique({ where: { pincode: shipment.destPincode } }) : null;
       const edl = await this.edlCharge(this.deriveNetwork(shipment), destPin, chargeableKg);
       const odaFlat = cget('ODA', 'value', card.odaFlat), odaMin = cget('ODA', 'min', card.odaMin);
-      const odaPerKg = CJ.ODA?.perKg != null && CJ.ODA?.perKg !== '' ? Number(CJ.ODA.perKg) : Number(card.odaPerKg ?? 0);
+      const odaPerKg = cget('ODA', 'perKg', card.odaPerKg);
       if (edl > 0) { oda = edl; odaLabel = 'EDL (ODA)'; }
       else if (shipment.isOda && (odaFlat > 0 || odaPerKg > 0 || odaMin > 0)) {
         oda = r2(Math.max(odaFlat + odaPerKg * chargeableKg, odaMin));
@@ -463,7 +465,7 @@ export class RateService {
     }
     const topay = shipment.paymentTerm === 'TO_PAY' ? r2(cget('TOPAY', 'value', card.topayCharge)) : 0;
     // Appointment delivery: per-kg (chargeable) with a ₹ minimum. (value = ₹/kg, min = floor ₹)
-    const apptMin = CJ.APPT?.min != null && CJ.APPT?.min !== '' ? Number(CJ.APPT.min) : 0;
+    const apptMin = cget('APPT', 'min', 0);
     const appt = shipment.apptDelivery ? r2(Math.max(cget('APPT', 'value', card.apptCharge) * chargeableKg, apptMin)) : 0;
     const loading = r2(cget('LOADING', 'value', card.loadingCharge));
     const unloading = r2(cget('UNLOADING', 'value', card.unloadingCharge));
@@ -485,23 +487,21 @@ export class RateService {
     const customLines: { head: string; amount: number }[] = [];
     let customTotal = 0;
     let fuelableExtra = 0; // custom charges flagged "FSC applicable" — fuel is charged on these too
-    if (Object.keys(CJ).length) {
-      const master = await this.prisma.masterEntry.findMany({ where: { type: 'CHARGE', active: true } });
-      for (const cm of master) {
-        const code = cm.code.toUpperCase();
-        if (BUILT_IN.has(code)) continue;
-        const conf = CJ[cm.code] ?? CJ[code];
-        const v = conf && conf.value != null && conf.value !== '' ? Number(conf.value) : 0;
-        if (!v) continue;
-        // "Chargeable/Actual Weight" bill per chargeable kg; Freight/Value are %; else FLAT ₹.
-        const baseOn = String((cm.attrs as any)?.baseOn || 'FLAT').toUpperCase();
-        let amt = baseOn === 'FREIGHT' ? (freight * v) / 100
-          : baseOn.includes('VALUE') ? Math.max((invVal * v) / 100, Number(conf.min ?? 0))
-          : baseOn.includes('WEIGHT') ? v * chargeableKg
-          : v; // FLAT
-        amt = r2(amt);
-        if (amt > 0) { customLines.push({ head: cm.name, amount: amt }); customTotal += amt; if ((cm.attrs as any)?.applyFuel) fuelableExtra += amt; }
-      }
+    for (const cm of chargeRows) {
+      const code = cm.code.toUpperCase();
+      if (BUILT_IN.has(code)) continue;
+      // value: rate-card override → master default (cargo only) → 0. Courier bills only card values.
+      const v = cget(cm.code, 'value', 0);
+      if (!v) continue;
+      const cmin = cget(cm.code, 'min', 0);
+      // "Chargeable/Actual Weight" bill per chargeable kg; Freight/Value are %; else FLAT ₹.
+      const baseOn = String((cm.attrs as any)?.baseOn || 'FLAT').toUpperCase();
+      let amt = baseOn === 'FREIGHT' ? (freight * v) / 100
+        : baseOn.includes('VALUE') ? Math.max((invVal * v) / 100, cmin)
+        : baseOn.includes('WEIGHT') ? v * chargeableKg
+        : v; // FLAT
+      amt = r2(amt);
+      if (amt > 0) { customLines.push({ head: cm.name, amount: amt }); customTotal += amt; if ((cm.attrs as any)?.applyFuel) fuelableExtra += amt; }
     }
     // Charges marked "FSC applicable" add to the fuel-surcharge base.
     if (fuelableExtra > 0 && fuelPct > 0) fuel = r2(fuel + (fuelableExtra * fuelPct) / 100);

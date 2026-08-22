@@ -82,7 +82,6 @@ export function Layout() {
       { to: '/service-mapping', icon: '🔀', label: 'Service Mapping', show: canMaster },
       { to: '/pincodes', icon: '📍', label: 'Pincodes and TAT', show: canMaster },
       { to: '/masters', icon: '🗃', label: 'Masters', show: canMaster },
-      { to: '/standard-charges', icon: '💱', label: 'Standard Charges', show: canMaster },
       { to: '/bulk-rate-upload', icon: '⬆', label: 'Bulk Rate Upload', show: canMaster },
       { to: '/tax', icon: '🧮', label: 'Tax Filing', show: isAdminFin },
     ] },

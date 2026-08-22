@@ -58,7 +58,6 @@ export const FEATURE_CATALOG: FeatureSection[] = [
     { to: '/service-mapping', label: 'Service Mapping' },
     { to: '/pincodes', label: 'Pincodes and TAT' },
     { to: '/masters', label: 'Masters' },
-    { to: '/standard-charges', label: 'Standard Charges' },
     { to: '/bulk-rate-upload', label: 'Bulk Rate Upload' },
     { to: '/tax', label: 'Tax Filing' },
   ] },

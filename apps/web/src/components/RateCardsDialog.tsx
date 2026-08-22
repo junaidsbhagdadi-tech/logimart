@@ -454,7 +454,7 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
       <div className="card" style={{ padding: 12, marginTop: 12 }}>
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
           <strong>Accessorial Charges</strong>
-          <span className="muted" style={{ fontSize: 11 }}>Apex/Surface inherit the <strong>Standard Charges</strong> (all vendors) — leave blank to use them; a value here overrides for this card.</span>
+          <span className="muted" style={{ fontSize: 11 }}>Apex/Surface inherit the default rate from <strong>Masters → Charges</strong> — leave blank to use it; a value here overrides for this card. (DP/courier bills only what's set here.)</span>
         </div>
         {!chargeDefs.length ? <p className="muted" style={{ fontSize: 12 }}>No charge types in the master yet. Add them in Masters → Charges.</p> : (
           <div className="grid cols-4" style={{ gap: 12, marginTop: 8 }}>
