@@ -8,6 +8,11 @@ export function Invoices() {
   const isFinance = user?.role === 'FINANCE_EXEC' || user?.role === 'SYS_ADMIN';
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [credit, setCredit] = useState<Credit | null>(null);
+  const [clients, setClients] = useState<any[]>([]);
+  const [fClient, setFClient] = useState('');
+  const [fFrom, setFFrom] = useState('');
+  const [fTo, setFTo] = useState('');
+  const [q, setQ] = useState('');
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
 
@@ -27,6 +32,33 @@ export function Invoices() {
     api.getCredit(defaultClientId).then(setCredit).catch(() => {});
   };
   useEffect(load, []);
+  useEffect(() => { api.listClients().then(setClients).catch(() => {}); }, []);
+
+  // filtered invoices for the printing list
+  const num = (v: any) => Number(v ?? 0);
+  const filtered = invoices.filter((inv) => {
+    if (fClient && String(inv.client?.accountCode) !== fClient) return false;
+    const d = inv.periodEnd?.slice(0, 10) ?? '';
+    if (fFrom && d < fFrom) return false;
+    if (fTo && d > fTo) return false;
+    const s = q.trim().toLowerCase();
+    if (s && !(inv.invoiceNo.toLowerCase().includes(s) || String(inv.client?.legalName ?? '').toLowerCase().includes(s))) return false;
+    return true;
+  });
+  const totSub = filtered.reduce((a, i) => a + num(i.subtotal), 0);
+  const totTax = filtered.reduce((a, i) => a + num(i.tax), 0);
+  const totAmt = filtered.reduce((a, i) => a + num(i.total), 0);
+
+  const exportXls = async () => {
+    const XLSX = await import('xlsx');
+    const head = ['Invoice No', 'From', 'To', 'Code', 'Customer', 'Subtotal', 'Tax', 'Total', 'Status'];
+    const rows = filtered.map((i) => [i.invoiceNo, i.periodStart?.slice(0, 10), i.periodEnd?.slice(0, 10), i.client?.accountCode ?? '', i.client?.legalName ?? '', num(i.subtotal), num(i.tax), num(i.total), i.status]);
+    const totals = ['', '', '', '', 'TOTAL', totSub, totTax, totAmt, ''];
+    const ws = XLSX.utils.aoa_to_sheet([['Invoice list'], [], head, ...rows, [], totals]);
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Invoices');
+    XLSX.writeFile(wb, `invoices-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+  const printAll = () => { filtered.slice(0, 30).forEach((i) => window.open(`/invoices/${i.id}/print`, '_blank')); };
 
   const generate = async () => {
     setError('');
@@ -72,26 +104,60 @@ export function Invoices() {
       )}
 
       <div className="card">
-        {invoices.length === 0 ? (
-          <p className="muted">No invoices yet.</p>
-        ) : (
-          <table>
-            <thead>
-              <tr><th>Invoice</th><th>Period</th><th>Lines</th><th>Total</th><th>Due</th><th>Status</th></tr>
-            </thead>
-            <tbody>
-              {invoices.map((inv) => (
-                <tr key={inv.id}>
-                  <td><Link to={`/invoices/${inv.id}`}><strong>{inv.invoiceNo}</strong></Link></td>
-                  <td>{inv.periodStart.slice(0, 10)} → {inv.periodEnd.slice(0, 10)}</td>
-                  <td>{inv.lines.length}</td>
-                  <td>₹{inv.total}</td>
-                  <td>{inv.dueDate.slice(0, 10)}</td>
-                  <td><span className={`badge ${inv.status}`}>{inv.status}</span></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 10 }}>
+          <h2 style={{ margin: 0 }}>🧾 Invoice printing</h2>
+          <div className="row" style={{ gap: 8 }}>
+            <button className="secondary" onClick={() => { setFClient(''); setFFrom(''); setFTo(''); setQ(''); }}>Reset</button>
+            <button className="secondary" onClick={exportXls} disabled={!filtered.length}>⬇ Excel</button>
+            <button onClick={printAll} disabled={!filtered.length}>🖨 Print all</button>
+          </div>
+        </div>
+        <div className="grid cols-4" style={{ gap: 10, marginTop: 10 }}>
+          <div><label style={{ fontSize: 12 }}>Customer</label>
+            <select value={fClient} onChange={(e) => setFClient(e.target.value)}>
+              <option value="">All customers</option>
+              {clients.map((c) => <option key={c.id} value={c.accountCode}>{c.accountCode} — {c.legalName}</option>)}
+            </select>
+          </div>
+          <div><label style={{ fontSize: 12 }}>From</label><input type="date" value={fFrom} onChange={(e) => setFFrom(e.target.value)} /></div>
+          <div><label style={{ fontSize: 12 }}>To</label><input type="date" value={fTo} onChange={(e) => setFTo(e.target.value)} /></div>
+          <div><label style={{ fontSize: 12 }}>Search</label><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="invoice no / customer" /></div>
+        </div>
+
+        <div className="row" style={{ gap: 8, margin: '12px 0', flexWrap: 'wrap' }}>
+          {[['Invoices', filtered.length], ['Subtotal', `₹${totSub.toLocaleString('en-IN')}`], ['Tax', `₹${totTax.toLocaleString('en-IN')}`], ['Total', `₹${totAmt.toLocaleString('en-IN')}`]].map(([k, v]) => (
+            <div key={String(k)} style={{ background: 'var(--bg-soft, #f2f4f7)', borderRadius: 8, padding: '6px 12px', fontSize: 13 }}><b className="muted">{k}:</b> {v}</div>
+          ))}
+        </div>
+
+        {filtered.length === 0 ? <p className="muted">No invoices match.</p> : (
+          <div style={{ overflowX: 'auto' }}>
+            <table>
+              <thead>
+                <tr><th>Invoice No</th><th>From</th><th>To</th><th>Code</th><th>Customer</th><th style={{ textAlign: 'right' }}>Subtotal</th><th style={{ textAlign: 'right' }}>Tax</th><th style={{ textAlign: 'right' }}>Total</th><th>Status</th><th>Action</th></tr>
+              </thead>
+              <tbody>
+                {filtered.map((inv) => (
+                  <tr key={inv.id}>
+                    <td><Link to={`/invoices/${inv.id}`}><strong>{inv.invoiceNo}</strong></Link></td>
+                    <td>{inv.periodStart.slice(0, 10)}</td>
+                    <td>{inv.periodEnd.slice(0, 10)}</td>
+                    <td>{inv.client?.accountCode ?? '—'}</td>
+                    <td>{inv.client?.legalName ?? '—'}</td>
+                    <td style={{ textAlign: 'right' }}>₹{num(inv.subtotal).toLocaleString('en-IN')}</td>
+                    <td style={{ textAlign: 'right' }}>₹{num(inv.tax).toLocaleString('en-IN')}</td>
+                    <td style={{ textAlign: 'right' }}><strong>₹{num(inv.total).toLocaleString('en-IN')}</strong></td>
+                    <td><span className={`badge ${inv.status}`}>{inv.status}</span></td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <Link to={`/invoices/${inv.id}`}><button className="secondary" style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }}>👁</button></Link>
+                      <a href={`/invoices/${inv.id}/print`} target="_blank" rel="noreferrer"><button className="secondary" style={{ padding: '3px 8px', fontSize: 12 }}>🖨</button></a>
+                    </td>
+                  </tr>
+                ))}
+                <tr><td colSpan={5} style={{ textAlign: 'right' }}><strong>TOTAL</strong></td><td style={{ textAlign: 'right' }}><strong>₹{totSub.toLocaleString('en-IN')}</strong></td><td style={{ textAlign: 'right' }}><strong>₹{totTax.toLocaleString('en-IN')}</strong></td><td style={{ textAlign: 'right' }}><strong>₹{totAmt.toLocaleString('en-IN')}</strong></td><td colSpan={2}></td></tr>
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </>
