@@ -23,6 +23,7 @@ import { InvoicePrint } from './pages/InvoicePrint';
 import { Users } from './pages/Users';
 import { Feedback } from './pages/Feedback';
 import { Vendors } from './pages/Vendors';
+import { Vehicles } from './pages/Vehicles';
 import { ServiceMap } from './pages/ServiceMap';
 import { Sales } from './pages/Sales';
 import { TaxFiling } from './pages/TaxFiling';
@@ -82,6 +83,7 @@ export function App() {
         <Route path="/manifests" element={<Manifests />} />
         <Route path="/customers" element={isAdminFin ? <Customers /> : <Navigate to="/" replace />} />
         <Route path="/vendors" element={isAdminFin ? <Vendors /> : <Navigate to="/" replace />} />
+        <Route path="/vehicles" element={isAdminFin || canMaster ? <Vehicles /> : <Navigate to="/" replace />} />
         <Route path="/service-mapping" element={isAdminFin || canMaster ? <ServiceMap /> : <Navigate to="/" replace />} />
         <Route path="/sales" element={isAdminFin ? <Sales /> : <Navigate to="/" replace />} />
         <Route path="/ftl-rates" element={isAdminFin ? <FtlRates /> : <Navigate to="/" replace />} />

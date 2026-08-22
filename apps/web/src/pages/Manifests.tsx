@@ -8,16 +8,25 @@ export function Manifests() {
   const [awbs, setAwbs] = useState('');
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
+  const [vehicles, setVehicles] = useState<any[]>([]);
+  const [hubs, setHubs] = useState<{ id: string; code: string; name: string }[]>([]);
+  const [fromHubId, setFromHubId] = useState('');
+  const [toHubId, setToHubId] = useState('');
 
   const load = () => {
     api.listManifests().then(setRows).catch((e) => setError(e.message));
   };
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+    api.listMaster('VEHICLE').then(setVehicles).catch(() => {});
+    api.listHubs().then((h) => { setHubs(h); if (h[0]) setFromHubId(String(h[0].id)); if (h[1]) setToHubId(String(h[1].id)); }).catch(() => {});
+  }, []);
 
   const create = async () => {
     setError(''); setMsg('');
+    if (!fromHubId || !toHubId) { setError('Pick the from and to hub.'); return; }
     try {
-      const m = await api.createManifest({ vehicleNo, fromHubId: 1, toHubId: 2 });
+      const m = await api.createManifest({ vehicleNo, fromHubId: Number(fromHubId), toHubId: Number(toHubId) });
       setVehicleNo('');
       setMsg(`Created manifest ${m.code}`);
       load();
@@ -58,10 +67,27 @@ export function Manifests() {
 
       <div className="card">
         <h2>Create trip manifest</h2>
-        <div className="row" style={{ gap: 8 }}>
-          <input placeholder="Vehicle no e.g. KA01AB1234" value={vehicleNo} onChange={(e) => setVehicleNo(e.target.value)} style={{ flex: 1 }} />
-          <button disabled={!vehicleNo} onClick={create}>Create (BLR → HYD)</button>
+        <div className="grid cols-4" style={{ gap: 8, alignItems: 'flex-end' }}>
+          <div>
+            <label style={{ fontSize: 12 }}>Vehicle</label>
+            <input list="lm-vehicles" placeholder="KA01AB1234" value={vehicleNo} onChange={(e) => setVehicleNo(e.target.value.toUpperCase())} />
+            <datalist id="lm-vehicles">{vehicles.map((v) => <option key={v.code} value={v.code}>{v.attrs?.type ? `${v.code} · ${v.attrs.type}` : v.code}</option>)}</datalist>
+          </div>
+          <div>
+            <label style={{ fontSize: 12 }}>From hub</label>
+            <select value={fromHubId} onChange={(e) => setFromHubId(e.target.value)}>
+              <option value="">—</option>{hubs.map((h) => <option key={h.id} value={h.id}>{h.code} — {h.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 12 }}>To hub</label>
+            <select value={toHubId} onChange={(e) => setToHubId(e.target.value)}>
+              <option value="">—</option>{hubs.map((h) => <option key={h.id} value={h.id}>{h.code} — {h.name}</option>)}
+            </select>
+          </div>
+          <button disabled={!vehicleNo || !fromHubId || !toHubId} onClick={create}>Create trip</button>
         </div>
+        {!vehicles.length && <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>Tip: add your fleet under <strong>Vehicles</strong> to pick from a list.</p>}
       </div>
 
       <div className="card">
