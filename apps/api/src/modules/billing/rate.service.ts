@@ -404,12 +404,26 @@ export class RateService {
     const priced = this.priceSlabs(zoneSlabs.length ? zoneSlabs : card.slabs, chargeableKg);
     if (!priced) return null;
 
+    // City-specific special rate: overrides the zone slab when the destination city matches.
+    // Stored per card as [{ city, perKg, min }]; matched on the shipment's consignee city (case/space-insensitive).
+    let baseFreight = priced.freight;
+    let priceBasis = priced.basis;
+    const cityRates: any[] = Array.isArray((card as any).cityRates) ? (card as any).cityRates : [];
+    const destCity = norm(shipment.consigneeCity);
+    if (destCity && cityRates.length) {
+      const cm = cityRates.find((c) => c && norm(c.city) === destCity && Number(c.perKg) > 0);
+      if (cm) {
+        baseFreight = Math.max(Number(cm.perKg) * chargeableKg, Number(cm.min ?? 0));
+        priceBasis = `city ${String(cm.city).toUpperCase()} @ ₹${cm.perKg}/kg`;
+      }
+    }
+
     // Product family gates a few rules: DP/TDD/NDD are courier (no ODA/EDL); surface enables DSC.
     const prod = String(shipment.product ?? card.product ?? '').toUpperCase();
     const isCourier = ['DP', 'TDD', 'NDD'].includes(prod);
     const surface = this.isSurface(shipment.serviceMode) || String(card.mode ?? '').toUpperCase().includes('SURFACE');
 
-    const freight = r2(Math.max(priced.freight, Number(card.minFreight ?? 0)));
+    const freight = r2(Math.max(baseFreight, Number(card.minFreight ?? 0)));
     const useDsc = surface && String(card.fuelMode ?? 'FLAT').toUpperCase() === 'DYNAMIC';
     const fuelPct = await this.cardFuelPct(card, surface);
     let fuel = r2(freight * (fuelPct / 100));
@@ -492,7 +506,7 @@ export class RateService {
     // Charges marked "FSC applicable" add to the fuel-surcharge base.
     if (fuelableExtra > 0 && fuelPct > 0) fuel = r2(fuel + (fuelableExtra * fuelPct) / 100);
 
-    const lines = [{ head: `Freight (${priced.basis})`, amount: freight }];
+    const lines = [{ head: `Freight (${priceBasis})`, amount: freight }];
     // Diesel Surcharge only for surface (DSC); air/express/DP show flat "Fuel".
     const fscLabel = useDsc ? 'Diesel Surcharge' : 'Fuel';
     if (fuel > 0) lines.push({ head: `${fscLabel} ${fuelPct}%`, amount: fuel });
@@ -518,7 +532,7 @@ export class RateService {
     return {
       chargeableKg, freight, fuel, fov, oda, docket, handling, topay, appt, loading, unloading,
       awb, emergency, environment, osp,
-      subtotal, lines, basis: `card ${card.network}/${card.product} — ${priced.basis}`,
+      subtotal, lines, basis: `card ${card.network}/${card.product} — ${priceBasis}`,
     };
   }
 

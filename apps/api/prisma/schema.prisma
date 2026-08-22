@@ -272,6 +272,7 @@ model CustomerRateCard {
   addlWeightUnitG   Int       @default(1000) // additional weight step (g); 250/500 for DP/TDD/NDD
   // ---- required-for-all config (red fields in the upload) ----
   cityWiseRates     Boolean   @default(false)                 // "City wise rates option"
+  cityRates         Json      @default("[]")                  // [{city, perKg, min}] — special ₹/kg by dest city, overrides the zone rate
   rateAboveKg       Decimal?  @db.Decimal(10, 3)              // break point, e.g. 500 kg
   rateAboveKgRate   Decimal?  @db.Decimal(12, 2)              // ₹/kg above the break
   volDiscountPct    Decimal   @default(0) @db.Decimal(6, 2)   // "Volume weight Discount option"

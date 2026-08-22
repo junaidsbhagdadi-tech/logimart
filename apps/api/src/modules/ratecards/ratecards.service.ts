@@ -80,6 +80,11 @@ export class RateCardsService {
       minFreight: dec(num(d.minFreight)),
       addlWeightUnitG: num(d.addlWeightUnitG, 1000),
       cityWiseRates: !!d.cityWiseRates,
+      cityRates: Array.isArray(d.cityRates)
+        ? d.cityRates
+            .filter((c: any) => c && String(c.city ?? '').trim() && Number(c.perKg) > 0)
+            .map((c: any) => ({ city: String(c.city).trim().toUpperCase(), perKg: Number(c.perKg), min: c.min != null && c.min !== '' ? Number(c.min) : 0 }))
+        : [],
       rateAboveKg: d.rateAboveKg != null && d.rateAboveKg !== '' ? dec(num(d.rateAboveKg)) : null,
       rateAboveKgRate: d.rateAboveKgRate != null && d.rateAboveKgRate !== '' ? dec(num(d.rateAboveKgRate)) : null,
       volDiscountPct: dec(num(d.volDiscountPct)),

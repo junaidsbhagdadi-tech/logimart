@@ -125,6 +125,7 @@ function CardView({ card, zones, onEdit, onDelete }: { card: any; zones: string[
   chips.push({ k: 'Vol÷', v: String(num(card.volumetricDivisor)) });
   if (num(card.cft)) chips.push({ k: 'CFT', v: String(num(card.cft)) });
   if (num(card.minFreight)) chips.push({ k: 'Min freight', v: money(card.minFreight) });
+  if (Array.isArray(card.cityRates) && card.cityRates.length) chips.push({ k: '🏙 City rates', v: card.cityRates.map((c: any) => `${String(c.city).toUpperCase()} ₹${c.perKg}`).join(', ') });
 
   return (
     <div className="card" style={{ padding: 14, marginBottom: 10 }}>
@@ -310,7 +311,9 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
     unloadingCharge: card?.unloadingCharge ?? 0, docketCharge: card?.docketCharge ?? 0,
     validFrom: card?.validFrom ? String(card.validFrom).slice(0, 10) : '', validTo: card?.validTo ? String(card.validTo).slice(0, 10) : '',
     isActive: card?.isActive !== false,
+    cityRates: Array.isArray(card?.cityRates) ? card.cityRates.map((c: any) => ({ city: c.city ?? '', perKg: c.perKg ?? '', min: c.min ?? '' })) : [],
   }));
+  const cityRates: any[] = Array.isArray(h.cityRates) ? h.cityRates : [];
   // Courier (DP/TDD/NDD) vs cargo drives the slab structure: gram bands × A/B/C/OTHER, or ₹/kg × wide zone matrix.
   const fam: 'COURIER' | 'CARGO' = isCourierProduct(h.product) ? 'COURIER' : 'CARGO';
   const zoneCols = fam === 'COURIER' ? COURIER_ZONES : zones;
@@ -401,6 +404,32 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
         <NumF label="CFT factor (kg/CFT · surface)" k="cft" step="0.01" />
         <NumF label="Min chargeable (kg)" k="minChargeableKg" step="0.001" />
         <NumF label="Min freight (₹)" k="minFreight" />
+      </div>
+
+      {/* City-specific special rates — override the zone rate for named destination cities */}
+      <div className="card" style={{ padding: 12, marginTop: 12 }}>
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <strong style={{ fontSize: 13 }}>🏙 City-specific rates</strong>
+            <span className="muted" style={{ fontSize: 11, marginLeft: 8 }}>special ₹/kg for named destination cities — overrides the zone rate when the consignee city matches</span>
+          </div>
+          <button className="secondary" type="button" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => set('cityRates', [...cityRates, { city: '', perKg: '', min: '' }])}>＋ Add city</button>
+        </div>
+        {cityRates.length > 0 && (
+          <table style={{ marginTop: 8 }}>
+            <thead><tr><th style={{ textAlign: 'left' }}>Destination city</th><th style={{ width: 130 }}>Rate ₹/kg</th><th style={{ width: 130 }}>Min ₹ (opt)</th><th style={{ width: 40 }}></th></tr></thead>
+            <tbody>
+              {cityRates.map((c, i) => (
+                <tr key={i}>
+                  <td><input value={c.city} placeholder="e.g. GURGAON" style={{ textTransform: 'uppercase' }} onChange={(e) => set('cityRates', cityRates.map((x, idx) => idx === i ? { ...x, city: e.target.value } : x))} /></td>
+                  <td><input type="number" step="0.01" value={c.perKg} onChange={(e) => set('cityRates', cityRates.map((x, idx) => idx === i ? { ...x, perKg: e.target.value } : x))} /></td>
+                  <td><input type="number" step="0.01" value={c.min} onChange={(e) => set('cityRates', cityRates.map((x, idx) => idx === i ? { ...x, min: e.target.value } : x))} /></td>
+                  <td><button className="secondary" type="button" style={{ padding: '3px 8px', fontSize: 12 }} onClick={() => set('cityRates', cityRates.filter((_, idx) => idx !== i))}>🗑</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {/* FSC */}
