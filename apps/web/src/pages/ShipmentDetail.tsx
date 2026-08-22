@@ -232,6 +232,7 @@ export function ShipmentDetail() {
           <div><label>Status</label><span className={`badge ${s.status}`}>{s.status}</span></div>
           <div><label>Service</label>{s.serviceMode}</div>
           <div><label>Route</label>{s.originZone} → {s.destZone}</div>
+          {s.expectedDelivery && <div><label>Expected delivery</label>{new Date(s.expectedDelivery).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} <span className="muted" style={{ fontSize: 11 }}>(booking + TAT)</span></div>}
           <div><label>Boxes delivered</label>{s.rollup.delivered} / {s.rollup.pieceCount} {s.rollup.isShort && <span className="badge PARTIAL">SHORT</span>}</div>
           <div><label>Total dead</label>{s.totalDeadKg} kg</div>
           <div><label>Total volumetric</label>{s.totalVolKg} kg</div>

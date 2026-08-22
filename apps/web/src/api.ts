@@ -72,6 +72,7 @@ export interface Shipment {
   ftlVehicleType?: string | null;
   departureAt?: string | null;
   arrivalAt?: string | null;
+  expectedDelivery?: string | null;
   // payment terms
   paymentTerm?: 'PREPAID' | 'TO_PAY';
   freightToCollect?: string | null;

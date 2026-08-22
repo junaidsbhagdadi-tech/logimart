@@ -473,6 +473,7 @@ model Shipment {
   ftlVehicleType String?   // 8ft | 10ft | 14ft | 17ft | 20ft | 32FT SXL | 32ft MXL
   departureAt    DateTime?
   arrivalAt      DateTime?
+  expectedDelivery DateTime? // promised delivery = booking date + zone→zone TAT (ZONE_TAT master)
   manualFreight  Decimal?  @db.Decimal(14, 2) // ad-hoc/one-time rate override
   ewbNo          String?   // e-way bill number
   ewbValidUpto   DateTime?

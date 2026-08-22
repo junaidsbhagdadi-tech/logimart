@@ -45,6 +45,8 @@ export async function parseTatWorkbook(file: File): Promise<Record<string, Recor
       if (!origin) continue;
       matrix[origin] = {};
       for (const d of destCols) { const n = num(r[d.idx]); if (n > 0) matrix[origin][d.zone] = n; }
+      // Same origin=dest is always 1 day (source sheets sometimes leave the diagonal blank/typo'd).
+      if (!(matrix[origin][origin] > 0)) matrix[origin][origin] = 1;
     }
     out[mode] = matrix;
   }

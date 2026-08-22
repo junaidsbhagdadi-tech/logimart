@@ -25,6 +25,22 @@ export class ShipmentsService {
   }
 
   /**
+   * Promised delivery date = today + transit TAT for the origin→dest zone, read from the
+   * ZONE_TAT master (SURFACE matrix for surface products, else APEX). Null if no TAT is set.
+   */
+  private async expectedDeliveryFor(product: string | undefined, serviceMode: string, originZone?: string, destZone?: string): Promise<Date | null> {
+    if (!originZone || !destZone) return null;
+    const surface = /SURFACE|ROAD|RAIL/i.test(String(serviceMode)) || ['SURFACE', 'HUB'].includes(String(product ?? '').toUpperCase());
+    const mode = surface ? 'SURFACE' : 'APEX';
+    const entry = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'ZONE_TAT', code: mode } } });
+    const matrix: any = (entry?.attrs as any)?.matrix;
+    const days = Number(matrix?.[String(originZone).toUpperCase()]?.[String(destZone).toUpperCase()]);
+    if (!days || days <= 0) return null;
+    const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + days);
+    return d;
+  }
+
+  /**
    * Xpresion-style AWB: prefix + a continuous 10-digit running number (no year),
    * e.g. L1000000045. Uses an atomic row-locked counter so concurrent bookings never
    * collide (the previous count()-based scheme could hand two bookings the same number).
@@ -84,6 +100,9 @@ export class ShipmentsService {
     let isOda = dto.isOda ?? false;
     if (destPin && (destPin.isOda || (destPin.edl && destPin.edl.toUpperCase() !== 'REGULAR'))) isOda = true;
 
+    // Promised delivery = booking date + zone→zone transit TAT (ZONE_TAT master, SURFACE/APEX matrix).
+    const expectedDelivery = await this.expectedDeliveryFor(dto.product, dto.serviceMode, originZone, destZone);
+
     const pieces = dto.pieces.map((p, i) => {
       const sequenceNo = i + 1;
       const childId = `${awb}-${String(sequenceNo).padStart(3, '0')}`;
@@ -133,6 +152,7 @@ export class ShipmentsService {
         consigneeCity: dto.consigneeCity,
         destPincode: dto.destPincode,
         isOda,
+        expectedDelivery,
         // ---- shipper (sender) ----
         shipperName: dto.shipperName || null,
         shipperContact: dto.shipperContact || null,
