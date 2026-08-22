@@ -82,7 +82,7 @@ export function App() {
         <Route path="/manifests" element={<Manifests />} />
         <Route path="/customers" element={isAdminFin ? <Customers /> : <Navigate to="/" replace />} />
         <Route path="/vendors" element={isAdminFin ? <Vendors /> : <Navigate to="/" replace />} />
-        <Route path="/service-mapping" element={isAdminFin ? <ServiceMap /> : <Navigate to="/" replace />} />
+        <Route path="/service-mapping" element={isAdminFin || canMaster ? <ServiceMap /> : <Navigate to="/" replace />} />
         <Route path="/sales" element={isAdminFin ? <Sales /> : <Navigate to="/" replace />} />
         <Route path="/ftl-rates" element={isAdminFin ? <FtlRates /> : <Navigate to="/" replace />} />
         <Route path="/vendor-bills" element={isAdminFin ? <VendorBills /> : <Navigate to="/" replace />} />

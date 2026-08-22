@@ -301,7 +301,7 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
   const [h, setH] = useState<any>(() => ({
     network: card?.network ?? 'SELF', vendor: card?.vendor ?? '', product: card?.product ?? (products[0]?.code ?? ''),
     mode: card?.mode ?? '', service: card?.service ?? '', label: card?.label ?? '',
-    volumetricDivisor: card?.volumetricDivisor ?? 5000, cft: card?.cft ?? 0, minChargeableKg: card?.minChargeableKg ?? 0,
+    volumetricDivisor: card?.volumetricDivisor ?? 27000, cft: card?.cft ?? 0, minChargeableKg: card?.minChargeableKg ?? 0,
     minFreight: card?.minFreight ?? 0, addlWeightUnitG: card?.addlWeightUnitG ?? 1000,
     fuelMode: card?.fuelMode ?? 'FLAT', fuelPct: card?.fuelPct ?? '', fuelMechanism: card?.fuelMechanism ?? '',
     fovPct: card?.fovPct ?? 0, fovMin: card?.fovMin ?? 0, odaFlat: card?.odaFlat ?? 0, odaPerKg: card?.odaPerKg ?? 0, odaMin: card?.odaMin ?? 0,
@@ -365,8 +365,8 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
 
-  const NumF = ({ label, k, step }: { label: string; k: string; step?: string }) => (
-    <div><label style={{ fontSize: 12 }}>{label}</label><input type="number" step={step} value={h[k]} onChange={(e) => set(k, e.target.value)} /></div>
+  const NumF = ({ label, k, step, max }: { label: string; k: string; step?: string; max?: number }) => (
+    <div><label style={{ fontSize: 12 }}>{label}</label><input type="number" step={step} max={max} value={h[k]} onChange={(e) => set(k, e.target.value)} /></div>
   );
 
   return (
@@ -393,8 +393,8 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
         <div><label style={{ fontSize: 12 }}>Mode</label><input value={h.mode} onChange={(e) => set('mode', e.target.value)} placeholder="AIR/SURFACE" /></div>
         <div><label style={{ fontSize: 12 }}>Service</label><input value={h.service} onChange={(e) => set('service', e.target.value)} placeholder="NDD/SDD (opt)" /></div>
 
-        <NumF label="Volumetric ÷" k="volumetricDivisor" />
-        <NumF label="CFT factor (surface)" k="cft" step="0.01" />
+        <NumF label="Volumetric ÷ (cm³/CFT · surface, max 27000)" k="volumetricDivisor" max={27000} />
+        <NumF label="CFT factor (kg/CFT · surface)" k="cft" step="0.01" />
         <NumF label="Min chargeable (kg)" k="minChargeableKg" step="0.001" />
         <NumF label="Min freight (₹)" k="minFreight" />
       </div>

@@ -53,12 +53,12 @@ export function Layout() {
       { to: '/customers', icon: '👥', label: 'Customers', show: isAdminFin },
       { to: '/vendors', icon: '🏢', label: 'Vendors', show: isAdminFin },
       { to: '/vendor-bills', icon: '🚚', label: 'Vendor Bills & P&L', show: isAdminFin },
-      { to: '/service-mapping', icon: '🔀', label: 'Service Mapping', show: isAdminFin },
       { to: '/documents', icon: '📁', label: 'Documents', show: isAdminFin },
       { to: '/sales', icon: '📈', label: 'Sales', show: isAdminFin },
     ] },
     { title: 'Masters & Setup', items: [
       { to: '/ftl-rates', icon: '🚛', label: 'FTL Rates', show: isAdminFin },
+      { to: '/service-mapping', icon: '🔀', label: 'Service Mapping', show: canMaster },
       { to: '/pincodes', icon: '📍', label: 'Pincodes', show: canMaster },
       { to: '/masters', icon: '🗃', label: 'Masters', show: canMaster },
       { to: '/tax', icon: '🧮', label: 'Tax Filing', show: isAdminFin },
