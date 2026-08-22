@@ -95,7 +95,9 @@ export class ShipmentsService {
     ]);
     const zoneFor = (pin: any, pincode?: string, fallback?: string): string | undefined => {
       const fam = String(dto.product ?? '').toUpperCase();
-      const z = pin && (['DP', 'TDD', 'NDD'].includes(fam) ? pin.dpZone : fam === 'APEX' ? pin.apexZone : fam === 'SURFACE' ? pin.surfaceZone : pin.ecomZone);
+      const isSurface = ['SURFACE', 'SFC', 'HUB'].includes(fam) || /ROAD|RAIL|SURFACE/i.test(String(dto.serviceMode ?? ''));
+      const zRaw = pin && (['DP', 'TDD', 'NDD'].includes(fam) ? pin.dpZone : fam === 'APEX' ? pin.apexZone : isSurface ? pin.surfaceZone : pin.ecomZone);
+      const z = zRaw ? String(zRaw).replace(/\s+/g, '').toUpperCase() : zRaw; // "NE 1" -> "NE1"
       return z || pin?.region || (pincode ? regionFromPincode(pincode) : undefined) || fallback;
     };
     const originZone = zoneFor(originPin, dto.originPincode, dto.originZone) || dto.originZone;

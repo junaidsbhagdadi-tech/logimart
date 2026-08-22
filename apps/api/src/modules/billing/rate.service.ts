@@ -382,7 +382,9 @@ export class RateService {
     const card = await this.resolveRateCard(shipment);
     if (!card) return null;
     const chargeableKg = this.cardChargeableKg(shipment, pieces, card);
-    const eq = (a: any, b: any) => !a || (b != null && String(a).toUpperCase() === String(b).toUpperCase());
+    // Zone match is space- and case-insensitive so "NE 1" (pincode) matches "NE1" (rate card).
+    const norm = (x: any) => String(x ?? '').replace(/\s+/g, '').toUpperCase();
+    const eq = (a: any, b: any) => !a || (b != null && norm(a) === norm(b));
     const zoneSlabs = card.slabs.filter((s: any) => eq(s.zone, shipment.destZone) && eq(s.originZone, shipment.originZone));
     const priced = this.priceSlabs(zoneSlabs.length ? zoneSlabs : card.slabs, chargeableKg);
     if (!priced) return null;

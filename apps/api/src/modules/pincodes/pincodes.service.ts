@@ -85,17 +85,19 @@ export class PincodesService {
     for (const r of rows) {
       const pincode = String(r.pincode ?? '').trim();
       if (!/^\d{6}$/.test(pincode)) { errors.push({ pincode: pincode || '(blank)', error: 'pincode must be 6 digits' }); continue; }
-      const surfaceZone = r.surfaceZone ? String(r.surfaceZone).trim().toUpperCase() : null;
-      const apexZone = r.apexZone ? String(r.apexZone).trim().toUpperCase() : null;
+      // Strip internal spaces so zones store as "NE1" (matches rate-card zones), not "NE 1".
+      const zn = (v: any) => (v ? String(v).replace(/\s+/g, '').toUpperCase() : null);
+      const surfaceZone = zn(r.surfaceZone);
+      const apexZone = zn(r.apexZone);
       const edlRaw = String(r.edl ?? '').trim();
       const data: any = {
         city: (r.city ?? r.area ?? '').toString().trim() || 'NA',
         state: (r.state ?? '').toString().trim() || 'NA',
         serviceCentre: r.serviceCentre ? String(r.serviceCentre).trim() : null,
         areaName: r.areaName ? String(r.areaName).trim() : null,
-        dpZone: r.dpZone ? String(r.dpZone).trim().toUpperCase() : null,
+        dpZone: zn(r.dpZone),
         surfaceZone, apexZone,
-        ecomZone: r.ecomZone ? String(r.ecomZone).trim().toUpperCase() : null,
+        ecomZone: zn(r.ecomZone),
         edl: edlRaw || 'Regular',
         edlDistanceKm: num(r.edlDistanceKm),
         tatHours: num(r.tat ?? r.tatHours),
