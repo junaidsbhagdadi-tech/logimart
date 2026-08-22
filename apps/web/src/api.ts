@@ -437,6 +437,12 @@ export const api = {
       scans: { at: string; code: string; label: string; location: string | null; by: string | null; reason: string | null; remark: string | null }[];
     }>(`/api/v1/lifecycle/detail/${encodeURIComponent(awb)}`),
   lifecycleReset: (awb: string) => request<{ awb: string; reset: boolean }>(`/api/v1/lifecycle/reset/${encodeURIComponent(awb)}`, { method: 'POST' }),
+  // ---- archive (super-admin: legacy old-system data) ----
+  listArchive: (category?: string, fiscalYear?: string) =>
+    request<{ id: string; title: string; category: string | null; fiscalYear: string | null; note: string | null; fileName: string | null; mimeType: string | null; sizeBytes: number | null; fileUrl: string | null; createdAt: string }[]>(`/api/v1/archive?${category ? `category=${encodeURIComponent(category)}&` : ''}${fiscalYear ? `fiscalYear=${encodeURIComponent(fiscalYear)}` : ''}`),
+  createArchive: (body: unknown) => request<{ id: string }>('/api/v1/archive', { method: 'POST', body: JSON.stringify(body) }),
+  archiveFile: (id: string) => request<{ fileName: string | null; mimeType: string | null; fileData: string | null; fileUrl: string | null }>(`/api/v1/archive/${id}/file`),
+  deleteArchive: (id: string) => request<{ deleted: boolean }>(`/api/v1/archive/${id}`, { method: 'DELETE' }),
   lifecycleTrack: (awb: string) =>
     request<{ awb: string; statusCode: string; currentLabel: string; statusAt: string | null; originZone: string; destZone: string; consigneeName?: string; consigneeCity?: string; expectedDelivery?: string | null; timeline: { code: string; label: string; at: string; remark?: string | null }[] }>(`/api/v1/lifecycle/track/${encodeURIComponent(awb)}`),
   lifecycleBag: (body: { bagCode: string; awbs: string[] }) => request<{ bagCode: string; bagged: number }>('/api/v1/lifecycle/bag', { method: 'POST', body: JSON.stringify(body) }),

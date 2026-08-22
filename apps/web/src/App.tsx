@@ -11,6 +11,7 @@ import { Invoices } from './pages/Invoices';
 import { InvoiceDetail } from './pages/InvoiceDetail';
 import { Track } from './pages/Track';
 import { TrackDetail } from './pages/TrackDetail';
+import { Archive } from './pages/Archive';
 import { Customers } from './pages/Customers';
 import { FtlRates } from './pages/FtlRates';
 import { VendorBills } from './pages/VendorBills';
@@ -118,6 +119,7 @@ export function App() {
         <Route path="/audit" element={user?.role === 'SYS_ADMIN' ? <AuditLog /> : <Navigate to="/" replace />} />
         <Route path="/users" element={user?.role === 'SYS_ADMIN' ? <Users /> : <Navigate to="/" replace />} />
         <Route path="/feedback" element={user?.role === 'SYS_ADMIN' ? <Feedback /> : <Navigate to="/" replace />} />
+        <Route path="/archive" element={user?.role === 'SYS_ADMIN' ? <Archive /> : <Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

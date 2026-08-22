@@ -26,6 +26,7 @@ import { HubsModule } from './modules/hubs/hubs.module';
 import { MastersModule } from './modules/masters/masters.module';
 import { OpscanModule } from './modules/opscan/opscan.module';
 import { LifecycleModule } from './modules/lifecycle/lifecycle.module';
+import { ArchiveModule } from './modules/archive/archive.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { BluedartModule } from './modules/bluedart/bluedart.module';
 import { RateMatrixModule } from './modules/ratematrix/ratematrix.module';
@@ -77,6 +78,7 @@ const webDist = join(__dirname, '..', '..', 'web', 'dist');
     StatsModule,
     ManifestsModule,
     PickupsModule,
+    ArchiveModule,
     UsersModule,
     PincodesModule,
     HubsModule,

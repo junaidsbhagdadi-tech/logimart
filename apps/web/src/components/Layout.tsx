@@ -90,6 +90,9 @@ export function Layout() {
       { to: '/audit', icon: '🕵', label: 'Audit Log', show: isSysAdmin },
       { to: '/feedback', icon: '💬', label: 'Feedback', show: isSysAdmin },
     ] },
+    { title: 'Utilities', items: [
+      { to: '/archive', icon: '🗄', label: 'Archive', show: isSysAdmin },
+    ] },
   ];
 
   const onLogout = () => { logout(); nav('/login'); };

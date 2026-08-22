@@ -1166,3 +1166,24 @@ model AuditLog {
   @@index([entity, createdAt])
   @@map("audit_logs")
 }
+
+/// Archived legacy data (old-system invoices/PODs/zips). Super-admin only. Small files stored
+/// inline as data URI; large archives reference an external link.
+model ArchiveItem {
+  id           BigInt   @id @default(autoincrement())
+  title        String
+  category     String?  // Invoices | PODs | Manifests | Ledgers | Other
+  fiscalYear   String?  // e.g. 2022-23
+  note         String?
+  fileName     String?
+  mimeType     String?
+  sizeBytes    Int?
+  fileData     String?  @db.Text // small files as data URI
+  fileUrl      String?  // external link (Drive / S3 / Spaces) for large archives
+  uploadedById BigInt?
+  createdAt    DateTime @default(now())
+
+  @@index([category])
+  @@index([fiscalYear])
+  @@map("archive_items")
+}
