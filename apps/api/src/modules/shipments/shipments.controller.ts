@@ -49,6 +49,13 @@ export class ShipmentsController {
     return this.shipments.findByAwb(awb);
   }
 
+  /** Wrong-entry transfer — reassign the AWB to the correct customer (super admin). */
+  @Post(':awb/transfer')
+  @Roles(UserRole.SYS_ADMIN)
+  transfer(@Param('awb') awb: string, @Body() dto: { clientId: number }) {
+    return this.shipments.transfer(awb, Number(dto.clientId));
+  }
+
   /** Assign a rider for last-mile delivery. */
   @Post(':awb/assign-delivery')
   @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)

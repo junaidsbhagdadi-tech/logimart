@@ -23,6 +23,17 @@ export function ShipmentDetail() {
   const [vendors, setVendors] = useState<any[]>([]);
   const [fwd, setFwd] = useState({ vendor: '', forwardingAwb: '' });
   const [track, setTrack] = useState<{ code: string; label: string; at: string; remark?: string | null }[]>([]);
+  const isSysAdmin = user?.role === 'SYS_ADMIN';
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferId, setTransferId] = useState('');
+  const [clients, setClients] = useState<any[]>([]);
+  useEffect(() => { if (isSysAdmin) api.listClients().then(setClients).catch(() => {}); }, [isSysAdmin]);
+  const doTransfer = async () => {
+    if (!transferId || !awb) return;
+    if (!confirm('Transfer this AWB to the selected customer?')) return;
+    try { const r = await api.transferShipment(awb, transferId); setMsg(`✓ Transferred to ${r.transferredTo.legalName} (${r.transferredTo.accountCode})`); setTransferOpen(false); setTransferId(''); load(); }
+    catch (e: any) { setError(e.message); }
+  };
 
   const load = () => {
     if (!awb) return;
@@ -186,6 +197,7 @@ export function ShipmentDetail() {
           {canAssign && <button className="secondary" onClick={handoffBd}>📦 Hand to BlueDart</button>}
           {canAssign && s.bdWaybill && <button className="secondary" onClick={trackBd}>🔎 BlueDart track</button>}
           {canReweigh && <button className="secondary" onClick={() => { setReweighMode((v) => !v); setMsg(''); }}>⚖ {reweighMode ? 'Cancel re-weigh' : 'Re-weigh'}</button>}
+          {isSysAdmin && <button className="secondary" onClick={() => { setTransferOpen((v) => !v); setMsg(''); setError(''); }} title="Wrong-entry transfer to another customer">🔄 Transfer</button>}
           <Link to={`/shipments/${s.awb}/labels`}><button>🏷 Print labels</button></Link>
           <a href={`/shipments/${s.awb}/awb-print`} target="_blank" rel="noreferrer"><button>🖨 Print AWB</button></a>
         </div>
@@ -193,6 +205,21 @@ export function ShipmentDetail() {
 
       {error && <div className="error">{error}</div>}
       {msg && <div className="card" style={{ borderLeft: '4px solid var(--brand)' }}>{msg}</div>}
+
+      {transferOpen && isSysAdmin && (
+        <div className="card" style={{ borderLeft: '4px solid var(--warn)' }}>
+          <h2 style={{ marginBottom: 4 }}>🔄 Wrong-entry transfer</h2>
+          <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Reassign this AWB to the correct customer. Blocked if it's already invoiced (cancel/rebill the invoice first).</p>
+          <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <select value={transferId} onChange={(e) => setTransferId(e.target.value)} style={{ minWidth: 320 }}>
+              <option value="">— select correct customer —</option>
+              {clients.map((c) => <option key={c.id} value={c.id}>{c.accountCode} — {c.legalName}</option>)}
+            </select>
+            <button disabled={!transferId} onClick={doTransfer}>Transfer AWB</button>
+            <button className="secondary" onClick={() => setTransferOpen(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
 
       {canHandover && (
         <div className="card">

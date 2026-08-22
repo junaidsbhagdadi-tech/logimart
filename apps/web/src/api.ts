@@ -321,6 +321,8 @@ export const api = {
 
   // ---- finance ----
   rateQuote: (awb: string) => request<RateQuote>(`/api/v1/shipments/${awb}/rate-quote`),
+  transferShipment: (awb: string, clientId: string | number) =>
+    request<{ awb: string; transferredTo: { id: string; legalName: string; accountCode: string } }>(`/api/v1/shipments/${awb}/transfer`, { method: 'POST', body: JSON.stringify({ clientId }) }),
   billWorksheet: (clientId: string | number, from?: string, to?: string) =>
     request<{ columns: { header: string; key: string }[]; client: { accountCode: string; legalName: string }; count: number; rows: Record<string, any>[] }>(
       `/api/v1/billing/bill-worksheet?clientId=${clientId}${from ? `&from=${from}` : ''}${to ? `&to=${to}` : ''}`),

@@ -243,6 +243,21 @@ export class ShipmentsService {
     return { total: rows.length, created: results.filter((r) => r.ok).length, results };
   }
 
+  /** Wrong-entry transfer: reassign a mis-booked AWB to the correct customer. Blocked once the
+   *  shipment has been invoiced (cancel/rebill the invoice first). Super-admin action. */
+  async transfer(awb: string, clientId: number) {
+    const s = await this.prisma.shipment.findUnique({
+      where: { awb: String(awb).trim().toUpperCase() },
+      select: { id: true, clientId: true, _count: { select: { invoiceLines: true } } },
+    });
+    if (!s) throw new NotFoundException(`AWB ${awb} not found`);
+    if (s._count.invoiceLines > 0) throw new ConflictException('This AWB is already invoiced — cancel/rebill the invoice before transferring.');
+    const target = await this.prisma.b2bClient.findUnique({ where: { id: BigInt(clientId) }, select: { id: true, legalName: true, accountCode: true } });
+    if (!target) throw new NotFoundException('Target customer not found');
+    await this.prisma.shipment.update({ where: { id: s.id }, data: { clientId: target.id } });
+    return { awb, transferredTo: { id: String(target.id), legalName: target.legalName, accountCode: target.accountCode } };
+  }
+
   /**
    * DOD — record that the cheque/DD was collected from the consignee.
    * This is the delivery gate: POD is blocked (see PodsService) until this is set.
