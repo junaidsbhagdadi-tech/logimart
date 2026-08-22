@@ -363,3 +363,56 @@ export function downloadCargoTemplate() {
   XLSX.utils.book_append_sheet(wb, ws, 'Apex And surface');
   XLSX.writeFile(wb, 'Logimart-cargo-rate-template.xlsx');
 }
+
+/** Export a customer's rate cards to XLS for review: a Summary sheet + one sheet per card
+ *  (header + accessorials + the zone×weight slab matrix). */
+export function exportRateCardsXlsx(clientName: string, cards: any[]): void {
+  const wb = XLSX.utils.book_new();
+
+  const sumHead = ['Network', 'Product', 'Mode', 'FSC mode', 'Fuel %', 'Fuel mech', 'FOV %', 'FOV min', 'ODA flat', 'ODA /kg', 'ODA min', 'Min freight', 'Min chg kg', 'Vol÷', 'CFT', 'Valid from', 'Valid to', 'Active'];
+  const sumRows = cards.map((c) => [
+    c.network, c.product, c.mode ?? '', c.fuelMode ?? '', num(c.fuelPct), c.fuelMechanism ?? '',
+    num(c.fovPct), num(c.fovMin), num(c.odaFlat), num(c.odaPerKg), num(c.odaMin), num(c.minFreight),
+    num(c.minChargeableKg), num(c.volumetricDivisor), num(c.cft),
+    c.validFrom ? String(c.validFrom).slice(0, 10) : '', c.validTo ? String(c.validTo).slice(0, 10) : '', c.isActive === false ? 'No' : 'Yes',
+  ]);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[`Rate cards — ${clientName}`], [], sumHead, ...sumRows]), 'Summary');
+
+  const used = new Set<string>();
+  for (const c of cards) {
+    const base = `${c.network}-${c.product}`.replace(/[\/?*[\]:]/g, '').slice(0, 28) || 'card';
+    let name = base, i = 1;
+    while (used.has(name)) name = `${base}_${i++}`;
+    used.add(name);
+
+    const CJ: Record<string, any> = c.charges || {};
+    const accRows = Object.entries(CJ)
+      .map(([code, cfg]: any) => [code, cfg?.value ?? '', cfg?.min ?? '', cfg?.perKg ?? ''])
+      .filter((r) => r[1] !== '' || r[2] !== '' || r[3] !== '');
+
+    const zoneSet = new Set<string>();
+    (c.slabs || []).forEach((s: any) => zoneSet.add(s.zone));
+    const zonesArr = [...zoneSet];
+    const rowMap = new Map<string, any>();
+    (c.slabs || []).forEach((s: any) => {
+      const k = `${s.rateType}|${s.weight}`;
+      if (!rowMap.has(k)) rowMap.set(k, { rateType: s.rateType, weight: s.weight, rates: {} as Record<string, any> });
+      rowMap.get(k).rates[s.zone] = s.rate;
+    });
+    const matrixRows = [...rowMap.values()].map((r) => [r.rateType, r.weight, ...zonesArr.map((z) => r.rates[z] ?? '')]);
+
+    const aoa: any[][] = [
+      [`${c.network} · ${c.product} · ${c.mode || ''}`],
+      [],
+      ['FSC', c.fuelMode === 'DYNAMIC' ? `Diesel (${c.fuelMechanism || ''})` : `${num(c.fuelPct)}%`, '', 'Min freight', num(c.minFreight)],
+      ['Vol÷', num(c.volumetricDivisor), '', 'CFT', num(c.cft)],
+      [],
+      ['Accessorials'], ['Charge', 'Value', 'Min', '₹/kg'], ...accRows,
+      [],
+      ['Zone × weight slab rates (₹)'], ['Slab type', 'Weight/unit', ...zonesArr], ...matrixRows,
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), name);
+  }
+
+  XLSX.writeFile(wb, `ratecards-${clientName.replace(/[^a-z0-9]+/gi, '_')}.xlsx`);
+}

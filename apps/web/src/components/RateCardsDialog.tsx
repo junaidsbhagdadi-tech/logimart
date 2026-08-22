@@ -73,6 +73,7 @@ export function RateCardsDialog({ client, onClose }: { client: Client; onClose: 
             <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginBottom: 12 }}>
               <button className="secondary" onClick={async () => { (await import('../lib/rateSheet')).downloadCourierTemplate(); }}>⬇ DP/Courier template</button>
               <button className="secondary" onClick={async () => { (await import('../lib/rateSheet')).downloadCargoTemplate(); }}>⬇ Cargo template</button>
+              <button className="secondary" disabled={!cards.length} title="Export this customer's rate cards to Excel" onClick={async () => { (await import('../lib/rateSheet')).exportRateCardsXlsx(client.legalName, cards); }}>⬇ Export XLS</button>
               <button className="secondary" onClick={() => setUploading(true)}>⬆ Upload rates</button>
               <button onClick={() => setEditing({ _new: true })}>＋ Add Rate Card</button>
             </div>
