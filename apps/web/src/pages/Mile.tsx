@@ -29,7 +29,7 @@ export function MileScan({ title, code, bulk, pod, hint }: { title: string; code
     setBusy(true);
     try {
       const r = await api.lifecycleScan({ awbs, code, remark: remark || undefined, podDataUrl: pod ? podData : undefined });
-      setMsg(`✓ ${code}: ${r.updated}/${awbs.length} updated${r.missing.length ? ` · not found: ${r.missing.join(', ')}` : ''}${r.locked?.length ? ` · 🔒 terminal, skipped: ${r.locked.join(', ')}` : ''}`);
+      setMsg(`✓ ${code}: ${r.updated}/${awbs.length} updated${r.missing.length ? ` · not found: ${r.missing.join(', ')}` : ''}${r.locked?.length ? ` · 🔒 out of sequence / terminal (super-admin only): ${r.locked.join(', ')}` : ''}`);
       if (r.done.length) setLog((l) => [`${new Date().toLocaleTimeString()} · ${code} · ${r.done.join(', ')}`, ...l].slice(0, 40));
       setAwb(''); setRemark(''); setPodData(''); setPodName('');
       inputRef.current?.focus();
@@ -106,7 +106,7 @@ export function ManualScan() {
       const r = await api.lifecycleScan({ awbs, code, remark: remark || undefined, podDataUrl: code === 'DLD' ? podData : undefined });
       let m = `✓ ${code}: ${r.updated}/${awbs.length} updated`;
       if (r.missing?.length) m += ` · not found: ${r.missing.join(', ')}`;
-      if (r.locked?.length) m += ` · 🔒 terminal (super-admin only): ${r.locked.join(', ')}`;
+      if (r.locked?.length) m += ` · 🔒 out of sequence / terminal (super-admin only): ${r.locked.join(', ')}`;
       setMsg(m); setAwb(''); setRemark(''); setPodData(''); setPodName('');
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
@@ -114,7 +114,7 @@ export function ManualScan() {
   return (
     <>
       <h1>✍ Update Scans (manual)</h1>
-      <p className="muted" style={{ marginTop: -14 }}>Set any status for one or more AWBs. <strong>DLD/RTD/CAN are terminal</strong> — once set they can only be changed by a super admin.</p>
+      <p className="muted" style={{ marginTop: -14 }}>Set a status for one or more AWBs. Scans must follow the sequence <strong>MAN → PKD → ORD → DPD → DRD → OFD → DLD</strong> (CAN only right after MAN; UDL→re-attempt/RTO→RTD). Out-of-sequence and terminal (DLD/RTD/CAN) changes are super-admin only.</p>
       {err && <div className="error">{err}</div>}
       {msg && <div className="card" style={{ borderLeft: '4px solid var(--ok)' }}>{msg}</div>}
       <div className="card">

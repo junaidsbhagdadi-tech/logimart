@@ -18,8 +18,19 @@ export const LIFECYCLE = [
   { code: 'CAN', label: 'Cancelled', mile: 'last' },
 ] as const;
 const CODES = new Set<string>(LIFECYCLE.map((l) => l.code));
-// Terminal states — cannot be moved off once set, except by a super admin.
-const TERMINAL = new Set(['DLD', 'RTD', 'CAN']);
+// Allowed forward transitions. MAN is set at booking; CAN only from MAN (pickup cancelled).
+// Terminal states (DLD/RTD/CAN) have no next. A super admin may override any transition.
+const NEXT: Record<string, string[]> = {
+  MAN: ['PKD', 'CAN'],
+  PKD: ['ORD'],
+  ORD: ['DPD'],
+  DPD: ['DRD'],
+  DRD: ['OFD'],
+  OFD: ['DLD', 'UDL'],
+  UDL: ['OFD', 'RTO'],
+  RTO: ['RTD'],
+  DLD: [], RTD: [], CAN: [],
+};
 const TO_ENUM: Record<string, ShipmentStatus> = {
   MAN: ShipmentStatus.CREATED, PKD: ShipmentStatus.PICKED_UP, ORD: ShipmentStatus.AT_HUB,
   DPD: ShipmentStatus.IN_TRANSIT, DRD: ShipmentStatus.AT_HUB, OFD: ShipmentStatus.OUT_FOR_DELIVERY,
@@ -45,8 +56,10 @@ export class LifecycleService {
     for (const awb of awbs) {
       const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, statusCode: true } });
       if (!s) { missing.push(awb); continue; }
-      // Guard terminal states: only a super admin can override DLD/RTD/CAN.
-      if (TERMINAL.has(String(s.statusCode || '').toUpperCase()) && s.statusCode !== code && !isSuper) { locked.push(awb); continue; }
+      const current = String(s.statusCode || 'MAN').toUpperCase();
+      // Enforce the sequence for everyone but super admins. Re-scanning the same status is a no-op-ish
+      // allowed idempotent scan; any other move must be a permitted next step.
+      if (code !== current && !isSuper && !(NEXT[current] ?? []).includes(code)) { locked.push(awb); continue; }
       await this.prisma.shipment.update({
         where: { id: s.id },
         data: {

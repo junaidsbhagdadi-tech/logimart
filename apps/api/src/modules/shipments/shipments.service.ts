@@ -136,7 +136,7 @@ export class ShipmentsService {
       ewbValidUpto = new Date(Date.now() + 86400000); // 1-day default validity
     }
 
-    return this.prisma.shipment.create({
+    const created = await this.prisma.shipment.create({
       data: {
         awb,
         lrNumber,
@@ -219,6 +219,9 @@ export class ShipmentsService {
       },
       include: { pieces: { orderBy: { sequenceNo: 'asc' } } },
     });
+    // First milestone: MAN (Manifested) — the timeline always opens here at booking / API push.
+    await this.prisma.scanLog.create({ data: { awb, eventType: 'MAN', remark: manualAwb ? 'Booked (manual AWB)' : 'Booked' } });
+    return created;
   }
 
   /**
