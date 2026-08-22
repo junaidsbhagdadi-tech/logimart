@@ -36,7 +36,6 @@ export function Layout() {
       { to: '/awb-list', icon: '📝', label: 'Shipment List' },
       { to: '/bulk', icon: '📥', label: 'Bulk Booking' },
       { to: '/walk-in', icon: '🧾', label: 'Walk-in Counter', show: isAdminFin || canMaster },
-      { to: '/my-tasks', icon: '🛵', label: 'My Tasks', show: isOps },
       { to: '/deliver', icon: '🚚', label: 'Delivery App', show: isOps },
       { to: '/pickups', icon: '📦', label: 'Pickups' },
       { to: '/manifests', icon: '🗺', label: 'Manifests', show: isOps },

@@ -18,7 +18,6 @@ import { AwbPrint } from './pages/AwbPrint';
 import { BillWorksheet } from './pages/BillWorksheet';
 import { Pickups } from './pages/Pickups';
 import { Manifests } from './pages/Manifests';
-import { MyTasks } from './pages/MyTasks';
 import { InvoicePrint } from './pages/InvoicePrint';
 import { Users } from './pages/Users';
 import { Feedback } from './pages/Feedback';
@@ -73,7 +72,6 @@ export function App() {
         <Route path="/invoices" element={<Invoices />} />
         <Route path="/bill-worksheet" element={isAdminFin ? <BillWorksheet /> : <Navigate to="/" replace />} />
         <Route path="/invoices/:id" element={<InvoiceDetail />} />
-        <Route path="/my-tasks" element={<MyTasks />} />
         <Route path="/pickups" element={<Pickups />} />
         <Route path="/manifests" element={<Manifests />} />
         {/* First Mile */}

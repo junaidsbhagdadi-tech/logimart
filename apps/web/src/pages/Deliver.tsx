@@ -46,14 +46,14 @@ export function Deliver() {
 
   const deliver = async () => {
     if (!s) return;
+    // Field delivery flows through the single Last-Mile lifecycle (DLD): POD image is mandatory
+    // and lands in shipment.podUrl, so it reflects on the Last-Mile dashboards.
+    if (!pod) { setError('POD image (JPG / PNG / PDF) is required to mark Delivered.'); return; }
     setBusy(true); setError(''); setDone('');
     try {
-      const delivered = s.rollup.pieceCount; // deliver all boxes
-      let stampPhotoUrl: string | undefined;
-      if (pod) stampPhotoUrl = (await api.uploadPod(pod, pod.type === 'application/pdf' ? 'pod_pdf' : 'pod_photo')).url;
-      const gps = await getGps();
-      await api.recordPod(s.awb, { gpsLat: gps.lat, gpsLng: gps.lng, piecesDelivered: delivered, stampPhotoUrl }, false);
-      setDone(`✅ ${s.awb} delivered${stampPhotoUrl ? ' with POD' : ''}.`);
+      const podDataUrl = await fileToDataUrl(pod);
+      await api.lifecycleScan({ awbs: [s.awb], code: 'DLD', podDataUrl });
+      setDone(`✅ ${s.awb} delivered with POD.`);
       setS(null); setPod(null); setAwbInput(''); loadTasks();
     } catch (e: any) {
       setError(e.message);
@@ -161,6 +161,15 @@ export function Deliver() {
       </div>
     </div>
   );
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(new Error('Could not read the POD file.'));
+    r.readAsDataURL(file);
+  });
 }
 
 function getGps(): Promise<{ lat: number; lng: number }> {
