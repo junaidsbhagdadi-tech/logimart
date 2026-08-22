@@ -25,19 +25,22 @@ export class ShipmentsService {
   }
 
   /**
-   * Promised delivery date = today + transit TAT for the origin→dest zone, read from the
-   * ZONE_TAT master (SURFACE matrix for surface products, else APEX). Null if no TAT is set.
+   * Promised delivery date = today + transit TAT for the origin→dest zone. TAT is vendor-specific
+   * (ZONE_TAT master, code `<VENDOR>__<MODE>`), resolved vendor → SELF → legacy `<MODE>`.
+   * SURFACE matrix for surface products, else APEX. Null if no TAT covers the zone pair.
    */
-  private async expectedDeliveryFor(product: string | undefined, serviceMode: string, originZone?: string, destZone?: string): Promise<Date | null> {
+  private async expectedDeliveryFor(product: string | undefined, serviceMode: string, originZone?: string, destZone?: string, vendor?: string): Promise<Date | null> {
     if (!originZone || !destZone) return null;
     const surface = /SURFACE|ROAD|RAIL/i.test(String(serviceMode)) || ['SURFACE', 'HUB'].includes(String(product ?? '').toUpperCase());
     const mode = surface ? 'SURFACE' : 'APEX';
-    const entry = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'ZONE_TAT', code: mode } } });
-    const matrix: any = (entry?.attrs as any)?.matrix;
-    const days = Number(matrix?.[String(originZone).toUpperCase()]?.[String(destZone).toUpperCase()]);
-    if (!days || days <= 0) return null;
-    const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + days);
-    return d;
+    const net = String(vendor ?? '').trim().toUpperCase() || 'SELF';
+    const orig = String(originZone).toUpperCase(), dest = String(destZone).toUpperCase();
+    for (const code of [`${net}__${mode}`, `SELF__${mode}`, mode]) {
+      const entry = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'ZONE_TAT', code } } });
+      const days = Number((entry?.attrs as any)?.matrix?.[orig]?.[dest]);
+      if (days > 0) { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + days); return d; }
+    }
+    return null;
   }
 
   /**
@@ -100,8 +103,8 @@ export class ShipmentsService {
     let isOda = dto.isOda ?? false;
     if (destPin && (destPin.isOda || (destPin.edl && destPin.edl.toUpperCase() !== 'REGULAR'))) isOda = true;
 
-    // Promised delivery = booking date + zone→zone transit TAT (ZONE_TAT master, SURFACE/APEX matrix).
-    const expectedDelivery = await this.expectedDeliveryFor(dto.product, dto.serviceMode, originZone, destZone);
+    // Promised delivery = booking date + vendor-specific zone→zone transit TAT.
+    const expectedDelivery = await this.expectedDeliveryFor(dto.product, dto.serviceMode, originZone, destZone, (dto as any).vendor);
 
     const pieces = dto.pieces.map((p, i) => {
       const sequenceNo = i + 1;
