@@ -19,7 +19,7 @@ export class UsersService {
   list() {
     return this.prisma.user.findMany({
       orderBy: { id: 'asc' },
-      select: { id: true, fullName: true, email: true, role: true, hubId: true, clientId: true, isActive: true },
+      select: { id: true, fullName: true, email: true, role: true, hubId: true, clientId: true, isActive: true, featureGrants: true },
     });
   }
 
@@ -45,8 +45,8 @@ export class UsersService {
     }
   }
 
-  /** Toggle active, change role, or reset password. */
-  async update(id: number, dto: { isActive?: boolean; role?: UserRole; password?: string }) {
+  /** Toggle active, change role, reset password, or assign feature access (super admin). */
+  async update(id: number, dto: { isActive?: boolean; role?: UserRole; password?: string; featureGrants?: string[] | null }) {
     const u = await this.prisma.user.findUnique({ where: { id: BigInt(id) } });
     if (!u) throw new NotFoundException('User not found');
     return this.prisma.user.update({
@@ -55,8 +55,9 @@ export class UsersService {
         isActive: dto.isActive,
         role: dto.role,
         passwordHash: dto.password ? await bcrypt.hash(dto.password, 10) : undefined,
+        ...(dto.featureGrants !== undefined ? { featureGrants: dto.featureGrants ?? Prisma.DbNull } : {}),
       },
-      select: { id: true, fullName: true, email: true, role: true, isActive: true },
+      select: { id: true, fullName: true, email: true, role: true, isActive: true, featureGrants: true },
     });
   }
 }

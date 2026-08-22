@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
-import { IsBoolean, IsEmail, IsEnum, IsInt, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsEmail, IsEnum, IsInt, IsOptional, IsString, MinLength } from 'class-validator';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles } from '../../common/rbac/roles.decorator';
@@ -17,6 +17,7 @@ class UpdateUserDto {
   @IsOptional() @IsBoolean() isActive?: boolean;
   @IsOptional() @IsEnum(UserRole) role?: UserRole;
   @IsOptional() @IsString() @MinLength(4) password?: string;
+  @IsOptional() @IsArray() @IsString({ each: true }) featureGrants?: string[] | null;
 }
 
 @Controller('api/v1/users')

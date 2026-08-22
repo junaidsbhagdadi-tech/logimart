@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
+import { Modal } from '../components/Modal';
+import { FEATURE_CATALOG } from '../features';
 
 const ROLES = ['WAREHOUSE_HANDLER', 'DRIVER', 'HUB_MANAGER', 'FINANCE_EXEC', 'CLIENT_ADMIN', 'SYS_ADMIN'];
 const blank = { fullName: '', email: '', password: '', role: 'WAREHOUSE_HANDLER', hubId: '', clientId: '' };
@@ -9,11 +11,21 @@ export function Users() {
   const [form, setForm] = useState({ ...blank });
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
+  const [grantUser, setGrantUser] = useState<any | null>(null);
+  const [grants, setGrants] = useState<Set<string>>(new Set());
 
   const load = () => {
     api.listUsers().then(setRows).catch((e) => setError(e.message));
   };
   useEffect(load, []);
+
+  const openGrants = (u: any) => { setGrantUser(u); setGrants(new Set(Array.isArray(u.featureGrants) ? u.featureGrants : [])); };
+  const toggleGrant = (to: string) => setGrants((g) => { const n = new Set(g); n.has(to) ? n.delete(to) : n.add(to); return n; });
+  const saveGrants = async (clear = false) => {
+    if (!grantUser) return;
+    try { await api.updateUser(grantUser.id, { featureGrants: clear ? null : [...grants] }); setMsg(clear ? 'Reset to role defaults' : `Features updated for ${grantUser.fullName}`); setGrantUser(null); load(); }
+    catch (e: any) { setError(e.message); }
+  };
 
   const set = (k: keyof typeof blank, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -87,12 +99,41 @@ export function Users() {
                 <td className="row" style={{ gap: 6 }}>
                   <button className="secondary" onClick={() => toggle(u)}>{u.isActive ? 'Disable' : 'Enable'}</button>
                   <button className="secondary" onClick={() => resetPwd(u)}>Reset pwd</button>
+                  {u.role !== 'SYS_ADMIN' && <button className="secondary" onClick={() => openGrants(u)} title="Assign feature access">🔑 Features{Array.isArray(u.featureGrants) ? ` (${u.featureGrants.length})` : ''}</button>}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {grantUser && <Modal title={`Feature access — ${grantUser.fullName}`} width={720} onClose={() => setGrantUser(null)}>
+        <p className="muted" style={{ marginTop: 0, fontSize: 12 }}>Tick the features this user can access in the sidebar. Empty + <em>Save</em> hides everything; <em>Reset to role defaults</em> reverts to their role's standard access. (Role-based server permissions still apply as the security boundary.)</p>
+        <div style={{ maxHeight: '58vh', overflow: 'auto' }}>
+          {FEATURE_CATALOG.map((sec) => (
+            <div key={sec.section} style={{ marginBottom: 12 }}>
+              <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                <strong style={{ fontSize: 12, color: 'var(--muted)', letterSpacing: '.3px' }}>{sec.section.toUpperCase()}</strong>
+                <button className="secondary" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => setGrants((g) => { const n = new Set(g); const all = sec.features.every((f) => n.has(f.to)); sec.features.forEach((f) => all ? n.delete(f.to) : n.add(f.to)); return n; })}>toggle all</button>
+              </div>
+              <div className="grid cols-3" style={{ gap: 4, marginTop: 4 }}>
+                {sec.features.map((f) => (
+                  <label key={f.to} className="row" style={{ gap: 6, alignItems: 'center', fontSize: 12.5 }}>
+                    <input type="checkbox" style={{ width: 'auto' }} checked={grants.has(f.to)} onChange={() => toggleGrant(f.to)} /> {f.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="row" style={{ justifyContent: 'space-between', gap: 8, marginTop: 14 }}>
+          <button className="secondary" onClick={() => saveGrants(true)}>↺ Reset to role defaults</button>
+          <div className="row" style={{ gap: 8 }}>
+            <button className="secondary" onClick={() => setGrantUser(null)}>Cancel</button>
+            <button onClick={() => saveGrants(false)}>Save features ({grants.size})</button>
+          </div>
+        </div>
+      </Modal>}
     </>
   );
 }

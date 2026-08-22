@@ -6,6 +6,7 @@ interface User {
   fullName: string;
   role: string;
   clientId: string | null;
+  featureGrants?: string[] | null;
 }
 interface AuthCtx {
   user: User | null;

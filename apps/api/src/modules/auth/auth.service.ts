@@ -31,6 +31,7 @@ export class AuthService {
         fullName: user.fullName,
         role: user.role,
         clientId: user.clientId?.toString() ?? null,
+        featureGrants: Array.isArray(user.featureGrants) ? (user.featureGrants as string[]) : null,
       },
     };
   }

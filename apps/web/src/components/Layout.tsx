@@ -126,7 +126,10 @@ export function Layout() {
         )}
         <nav>
           {groups.map((g) => {
-            const items = g.items.filter((it) => it.show !== false);
+            // Super admins see everything role-allows. Others: if the super admin assigned explicit
+            // feature grants, show only those; otherwise fall back to role defaults.
+            const grants = user?.role === 'SYS_ADMIN' ? null : (user?.featureGrants ?? null);
+            const items = g.items.filter((it) => it.show !== false && (!grants || grants.includes(it.to)));
             if (items.length === 0) return null;
             const isClosed = !!closed[g.title];
             return (
