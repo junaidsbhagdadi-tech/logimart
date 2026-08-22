@@ -17,9 +17,24 @@ export function Vendors() {
   const [editing, setEditing] = useState<any | null>(null);
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
+  const [sel, setSel] = useState<Set<string>>(new Set());
 
-  const load = () => { api.listVendors().then(setRows).catch((e) => setError(e.message)); };
+  const load = () => { api.listVendors().then(setRows).catch((e) => setError(e.message)); setSel(new Set()); };
   useEffect(load, []);
+
+  const toggleSel = (id: string) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const allSelected = rows.length > 0 && sel.size === rows.length;
+  const toggleSelAll = () => setSel(allSelected ? new Set() : new Set(rows.map((v) => String(v.id))));
+
+  const bulkDelete = async () => {
+    if (sel.size === 0) return;
+    if (!confirm(`Delete ${sel.size} vendor${sel.size > 1 ? 's' : ''}? This cannot be undone.`)) return;
+    setError(''); setMsg('');
+    let ok = 0, fail = 0;
+    for (const id of sel) { try { await api.deleteVendor(id); ok++; } catch { fail++; } }
+    setMsg(`Deleted ${ok} vendor${ok !== 1 ? 's' : ''}${fail ? ` — ${fail} could not be deleted (in use).` : '.'}`);
+    load();
+  };
 
   const toggleMode = (m: string) =>
     setForm((f) => ({ ...f, modes: f.modes.includes(m) ? f.modes.filter((x) => x !== m) : [...f.modes, m] }));
@@ -140,11 +155,21 @@ export function Vendors() {
       </Modal>}
 
       <div className="card">
+        {sel.size > 0 && (
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-soft, #f2f4f7)', borderRadius: 8, padding: '8px 12px', marginBottom: 10 }}>
+            <span><strong>{sel.size}</strong> selected</span>
+            <div className="row" style={{ gap: 8 }}>
+              <button className="secondary" style={{ padding: '4px 12px', fontSize: 13 }} onClick={() => setSel(new Set())}>Clear</button>
+              <button style={{ padding: '4px 12px', fontSize: 13, background: '#c0392b' }} onClick={bulkDelete}>🗑 Delete selected</button>
+            </div>
+          </div>
+        )}
         <table>
-          <thead><tr><th>Vendor</th><th>Modes</th><th>City</th><th>GSTIN</th><th>PAN</th><th>Advance paid</th><th>Advance pending</th><th></th></tr></thead>
+          <thead><tr><th style={{ width: 32 }}><input type="checkbox" checked={allSelected} onChange={toggleSelAll} style={{ width: 'auto' }} /></th><th>Vendor</th><th>Modes</th><th>City</th><th>GSTIN</th><th>PAN</th><th>Advance paid</th><th>Advance pending</th><th></th></tr></thead>
           <tbody>
             {rows.map((v) => (
-              <tr key={v.id}>
+              <tr key={v.id} style={sel.has(String(v.id)) ? { background: 'var(--bg-soft, #f2f4f7)' } : undefined}>
+                <td><input type="checkbox" checked={sel.has(String(v.id))} onChange={() => toggleSel(String(v.id))} style={{ width: 'auto' }} /></td>
                 <td><strong>{v.name}</strong><div className="muted" style={{ fontSize: 11 }}>{v.contactPhone}</div></td>
                 <td>{v.modes}</td>
                 <td>{v.city ?? '—'}</td>
@@ -159,7 +184,7 @@ export function Vendors() {
                 </td>
               </tr>
             ))}
-            {rows.length === 0 && <tr><td colSpan={8} className="muted">No vendors yet.</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={9} className="muted">No vendors yet.</td></tr>}
           </tbody>
         </table>
       </div>
