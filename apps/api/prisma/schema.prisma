@@ -740,7 +740,10 @@ model InvoiceLineItem {
   shipmentId    BigInt
   shipment      Shipment @relation(fields: [shipmentId], references: [id])
   chargeableKg  Decimal  @db.Decimal(10, 3) // max(dead, vol) of DELIVERED pieces
-  amount        Decimal  @db.Decimal(14, 2)
+  amount        Decimal  @db.Decimal(14, 2) // all-in pre-GST line total = freight + fuel + otherCharges
+  freight       Decimal  @default(0) @db.Decimal(14, 2) // base freight (the invoice "Amount" column)
+  fuel          Decimal  @default(0) @db.Decimal(14, 2) // fuel surcharge portion
+  otherCharges  Decimal  @default(0) @db.Decimal(14, 2) // FOV/ODA/docket/handling/etc.
   isDisputed    Boolean  @default(false) // locks THIS line, not the whole invoice
   disputeReason String?
 

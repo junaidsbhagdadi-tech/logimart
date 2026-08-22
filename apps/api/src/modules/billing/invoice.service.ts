@@ -67,6 +67,9 @@ export class InvoiceService {
       shipmentId: bigint;
       chargeableKg: number;
       amount: number;
+      freight: number;
+      fuel: number;
+      otherCharges: number;
       disputeReason: string | null;
     }[] = [];
     let subtotal = 0;
@@ -80,7 +83,10 @@ export class InvoiceService {
 
       const chargeableKg = charges.chargeableKg;
       const amount = charges.subtotal; // freight + surcharges (or FTL/manual), pre-GST
-      lines.push({ shipmentId: s.id, chargeableKg, amount, disputeReason: null });
+      const freight = +(Number(charges.freight ?? 0)).toFixed(2);
+      const fuel = +(Number(charges.fuel ?? 0)).toFixed(2);
+      const otherCharges = +(amount - freight - fuel).toFixed(2); // FOV/ODA/docket/handling/etc.
+      lines.push({ shipmentId: s.id, chargeableKg, amount, freight, fuel, otherCharges, disputeReason: null });
       subtotal += amount;
     }
 
@@ -127,6 +133,9 @@ export class InvoiceService {
             shipmentId: l.shipmentId,
             chargeableKg: new Prisma.Decimal(l.chargeableKg),
             amount: new Prisma.Decimal(l.amount),
+            freight: new Prisma.Decimal(l.freight),
+            fuel: new Prisma.Decimal(l.fuel),
+            otherCharges: new Prisma.Decimal(l.otherCharges),
             disputeReason: l.disputeReason,
           })),
         },
@@ -280,11 +289,11 @@ export class InvoiceService {
     const inv = await this.prisma.invoice.findUnique({
       where: { id: BigInt(id) },
       include: {
-        lines: { include: { shipment: { select: { awb: true, originZone: true, destZone: true } } } },
+        lines: { include: { shipment: { select: { awb: true, originZone: true, destZone: true, createdAt: true, consigneeCity: true } } } },
         client: {
           select: {
             legalName: true, accountCode: true, gstin: true,
-            addressLine: true, city: true, pincode: true,
+            addressLine: true, city: true, pincode: true, state: true, contactPhone: true, contactEmail: true,
           },
         },
       },

@@ -10,19 +10,25 @@ export const COMPANY = {
   phones: 'TODO(logimart): phone',
   email: 'TODO(logimart): email',
   gstin: 'TODO_LOGIMART_GSTIN',
-  sacCode: '996812', // SAC for goods transport / courier services (matches billing app)
-  // Bank details for the invoice NEFT/RTGS footer (like the billing app).
+  cin: '', // TODO(logimart): CIN if applicable
+  pan: 'TODO_LOGIMART_PAN', // TODO(logimart): PAN
+  sacCode: '996812', // SAC for goods transport / courier services
+  jurisdiction: 'Delhi', // legal jurisdiction printed in T&C — TODO(logimart): confirm
+  // Bank details for the invoice NEFT/RTGS footer — ICICI (from the invoice-format attachment).
   bank: {
-    beneficiary: 'Logimart Logistics Pvt Ltd', // TODO(logimart): confirm beneficiary
-    name: 'TODO(logimart): bank name',
-    accountNo: 'TODO(logimart): account number',
-    ifsc: 'TODO(logimart): IFSC code',
-    branch: 'TODO(logimart): branch',
+    beneficiary: 'Logimart Logistics Pvt Ltd', // TODO(logimart): confirm beneficiary name on the account
+    name: 'ICICI BANK',
+    accountNo: '347405000806',
+    ifsc: 'ICIC0003474',
+    branch: 'Mahipalpur, New Delhi',
+    address: '84 B-1, Main Vasant Kunj Road, Mahipalpur, New Delhi-110037',
   },
-  // Numbered Terms & Conditions (matches the billing app invoice).
+  // Numbered Terms & Conditions (matches the supplied invoice format).
   terms: [
-    'Any errors in the invoice must be reported in writing within 3 days from the date of receipt of the invoice.',
-    'Interest @24% per annum will be charged on bills after the due date.',
-    'Bank details for payment through NEFT or RTGS are as mentioned below:',
+    'Payment should be made within 7 days from the date of Invoice; delayed payment will attract interest @ 24% P.A.',
+    'All disputes are subject to Delhi jurisdiction only.',
+    'Cheque / Draft should be made in favour of "Logimart Logistics Pvt Ltd".',
+    'Any discrepancy in this invoice must be communicated in writing within 7 days of the date of invoice.',
+    'This is a computer-generated invoice and does not require a signature.',
   ],
 };

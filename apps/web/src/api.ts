@@ -210,9 +210,12 @@ export interface InvoiceLine {
   shipmentId: string;
   chargeableKg: string;
   amount: string;
+  freight?: string;
+  fuel?: string;
+  otherCharges?: string;
   isDisputed: boolean;
   disputeReason: string | null;
-  shipment?: { awb: string; originZone: string; destZone: string };
+  shipment?: { awb: string; originZone: string; destZone: string; createdAt?: string; consigneeCity?: string | null };
 }
 export interface Invoice {
   id: string;
@@ -229,6 +232,7 @@ export interface Invoice {
   total: string;
   status: string;
   dueDate: string;
+  issuedAt?: string | null;
   lines: InvoiceLine[];
   irn?: string | null;
   client?: {
@@ -238,6 +242,9 @@ export interface Invoice {
     addressLine: string | null;
     city: string | null;
     pincode: string | null;
+    state?: string | null;
+    contactPhone?: string | null;
+    contactEmail?: string | null;
   };
 }
 export interface Credit {
