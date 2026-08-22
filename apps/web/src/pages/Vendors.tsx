@@ -165,11 +165,12 @@ export function Vendors() {
           </div>
         )}
         <table>
-          <thead><tr><th style={{ width: 32 }}><input type="checkbox" checked={allSelected} onChange={toggleSelAll} style={{ width: 'auto' }} /></th><th>Vendor</th><th>Modes</th><th>City</th><th>GSTIN</th><th>PAN</th><th>Advance paid</th><th>Advance pending</th><th></th></tr></thead>
+          <thead><tr><th style={{ width: 32 }}><input type="checkbox" checked={allSelected} onChange={toggleSelAll} style={{ width: 'auto' }} /></th><th>Code</th><th>Vendor</th><th>Modes</th><th>City</th><th>GSTIN</th><th>PAN</th><th>Advance paid</th><th>Advance pending</th><th></th></tr></thead>
           <tbody>
             {rows.map((v) => (
               <tr key={v.id} style={sel.has(String(v.id)) ? { background: 'var(--bg-soft, #f2f4f7)' } : undefined}>
                 <td><input type="checkbox" checked={sel.has(String(v.id))} onChange={() => toggleSel(String(v.id))} style={{ width: 'auto' }} /></td>
+                <td>{v.vendorCode ? <strong>{v.vendorCode}</strong> : <span className="muted">—</span>}</td>
                 <td><strong>{v.name}</strong><div className="muted" style={{ fontSize: 11 }}>{v.contactPhone}</div></td>
                 <td>{v.modes}</td>
                 <td>{v.city ?? '—'}</td>
@@ -184,7 +185,7 @@ export function Vendors() {
                 </td>
               </tr>
             ))}
-            {rows.length === 0 && <tr><td colSpan={9} className="muted">No vendors yet.</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={10} className="muted">No vendors yet.</td></tr>}
           </tbody>
         </table>
       </div>
