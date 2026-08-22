@@ -188,30 +188,50 @@ function RateUpload({ client, products, vendors, onCancel, onSaved }: {
   const [minChargeableKg, setMinChargeableKg] = useState('');
   const [minFreight, setMinFreight] = useState('');
   const [result, setResult] = useState<ParseResult | null>(null);
+  const [blocks, setBlocks] = useState<{ vendor: string; slabs: any[] }[]>([]); // cargo: one per vendor
   const [fileName, setFileName] = useState('');
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
 
   const fam = family(product);
+  // Map a sheet vendor label → card network code (SELF, or the vendor's code/name).
+  const toNetwork = (vend: string) => {
+    const v = String(vend || '').trim().toUpperCase();
+    if (!v || v === 'SELF') return 'SELF';
+    const m = vendors.find((x) => String(x.vendorCode || '').toUpperCase() === v || String(x.name || '').toUpperCase() === v || (x.name && v.includes(String(x.name).toUpperCase())));
+    return String(m?.vendorCode || vend).toUpperCase();
+  };
   const onFile = async (f?: File) => {
     if (!f) return;
-    setErr(''); setResult(null); setFileName(f.name);
+    setErr(''); setResult(null); setBlocks([]); setFileName(f.name);
     try {
-      const { parseRateWorkbook } = await import('../lib/rateSheet');
-      setResult(await parseRateWorkbook(f, fam as any));
+      const m = await import('../lib/rateSheet');
+      if (fam === 'CARGO') {
+        const bl = await m.parseCargoByVendor(f);
+        const kept = bl.filter((b) => b.slabs.length);
+        if (!kept.length) { setErr('No vendor rate blocks parsed — fill at least one vendor block (₹/kg per zone).'); return; }
+        setBlocks(kept);
+      } else {
+        setResult(await m.parseRateWorkbook(f, fam as any));
+      }
     } catch (e: any) { setErr('Parse failed: ' + e.message); }
   };
   const create = async () => {
     setErr('');
     if (!product) { setErr('Pick a product.'); return; }
-    const slabs = result?.slabs ?? [];
-    if (!slabs.length) { setErr(`No rates parsed — upload a filled ${fam.toLowerCase()} matrix.`); return; }
     setBusy(true);
     try {
-      await api.createCustomerCard({
-        clientId: client.id, network, vendor: network === 'SELF' ? null : network, product, mode: productMode(product),
-        fuelPct: fuelPct || 0, fovPct: fovPct || 0, fovMin: fovMin || 0, minChargeableKg: minChargeableKg || 0, minFreight: minFreight || 0,
-        slabs,
-      });
+      const head = { clientId: client.id, product, mode: productMode(product), fuelPct: fuelPct || 0, fovPct: fovPct || 0, fovMin: fovMin || 0, minChargeableKg: minChargeableKg || 0, minFreight: minFreight || 0 };
+      if (fam === 'CARGO') {
+        if (!blocks.length) { setErr('No vendor rate blocks parsed — upload a filled cargo matrix.'); return; }
+        for (const b of blocks) {
+          const net = toNetwork(b.vendor);
+          await api.createCustomerCard({ ...head, network: net, vendor: net === 'SELF' ? null : net, slabs: b.slabs });
+        }
+      } else {
+        const slabs = result?.slabs ?? [];
+        if (!slabs.length) { setErr(`No rates parsed — upload a filled ${fam.toLowerCase()} matrix.`); return; }
+        await api.createCustomerCard({ ...head, network, vendor: network === 'SELF' ? null : network, slabs });
+      }
       onSaved();
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
@@ -221,16 +241,23 @@ function RateUpload({ client, products, vendors, onCancel, onSaved }: {
       <h3 style={{ marginTop: 4 }}>⬆ Upload rate matrix</h3>
       {err && <div className="error">{err}</div>}
       <div className="grid cols-3" style={{ gap: 12 }}>
-        <div>
-          <label style={{ fontSize: 12 }}>Network</label>
-          <select value={network} onChange={(e) => setNetwork(e.target.value)}>
-            <option value="SELF">SELF / All networks</option>
-            {vendors.map((v) => <option key={v.id} value={(v.vendorCode || v.name).toUpperCase()}>{v.name}</option>)}
-          </select>
-        </div>
+        {fam === 'CARGO' ? (
+          <div>
+            <label style={{ fontSize: 12 }}>Network</label>
+            <input value="Per vendor (from file)" disabled title="Cargo: the file's Vendor column drives the network — one card per vendor." />
+          </div>
+        ) : (
+          <div>
+            <label style={{ fontSize: 12 }}>Network</label>
+            <select value={network} onChange={(e) => setNetwork(e.target.value)}>
+              <option value="SELF">SELF / All networks</option>
+              {vendors.map((v) => <option key={v.id} value={(v.vendorCode || v.name).toUpperCase()}>{v.name}</option>)}
+            </select>
+          </div>
+        )}
         <div>
           <label style={{ fontSize: 12 }}>Product *</label>
-          <select value={product} onChange={(e) => { setProduct(e.target.value); setResult(null); }}>
+          <select value={product} onChange={(e) => { setProduct(e.target.value); setResult(null); setBlocks([]); }}>
             {products.map((p) => <option key={p.code} value={p.code}>{p.code} — {p.name}</option>)}
           </select>
         </div>
@@ -246,31 +273,39 @@ function RateUpload({ client, products, vendors, onCancel, onSaved }: {
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
           <label style={{ fontSize: 12 }}>Rate matrix file (.xlsx / .xlsb) — {fam} layout</label>
           <button className="secondary" style={{ padding: '3px 10px', fontSize: 12 }}
-            onClick={async () => { const m = await import('../lib/rateSheet'); fam === 'COURIER' ? m.downloadCourierTemplate() : m.downloadCargoTemplate(); }}>
-            ⬇ Blank {fam.toLowerCase()} template
+            onClick={async () => { const m = await import('../lib/rateSheet'); fam === 'COURIER' ? m.downloadCourierTemplate() : m.downloadCargoTemplate(vendors.map((v) => String(v.vendorCode || v.name))); }}>
+            ⬇ Blank {fam.toLowerCase()} template{fam === 'CARGO' ? ' (per vendor)' : ''}
           </button>
         </div>
         <input type="file" accept=".xlsx,.xlsb,.xls,.csv" onChange={(e) => onFile(e.target.files?.[0])} />
-        {result && (
+        {fam === 'CARGO' && blocks.length > 0 && (
+          <div style={{ marginTop: 10, fontSize: 13 }}>
+            <div><b>{fileName}</b> — <b>{blocks.length}</b> vendor card{blocks.length > 1 ? 's' : ''} to create:</div>
+            <table style={{ marginTop: 6 }}>
+              <thead><tr><th style={{ textAlign: 'left' }}>Vendor (file)</th><th>→ Network</th><th style={{ textAlign: 'right' }}>Rate cells</th></tr></thead>
+              <tbody>{blocks.map((b, i) => (
+                <tr key={i}><td>{b.vendor}</td><td><strong>{toNetwork(b.vendor)}</strong></td><td style={{ textAlign: 'right' }}>{b.slabs.length}</td></tr>
+              ))}</tbody>
+            </table>
+          </div>
+        )}
+        {fam === 'COURIER' && result && (
           <div style={{ marginTop: 10, fontSize: 13 }}>
             <div><b>{fileName}</b> — family <b>{result.family}</b></div>
             <div>Origins: {result.origins.length || '—'} · Dests: {result.dests.length || '—'} · <b>{result.slabs.length}</b> rate cells parsed</div>
             {result.notes.map((n, i) => <div key={i} className="muted" style={{ marginTop: 4 }}>⚠ {n}</div>)}
-            {result.slabs.length > 0 && (
-              <div className="muted" style={{ marginTop: 4 }}>e.g. {result.slabs.slice(0, 3).map((s) => `${s.originZone}→${s.zone} ₹${s.rate}/kg`).join(' · ')}…</div>
-            )}
           </div>
         )}
         <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>
           {fam === 'COURIER'
             ? 'Courier: origin blocks (A/B/C/OTHER) × FIRST 250 / FIRST 500 / EVERY ADD 500 GM × dest zones.'
-            : 'Cargo: one ₹/kg rate per origin×dest zone cell (18-zone matrix).'}
+            : 'Cargo: one 18×18 zone matrix per VENDOR (Customer Code · Vendor · Origin\\Dest · zones). Each vendor block → one rate card; the shipment\'s vendor pick applies its rate.'}
         </p>
       </div>
 
       <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
         <button className="secondary" onClick={onCancel}>Cancel</button>
-        <button onClick={create} disabled={busy}>{busy ? 'Creating…' : 'Create card from upload'}</button>
+        <button onClick={create} disabled={busy}>{busy ? 'Creating…' : (fam === 'CARGO' && blocks.length > 1 ? `Create ${blocks.length} vendor cards` : 'Create card from upload')}</button>
       </div>
     </div>
   );

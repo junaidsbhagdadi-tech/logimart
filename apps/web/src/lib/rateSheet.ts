@@ -353,11 +353,21 @@ export function downloadCourierTemplate() {
   XLSX.writeFile(wb, 'Logimart-courier-rate-template.xlsx');
 }
 
-/** Download a blank cargo (Apex/Surface) rate template: origin rows × dest cols. */
-export function downloadCargoTemplate() {
+/** Download a blank cargo (Apex/Surface) rate template with ONE 18×18 block per vendor.
+ *  Columns: Customer Code · Vendor · Origin\Dest · <18 dest zones>. Fill a block per vendor;
+ *  upload creates one rate card per vendor (the shipment's vendor pick then applies its rate). */
+export function downloadCargoTemplate(vendorNames: string[] = []) {
   const zones = ['N1', 'N2', 'N3', 'N4', 'C1', 'C2', 'W1', 'W2', 'W3', 'S1', 'S2', 'S3', 'E1', 'E2', 'E3', 'NE1', 'NE2', 'NE3'];
-  const aoa: any[][] = [['Origin \\ Dest', ...zones]];
-  zones.forEach((oz) => aoa.push([oz, ...zones.map(() => '')]));
+  const header = ['Customer Code', 'Vendor', 'Origin \\ Dest', ...zones];
+  const blank = zones.map(() => '');
+  // SELF (own network) first, then a block per known vendor.
+  const blocks = ['SELF', ...Array.from(new Set(vendorNames.map((v) => String(v).trim()).filter(Boolean)))];
+  const aoa: any[][] = [];
+  for (const vend of blocks) {
+    aoa.push(header);
+    zones.forEach((oz, i) => aoa.push(['', i === 0 ? vend : '', oz, ...blank]));
+    aoa.push([]); // spacer between vendor blocks
+  }
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Apex And surface');
@@ -460,6 +470,42 @@ export async function parseBulkCargoRates(file: File): Promise<{ customerCode: s
       for (const d of destCols) { const rate = num(r[d.idx]); if (rate > 0) cur.slabs.push({ originZone: origin, zone: d.zone, rateType: 'PLUSKG', weight: 1, rate }); }
     }
     if (cur && cur.slabs.length) out.push(cur);
+  }
+  return out;
+}
+
+/** Parse a multi-VENDOR cargo rate workbook: one 18×18 zone matrix per vendor, blocks delimited
+ *  by repeated headers. Layout per block: Customer Code · Vendor · Origin\Dest · <18 dest zones>.
+ *  Returns one entry per vendor block (product is chosen in the UI, not the sheet). */
+export async function parseCargoByVendor(file: File): Promise<{ vendor: string; slabs: ParsedSlab[] }[]> {
+  const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+  const out: { vendor: string; slabs: ParsedSlab[] }[] = [];
+  for (const sheetName of wb.SheetNames) {
+    const rows = XLSX.utils.sheet_to_json<any[]>(wb.Sheets[sheetName], { header: 1, raw: true, blankrows: false });
+    // Header rows carry many dest-zone codes; each starts a new vendor block.
+    const headerIdx: number[] = [];
+    rows.forEach((r, i) => { const n = (r || []).filter((v) => CARGO_ZONE.test(String(v ?? '').trim())).length; if (n >= 8) headerIdx.push(i); });
+    if (!headerIdx.length) continue;
+    for (let b = 0; b < headerIdx.length; b++) {
+      const h = headerIdx[b];
+      const end = b + 1 < headerIdx.length ? headerIdx[b + 1] : rows.length;
+      const hdr = (rows[h] || []).map((v) => String(v ?? '').trim().toUpperCase());
+      const vendCol = hdr.findIndex((x) => x.includes('VENDOR'));
+      const originCol = hdr.findIndex((x) => x.includes('ORIGIN') || x.includes('DEST'));
+      const destCols: { idx: number; zone: string }[] = [];
+      hdr.forEach((v, idx) => { if (CARGO_ZONE.test(v)) destCols.push({ idx, zone: v }); });
+      if (originCol < 0 || !destCols.length) continue;
+      let vendor = '';
+      const slabs: ParsedSlab[] = [];
+      for (let i = h + 1; i < end; i++) {
+        const r = rows[i] || [];
+        if (vendCol >= 0 && String(r[vendCol] ?? '').trim()) vendor = String(r[vendCol]).trim();
+        const origin = String(r[originCol] ?? '').replace(/\s+/g, '').toUpperCase();
+        if (!CARGO_ZONE.test(origin)) continue;
+        for (const d of destCols) { const rate = num(r[d.idx]); if (rate > 0) slabs.push({ originZone: origin, zone: d.zone, rateType: 'PLUSKG', weight: 1, rate }); }
+      }
+      out.push({ vendor: vendor || 'SELF', slabs });
+    }
   }
   return out;
 }
