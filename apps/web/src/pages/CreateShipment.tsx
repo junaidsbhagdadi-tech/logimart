@@ -46,6 +46,9 @@ export function CreateShipment() {
     originLocation: '',
   });
   const setS = (k: keyof typeof shp, v: string) => setShp((p) => ({ ...p, [k]: v }));
+  // Shipper auto-fills from the selected customer's registered details; tick "pickup out of
+  // home location" to enter a different pickup address manually.
+  const [pickupElsewhere, setPickupElsewhere] = useState(false);
   // services extras
   const [svc, setSvc] = useState({ vendor: '', service: '', shipmentValue: '', referenceNo: '', isCommercial: false, isMedical: false });
   const [flags, setFlags] = useState({ oda: false, appt: false });
@@ -94,7 +97,7 @@ export function CreateShipment() {
   const draftSnapshot = () => ({
     clientId, custText, prodText, ftl, originPin, destPin, c, shp, svc, flags,
     originHubId, destHubId, ewbNo, product, docType, chargeWeight, charges, chargeCode, chargeAmt,
-    paymentTerm, freightToCollect, isDod, dodInstrument, dodAmount, manualFreight, manualAwb, pieces,
+    paymentTerm, freightToCollect, isDod, dodInstrument, dodAmount, manualFreight, manualAwb, pieces, pickupElsewhere,
   });
   // restore once on mount
   useEffect(() => {
@@ -115,6 +118,7 @@ export function CreateShipment() {
         if (d.isDod != null) setIsDod(d.isDod); if (d.dodInstrument) setDodInstrument(d.dodInstrument); if (d.dodAmount != null) setDodAmount(d.dodAmount);
         if (d.manualFreight != null) setManualFreight(d.manualFreight); if (d.manualAwb != null) setManualAwb(d.manualAwb);
         if (Array.isArray(d.pieces) && d.pieces.length) setPieces(d.pieces);
+        if (d.pickupElsewhere != null) setPickupElsewhere(d.pickupElsewhere);
         setDraftRestored(true);
       }
     } catch { /* ignore */ }
@@ -128,6 +132,27 @@ export function CreateShipment() {
   const startFresh = () => { clearDraft(); window.location.reload(); };
 
   useEffect(() => { if (!ownClientId) api.listClients().then(setClients).catch(() => {}); }, [ownClientId]);
+
+  // Auto-fill shipper from the selected customer's registered address (unless picking up elsewhere).
+  useEffect(() => {
+    if (pickupElsewhere || clientId === '') return;
+    const cl = clients.find((c) => String(c.id) === String(clientId));
+    if (!cl) return;
+    setShp((prev) => ({
+      ...prev,
+      shipperName: cl.legalName ?? '',
+      shipperContact: cl.contactPerson ?? '',
+      shipperGstin: cl.gstin ?? '',
+      shipperAddress1: (cl as any).addressLine ?? '',
+      shipperPincode: (cl as any).pincode ?? '',
+      shipperCity: cl.city ?? '',
+      shipperState: cl.state ?? cl.billingState ?? '',
+      shipperPhone: cl.contactPhone ?? '',
+      shipperEmail: cl.contactEmail ?? '',
+      originLocation: cl.city ?? prev.originLocation,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId, pickupElsewhere, clients]);
   useEffect(() => { api.listVendors().then((v) => setVendors(v.filter((x: any) => x.isActive !== false))).catch(() => {}); }, []);
   useEffect(() => {
     api.listHubs().then((hs) => {
@@ -399,8 +424,16 @@ export function CreateShipment() {
       )}
 
       <div className="card">
-        <h2>📤 Shipper details <span className="muted" style={{ fontSize: 12, fontWeight: 500 }}>— the sender (leave blank to use the customer)</span></h2>
-        <div className="grid cols-4">
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          <h2 style={{ margin: 0 }}>📤 Shipper details <span className="muted" style={{ fontSize: 12, fontWeight: 500 }}>— {pickupElsewhere ? 'enter the pickup address' : 'auto-filled from the customer'}</span></h2>
+          <label className="row" style={{ gap: 6, alignItems: 'center', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+            <input type="checkbox" style={{ width: 'auto' }} checked={pickupElsewhere}
+              onChange={(e) => { const v = e.target.checked; setPickupElsewhere(v); if (v) setShp((p) => ({ ...p, shipperName: '', shipperContact: '', shipperGstin: '', shipperAddress1: '', shipperAddress2: '', shipperPincode: '', shipperCity: '', shipperState: '', shipperPhone: '', shipperMobile: '', shipperEmail: '', originLocation: '' })); }} />
+            🚚 Pickup out of home location
+          </label>
+        </div>
+        <fieldset disabled={!pickupElsewhere && clientId !== ''} style={{ border: 'none', margin: 0, padding: 0, minInlineSize: 'auto' }}>
+        <div className="grid cols-4" style={{ marginTop: 10 }}>
           <div><label>Origin</label><input value={shp.originLocation} onChange={(e) => setS('originLocation', e.target.value)} placeholder="e.g. DELHI" /></div>
           <div><label>Company name</label><input value={shp.shipperName} onChange={(e) => setS('shipperName', e.target.value)} /></div>
           <div><label>Contact name</label><input value={shp.shipperContact} onChange={(e) => setS('shipperContact', e.target.value)} /></div>
@@ -426,6 +459,7 @@ export function CreateShipment() {
           </div>
           <div><label>Document No.</label><input value={shp.shipperDocNo} onChange={(e) => setS('shipperDocNo', e.target.value)} /></div>
         </div>
+        </fieldset>
       </div>
 
       <div className="card">

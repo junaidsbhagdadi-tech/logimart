@@ -132,7 +132,10 @@ export function WalkIn() {
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
 
-  const Fld = ({ label, k, ph, type }: { label: string; k: string; ph?: string; type?: string }) => (
+  // Inline render fn (NOT a component) — using <Fld/> as a component defined in-render
+  // remounts the input on every keystroke and steals focus. Calling fld(...) inlines the
+  // JSX so the <input> keeps a stable identity and focus.
+  const fld = (label: string, k: string, ph?: string, type?: string) => (
     <div><label>{label}</label><input type={type || 'text'} value={(form as any)[k]} onChange={(e) => set(k, e.target.value)} placeholder={ph} /></div>
   );
 
@@ -170,11 +173,11 @@ export function WalkIn() {
       <div className="card">
         <h2>📤 Shipper</h2>
         <div className="grid cols-3">
-          <Fld label="Name" k="senderName" ph="sender name" /><Fld label="Phone" k="senderPhone" /><Fld label="Mobile" k="senderMobile" />
-          <Fld label="GSTIN" k="senderGstin" ph="29ABCDE1234F1Z5" />
+          {fld('Name', 'senderName', 'sender name')}{fld('Phone', 'senderPhone')}{fld('Mobile', 'senderMobile')}
+          {fld('GSTIN', 'senderGstin', '29ABCDE1234F1Z5')}
           <div style={{ gridColumn: 'span 2' }}><label>Address</label><input value={form.senderAddr1} onChange={(e) => set('senderAddr1', e.target.value)} placeholder="address line 1" /></div>
           <div><label>Pincode</label><input value={form.senderPincode} onChange={(e) => set('senderPincode', e.target.value)} onBlur={(e) => fillPin(e.target.value, 'sender')} /></div>
-          <Fld label="City" k="senderCity" /><Fld label="State" k="senderState" />
+          {fld('City', 'senderCity')}{fld('State', 'senderState')}
         </div>
       </div>
 
@@ -182,10 +185,10 @@ export function WalkIn() {
       <div className="card">
         <h2>📥 Consignee</h2>
         <div className="grid cols-3">
-          <Fld label="Name" k="consigneeName" /><Fld label="Phone" k="consigneePhone" /><Fld label="GSTIN" k="consigneeGstin" ph="opt." />
+          {fld('Name', 'consigneeName')}{fld('Phone', 'consigneePhone')}{fld('GSTIN', 'consigneeGstin', 'opt.')}
           <div style={{ gridColumn: 'span 2' }}><label>Address</label><input value={form.consigneeAddr} onChange={(e) => set('consigneeAddr', e.target.value)} placeholder="delivery address" /></div>
           <div><label>Dest pincode <span className="muted">(resolves zone)</span></label><input value={form.consigneePincode} onChange={(e) => set('consigneePincode', e.target.value)} onBlur={(e) => fillPin(e.target.value, 'consignee')} /></div>
-          <Fld label="City" k="consigneeCity" /><Fld label="State" k="consigneeState" />
+          {fld('City', 'consigneeCity')}{fld('State', 'consigneeState')}
         </div>
       </div>
 
@@ -199,7 +202,7 @@ export function WalkIn() {
           <div><label>Origin hub</label><select value={form.originHubId} onChange={(e) => set('originHubId', e.target.value)}>{hubs.map((h) => <option key={h.id} value={h.id}>{h.code}</option>)}</select></div>
           <div><label>Dest hub</label><select value={form.destHubId} onChange={(e) => set('destHubId', e.target.value)}>{hubs.map((h) => <option key={h.id} value={h.id}>{h.code}</option>)}</select></div>
           <div><label>Manual AWB <span className="muted">(pre-printed / hand-written)</span></label><input value={form.manualAwb} onChange={(e) => set('manualAwb', e.target.value)} placeholder="blank = auto-generate" /></div>
-          <Fld label="Invoice / shipment value ₹" k="shipmentValue" type="number" /><Fld label="Declared value ₹" k="declaredValue" type="number" />
+          {fld('Invoice / shipment value ₹', 'shipmentValue', undefined, 'number')}{fld('Declared value ₹', 'declaredValue', undefined, 'number')}
           <div style={{ gridColumn: 'span 1' }}><label>Goods description</label><input value={form.goodsDesc} onChange={(e) => set('goodsDesc', e.target.value)} /></div>
           <div>
             <label>Agreed freight <span className="muted">(₹ amount, blank = rate card, or “As Agreed”)</span></label>
