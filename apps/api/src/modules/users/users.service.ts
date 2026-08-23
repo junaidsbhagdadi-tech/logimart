@@ -56,7 +56,7 @@ export class UsersService {
         message: `Welcome to LogiMart, ${u.fullName}. Your account is ready.\nLogin: ${url}\nEmail: ${u.email}\nTemporary password: ${password}\nPlease sign in and change your password.`,
       }).catch(() => {});
       // Return the temp password to the admin ONLY when auto-generated, so it can be relayed until email is live.
-      return { ...u, tempPassword: autoGen ? password : undefined, credentialsEmailedTo: u.email };
+      return { ...u, tempPassword: autoGen ? password : undefined, credentialsEmailedTo: u.email, loginUrl: url };
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
         throw new ConflictException('Email already in use');
@@ -84,6 +84,23 @@ export class UsersService {
     await this.prisma.scanLog.updateMany({ where: { scannedById: BigInt(id) }, data: { scannedById: null } }).catch(() => {});
     await this.prisma.user.delete({ where: { id: BigInt(id) } });
     return { ok: true, id };
+  }
+
+  /** Auto-generate a fresh temp password, set it, email it, and return it so the admin can relay it. */
+  async resetPassword(id: number) {
+    const u = await this.prisma.user.findUnique({
+      where: { id: BigInt(id) },
+      select: { id: true, email: true, fullName: true },
+    });
+    if (!u) throw new NotFoundException('User not found');
+    const password = this.genPassword();
+    await this.prisma.user.update({ where: { id: BigInt(id) }, data: { passwordHash: await bcrypt.hash(password, 10) } });
+    const loginUrl = process.env.APP_URL ?? 'https://logimart-erp.onrender.com';
+    await this.notifications.notify({
+      channel: 'email', recipient: u.email, kind: 'account',
+      message: `Your LogiMart password was reset, ${u.fullName}.\nLogin: ${loginUrl}\nEmail: ${u.email}\nTemporary password: ${password}\nPlease sign in and change your password.`,
+    }).catch(() => {});
+    return { tempPassword: password, email: u.email, loginUrl };
   }
 
   /** Toggle active, change role, reset password, or assign feature access (super admin). */

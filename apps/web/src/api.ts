@@ -394,6 +394,8 @@ export const api = {
     request(`/api/v1/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteUser: (id: string | number) =>
     request<{ ok: boolean; id: number }>(`/api/v1/users/${id}`, { method: 'DELETE' }),
+  resetUserPassword: (id: string | number) =>
+    request<{ tempPassword: string; email: string; loginUrl: string }>(`/api/v1/users/${id}/reset-password`, { method: 'POST' }),
   getCredit: (clientId: number) => request<Credit>(`/api/v1/clients/${clientId}/credit`),
   generateEInvoice: (invoiceId: string) =>
     request<{ irn: string; ackNo: string; mode: string }>(

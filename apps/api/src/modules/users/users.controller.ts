@@ -41,6 +41,11 @@ export class UsersController {
     return this.users.update(Number(id), dto);
   }
 
+  @Post(':id/reset-password')
+  resetPassword(@Param('id') id: string) {
+    return this.users.resetPassword(Number(id));
+  }
+
   @Delete(':id')
   remove(@Param('id') id: string, @Req() req: any) {
     return this.users.remove(Number(id), req.user?.sub ? Number(req.user.sub) : undefined);

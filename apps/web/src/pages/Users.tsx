@@ -14,6 +14,16 @@ export function Users() {
   const [grantUser, setGrantUser] = useState<any | null>(null);
   const [grants, setGrants] = useState<Set<string>>(new Set());
   const [hubs, setHubs] = useState<{ id: string; code: string; name: string }[]>([]);
+  const [cred, setCred] = useState<{ email: string; password: string; url: string; heading: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const credText = (c: { email: string; password: string; url: string }) =>
+    `LogiMart login\nURL: ${c.url}\nEmail: ${c.email}\nTemporary password: ${c.password}\nPlease sign in and change your password.`;
+  const copyCred = async () => {
+    if (!cred) return;
+    try { await navigator.clipboard.writeText(credText(cred)); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+    catch { /* clipboard blocked — the text is visible to copy manually */ }
+  };
 
   const load = () => {
     api.listUsers().then(setRows).catch((e) => setError(e.message));
@@ -32,7 +42,7 @@ export function Users() {
   const set = (k: keyof typeof blank, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   const create = async () => {
-    setError(''); setMsg('');
+    setError(''); setMsg(''); setCred(null);
     try {
       const res: any = await api.createUser({
         fullName: form.fullName,
@@ -42,9 +52,11 @@ export function Users() {
         hubId: form.hubId ? +form.hubId : undefined,
         clientId: form.clientId ? +form.clientId : undefined,
       });
-      setMsg(res?.tempPassword
-        ? `✓ Created ${form.email}. Credentials emailed. Temporary password: ${res.tempPassword} (share it until email is live).`
-        : `✓ Created ${form.email}. Login credentials emailed to ${form.email}.`);
+      if (res?.tempPassword) {
+        setCred({ email: res.email ?? form.email, password: res.tempPassword, url: res.loginUrl ?? window.location.origin, heading: `Account created — ${form.email}` });
+      } else {
+        setMsg(`✓ Created ${form.email}. Login credentials emailed to ${form.email}.`);
+      }
       setForm({ ...blank });
       load();
     } catch (e: any) { setError(e.message); }
@@ -57,9 +69,18 @@ export function Users() {
     try { await api.updateUser(u.id, { role }); load(); } catch (e: any) { setError(e.message); }
   };
   const resetPwd = async (u: any) => {
-    const pw = prompt(`New password for ${u.email}:`);
-    if (!pw) return;
-    try { await api.updateUser(u.id, { password: pw }); setMsg('Password reset'); } catch (e: any) { setError(e.message); }
+    setError(''); setMsg(''); setCred(null);
+    const pw = prompt(`New password for ${u.email}:\n\nLeave blank and press OK to auto-generate a temporary password (it'll be shown here + emailed).`);
+    if (pw === null) return; // cancelled
+    try {
+      if (pw.trim()) {
+        await api.updateUser(u.id, { password: pw.trim() });
+        setCred({ email: u.email, password: pw.trim(), url: window.location.origin, heading: `Password reset — ${u.email}` });
+      } else {
+        const res = await api.resetUserPassword(u.id);
+        setCred({ email: res.email, password: res.tempPassword, url: res.loginUrl, heading: `Password reset — ${res.email}` });
+      }
+    } catch (e: any) { setError(e.message); }
   };
 
   return (
@@ -67,6 +88,21 @@ export function Users() {
       <h1>Users &amp; Roles</h1>
       {error && <div className="error">{error}</div>}
       {msg && <div className="card" style={{ borderLeft: '4px solid var(--brand)' }}>{msg}</div>}
+      {cred && (
+        <div className="card" style={{ borderLeft: '4px solid var(--brand)', background: 'var(--surface, #fff)' }}>
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+            <strong>🔐 {cred.heading}</strong>
+            <div className="row" style={{ gap: 8 }}>
+              <button onClick={copyCred}>{copied ? '✓ Copied' : '📋 Copy credentials'}</button>
+              <button className="secondary" onClick={() => setCred(null)}>Dismiss</button>
+            </div>
+          </div>
+          <p className="muted" style={{ fontSize: 12, margin: '6px 0' }}>
+            Credentials emailed to the client (queued until an email provider is live). Copy and share them manually meanwhile — this is shown once.
+          </p>
+          <pre style={{ margin: 0, padding: '10px 12px', background: 'var(--bg, #f0f2f4)', borderRadius: 8, fontSize: 13, whiteSpace: 'pre-wrap' }}>{credText(cred)}</pre>
+        </div>
+      )}
 
       <div className="card">
         <h2>Create user</h2>
@@ -88,7 +124,7 @@ export function Users() {
           </div>
           <div><label>Client ID (client admin)</label><input value={form.clientId} onChange={(e) => set('clientId', e.target.value)} /></div>
         </div>
-        <button style={{ marginTop: 12 }} disabled={!form.fullName || !form.email || !form.password} onClick={create}>Create user</button>
+        <button style={{ marginTop: 12 }} disabled={!form.fullName || !form.email} onClick={create}>Create user</button>
       </div>
 
       <div className="card">
