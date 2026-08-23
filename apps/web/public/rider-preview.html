@@ -18,6 +18,7 @@
   input { width:100%; padding:12px; font-size:16px; border:1px solid var(--border); border-radius:10px; }
   button { width:100%; padding:13px; font-size:15px; font-weight:700; color:#fff; background:var(--brand); border:0; border-radius:11px; margin-top:16px; cursor:pointer; }
   button.ghost { background:#fff; color:var(--brand); border:1px solid var(--border); }
+  button.act { margin-top:12px; padding:10px; font-size:14px; }
   .err { background:#fdecea; border:1px solid #e0736a; color:#a4291e; padding:10px 12px; border-radius:10px; font-size:13px; margin-bottom:12px; }
   .muted { color:var(--muted); }
   .h { font-size:13px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); margin:14px 4px 8px; }
@@ -115,15 +116,30 @@
       $('kPk').textContent = pk.length; $('kDl').textContent = dl.length;
       $('pickups').innerHTML = pk.length ? pk.map(function(p){
         return '<div class="card"><div class="task"><div><div class="a">'+(p.pickupAddress||p.address||p.awb||'Pickup')+'</div>'+
-          '<div class="row2">'+(p.contactName||p.clientName||'')+(p.contactPhone?(' · '+p.contactPhone):'')+'</div></div>'+
-          '<span class="badge b-pk">'+(p.status||'ASSIGNED')+'</span></div></div>';
+          '<div class="row2">'+(p.contactName||p.clientName||'')+(p.contactPhone?(' · '+p.contactPhone):'')+'</div>'+
+          (p.estPieces!=null?('<div class="row2">'+p.estPieces+' box(es)</div>'):'')+'</div>'+
+          '<span class="badge b-pk">'+(p.status||'ASSIGNED')+'</span></div>'+
+          '<button class="act" data-pick="'+p.id+'">✓ Mark picked</button></div>';
       }).join('') : '<div class="card muted" style="text-align:center;">No pickups assigned.</div>';
       $('deliveries').innerHTML = dl.length ? dl.map(function(s){
         return '<div class="card"><div class="task"><div><div class="a">'+(s.awb||'')+' · '+(s.consigneeName||'')+'</div>'+
           '<div class="row2">'+(s.address||'')+'</div>'+
           '<div class="row2">'+(s.delivered||0)+'/'+(s.pieceCount||0)+' pcs'+(s.consigneePhone?(' · '+s.consigneePhone):'')+'</div></div>'+
-          '<span class="badge b-ofd">'+(s.status||'')+'</span></div></div>';
+          '<span class="badge b-ofd">'+(s.status||'')+'</span></div>'+
+          '<div class="row2" style="margin-top:8px;">📱 Scan &amp; POD (photo + GPS) are done in the phone app.</div></div>';
       }).join('') : '<div class="card muted" style="text-align:center;">No deliveries assigned.</div>';
+      // wire the pickup actions
+      var btns = document.querySelectorAll('button[data-pick]');
+      for(var i=0;i<btns.length;i++){ btns[i].onclick = function(){ markPicked(this.getAttribute('data-pick')); }; }
+    } catch(e){ showErr($('err2'), 'Could not reach the server.'); }
+  }
+
+  async function markPicked(id){
+    showErr($('err2'), '');
+    try {
+      var r = await fetch(API + '/api/v1/pickups/'+id+'/complete', { method:'POST', headers:{ authorization:'Bearer '+token } });
+      if(r.status !== 200 && r.status !== 201){ showErr($('err2'), 'Could not mark picked ('+r.status+').'); return; }
+      loadTasks(); // picked → drops off the ASSIGNED list
     } catch(e){ showErr($('err2'), 'Could not reach the server.'); }
   }
 
