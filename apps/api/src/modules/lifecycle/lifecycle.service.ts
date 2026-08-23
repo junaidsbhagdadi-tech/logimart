@@ -52,14 +52,27 @@ export class LifecycleService {
     if (code === 'DLD' && !dto.podDataUrl) throw new BadRequestException('POD image is mandatory to mark Delivered.');
     const isSuper = String(role || '').toUpperCase() === 'SYS_ADMIN';
 
+    // Auto bag-code helper: at PICKUP (PKD) group shipments heading to the same destination hub/zone
+    // on the same day — e.g. "BOM-230826". Set only if the shipment isn't already bagged.
+    const ymd = (() => { const d = new Date(); return `${String(d.getDate()).padStart(2, '0')}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getFullYear()).slice(2)}`; })();
+
     const done: string[] = []; const missing: string[] = []; const locked: string[] = [];
     for (const awb of awbs) {
-      const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, statusCode: true } });
+      const s = await this.prisma.shipment.findUnique({
+        where: { awb },
+        select: { id: true, statusCode: true, bagCode: true, destZone: true, consigneeCity: true, destHub: { select: { code: true } } },
+      });
       if (!s) { missing.push(awb); continue; }
       const current = String(s.statusCode || 'MAN').toUpperCase();
       // Enforce the sequence for everyone but super admins. Re-scanning the same status is a no-op-ish
       // allowed idempotent scan; any other move must be a permitted next step.
       if (code !== current && !isSuper && !(NEXT[current] ?? []).includes(code)) { locked.push(awb); continue; }
+      // Derive a bag code at pickup when none exists (and the caller didn't pass one).
+      let autoBag: string | undefined;
+      if (code === 'PKD' && !dto.bagCode && !s.bagCode) {
+        const dest = s.destHub?.code || (s.destZone ? String(s.destZone).toUpperCase() : '') || (s.consigneeCity ? String(s.consigneeCity).replace(/\s+/g, '').slice(0, 3).toUpperCase() : 'GEN');
+        autoBag = `${dest}-${ymd}`;
+      }
       await this.prisma.shipment.update({
         where: { id: s.id },
         data: {
@@ -67,7 +80,7 @@ export class LifecycleService {
           ...(code === 'DLD' && dto.podDataUrl ? { podUrl: dto.podDataUrl } : {}),
           ...(code === 'PKD' && dto.podDataUrl ? { pickupPodUrl: dto.podDataUrl } : {}),
           ...(dto.location ? { currentLocation: dto.location } : {}),
-          ...(dto.bagCode ? { bagCode: dto.bagCode } : {}),
+          ...(dto.bagCode ? { bagCode: dto.bagCode } : autoBag ? { bagCode: autoBag } : {}),
           ...(['UDL', 'RTO', 'CAN'].includes(code) ? { exceptionFlag: dto.remark || code } : {}),
         },
       });

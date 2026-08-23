@@ -261,7 +261,7 @@ export const api = {
   login: (email: string, password: string) =>
     request<{
       accessToken: string;
-      user: { id: string; fullName: string; role: string; clientId: string | null };
+      user: { id: string; fullName: string; role: string; clientId: string | null; hubId?: string | null };
     }>('/api/v1/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   listShipments: () => request<ShipmentRow[]>('/api/v1/shipments'),
   getShipment: (awb: string) => request<Shipment>(`/api/v1/shipments/${awb}`),

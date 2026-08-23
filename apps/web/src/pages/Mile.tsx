@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
+import { useAuth } from '../auth';
 
 const MILE_LABEL: Record<string, string> = { first: 'First Mile', mid: 'Mid Mile', last: 'Last Mile' };
 
@@ -15,7 +16,14 @@ export function MileScan({ title, code, bulk, pod, pickupPod, hub, hint }: { tit
   const [log, setLog] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { user } = useAuth();
+  const isSuper = String(user?.role || '').toUpperCase() === 'SYS_ADMIN';
+  // Ops staff are scoped to their home hub; only SYS_ADMIN can inscan at any hub.
+  const myHub = user?.hubId ? hubs.find((h) => String(h.id) === String(user.hubId)) : null;
+  const hubLocked = !!hub && !isSuper && !!myHub;
   useEffect(() => { if (hub) api.listHubs().then(setHubs).catch(() => {}); }, [hub]);
+  // Pin the location to the user's home hub when the selector is locked.
+  useEffect(() => { if (hubLocked && myHub) setLocation(`${myHub.name} - ${myHub.code}`); }, [hubLocked, myHub]);
 
   const readFile = (f?: File) => {
     if (!f) return;
@@ -74,11 +82,16 @@ export function MileScan({ title, code, bulk, pod, pickupPod, hub, hint }: { tit
         )}
         {hub && (
           <div style={{ marginTop: 10 }}>
-            <label>Hub / location</label>
-            <select value={location} onChange={(e) => setLocation(e.target.value)}>
-              <option value="">— select hub —</option>
-              {hubs.map((h) => <option key={h.id} value={`${h.name} - ${h.code}`}>{h.code} — {h.name}</option>)}
-            </select>
+            <label>Hub / location {hubLocked && <span className="muted" style={{ fontSize: 11 }}>(your home hub — locked)</span>}</label>
+            {hubLocked ? (
+              <input value={myHub ? `${myHub.code} — ${myHub.name}` : ''} disabled />
+            ) : (
+              <select value={location} onChange={(e) => setLocation(e.target.value)}>
+                <option value="">— select hub —</option>
+                {hubs.map((h) => <option key={h.id} value={`${h.name} - ${h.code}`}>{h.code} — {h.name}</option>)}
+              </select>
+            )}
+            {hub && !isSuper && !myHub && <div className="muted" style={{ fontSize: 11, marginTop: 3, color: 'var(--warn)' }}>⚠ No home hub assigned to you — ask an admin to set your hub (Users) to scope your scans.</div>}
           </div>
         )}
         {(code === 'UDL') && (

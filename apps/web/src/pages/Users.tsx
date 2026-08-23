@@ -13,11 +13,13 @@ export function Users() {
   const [msg, setMsg] = useState('');
   const [grantUser, setGrantUser] = useState<any | null>(null);
   const [grants, setGrants] = useState<Set<string>>(new Set());
+  const [hubs, setHubs] = useState<{ id: string; code: string; name: string }[]>([]);
 
   const load = () => {
     api.listUsers().then(setRows).catch((e) => setError(e.message));
   };
   useEffect(load, []);
+  useEffect(() => { api.listHubs().then(setHubs).catch(() => {}); }, []);
 
   const openGrants = (u: any) => { setGrantUser(u); setGrants(new Set(Array.isArray(u.featureGrants) ? u.featureGrants : [])); };
   const toggleGrant = (to: string) => setGrants((g) => { const n = new Set(g); n.has(to) ? n.delete(to) : n.add(to); return n; });
@@ -76,7 +78,12 @@ export function Users() {
               {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
           </div>
-          <div><label>Hub ID (ops)</label><input value={form.hubId} onChange={(e) => set('hubId', e.target.value)} /></div>
+          <div><label>Home hub (ops — scopes their scans)</label>
+            <select value={form.hubId} onChange={(e) => set('hubId', e.target.value)}>
+              <option value="">— none (all hubs) —</option>
+              {hubs.map((h) => <option key={h.id} value={h.id}>{h.code} — {h.name}</option>)}
+            </select>
+          </div>
           <div><label>Client ID (client admin)</label><input value={form.clientId} onChange={(e) => set('clientId', e.target.value)} /></div>
         </div>
         <button style={{ marginTop: 12 }} disabled={!form.fullName || !form.email || !form.password} onClick={create}>Create user</button>
