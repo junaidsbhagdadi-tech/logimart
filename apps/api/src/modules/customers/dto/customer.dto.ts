@@ -72,4 +72,5 @@ export class UpdateClientDto {
   @IsOptional() @IsNumber() @Min(0) creditLimit?: number;
   @IsOptional() @IsInt() @Min(0) creditDays?: number;
   @IsOptional() @IsBoolean() isCash?: boolean;
+  @IsOptional() @IsInt() parentAccountId?: number | null; // group under a head-office account; null/0 clears
 }

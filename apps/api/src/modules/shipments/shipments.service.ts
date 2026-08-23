@@ -62,12 +62,14 @@ export class ShipmentsService {
    * Create a master AWB and atomically generate one child piece per box.
    * Each child gets: childId (AWB-00N), sequenceNo, barcode payload, volKg.
    */
-  /** Set of account ids a client login may book under: its own + any sibling sharing its GSTIN. */
+  /** Set of account ids a client login may book under: its group — the parent (head office)
+   *  plus all child accounts, via the explicit parentAccountId link. */
   async bookableAccountIds(tokenClientId: number | string): Promise<Set<string>> {
     const own = BigInt(tokenClientId);
-    const self = await this.prisma.b2bClient.findUnique({ where: { id: own }, select: { gstin: true } });
-    if (!self?.gstin) return new Set([String(own)]);
-    const rows = await this.prisma.b2bClient.findMany({ where: { gstin: self.gstin }, select: { id: true } });
+    const self = await this.prisma.b2bClient.findUnique({ where: { id: own }, select: { id: true, parentAccountId: true } });
+    if (!self) return new Set([String(own)]);
+    const rootId = self.parentAccountId ?? self.id;
+    const rows = await this.prisma.b2bClient.findMany({ where: { OR: [{ id: rootId }, { parentAccountId: rootId }] }, select: { id: true } });
     return new Set(rows.map((r) => String(r.id)));
   }
 

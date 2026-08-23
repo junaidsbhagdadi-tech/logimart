@@ -10,7 +10,7 @@ const blank = {
   contactEmail: '', email2: '', gstin: '', pan: '', tanNo: '', iecCode: '',
   addressLine: '', pincode: '', city: '', state: '', salesPerson: '',
   accountType: 'CREDIT', billingCycle: 'MONTHLY', allowSameGstin: false,
-  creditLimit: '', creditDays: '30', isCash: false,
+  creditLimit: '', creditDays: '30', isCash: false, parentAccountId: '',
 };
 
 const TABS = ['Personal Information', 'Fuel Surcharges', 'Other Charges', 'Customer Volumetric', 'Customer Address'] as const;
@@ -105,6 +105,7 @@ export function Customers() {
       addressLine: (c as any).addressLine ?? '', pincode: (c as any).pincode ?? '', city: (c as any).city ?? '', state: (c as any).state ?? '',
       salesPerson: (c as any).salesPerson ?? '', accountType: (c as any).accountType ?? 'CREDIT', billingCycle: (c as any).billingCycle ?? 'MONTHLY',
       allowSameGstin: !!(c as any).allowSameGstin, creditLimit: String((c as any).creditLimit ?? ''), creditDays: String((c as any).creditDays ?? '30'), isCash: !!(c as any).isCash,
+      parentAccountId: (c as any).parentAccountId != null ? String((c as any).parentAccountId) : '',
     });
     setShowAdd(true);
   };
@@ -133,6 +134,8 @@ export function Customers() {
       isCash: form.accountType === 'WALLET' ? false : form.isCash,
       creditLimit: form.creditLimit ? +form.creditLimit : 0,
       creditDays: form.creditDays ? +form.creditDays : 30,
+      // Parent-account link is only settable on an existing customer (update).
+      ...(editing ? { parentAccountId: form.parentAccountId ? +form.parentAccountId : null } : {}),
     };
     try {
       if (editing) {
@@ -218,6 +221,21 @@ export function Customers() {
               <input type="checkbox" style={{ width: 'auto' }} checked={form.allowSameGstin} onChange={(e) => setForm((f) => ({ ...f, allowSameGstin: e.target.checked }))} />
               Allow duplicate GSTIN <span className="muted" style={{ fontWeight: 400 }}>— create a second billing account for the same legal entity</span>
             </label>
+
+            {editing && (
+              <div style={{ marginTop: 16 }}>
+                <label>Parent account <span className="muted">(group under a head-office account)</span></label>
+                <select value={form.parentAccountId} onChange={(e) => set('parentAccountId', e.target.value)}>
+                  <option value="">— None (standalone / head office) —</option>
+                  {clients
+                    .filter((o) => String(o.id) !== String(editing.id) && (o as any).parentAccountId == null)
+                    .map((o) => <option key={o.id} value={o.id}>{o.accountCode} — {o.legalName}</option>)}
+                </select>
+                <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                  A login on any account in the group can book under all of them (parent + children). Only top-level accounts can be a parent.
+                </div>
+              </div>
+            )}
 
             <div className="row" style={{ marginTop: 18, alignItems: 'center' }}>
               <div><label>Credit limit (₹)</label><input type="number" value={form.creditLimit} onChange={(e) => set('creditLimit', e.target.value)} style={{ width: 160 }} /></div>

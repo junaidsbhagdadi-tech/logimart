@@ -653,15 +653,17 @@ export class InvoiceService {
 
   /** Customer self-service portal summary — shipment KPIs, 6-month trend, on-time %, invoices,
    *  credit, recent shipments (with POD). Scoped to the logged-in client. */
-  /** Accounts a client login may book under: its own account, plus any sibling accounts that
-   *  share its GSTIN (one company, multiple account codes). Includes shipper-default fields so
-   *  the booking form can prefill the pickup address. */
+  /** Accounts a client login may book under: every account in its group — the parent (head
+   *  office) plus all child accounts — defined by the explicit parentAccountId link. Includes
+   *  shipper-default fields so the booking form can prefill the pickup address. */
   async bookableAccounts(clientId: number) {
-    const self = await this.prisma.b2bClient.findUnique({ where: { id: BigInt(clientId) } });
+    const self = await this.prisma.b2bClient.findUnique({ where: { id: BigInt(clientId) }, select: { id: true, parentAccountId: true } });
     if (!self) return [];
-    const rows = self.gstin
-      ? await this.prisma.b2bClient.findMany({ where: { gstin: self.gstin }, orderBy: { accountCode: 'asc' } })
-      : [self];
+    const rootId = self.parentAccountId ?? self.id;
+    const rows = await this.prisma.b2bClient.findMany({
+      where: { OR: [{ id: rootId }, { parentAccountId: rootId }] },
+      orderBy: { accountCode: 'asc' },
+    });
     return rows.map((c) => ({
       id: String(c.id),
       accountCode: c.accountCode,

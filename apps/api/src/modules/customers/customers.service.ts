@@ -126,11 +126,26 @@ export class CustomersService {
 
   async update(id: number, dto: UpdateClientDto) {
     await this.get(id);
-    const { startDate, dobAadhaar, creditLimit, ...rest } = dto;
+    const { startDate, dobAadhaar, creditLimit, parentAccountId, ...rest } = dto;
+    // Resolve the account-group parent link: 0/null clears it; a value must be another account.
+    let parentPatch: { parentAccountId?: bigint | null } = {};
+    if (parentAccountId !== undefined) {
+      if (parentAccountId === null || Number(parentAccountId) === 0) {
+        parentPatch = { parentAccountId: null };
+      } else {
+        if (Number(parentAccountId) === Number(id)) throw new ConflictException('An account cannot be its own parent.');
+        const parent = await this.prisma.b2bClient.findUnique({ where: { id: BigInt(parentAccountId) }, select: { id: true, parentAccountId: true } });
+        if (!parent) throw new NotFoundException('Parent account not found');
+        // Keep the hierarchy one level deep: the chosen parent must itself be a top-level account.
+        if (parent.parentAccountId != null) throw new ConflictException('The parent account is itself a child — pick the top-level (head-office) account.');
+        parentPatch = { parentAccountId: BigInt(parentAccountId) };
+      }
+    }
     return this.prisma.b2bClient.update({
       where: { id: BigInt(id) },
       data: {
         ...rest,
+        ...parentPatch,
         startDate: startDate ? new Date(startDate) : undefined,
         dobAadhaar: dobAadhaar ? new Date(dobAadhaar) : undefined,
         creditLimit: creditLimit != null ? new Prisma.Decimal(creditLimit) : undefined,
