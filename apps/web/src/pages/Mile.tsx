@@ -24,20 +24,29 @@ export function MileScan({ title, code, bulk, pod, pickupPod, hub, hint }: { tit
     const r = new FileReader(); r.onload = () => { setPodData(String(r.result)); setPodName(f.name); setErr(''); }; r.readAsDataURL(f);
   };
 
-  const submit = async () => {
+  const MAX_BATCH = 500; // max AWBs accepted in one batch (paste/textarea)
+  const [quick, setQuick] = useState(''); // bulk mode: rapid single-scan input
+  const quickRef = useRef<HTMLInputElement>(null);
+
+  // Core scan call. `list` = AWBs to update; clears the given input + logs the result.
+  const runScan = async (list: string[], clear: () => void, focus?: HTMLInputElement | null) => {
     setErr(''); setMsg('');
-    const awbs = awb.split(/[\s,\n]+/).map((a) => a.trim()).filter(Boolean);
-    if (!awbs.length) { setErr('Scan or enter an AWB.'); return; }
+    if (!list.length) { setErr('Scan or enter an AWB.'); return; }
+    if (list.length > MAX_BATCH) { alert(`Maximum ${MAX_BATCH} AWBs at once — you have ${list.length}. Split into batches of ${MAX_BATCH} or fewer.`); return; }
     if (pod && !podData) { setErr('POD image is mandatory to mark Delivered (JPG / PNG / PDF).'); return; }
     setBusy(true);
     try {
-      const r = await api.lifecycleScan({ awbs, code, remark: remark || undefined, podDataUrl: (pod || pickupPod) && podData ? podData : undefined, location: location || undefined });
-      setMsg(`✓ ${code}: ${r.updated}/${awbs.length} updated${r.missing.length ? ` · not found: ${r.missing.join(', ')}` : ''}${r.locked?.length ? ` · 🔒 out of sequence / terminal (super-admin only): ${r.locked.join(', ')}` : ''}`);
-      if (r.done.length) setLog((l) => [`${new Date().toLocaleTimeString()} · ${code} · ${r.done.join(', ')}`, ...l].slice(0, 40));
-      setAwb(''); setRemark(''); setPodData(''); setPodName('');
-      inputRef.current?.focus();
+      const r = await api.lifecycleScan({ awbs: list, code, remark: remark || undefined, podDataUrl: (pod || pickupPod) && podData ? podData : undefined, location: location || undefined });
+      setMsg(`✓ ${code}: ${r.updated}/${list.length} updated${r.missing.length ? ` · not found: ${r.missing.join(', ')}` : ''}${r.locked?.length ? ` · 🔒 out of sequence / terminal (super-admin only): ${r.locked.join(', ')}` : ''}`);
+      if (r.done.length) setLog((l) => [`${new Date().toLocaleTimeString()} · ${code} · ${r.done.join(', ')}`, ...l].slice(0, 200));
+      clear(); setRemark(''); setPodData(''); setPodName('');
+      focus?.focus();
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
+
+  const submit = () => runScan(awb.split(/[\s,\n]+/).map((a) => a.trim()).filter(Boolean), () => setAwb(''), inputRef.current);
+  // bulk rapid-scan: each Enter processes the single AWB immediately, no button press.
+  const scanOne = () => runScan(quick.split(/[\s,\n]+/).map((a) => a.trim()).filter(Boolean), () => setQuick(''), quickRef.current);
 
   return (
     <>
@@ -48,12 +57,18 @@ export function MileScan({ title, code, bulk, pod, pickupPod, hub, hint }: { tit
       <div className="card">
         {bulk ? (
           <>
-            <label>AWBs <span className="muted">(one per line, or comma/space separated)</span></label>
-            <textarea rows={6} value={awb} onChange={(e) => setAwb(e.target.value)} placeholder="L1000000123&#10;L1000000124…" style={{ width: '100%', font: '13px monospace', padding: 12, border: '1px solid var(--border)', borderRadius: 11 }} />
+            <label>Scan AWB <span className="muted">— each scan auto-updates on ↵ (no button needed)</span></label>
+            <input ref={quickRef} autoFocus value={quick} onChange={(e) => setQuick(e.target.value.toUpperCase())} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); scanOne(); } }} placeholder="Scan here — updates instantly" style={{ fontSize: 15, padding: '11px 14px' }} />
+            <details style={{ marginTop: 12 }}>
+              <summary style={{ cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>📋 Or paste many at once <span className="muted" style={{ fontWeight: 400 }}>(max {MAX_BATCH} per batch)</span></summary>
+              <label style={{ marginTop: 8 }}>AWBs <span className="muted">(one per line, or comma/space separated)</span></label>
+              <textarea rows={6} value={awb} onChange={(e) => setAwb(e.target.value.toUpperCase())} placeholder="L1000000123&#10;L1000000124…" style={{ width: '100%', font: '13px monospace', padding: 12, border: '1px solid var(--border)', borderRadius: 11 }} />
+              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>{awb.split(/[\s,\n]+/).map((a) => a.trim()).filter(Boolean).length} AWB(s) · max {MAX_BATCH} per batch</div>
+            </details>
           </>
         ) : (
           <>
-            <label>Scan / enter AWB</label>
+            <label>Scan / enter AWB <span className="muted">— scan auto-submits on ↵</span></label>
             <input ref={inputRef} autoFocus value={awb} onChange={(e) => setAwb(e.target.value.toUpperCase())} onKeyDown={(e) => { if (e.key === 'Enter' && !pod) submit(); }} placeholder="L1000000123" />
           </>
         )}
