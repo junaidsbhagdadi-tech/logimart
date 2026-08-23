@@ -220,10 +220,10 @@ export function Customers() {
           </>
         )}
 
-        {tab === 'Fuel Surcharges' && <CustomerSubTab clients={clients} kind="fuel" />}
-        {tab === 'Other Charges' && <CustomerSubTab clients={clients} kind="charges" />}
-        {tab === 'Customer Volumetric' && <CustomerSubTab clients={clients} kind="vol" />}
-        {tab === 'Customer Address' && <CustomerSubTab clients={clients} kind="addr" />}
+        {tab === 'Fuel Surcharges' && <CustomerSubTab client={editing} kind="fuel" />}
+        {tab === 'Other Charges' && <CustomerSubTab client={editing} kind="charges" />}
+        {tab === 'Customer Volumetric' && <CustomerSubTab client={editing} kind="vol" />}
+        {tab === 'Customer Address' && <CustomerSubTab client={editing} kind="addr" />}
       </Modal>}
 
       <div className="card">

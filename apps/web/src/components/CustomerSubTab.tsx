@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, Client } from '../api';
 
 type FieldType = 'text' | 'number' | 'date' | 'select' | 'checkbox';
@@ -80,9 +80,9 @@ const CALLS = {
   addr: { list: api.listAddr, add: api.addAddr, del: api.delAddr },
 };
 
-export function CustomerSubTab({ clients, kind }: { clients: Client[]; kind: Kind }) {
+export function CustomerSubTab({ client, kind }: { client?: Client | null; kind: Kind }) {
   const cfg = CONFIG[kind];
-  const [clientId, setClientId] = useState('');
+  const clientId = client?.id != null ? String(client.id) : '';
   const [form, setForm] = useState<Record<string, any>>({});
   const [rows, setRows] = useState<any[]>([]);
   const [error, setError] = useState('');
@@ -112,7 +112,7 @@ export function CustomerSubTab({ clients, kind }: { clients: Client[]; kind: Kin
     catch (e: any) { setError(e.message); }
   };
 
-  const clientName = useMemo(() => clients.find((c) => String(c.id) === clientId)?.legalName, [clients, clientId]);
+  const clientName = client?.legalName;
 
   return (
     <>
@@ -122,15 +122,9 @@ export function CustomerSubTab({ clients, kind }: { clients: Client[]; kind: Kin
           ⚠ {LEGACY_NOTE[kind]}
         </div>
       )}
-      <div className="grid cols-3" style={{ marginBottom: 8 }}>
-        <div>
-          <label>Customer *</label>
-          <select value={clientId} onChange={(e) => setClientId(e.target.value)}>
-            <option value="">— select customer —</option>
-            {clients.map((c) => <option key={c.id} value={c.id}>{c.accountCode} — {c.legalName}</option>)}
-          </select>
-        </div>
-      </div>
+      {clientId && (
+        <div className="muted" style={{ marginBottom: 8, fontSize: 13 }}>Customer: <strong style={{ color: 'var(--text)' }}>{client?.accountCode} — {clientName}</strong></div>
+      )}
 
       {clientId ? (
         <>
@@ -171,7 +165,7 @@ export function CustomerSubTab({ clients, kind }: { clients: Client[]; kind: Kin
           </table>
         </>
       ) : (
-        <p className="muted">Select a customer to add and view rows.</p>
+        <p className="muted">Save the customer first (Personal Information tab) — then these rows bind to it automatically.</p>
       )}
     </>
   );
