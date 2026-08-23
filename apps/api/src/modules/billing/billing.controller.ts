@@ -87,6 +87,12 @@ export class BillingController {
   }
 
   /** Statement of Account for one client (ledger + per-invoice outstanding). */
+  @Get('clients/:id/overview')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  customerOverview(@Param('id') id: string) {
+    return this.invoices.customerOverview(Number(id));
+  }
+
   @Get('billing/clients/:id/statement')
   @Roles(UserRole.FINANCE_EXEC, UserRole.CLIENT_ADMIN, UserRole.SYS_ADMIN)
   statement(@Param('id') id: string) {

@@ -35,6 +35,7 @@ import { Receivables } from './pages/Receivables';
 import { AuditLog } from './pages/AuditLog';
 import { Pincodes } from './pages/Pincodes';
 import { Masters } from './pages/Masters';
+import { Customer360 } from './pages/Customer360';
 import { BulkRateUpload } from './pages/BulkRateUpload';
 import { Deliver } from './pages/Deliver';
 import { BulkBooking } from './pages/BulkBooking';
@@ -100,6 +101,7 @@ export function App() {
         <Route path="/lm/bulk-delivery-update" element={<DeliveryUpdate bulk />} />
         <Route path="/lm/manual-scan" element={<ManualScan />} />
         <Route path="/customers" element={isAdminFin ? <Customers /> : <Navigate to="/" replace />} />
+        <Route path="/customers/:id/overview" element={isAdminFin ? <Customer360 /> : <Navigate to="/" replace />} />
         <Route path="/vendors" element={isAdminFin ? <Vendors /> : <Navigate to="/" replace />} />
         <Route path="/vehicles" element={isAdminFin || canMaster ? <Vehicles /> : <Navigate to="/" replace />} />
         <Route path="/service-mapping" element={isAdminFin || canMaster ? <ServiceMap /> : <Navigate to="/" replace />} />

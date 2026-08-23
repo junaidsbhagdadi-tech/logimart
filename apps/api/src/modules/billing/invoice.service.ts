@@ -578,4 +578,75 @@ export class InvoiceService {
       isCreditHold: c.isCreditHold,
     };
   }
+
+  /** Customer 360 — profile, credit, KPIs, aging, invoices, ledger, rate cards, recent shipments. */
+  async customerOverview(clientId: number) {
+    const cid = BigInt(clientId);
+    const client = await this.prisma.b2bClient.findUnique({ where: { id: cid } });
+    if (!client) throw new NotFoundException('Client not found');
+    const r2n = (n: number) => +Number(n).toFixed(2);
+    const now = Date.now();
+    const nowD = new Date();
+    const fyStart = new Date(nowD.getMonth() >= 3 ? nowD.getFullYear() : nowD.getFullYear() - 1, 3, 1); // 1 Apr
+    const monthStart = new Date(nowD.getFullYear(), nowD.getMonth(), 1);
+
+    // invoices + per-invoice remaining (signed sum of ledger entries)
+    const invoices = await this.prisma.invoice.findMany({
+      where: { clientId: cid }, orderBy: { issuedAt: 'desc' },
+      select: { id: true, invoiceNo: true, periodStart: true, periodEnd: true, total: true, status: true, dueDate: true, issuedAt: true },
+    });
+    const sums = await this.prisma.ledgerEntry.groupBy({ by: ['invoiceId'], where: { clientId: cid, invoiceId: { not: null } }, _sum: { amount: true } });
+    const remMap = new Map(sums.map((s) => [String(s.invoiceId), Number(s._sum.amount ?? 0)]));
+    const aging = { current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90_plus: 0, total: 0 } as Record<string, number>;
+    const invRows = invoices.map((i) => {
+      const total = Number(i.total);
+      const remaining = r2n(remMap.has(String(i.id)) ? Number(remMap.get(String(i.id))) : total);
+      const daysOverdue = Math.floor((now - new Date(i.dueDate).getTime()) / 86400000);
+      const paidStatus = remaining <= 0.01 ? 'PAID' : remaining < total - 0.01 ? 'PART-PAID' : daysOverdue > 0 ? 'OVERDUE' : 'OPEN';
+      if (remaining > 0.01) {
+        const b = daysOverdue <= 0 ? 'current' : daysOverdue <= 30 ? 'd1_30' : daysOverdue <= 60 ? 'd31_60' : daysOverdue <= 90 ? 'd61_90' : 'd90_plus';
+        aging[b] += remaining; aging.total += remaining;
+      }
+      return { id: String(i.id), invoiceNo: i.invoiceNo, periodStart: i.periodStart, periodEnd: i.periodEnd, total, remaining, status: i.status, dueDate: i.dueDate, daysOverdue: Math.max(0, daysOverdue), paidStatus };
+    });
+    for (const k of Object.keys(aging)) aging[k] = r2n(aging[k]);
+
+    const ledger = await this.prisma.ledgerEntry.findMany({ where: { clientId: cid }, orderBy: { createdAt: 'desc' }, take: 15 });
+    const rateCards = await this.prisma.customerRateCard.findMany({
+      where: { clientId: cid, isActive: true },
+      select: { id: true, network: true, product: true, mode: true, fuelPct: true, fovPct: true, odaFlat: true, odaPerKg: true, cityRates: true, slabs: { select: { id: true } } },
+    });
+    const shipments = await this.prisma.shipment.findMany({
+      where: { clientId: cid }, orderBy: { createdAt: 'desc' }, take: 8,
+      select: { awb: true, consigneeCity: true, destZone: true, status: true, statusCode: true, createdAt: true },
+    });
+
+    const [shipmentsFY, shipmentsMonth, billedAgg, payAgg] = await Promise.all([
+      this.prisma.shipment.count({ where: { clientId: cid, createdAt: { gte: fyStart } } }),
+      this.prisma.shipment.count({ where: { clientId: cid, createdAt: { gte: monthStart } } }),
+      this.prisma.invoice.aggregate({ _sum: { total: true }, where: { clientId: cid, issuedAt: { gte: fyStart } } }),
+      this.prisma.ledgerEntry.aggregate({ _sum: { amount: true }, where: { clientId: cid, createdAt: { gte: fyStart }, amount: { lt: 0 } } }),
+    ]);
+    const billedFY = r2n(Number(billedAgg._sum.total ?? 0));
+    const collected = r2n(-Number(payAgg._sum.amount ?? 0));
+
+    return {
+      client: {
+        id: String(client.id), legalName: client.legalName, accountCode: client.accountCode, gstin: client.gstin, pan: client.pan,
+        city: client.city, state: client.state, salesPerson: client.salesPerson, isActive: client.isActive, isCreditHold: client.isCreditHold,
+        accountType: client.accountType, creditDays: client.creditDays,
+      },
+      credit: {
+        limit: r2n(Number(client.creditLimit)), outstanding: r2n(Number(client.outstandingBal)),
+        available: r2n(Number(client.creditLimit) - Number(client.outstandingBal)), overdue: r2n(aging.d1_30 + aging.d31_60 + aging.d61_90 + aging.d90_plus),
+        walletBalance: r2n(Number(client.walletBalance)), terms: client.creditDays,
+      },
+      kpis: { shipmentsFY, shipmentsMonth, billedFY, collected, collectedPct: billedFY > 0 ? Math.min(100, Math.round((collected / billedFY) * 100)) : 0, invoiceCount: invoices.length },
+      aging,
+      invoices: invRows,
+      ledger,
+      rateCards: rateCards.map((c) => ({ ...c, slabs: (c.slabs || []).length })),
+      shipments,
+    };
+  }
 }

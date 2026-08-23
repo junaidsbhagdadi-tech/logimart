@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api, Client } from '../api';
 import { CustomerSubTab } from '../components/CustomerSubTab';
 import { Modal } from '../components/Modal';
@@ -271,10 +272,11 @@ export function Customers() {
             {clients.map((c) => (
               <tr key={c.id} style={{ opacity: c.isActive === false ? 0.5 : 1, ...(sel.has(String(c.id)) ? { background: 'var(--bg-soft, #f2f4f7)' } : {}) }}>
                 <td><input type="checkbox" checked={sel.has(String(c.id))} onChange={() => toggleSel(String(c.id))} style={{ width: 'auto' }} /></td>
-                <td>{c.accountCode}</td><td><strong>{c.legalName}</strong></td><td>{c.gstin ?? '—'}</td><td>{c.pan ?? '—'}</td>
+                <td>{c.accountCode}</td><td><Link to={`/customers/${c.id}/overview`} title="Open Customer 360"><strong>{c.legalName}</strong></Link></td><td>{c.gstin ?? '—'}</td><td>{c.pan ?? '—'}</td>
                 <td>{c.city ?? '—'}</td><td>₹{c.creditLimit}</td><td>₹{c.outstandingBal}</td>
                 <td>Net {c.creditDays}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>
+                  <Link to={`/customers/${c.id}/overview`}><button className="secondary" style={{ padding: '4px 10px', fontSize: 12, marginRight: 6 }} title="Customer 360 — full history">📊 360</button></Link>
                   <button className="secondary" style={{ padding: '4px 10px', fontSize: 12, marginRight: 6 }} title="Edit customer" onClick={() => openEdit(c)}>✎ Edit</button>
                   <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} title="View / edit rate cards" onClick={() => setRcClient(c)}>👁 Cards</button>
                 </td>
