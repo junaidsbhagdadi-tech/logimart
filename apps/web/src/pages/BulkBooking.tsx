@@ -8,7 +8,7 @@ import { mapMode } from '../productMode';
  * MPS: one row per BOX; rows sharing the same `ref` are grouped into a single AWB
  * (each row contributes one piece with its own dimensions). Shipment-level fields are
  * taken from the first row of each ref group. A blank ref = a single-box shipment. */
-const COLS_STAFF = ['ref', 'awb', 'clientId', 'product', 'originPincode', 'destPincode', 'consigneeName', 'consigneePhone', 'consigneeAddress', 'declaredValue', 'deadKg', 'lengthCm', 'widthCm', 'heightCm'];
+const COLS_STAFF = ['ref', 'awb', 'clientId', 'product', 'vendor', 'originPincode', 'destPincode', 'consigneeName', 'consigneePhone', 'consigneeAddress', 'declaredValue', 'deadKg', 'lengthCm', 'widthCm', 'heightCm', 'paymentTerm', 'freightToCollect', 'agreedFreight', 'referenceNo', 'goodsDesc'];
 const COLS_CLIENT = COLS_STAFF.filter((c) => c !== 'clientId');
 
 export function BulkBooking() {
@@ -52,14 +52,14 @@ export function BulkBooking() {
     // A1 = a manually-booked shipment (pre-assigned AWB BD10000001); A2 = blank awb -> auto-generated.
     const sample = ownClientId
       ? [
-          `A1,BD10000001,${p},560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,5,30,20,15`,
-          `A1,BD10000001,${p},560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,8,40,30,20`,
-          `A2,,${p},560001,400001,Beta Corp,9812345670,5 Fort Mumbai,12000,3,25,20,10`,
+          `A1,BD10000001,${p},BDR,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,5,30,20,15,PREPAID,,,REF-A1,Apparel`,
+          `A1,BD10000001,${p},BDR,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,8,40,30,20,,,,,`,
+          `A2,,${p},DLY,560001,400001,Beta Corp,9812345670,5 Fort Mumbai,12000,3,25,20,10,TO_PAY,1500,,REF-A2,Electronics`,
         ].join('\n')
       : [
-          `A1,BD10000001,1,${p},560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,5,30,20,15`,
-          `A1,BD10000001,1,${p},560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,8,40,30,20`,
-          `A2,,1,${p},560001,400001,Beta Corp,9812345670,5 Fort Mumbai,12000,3,25,20,10`,
+          `A1,BD10000001,1,${p},BDR,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,5,30,20,15,PREPAID,,,REF-A1,Apparel`,
+          `A1,BD10000001,1,${p},BDR,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,8,40,30,20,,,,,`,
+          `A2,,1,${p},DLY,560001,400001,Beta Corp,9812345670,5 Fort Mumbai,12000,3,25,20,10,TO_PAY,1500,,REF-A2,Electronics`,
         ].join('\n');
     const csv = cols.join(',') + '\n' + sample + '\n';
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -82,6 +82,7 @@ export function BulkBooking() {
         manualAwb: first.awb || undefined, // pre-assigned AWB for a manually-booked shipment
         product: prodCode || undefined,
         serviceMode,
+        vendor: (first.vendor || '').trim() || undefined, // drives the vendor rate card
         originHubId: hubIds[0], destHubId: hubIds[1],
         originZone: 'SOUTH', destZone: 'SOUTH',
         originPincode: first.originPincode || undefined,
@@ -90,6 +91,11 @@ export function BulkBooking() {
         consigneePhone: first.consigneePhone || undefined,
         consigneeAddress: first.consigneeAddress || undefined,
         declaredValue: first.declaredValue ? Number(first.declaredValue) : undefined,
+        goodsDesc: first.goodsDesc || undefined,
+        referenceNo: first.referenceNo || undefined,
+        paymentTerm: (first.paymentTerm || '').trim().toUpperCase() === 'TO_PAY' ? 'TO_PAY' : undefined,
+        freightToCollect: first.freightToCollect ? Number(first.freightToCollect) : undefined,
+        manualFreight: first.agreedFreight && !isNaN(Number(first.agreedFreight)) && Number(first.agreedFreight) > 0 ? Number(first.agreedFreight) : undefined,
         // one piece per box-row, each with its own dimensions (MPS)
         pieces: grp.map((r) => ({
           deadKg: Number(r.deadKg) || 0.5,
@@ -119,6 +125,12 @@ export function BulkBooking() {
           Fill <code>awb</code> to import a <strong>manually-booked</strong> shipment with its existing AWB; leave it blank to auto-generate.
           The <code>product</code> column sets the service / transport mode (same as the booking form).
           E-way bills auto-generate when invoice value ≥ ₹50,000.
+        </p>
+        <p className="muted" style={{ marginTop: 6, fontSize: 12.5 }}>
+          <strong><code>vendor</code></strong> (e.g. BDR, DLY) picks the <strong>vendor rate card</strong> so pricing matches the assigned carrier — blank = SELF. Optional:
+          <code> paymentTerm</code> (PREPAID / TO_PAY) + <code>freightToCollect</code> (₹ from consignee on To-Pay),
+          <code> agreedFreight</code> (₹ one-off / "As Agreed" override — blank = rate card),
+          <code> referenceNo</code> (your invoice / booking ref), <code> goodsDesc</code>.
         </p>
         <div className="row">
           <button className="secondary" onClick={downloadTemplate}>⬇ Download CSV template</button>
