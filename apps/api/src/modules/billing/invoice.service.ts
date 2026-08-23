@@ -650,4 +650,64 @@ export class InvoiceService {
       shipments,
     };
   }
+
+  /** Customer self-service portal summary — shipment KPIs, 6-month trend, on-time %, invoices,
+   *  credit, recent shipments (with POD). Scoped to the logged-in client. */
+  async clientPortal(clientId: number) {
+    const cid = BigInt(clientId);
+    const client = await this.prisma.b2bClient.findUnique({ where: { id: cid } });
+    if (!client) throw new NotFoundException('Client not found');
+    const r2n = (n: number) => +Number(n).toFixed(2);
+    const now = Date.now();
+
+    const ships = await this.prisma.shipment.findMany({
+      where: { clientId: cid },
+      orderBy: { createdAt: 'desc' },
+      select: { awb: true, statusCode: true, status: true, createdAt: true, statusAt: true, expectedDelivery: true, consigneeCity: true, destZone: true, podUrl: true, pieceCount: true },
+    });
+    const total = ships.length;
+    const isTerminal = (c: string) => ['DLD', 'RTD', 'CAN'].includes(c);
+    const delivered = ships.filter((s) => s.statusCode === 'DLD').length;
+    const rto = ships.filter((s) => ['RTO', 'RTD'].includes(String(s.statusCode))).length;
+    const cancelled = ships.filter((s) => s.statusCode === 'CAN').length;
+    const inTransit = ships.filter((s) => !isTerminal(String(s.statusCode ?? 'MAN'))).length;
+    // on-time = delivered within the expected date
+    const deliveredWithSla = ships.filter((s) => s.statusCode === 'DLD' && s.expectedDelivery && s.statusAt);
+    const onTime = deliveredWithSla.filter((s) => new Date(s.statusAt!).getTime() <= new Date(s.expectedDelivery!).getTime()).length;
+    const onTimePct = deliveredWithSla.length ? Math.round((onTime / deliveredWithSla.length) * 100) : null;
+
+    // 6-month booking trend
+    const trend: { month: string; count: number }[] = [];
+    const d = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const m = new Date(d.getFullYear(), d.getMonth() - i, 1);
+      const next = new Date(d.getFullYear(), d.getMonth() - i + 1, 1);
+      const label = m.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' });
+      const count = ships.filter((s) => { const t = new Date(s.createdAt).getTime(); return t >= m.getTime() && t < next.getTime(); }).length;
+      trend.push({ month: label, count });
+    }
+
+    // invoices + remaining
+    const invoices = await this.prisma.invoice.findMany({ where: { clientId: cid }, orderBy: { issuedAt: 'desc' }, take: 8, select: { id: true, invoiceNo: true, periodStart: true, periodEnd: true, total: true, dueDate: true, status: true } });
+    const sums = await this.prisma.ledgerEntry.groupBy({ by: ['invoiceId'], where: { clientId: cid, invoiceId: { not: null } }, _sum: { amount: true } });
+    const remMap = new Map(sums.map((s) => [String(s.invoiceId), Number(s._sum.amount ?? 0)]));
+    let overdue = 0;
+    const invRows = invoices.map((i) => {
+      const totalv = Number(i.total);
+      const remaining = r2n(remMap.has(String(i.id)) ? Number(remMap.get(String(i.id))) : totalv);
+      const daysOverdue = Math.floor((now - new Date(i.dueDate).getTime()) / 86400000);
+      const paidStatus = remaining <= 0.01 ? 'PAID' : remaining < totalv - 0.01 ? 'PART-PAID' : daysOverdue > 0 ? 'OVERDUE' : 'OPEN';
+      if (remaining > 0.01 && daysOverdue > 0) overdue += remaining;
+      return { id: String(i.id), invoiceNo: i.invoiceNo, periodStart: i.periodStart, periodEnd: i.periodEnd, total: totalv, remaining, dueDate: i.dueDate, paidStatus };
+    });
+
+    return {
+      client: { id: String(client.id), legalName: client.legalName, accountCode: client.accountCode, gstin: client.gstin, city: client.city, state: client.state, accountType: client.accountType },
+      credit: { limit: r2n(Number(client.creditLimit)), outstanding: r2n(Number(client.outstandingBal)), available: r2n(Number(client.creditLimit) - Number(client.outstandingBal)), overdue: r2n(overdue), walletBalance: r2n(Number(client.walletBalance)) },
+      kpis: { total, delivered, inTransit, rto, cancelled, onTimePct, deliveredPct: total ? Math.round((delivered / total) * 100) : 0 },
+      trend,
+      invoices: invRows,
+      recentShipments: ships.slice(0, 12).map((s) => ({ awb: s.awb, destination: s.consigneeCity ?? s.destZone ?? '—', statusCode: s.statusCode ?? 'MAN', status: s.status, createdAt: s.createdAt, expectedDelivery: s.expectedDelivery, hasPod: !!s.podUrl, pieceCount: s.pieceCount })),
+    };
+  }
 }

@@ -14,7 +14,25 @@ export function Layout() {
   const isOps = ['HUB_MANAGER', 'DRIVER', 'SYS_ADMIN'].includes(role);
   const canMaster = role === 'HUB_MANAGER' || role === 'SYS_ADMIN';
   const isSysAdmin = role === 'SYS_ADMIN';
+  const isClient = role === 'CLIENT_ADMIN';
   const nav = useNavigate();
+
+  // Customers get a focused self-service portal — not the ops/back-office nav.
+  const clientGroups: Group[] = [
+    { title: 'Overview', items: [
+      { to: '/', icon: '📊', label: 'My Dashboard', end: true },
+      { to: '/tracker', icon: '🧭', label: 'Track Shipment' },
+    ] },
+    { title: 'My Shipments', items: [
+      { to: '/create', icon: '➕', label: 'Book Shipment' },
+      { to: '/bulk', icon: '📥', label: 'Bulk Booking' },
+      { to: '/awb-list', icon: '📝', label: 'My Shipments' },
+      { to: '/pickups', icon: '📦', label: 'Schedule Pickup' },
+    ] },
+    { title: 'Billing', items: [
+      { to: '/invoices', icon: '🧾', label: 'My Invoices' },
+    ] },
+  ];
   const [awb, setAwb] = useState('');
 
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('lm.rail') === '1');
@@ -27,7 +45,7 @@ export function Layout() {
     const n = { ...c, [title]: !c[title] }; localStorage.setItem('lm.navClosed', JSON.stringify(n)); return n;
   });
 
-  const groups: Group[] = [
+  const groups: Group[] = isClient ? clientGroups : [
     { title: 'Overview', items: [
       { to: '/', icon: '📊', label: 'Dashboard', end: true },
       { to: '/tracker', icon: '🧭', label: 'Track Shipment' },
@@ -127,7 +145,7 @@ export function Layout() {
           {groups.map((g) => {
             // Super admins see everything role-allows. Others: if the super admin assigned explicit
             // feature grants, show only those; otherwise fall back to role defaults.
-            const grants = user?.role === 'SYS_ADMIN' ? null : (user?.featureGrants ?? null);
+            const grants = (user?.role === 'SYS_ADMIN' || isClient) ? null : (user?.featureGrants ?? null);
             const items = g.items.filter((it) => it.show !== false && (!grants || grants.includes(it.to)));
             if (items.length === 0) return null;
             const isClosed = !!closed[g.title];

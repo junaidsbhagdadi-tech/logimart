@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, NotFoundException, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles } from '../../common/rbac/roles.decorator';
@@ -34,8 +34,13 @@ export class BillingController {
   }
 
   @Get('billing/invoices/:id')
-  get(@Param('id') id: string) {
-    return this.invoices.get(Number(id));
+  async get(@Param('id') id: string, @Req() req: any) {
+    const inv = await this.invoices.get(Number(id));
+    // A client may only open its OWN invoices.
+    if (req.user.role === UserRole.CLIENT_ADMIN && String((inv as any).clientId) !== String(req.user.clientId)) {
+      throw new NotFoundException('Invoice not found');
+    }
+    return inv;
   }
 
   /** Lock a line under dispute (clean lines stay payable). */
@@ -91,6 +96,13 @@ export class BillingController {
   @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
   customerOverview(@Param('id') id: string) {
     return this.invoices.customerOverview(Number(id));
+  }
+
+  /** Customer self-service portal summary — scoped to the logged-in client. */
+  @Get('portal/overview')
+  @Roles(UserRole.CLIENT_ADMIN)
+  portal(@Req() req: any) {
+    return this.invoices.clientPortal(Number(req.user.clientId));
   }
 
   @Get('billing/clients/:id/statement')

@@ -258,6 +258,24 @@ export class ShipmentsService {
     return { awb, transferredTo: { id: String(target.id), legalName: target.legalName, accountCode: target.accountCode } };
   }
 
+  /** Cancel a shipment. A client (clientId set) can cancel only their OWN AWB, and only before it's
+   *  dispatched (still MAN/PKD) and not yet invoiced. Staff can cancel any non-invoiced pre-dispatch AWB. */
+  async cancel(awbRaw: string, userId?: bigint, clientId?: number, reason?: string) {
+    const awb = String(awbRaw).trim().toUpperCase();
+    const s = await this.prisma.shipment.findUnique({
+      where: { awb },
+      select: { id: true, clientId: true, statusCode: true, _count: { select: { invoiceLines: true } } },
+    });
+    if (!s) throw new NotFoundException(`AWB ${awb} not found`);
+    if (clientId != null && String(s.clientId) !== String(clientId)) throw new NotFoundException(`AWB ${awb} not found`); // don't leak others' AWBs
+    if (s._count.invoiceLines > 0) throw new ConflictException('This AWB is already invoiced — it cannot be cancelled.');
+    const cur = String(s.statusCode || 'MAN').toUpperCase();
+    if (!['MAN', 'PKD'].includes(cur)) throw new ConflictException(`AWB is already ${cur} (in transit) — it can no longer be cancelled online. Contact support.`);
+    await this.prisma.shipment.update({ where: { id: s.id }, data: { statusCode: 'CAN', status: 'CANCELLED' as any, statusAt: new Date(), exceptionFlag: reason || 'Cancelled by customer' } });
+    await this.prisma.scanLog.create({ data: { awb, eventType: 'CAN', remark: reason || 'Cancelled', scannedById: userId ?? null } });
+    return { awb, status: 'CAN' };
+  }
+
   /**
    * DOD — record that the cheque/DD was collected from the consignee.
    * This is the delivery gate: POD is blocked (see PodsService) until this is set.

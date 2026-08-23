@@ -1,0 +1,149 @@
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { api } from '../api';
+import { useAuth } from '../auth';
+
+const inr = (n: any) => '₹' + Number(n ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+const compact = (n: any) => { const v = Number(n ?? 0); return v >= 1e7 ? `₹${(v / 1e7).toFixed(2)}Cr` : v >= 1e5 ? `₹${(v / 1e5).toFixed(2)}L` : inr(v); };
+const dd = (s: any) => (s ? new Date(s).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : '—');
+const STATUS_CLS: Record<string, string> = { DLD: 'DELIVERED', OFD: 'CREATED', PKD: 'CREATED', MAN: 'CREATED', ORD: 'AT_HUB', DPD: 'AT_HUB', DRD: 'AT_HUB', RTO: 'PARTIAL', RTD: 'PARTIAL', CAN: 'CANCELLED', UDL: 'CANCELLED' };
+const INV_CLS: Record<string, string> = { PAID: 'DELIVERED', 'PART-PAID': 'PARTIAL', OVERDUE: 'CANCELLED', OPEN: 'CREATED' };
+
+export function ClientPortal() {
+  const { user } = useAuth();
+  const [d, setD] = useState<any>(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => { api.portalOverview().then(setD).catch((e) => setError(e.message)); }, []);
+
+  const exportShipments = async () => {
+    try {
+      const rows = await api.awbList(2000);
+      const head = ['AWB', 'Booked', 'Destination', 'Status', 'Pieces'];
+      const body = rows.map((r: any) => [r.awb, r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-GB') : '', r.route ?? r.destZone ?? '', r.status ?? r.statusCode ?? '', r.pieceCount ?? '']);
+      const csv = [head, ...body].map((r) => r.map((c: any) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      const a = document.createElement('a'); a.href = url; a.download = `my-shipments-${new Date().toISOString().slice(0, 10)}.csv`; a.click(); URL.revokeObjectURL(url);
+    } catch (e: any) { setError(e.message); }
+  };
+
+  if (error) return <div className="error" style={{ margin: 20 }}>{error}</div>;
+  if (!d) return <p className="muted" style={{ margin: 20 }}>Loading your dashboard…</p>;
+
+  const k = d.kpis, cr = d.credit;
+  const maxTrend = Math.max(1, ...d.trend.map((t: any) => t.count));
+
+  return (
+    <>
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <h1 style={{ margin: 0 }}>👋 Welcome, {user?.fullName?.split(' ')[0] ?? d.client.legalName}</h1>
+          <div className="muted" style={{ marginTop: 4, fontSize: 13 }}>{d.client.legalName} · {d.client.accountCode}{d.client.gstin ? ` · GSTIN ${d.client.gstin}` : ''}</div>
+        </div>
+        <div className="row" style={{ gap: 8 }}>
+          <Link to="/tracker"><button className="secondary">🧭 Track</button></Link>
+          <Link to="/pickups"><button className="secondary">📦 Schedule Pickup</button></Link>
+          <Link to="/create"><button>➕ Book Shipment</button></Link>
+        </div>
+      </div>
+
+      {/* KPIs */}
+      <div className="grid cols-4" style={{ gap: 12 }}>
+        <div className="card"><label>Total shipments</label><div style={{ fontSize: 24, fontWeight: 800 }}>{k.total.toLocaleString('en-IN')}</div></div>
+        <div className="card"><label>Delivered</label><div style={{ fontSize: 24, fontWeight: 800, color: 'var(--ok)' }}>{k.delivered.toLocaleString('en-IN')}</div><div className="muted" style={{ fontSize: 11 }}>{k.deliveredPct}% of total</div></div>
+        <div className="card"><label>In transit</label><div style={{ fontSize: 24, fontWeight: 800 }}>{k.inTransit.toLocaleString('en-IN')}</div></div>
+        <div className="card"><label>On-time delivery</label><div style={{ fontSize: 24, fontWeight: 800, color: k.onTimePct != null && k.onTimePct < 85 ? 'var(--warn)' : 'var(--ok)' }}>{k.onTimePct != null ? `${k.onTimePct}%` : '—'}</div><div className="muted" style={{ fontSize: 11 }}>{k.rto} RTO</div></div>
+      </div>
+
+      <div className="grid" style={{ gridTemplateColumns: '1.5fr 1fr', gap: 12, alignItems: 'start' }}>
+        {/* LEFT: trend + recent shipments */}
+        <div className="grid" style={{ gap: 12 }}>
+          <div className="card">
+            <div className="row" style={{ justifyContent: 'space-between' }}><h2 style={{ margin: 0 }}>📈 Shipping trend</h2><span className="muted">last 6 months</span></div>
+            <div className="row" style={{ alignItems: 'flex-end', gap: 14, height: 130, marginTop: 14, paddingLeft: 4 }}>
+              {d.trend.map((t: any, i: number) => (
+                <div key={i} style={{ flex: 1, textAlign: 'center' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700 }}>{t.count}</div>
+                  <div style={{ height: `${(t.count / maxTrend) * 90}px`, minHeight: 2, background: 'var(--brand)', borderRadius: '6px 6px 0 0', margin: '4px 6px 0' }} />
+                  <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>{t.month}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ margin: 0 }}>Recent shipments</h2>
+              <div className="row" style={{ gap: 8 }}>
+                <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={exportShipments}>⬇ Export CSV</button>
+                <Link to="/awb-list" className="muted" style={{ fontSize: 12 }}>view all →</Link>
+              </div>
+            </div>
+            <div style={{ overflowX: 'auto', marginTop: 6 }}>
+              <table>
+                <thead><tr><th>AWB</th><th>Booked</th><th>Destination</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                  {d.recentShipments.map((s: any) => (
+                    <tr key={s.awb}>
+                      <td><Link to={`/tracker/${s.awb}`}><strong>{s.awb}</strong></Link></td>
+                      <td>{dd(s.createdAt)}</td>
+                      <td>{s.destination}</td>
+                      <td><span className={`badge ${STATUS_CLS[s.statusCode] ?? 'CREATED'}`}>{s.statusCode}</span></td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <Link to={`/tracker/${s.awb}`}><button className="secondary" style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }}>🧭 Track</button></Link>
+                        {s.hasPod && <Link to={`/tracker/${s.awb}`}><button className="secondary" style={{ padding: '3px 8px', fontSize: 12 }} title="View / download POD">📄 POD</button></Link>}
+                        {['MAN', 'PKD'].includes(s.statusCode) && <CancelBtn awb={s.awb} onDone={() => api.portalOverview().then(setD)} />}
+                      </td>
+                    </tr>
+                  ))}
+                  {d.recentShipments.length === 0 && <tr><td colSpan={5} className="muted">No shipments yet — book your first one.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT: account + invoices */}
+        <div className="grid" style={{ gap: 12 }}>
+          <div className="card">
+            <h2 style={{ marginBottom: 8 }}>Account</h2>
+            <div className="grid cols-2" style={{ gap: 10 }}>
+              <div><label>Outstanding</label><div style={{ fontSize: 18, fontWeight: 700, color: 'var(--warn)' }}>{compact(cr.outstanding)}</div></div>
+              <div><label>Overdue</label><div style={{ fontSize: 18, fontWeight: 700, color: '#b26a00' }}>{compact(cr.overdue)}</div></div>
+              {d.client.accountType === 'WALLET' && <div><label>Wallet</label><div style={{ fontSize: 18, fontWeight: 700 }}>{compact(cr.walletBalance)}</div></div>}
+              <div><label>Credit available</label><div style={{ fontSize: 18, fontWeight: 700, color: 'var(--ok)' }}>{compact(cr.available)}</div></div>
+            </div>
+          </div>
+          <div className="card">
+            <div className="row" style={{ justifyContent: 'space-between' }}><h2 style={{ margin: 0 }}>My invoices</h2><Link to="/invoices" className="muted" style={{ fontSize: 12 }}>all →</Link></div>
+            <table style={{ marginTop: 6 }}>
+              <tbody>
+                {d.invoices.map((i: any) => (
+                  <tr key={i.id}>
+                    <td><Link to={`/invoices/${i.id}`}><strong>{i.invoiceNo}</strong></Link><div className="muted" style={{ fontSize: 11 }}>{dd(i.periodStart)}–{dd(i.periodEnd)}</div></td>
+                    <td style={{ textAlign: 'right' }}>{inr(i.total)}<div className="muted" style={{ fontSize: 11 }}>due {inr(i.remaining)}</div></td>
+                    <td><span className={`badge ${INV_CLS[i.paidStatus] ?? 'CREATED'}`}>{i.paidStatus}</span></td>
+                    <td><a href={`/invoices/${i.id}/print`} target="_blank" rel="noreferrer"><button className="secondary" style={{ padding: '3px 8px', fontSize: 12 }}>🖨</button></a></td>
+                  </tr>
+                ))}
+                {d.invoices.length === 0 && <tr><td className="muted">No invoices yet.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function CancelBtn({ awb, onDone }: { awb: string; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const cancel = async () => {
+    const reason = prompt(`Cancel shipment ${awb}? Enter a reason (optional):`, '');
+    if (reason === null) return;
+    setBusy(true);
+    try { await api.cancelShipment(awb, reason || undefined); onDone(); }
+    catch (e: any) { alert(e.message); } finally { setBusy(false); }
+  };
+  return <button className="secondary" style={{ padding: '3px 8px', fontSize: 12, marginLeft: 4 }} disabled={busy} onClick={cancel} title="Cancel this shipment">✕ Cancel</button>;
+}

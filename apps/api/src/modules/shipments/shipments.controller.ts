@@ -56,6 +56,14 @@ export class ShipmentsController {
     return this.shipments.transfer(awb, Number(dto.clientId));
   }
 
+  /** Cancel a shipment — a client can cancel their own AWB before it's dispatched. */
+  @Post(':awb/cancel')
+  @Roles(UserRole.CLIENT_ADMIN, UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  cancel(@Param('awb') awb: string, @Body() dto: { reason?: string }, @Req() req: any) {
+    const clientId = req.user.role === UserRole.CLIENT_ADMIN ? Number(req.user.clientId) : undefined;
+    return this.shipments.cancel(awb, req.user.sub ? BigInt(req.user.sub) : undefined, clientId, dto?.reason);
+  }
+
   /** Assign a rider for last-mile delivery. */
   @Post(':awb/assign-delivery')
   @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)

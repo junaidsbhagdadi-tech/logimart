@@ -36,6 +36,7 @@ import { AuditLog } from './pages/AuditLog';
 import { Pincodes } from './pages/Pincodes';
 import { Masters } from './pages/Masters';
 import { Customer360 } from './pages/Customer360';
+import { ClientPortal } from './pages/ClientPortal';
 import { BulkRateUpload } from './pages/BulkRateUpload';
 import { Deliver } from './pages/Deliver';
 import { BulkBooking } from './pages/BulkBooking';
@@ -66,7 +67,7 @@ export function App() {
       <Route path="/invoices/:id/print" element={<InvoicePrint />} />
       <Route path="/shipments/:awb/awb-print" element={<AwbPrint />} />
       <Route element={<Layout />}>
-        <Route path="/" element={<Dashboard />} />
+        <Route path="/" element={user?.role === 'CLIENT_ADMIN' ? <ClientPortal /> : <Dashboard />} />
         <Route path="/tracker" element={<TrackDetail />} />
         <Route path="/tracker/:awb" element={<TrackDetail />} />
         <Route path="/create" element={<CreateShipment />} />

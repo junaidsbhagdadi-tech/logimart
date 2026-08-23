@@ -342,6 +342,9 @@ export const api = {
       summary: { invoices: number; awbs: number; chargeableKg: number; headTotals: Record<string, number>; taxable: number; cgst: number; sgst: number; igst: number; grandTotal: number };
     }>(`/api/v1/billing/charge-breakup?${[clientId ? `clientId=${clientId}` : '', from ? `from=${from}` : '', to ? `to=${to}` : ''].filter(Boolean).join('&')}`),
   customerOverview: (clientId: string | number) => request<any>(`/api/v1/clients/${clientId}/overview`),
+  portalOverview: () => request<any>('/api/v1/portal/overview'),
+  cancelShipment: (awb: string, reason?: string) =>
+    request<{ awb: string; status: string }>(`/api/v1/shipments/${awb}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
   listInvoices: () => request<Invoice[]>('/api/v1/billing/invoices'),
   getInvoice: (id: string) => request<Invoice>(`/api/v1/billing/invoices/${id}`),
   generateInvoice: (clientId: number, periodStart: string, periodEnd: string) =>
