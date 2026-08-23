@@ -20,6 +20,14 @@ const BASEON_LABEL: Record<string, string> = {
 };
 const baseOnLabel = (v?: string) => (v ? (BASEON_LABEL[String(v).toUpperCase()] ?? v) : '—');
 
+// Fuel-mechanism "Calculation type" — FLAT (fixed %, air/FSC) vs DYNAMIC (diesel-indexed, surface/DSC).
+// This is the MATH method, not the transport mode.
+const FUELMODE_LABEL: Record<string, string> = {
+  FLAT: 'FLAT — fixed % (Air / FSC)',
+  DYNAMIC: 'DYNAMIC — diesel-indexed (Surface / DSC)',
+};
+const fuelModeLabel = (v?: string) => (v ? (FUELMODE_LABEL[String(v).toUpperCase()] ?? v) : '—');
+
 // Built-in charges have a basis fixed by the rate engine (ODA formula, APPT per-kg+min, EMERGENCY
 // % of freight). The rate/min entered here is the DEFAULT; a customer rate card overrides it.
 // Fixed display basis so the "Calculated on" column is always accurate regardless of stored attrs.
@@ -45,8 +53,8 @@ const MASTERS: MasterDef[] = [
   { key: 'PRODUCT_TYPE', label: 'Product Type', icon: '🏷', fields: [F('code', 'Type code'), F('name', 'Type name')] },
   { key: 'FUEL_MECHANISM', label: 'Fuel / Diesel Surcharge', icon: '⛽', fields: [
     F('code', 'Code'), F('name', 'Name'),
-    F('mode', 'Mode', { attr: true, type: 'select', options: ['FLAT', 'DYNAMIC'] }),
-    F('isDefault', 'Default for its mode (cards with blank fuel inherit — FLAT→air, DYNAMIC→surface)', { attr: true, type: 'checkbox' }),
+    F('mode', 'Calculation type (not transport mode)', { attr: true, type: 'select', options: ['FLAT', 'DYNAMIC'] }),
+    F('isDefault', 'Default for its type (cards with blank fuel inherit — FLAT→Air/FSC, DYNAMIC→Surface/DSC)', { attr: true, type: 'checkbox' }),
     F('percentage', 'Flat %  (FLAT)', { attr: true, type: 'number' }),
     F('basePct', 'Base %  (DYNAMIC)', { attr: true, type: 'number' }),
     F('baseFuelPrice', 'Base diesel ₹/L — reference price (DYNAMIC)', { attr: true, type: 'number' }),
@@ -254,7 +262,7 @@ export function Masters() {
                 <select value={val(f)} onChange={(e) => setVal(f, e.target.value)}
                   disabled={typeKey === 'CHARGE' && f.key === 'baseOn' && editing && RESERVED_CHARGE.has(String(form.code).toUpperCase())}>
                   <option value="">—</option>
-                  {f.options!.map((o) => <option key={o} value={o}>{typeKey === 'CHARGE' && f.key === 'baseOn' ? baseOnLabel(o) : o}</option>)}
+                  {f.options!.map((o) => <option key={o} value={o}>{typeKey === 'CHARGE' && f.key === 'baseOn' ? baseOnLabel(o) : typeKey === 'FUEL_MECHANISM' && f.key === 'mode' ? fuelModeLabel(o) : o}</option>)}
                 </select>
               ) : (
                 <input type={f.type === 'number' ? 'number' : 'text'} value={val(f)} disabled={editing && f.key === 'code'} onChange={(e) => setVal(f, e.target.value)} />
