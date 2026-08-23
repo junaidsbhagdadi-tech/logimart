@@ -39,7 +39,6 @@ export function Layout() {
       { to: '/walk-in', icon: '🧾', label: 'Walk-in Counter', show: isAdminFin || canMaster },
       { to: '/deliver', icon: '🚚', label: 'Delivery App', show: isOps },
       { to: '/pickups', icon: '📦', label: 'Pickups' },
-      { to: '/manifests', icon: '🗺', label: 'Manifests', show: isOps },
     ] },
     { title: 'First Mile', items: [
       { to: '/fm', icon: '📊', label: 'Dashboard', end: true },
@@ -52,7 +51,6 @@ export function Layout() {
       { to: '/mm/inscan-shipment', icon: '📲', label: 'Inscan Shipment' },
       { to: '/mm/bagging', icon: '🧳', label: 'Bagging' },
       { to: '/mm/trips', icon: '🚛', label: 'Trips' },
-      { to: '/mm/unloaded-bags', icon: '📦', label: 'Unloaded Bags' },
       { to: '/mm/inscan-trip', icon: '🧾', label: 'Inscan Trip' },
     ] },
     { title: 'Last Mile', items: [

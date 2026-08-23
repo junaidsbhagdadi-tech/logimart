@@ -15,7 +15,6 @@ export const FEATURE_CATALOG: FeatureSection[] = [
     { to: '/walk-in', label: 'Walk-in Counter' },
     { to: '/deliver', label: 'Delivery App' },
     { to: '/pickups', label: 'Pickups' },
-    { to: '/manifests', label: 'Manifests' },
   ] },
   { section: 'First Mile', features: [
     { to: '/fm', label: 'First Mile Dashboard' },
@@ -28,7 +27,6 @@ export const FEATURE_CATALOG: FeatureSection[] = [
     { to: '/mm/inscan-shipment', label: 'Inscan Shipment (ORD)' },
     { to: '/mm/bagging', label: 'Bagging' },
     { to: '/mm/trips', label: 'Trips' },
-    { to: '/mm/unloaded-bags', label: 'Unloaded Bags' },
     { to: '/mm/inscan-trip', label: 'Inscan Trip (DPD)' },
   ] },
   { section: 'Last Mile', features: [

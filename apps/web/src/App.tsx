@@ -40,7 +40,7 @@ import { BulkRateUpload } from './pages/BulkRateUpload';
 import { Deliver } from './pages/Deliver';
 import { BulkBooking } from './pages/BulkBooking';
 import { Reports } from './pages/Reports';
-import { MileScan, MileDashboard, Bagging, UnloadedBags, DeliveryUpdate, ManualScan } from './pages/Mile';
+import { MileScan, MileDashboard, Bagging, DeliveryUpdate, ManualScan } from './pages/Mile';
 
 export function App() {
   const { user } = useAuth();
@@ -90,7 +90,7 @@ export function App() {
         <Route path="/mm/inscan-shipment" element={<MileScan title="Inscan Shipment" code="ORD" hub hint="Inscan at the origin hub → Origin hub received (ORD). Pick the hub." />} />
         <Route path="/mm/bagging" element={<Bagging />} />
         <Route path="/mm/trips" element={<Manifests />} />
-        <Route path="/mm/unloaded-bags" element={<UnloadedBags />} />
+        <Route path="/mm/unloaded-bags" element={<Navigate to="/mm" replace />} />
         <Route path="/mm/inscan-trip" element={<MileScan title="Inscan Trip (depart)" code="DPD" bulk hint="Scan AWBs loaded on the departing trip → Departed (DPD)." />} />
         {/* Last Mile */}
         <Route path="/lm" element={<MileDashboard mile="last" />} />
