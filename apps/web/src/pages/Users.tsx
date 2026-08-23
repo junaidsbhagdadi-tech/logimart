@@ -34,15 +34,17 @@ export function Users() {
   const create = async () => {
     setError(''); setMsg('');
     try {
-      await api.createUser({
+      const res: any = await api.createUser({
         fullName: form.fullName,
         email: form.email,
-        password: form.password,
+        password: form.password || undefined,
         role: form.role,
         hubId: form.hubId ? +form.hubId : undefined,
         clientId: form.clientId ? +form.clientId : undefined,
       });
-      setMsg(`Created ${form.email}`);
+      setMsg(res?.tempPassword
+        ? `✓ Created ${form.email}. Credentials emailed. Temporary password: ${res.tempPassword} (share it until email is live).`
+        : `✓ Created ${form.email}. Login credentials emailed to ${form.email}.`);
       setForm({ ...blank });
       load();
     } catch (e: any) { setError(e.message); }
@@ -71,7 +73,7 @@ export function Users() {
         <div className="grid cols-3">
           <div><label>Full name *</label><input value={form.fullName} onChange={(e) => set('fullName', e.target.value)} /></div>
           <div><label>Email *</label><input value={form.email} onChange={(e) => set('email', e.target.value)} /></div>
-          <div><label>Password *</label><input value={form.password} onChange={(e) => set('password', e.target.value)} /></div>
+          <div><label>Password <span className="muted">(blank = auto-generate + email)</span></label><input value={form.password} onChange={(e) => set('password', e.target.value)} placeholder="leave blank to auto-generate" /></div>
           <div>
             <label>Role</label>
             <select value={form.role} onChange={(e) => set('role', e.target.value)}>

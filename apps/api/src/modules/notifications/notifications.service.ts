@@ -4,7 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 export interface NotifyInput {
   channel: 'sms' | 'whatsapp' | 'email' | 'inapp';
   recipient: string;
-  kind: 'shortage' | 'pod' | 'exception' | 'invoice' | 'delivery' | 'milestone';
+  kind: 'shortage' | 'pod' | 'exception' | 'invoice' | 'delivery' | 'milestone' | 'account';
   message: string;
   awb?: string;
   shipmentId?: bigint;

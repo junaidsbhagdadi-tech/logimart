@@ -8,7 +8,7 @@ import { UsersService } from './users.service';
 class CreateUserDto {
   @IsString() @MinLength(2) fullName!: string;
   @IsEmail() email!: string;
-  @IsString() @MinLength(4) password!: string;
+  @IsOptional() @IsString() @MinLength(4) password?: string; // blank → auto-generated + emailed
   @IsEnum(UserRole) role!: UserRole;
   @IsOptional() @IsInt() hubId?: number;
   @IsOptional() @IsInt() clientId?: number;
