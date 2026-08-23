@@ -86,6 +86,47 @@ export function CreateShipment() {
   const [autoCarrier, setAutoCarrier] = useState<{ vendor: string; minWeight?: number; maxWeight?: number } | null>(null);
   const [vendorTouched, setVendorTouched] = useState(false);
 
+  // ---- Draft autosave: keep the whole form in localStorage so navigating away
+  // (e.g. to add a vendor / fix a pincode) and coming back never wipes the data. ----
+  const DRAFT_KEY = 'lm_create_draft_v1';
+  const [ready, setReady] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
+  const draftSnapshot = () => ({
+    clientId, custText, prodText, ftl, originPin, destPin, c, shp, svc, flags,
+    originHubId, destHubId, ewbNo, product, docType, chargeWeight, charges, chargeCode, chargeAmt,
+    paymentTerm, freightToCollect, isDod, dodInstrument, dodAmount, manualFreight, manualAwb, pieces,
+  });
+  // restore once on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (raw) {
+        const d = JSON.parse(raw);
+        if (d.clientId !== undefined) setClientId(d.clientId);
+        if (d.custText != null) setCustText(d.custText);
+        if (d.prodText != null) setProdText(d.prodText);
+        if (d.ftl) setFtl(d.ftl); if (d.originPin != null) setOriginPin(d.originPin); if (d.destPin != null) setDestPin(d.destPin);
+        if (d.c) setC(d.c); if (d.shp) setShp(d.shp); if (d.svc) setSvc(d.svc); if (d.flags) setFlags(d.flags);
+        if (d.originHubId !== undefined) setOriginHubId(d.originHubId); if (d.destHubId !== undefined) setDestHubId(d.destHubId);
+        if (d.ewbNo != null) setEwbNo(d.ewbNo); if (d.product != null) setProduct(d.product); if (d.docType) setDocType(d.docType);
+        if (d.chargeWeight != null) setChargeWeight(d.chargeWeight); if (Array.isArray(d.charges)) setCharges(d.charges);
+        if (d.chargeCode != null) setChargeCode(d.chargeCode); if (d.chargeAmt != null) setChargeAmt(d.chargeAmt);
+        if (d.paymentTerm) setPaymentTerm(d.paymentTerm); if (d.freightToCollect != null) setFreightToCollect(d.freightToCollect);
+        if (d.isDod != null) setIsDod(d.isDod); if (d.dodInstrument) setDodInstrument(d.dodInstrument); if (d.dodAmount != null) setDodAmount(d.dodAmount);
+        if (d.manualFreight != null) setManualFreight(d.manualFreight); if (d.manualAwb != null) setManualAwb(d.manualAwb);
+        if (Array.isArray(d.pieces) && d.pieces.length) setPieces(d.pieces);
+        setDraftRestored(true);
+      }
+    } catch { /* ignore */ }
+    setReady(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // save on every change (after the initial restore)
+  const snapJson = JSON.stringify(draftSnapshot());
+  useEffect(() => { if (ready) { try { localStorage.setItem(DRAFT_KEY, snapJson); } catch { /* quota */ } } }, [ready, snapJson]);
+  const clearDraft = () => { try { localStorage.removeItem(DRAFT_KEY); } catch { /* */ } };
+  const startFresh = () => { clearDraft(); window.location.reload(); };
+
   useEffect(() => { if (!ownClientId) api.listClients().then(setClients).catch(() => {}); }, [ownClientId]);
   useEffect(() => { api.listVendors().then((v) => setVendors(v.filter((x: any) => x.isActive !== false))).catch(() => {}); }, []);
   useEffect(() => {
@@ -202,6 +243,7 @@ export function CreateShipment() {
           heightCm: p.heightCm ? +p.heightCm : undefined,
         })),
       });
+      clearDraft(); // booked successfully — drop the saved draft
       nav(`/shipments/${res.awb}`);
     } catch (e: any) {
       setError(e.message);
@@ -244,8 +286,17 @@ export function CreateShipment() {
     <>
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
         <h1 style={{ margin: 0 }}>New MPS Shipment</h1>
-        <button type="button" className="secondary" onClick={() => nav('/bulk')} title="Bulk import shipments (incl. manually-booked AWBs)">📥 Bulk import</button>
+        <div className="row" style={{ gap: 8 }}>
+          <button type="button" className="secondary" onClick={startFresh} title="Discard everything on this form and start a blank shipment">🧹 Clear form</button>
+          <button type="button" className="secondary" onClick={() => nav('/bulk')} title="Bulk import shipments (incl. manually-booked AWBs)">📥 Bulk import</button>
+        </div>
       </div>
+      {draftRestored && (
+        <div className="card" style={{ borderLeft: '4px solid var(--brand)', marginTop: 10, fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+          <span>↩ <strong>Draft restored.</strong> Your last unsaved entries are back — edit anything and continue. Nothing is lost if you navigate away.</span>
+          <button type="button" className="secondary" style={{ padding: '3px 10px', fontSize: 12 }} onClick={() => setDraftRestored(false)}>Dismiss</button>
+        </div>
+      )}
       {error && <div className="error" style={{ marginTop: 16 }}>{error}</div>}
 
       <div className="card">
