@@ -55,11 +55,11 @@ const MASTERS: MasterDef[] = [
     F('code', 'Code'), F('name', 'Name'),
     F('mode', 'Calculation type (not transport mode)', { attr: true, type: 'select', options: ['FLAT', 'DYNAMIC'] }),
     F('isDefault', 'Default for its type (cards with blank fuel inherit — FLAT→Air/FSC, DYNAMIC→Surface/DSC)', { attr: true, type: 'checkbox' }),
-    F('percentage', 'Flat %  (FLAT)', { attr: true, type: 'number' }),
-    F('basePct', 'Base %  (DYNAMIC)', { attr: true, type: 'number' }),
-    F('baseFuelPrice', 'Base diesel ₹/L — reference price (DYNAMIC)', { attr: true, type: 'number' }),
-    F('stepPerRupee', '% per ₹1 rise  (DYNAMIC)', { attr: true, type: 'number' }),
-    F('maxPct', 'Max % cap  (DYNAMIC, default 50)', { attr: true, type: 'number' }),
+    F('percentage', 'Flat %  (FLAT — fixed, e.g. 25)', { attr: true, type: 'number' }),
+    F('basePct', 'Base %  (DYNAMIC — surcharge when diesel = reference, e.g. 10)', { attr: true, type: 'number' }),
+    F('baseFuelPrice', 'Reference diesel ₹/L  (DYNAMIC — the price at which Base % applies, e.g. 90)', { attr: true, type: 'number' }),
+    F('stepPerRupee', '% per ₹1 diesel rise  (DYNAMIC — e.g. 0.20)', { attr: true, type: 'number' }),
+    F('maxPct', 'Max % cap  (DYNAMIC — e.g. 50)', { attr: true, type: 'number' }),
   ] },
   { key: 'CHARGE', label: 'Charges', icon: '💱', fields: [
     F('code', 'Charge code'), F('name', 'Charge name'),
@@ -286,7 +286,11 @@ export function Masters() {
               <button className="secondary" onClick={saveDiesel} disabled={!newDiesel}>Set price</button>
               <span className="muted" style={{ fontSize: 12 }}>In force: <strong>{diesel != null ? `₹${diesel}/L` : 'not set'}</strong> — drives every DYNAMIC card.</span>
             </div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--navy)' }}>Effective {fmode === 'DYNAMIC' ? 'diesel surcharge' : 'fuel surcharge'} = {feff.toFixed(2)}%</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: feff > 60 ? 'var(--warn)' : 'var(--navy)' }}>Effective {fmode === 'DYNAMIC' ? 'diesel surcharge' : 'fuel surcharge'} = {feff.toFixed(2)}%</div>
+            {fmode === 'DYNAMIC' && Number(fa.baseFuelPrice) > 0 && Number(fa.baseFuelPrice) < 20 && (
+              <div style={{ color: 'var(--warn)', fontWeight: 600, fontSize: 12.5, marginTop: 4 }}>⚠ Reference diesel ₹{Number(fa.baseFuelPrice)}/L looks too low — it should be a real diesel price (e.g. ₹90). A tiny reference makes the surcharge huge.</div>
+            )}
+            {feff > 60 && <div style={{ color: 'var(--warn)', fontWeight: 600, fontSize: 12.5, marginTop: 4 }}>⚠ {feff.toFixed(0)}% is very high for a fuel surcharge — check the reference price, step, and cap.</div>}
             {fmode === 'DYNAMIC' && (
               Number(fa.baseFuelPrice) > 0
                 ? <p className="muted" style={{ marginTop: 6, marginBottom: 0 }}>
