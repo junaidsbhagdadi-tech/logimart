@@ -358,9 +358,14 @@ export class RateService {
   private async pctFromMechanism(m: any): Promise<number> {
     const a: any = m.attrs || {};
     if (String(a.mode ?? 'FLAT').toUpperCase() !== 'DYNAMIC') return Number(a.percentage ?? 0);
-    const basePct = Number(a.basePct ?? 0), baseFuel = Number(a.baseFuelPrice ?? 0), step = Number(a.stepPerRupee ?? 0), cap = Number(a.maxPct ?? 0);
+    const basePct = Number(a.basePct ?? 0), cap = Number(a.maxPct ?? 0);
+    const ref = Number(a.baseFuelPrice) > 0 ? Number(a.baseFuelPrice) : BASE_DIESEL; // blank → ₹98.33
+    // "+X% for every ₹STEP above base" → per-₹1 step = pctPerStep / stepRupee (fallback: stepPerRupee).
+    const step = Number(a.stepRupee) > 0 && a.pctPerStep != null && a.pctPerStep !== ''
+      ? Number(a.pctPerStep) / Number(a.stepRupee)
+      : Number(a.stepPerRupee ?? 0);
     const diesel = await this.currentDieselPrice();
-    const rise = baseFuel > 0 ? diesel - baseFuel : 0;
+    const rise = Math.max(0, diesel - ref); // only a rise adds; a fall never drops below basePct
     const raw = basePct + rise * step;
     const ceiling = cap > 0 ? cap : DEFAULT_FUEL_CAP;
     return Math.max(0, Math.min(ceiling, +raw.toFixed(2)));
