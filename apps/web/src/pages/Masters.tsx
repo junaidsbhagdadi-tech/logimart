@@ -254,6 +254,19 @@ export function Masters() {
         </details>
       </div>
 
+      {typeKey === 'FUEL_MECHANISM' && (
+        <div className="card" style={{ borderLeft: '4px solid var(--brand)' }}>
+          <div className="row" style={{ gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div>
+              <label>⛽ Current diesel price ₹/L <span className="muted">(drives every DYNAMIC / DSC card)</span></label>
+              <input type="number" step="0.01" value={newDiesel} onChange={(e) => setNewDiesel(e.target.value)} placeholder={diesel != null ? String(diesel) : 'e.g. 98.33'} style={{ width: 160 }} />
+            </div>
+            <button onClick={saveDiesel} disabled={!newDiesel}>Update price</button>
+            <span className="muted" style={{ fontSize: 13 }}>In force: <strong>{diesel != null ? `₹${diesel}/L` : 'not set'}</strong></span>
+          </div>
+          <p className="muted" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>Change this whenever diesel moves — every Surface/DSC rate card recalculates its surcharge from the new price automatically. (Air/FSC uses a fixed %, unaffected.)</p>
+        </div>
+      )}
       {typeKey === 'FUEL_MECHANISM' && <AirFuelDefaults onSaved={load} />}
 
       {showForm && <Modal title={`${editing ? 'Edit' : 'Add'} ${def.label}`} width={760} onClose={() => { setShowForm(false); setEditing(false); setForm({}); }}>
