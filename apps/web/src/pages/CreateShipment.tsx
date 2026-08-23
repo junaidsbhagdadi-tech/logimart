@@ -20,6 +20,7 @@ export function CreateShipment() {
   const nav = useNavigate();
   const { user } = useAuth();
   const ownClientId = user?.clientId ? Number(user.clientId) : null;
+  const isClient = user?.role === 'CLIENT_ADMIN'; // customers get a simplified form: no pricing/ops/carrier fields
 
   const [clients, setClients] = useState<Client[]>([]);
   const [clientId, setClientId] = useState<number | ''>(ownClientId ?? '');
@@ -473,13 +474,13 @@ export function CreateShipment() {
           <div><label>City</label><input value={c.consigneeCity} onChange={(e) => setCf('consigneeCity', e.target.value)} placeholder={destInfo?.city || ''} /></div>
           <div><label>State</label><input value={c.consigneeState} onChange={(e) => setCf('consigneeState', e.target.value)} placeholder={destInfo?.state || ''} /></div>
           <div><label>Invoice / declared value ₹</label><input type="number" value={c.declaredValue} onChange={(e) => setCf('declaredValue', e.target.value)} /></div>
-          <div><label>Agreed freight ₹ (one-time — overrides rate card)</label><input type="number" value={manualFreight} onChange={(e) => setManualFreight(e.target.value)} placeholder="optional" /></div>
-          <div><label>Manual AWB <span className="muted">(pre-printed / hand-written — blank = auto)</span></label><input value={manualAwb} onChange={(e) => setManualAwb(e.target.value)} placeholder="e.g. 2030236" /></div>
+          {!isClient && <div><label>Agreed freight ₹ (one-time — overrides rate card)</label><input type="number" value={manualFreight} onChange={(e) => setManualFreight(e.target.value)} placeholder="optional" /></div>}
+          {!isClient && <div><label>Manual AWB <span className="muted">(pre-printed / hand-written — blank = auto)</span></label><input value={manualAwb} onChange={(e) => setManualAwb(e.target.value)} placeholder="e.g. 2030236" /></div>}
           <div><label>HSN</label><input value={c.hsnCode} onChange={(e) => setCf('hsnCode', e.target.value)} /></div>
           <div style={{ gridColumn: 'span 2' }}><label>Goods description</label><input value={c.goodsDesc} onChange={(e) => setCf('goodsDesc', e.target.value)} /></div>
         </div>
         <div className="row" style={{ gap: 20, marginTop: 10 }}>
-          <label className="row" style={{ gap: 6, fontWeight: 600, color: 'var(--text)' }}><input type="checkbox" style={{ width: 'auto' }} checked={flags.oda} onChange={(e) => setFlags({ ...flags, oda: e.target.checked })} /> ODA (out-of-delivery-area)</label>
+          {!isClient && <label className="row" style={{ gap: 6, fontWeight: 600, color: 'var(--text)' }}><input type="checkbox" style={{ width: 'auto' }} checked={flags.oda} onChange={(e) => setFlags({ ...flags, oda: e.target.checked })} /> ODA (out-of-delivery-area)</label>}
           <label className="row" style={{ gap: 6, fontWeight: 600, color: 'var(--text)' }}><input type="checkbox" style={{ width: 'auto' }} checked={flags.appt} onChange={(e) => setFlags({ ...flags, appt: e.target.checked })} /> Appointment delivery</label>
         </div>
       </div>
@@ -500,7 +501,7 @@ export function CreateShipment() {
             <input type="number" value={chargeWeight} onChange={(e) => { setCwTouched(true); setChargeWeight(e.target.value); }} placeholder={`${Math.max(totalDead, totalVol).toFixed(2)} (dead/vol max)`} />
             {cwTouched && <button className="secondary" style={{ marginTop: 4, padding: '2px 8px', fontSize: 11 }} onClick={() => setCwTouched(false)}>↺ auto</button>}
           </div>
-          <div>
+          {!isClient && <div>
             <label>Vendor <span className="muted">(type 3-letter code, e.g. BDR)</span></label>
             <input list="lm-vendor-codes" value={svc.vendor} placeholder="SELF or vendor code"
               onChange={(e) => { setVendorTouched(true); setSvc({ ...svc, vendor: e.target.value.toUpperCase() }); }} />
@@ -516,17 +517,17 @@ export function CreateShipment() {
             {vendorTouched && autoCarrier && (
               <button className="secondary" style={{ marginTop: 4, padding: '2px 8px', fontSize: 11 }} onClick={() => { setVendorTouched(false); setSvc((s) => ({ ...s, vendor: autoCarrier.vendor })); }}>↺ auto-pick</button>
             )}
-          </div>
-          <div><label>Service</label><input value={svc.service} onChange={(e) => setSvc({ ...svc, service: e.target.value })} placeholder="SELF / DHL / …" /></div>
+          </div>}
+          {!isClient && <div><label>Service</label><input value={svc.service} onChange={(e) => setSvc({ ...svc, service: e.target.value })} placeholder="SELF / DHL / …" /></div>}
           <div><label>Shipment value ₹</label><input type="number" value={svc.shipmentValue} onChange={(e) => setSvc({ ...svc, shipmentValue: e.target.value })} /></div>
           <div><label>Reference No.</label><input value={svc.referenceNo} onChange={(e) => setSvc({ ...svc, referenceNo: e.target.value })} /></div>
         </div>
         <div className="row" style={{ gap: 20, marginTop: 10 }}>
           <label className="row" style={{ gap: 6, fontWeight: 600, color: 'var(--text)' }}><input type="checkbox" style={{ width: 'auto' }} checked={svc.isCommercial} onChange={(e) => setSvc({ ...svc, isCommercial: e.target.checked })} /> Commercial</label>
-          <label className="row" style={{ gap: 6, fontWeight: 600, color: 'var(--text)' }}><input type="checkbox" style={{ width: 'auto' }} checked={svc.isMedical} onChange={(e) => setSvc({ ...svc, isMedical: e.target.checked })} /> Medical charges</label>
+          {!isClient && <label className="row" style={{ gap: 6, fontWeight: 600, color: 'var(--text)' }}><input type="checkbox" style={{ width: 'auto' }} checked={svc.isMedical} onChange={(e) => setSvc({ ...svc, isMedical: e.target.checked })} /> Medical charges</label>}
         </div>
 
-        <div className="row" style={{ marginTop: 12, alignItems: 'flex-end' }}>
+        {!isClient && <div className="row" style={{ marginTop: 12, alignItems: 'flex-end' }}>
           <div style={{ flex: 2 }}>
             <label>Add charge (from Charges master)</label>
             <select value={chargeCode} onChange={(e) => setChargeCode(e.target.value)}>
@@ -539,7 +540,7 @@ export function CreateShipment() {
             <input type="number" value={chargeAmt} onChange={(e) => setChargeAmt(e.target.value)} />
           </div>
           <button className="secondary" onClick={addCharge} disabled={!chargeCode || !(Number(chargeAmt) > 0)}>+ Add</button>
-        </div>
+        </div>}
 
         {charges.length > 0 && (
           <table style={{ marginTop: 12 }}>
