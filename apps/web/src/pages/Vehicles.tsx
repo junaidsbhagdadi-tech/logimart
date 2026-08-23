@@ -6,7 +6,7 @@ import { Modal } from '../components/Modal';
 // used for hub-to-hub trips (Manifests) and, eventually, last-mile delivery runs.
 const TYPES = ['Bike', 'Van', 'Tempo', 'Mini Truck', '8ft', '10ft', '14ft', '17ft', '20ft', '32FT SXL', '32ft MXL'];
 const USES = ['BOTH', 'LINEHAUL', 'LAST_MILE'];
-const blank = { code: '', type: '32FT SXL', owner: 'SELF', capacityKg: '', useFor: 'BOTH' };
+const blank = { code: '', type: '32FT SXL', owner: 'SELF', ownerContact: '', ownerEmail: '', capacityKg: '', useFor: 'BOTH' };
 
 export function Vehicles() {
   const [rows, setRows] = useState<any[]>([]);
@@ -31,7 +31,7 @@ export function Vehicles() {
     try {
       await api.saveMaster('VEHICLE', {
         code: form.code.trim().toUpperCase(), name: form.code.trim().toUpperCase(),
-        attrs: { type: form.type, owner: form.owner, capacityKg: form.capacityKg ? Number(form.capacityKg) : null, useFor: form.useFor },
+        attrs: { type: form.type, owner: form.owner, ownerContact: form.ownerContact || null, ownerEmail: form.ownerEmail || null, capacityKg: form.capacityKg ? Number(form.capacityKg) : null, useFor: form.useFor },
       });
       setMsg(`✓ Saved ${form.code.toUpperCase()}`); setForm({ ...blank }); setShowAdd(false); load();
     } catch (e: any) { setError(e.message); }
@@ -64,11 +64,14 @@ export function Vehicles() {
           </div>
           <div>
             <label>Owner</label>
-            <select value={form.owner} onChange={(e) => set('owner', e.target.value)}>
+            <input list="lm-vehicle-owners" value={form.owner} onChange={(e) => set('owner', e.target.value)} placeholder="SELF / owner or vendor name" />
+            <datalist id="lm-vehicle-owners">
               <option value="SELF">SELF / Own fleet</option>
-              {vendors.map((v) => <option key={v.id} value={(v.vendorCode || v.name).toUpperCase()}>{v.name}</option>)}
-            </select>
+              {vendors.map((v) => <option key={v.id} value={v.name}>{v.vendorCode ? `${v.vendorCode} — ${v.name}` : v.name}</option>)}
+            </datalist>
           </div>
+          <div><label>Owner Contact</label><input value={form.ownerContact} onChange={(e) => set('ownerContact', e.target.value)} placeholder="phone / mobile" /></div>
+          <div><label>Owner Email</label><input value={form.ownerEmail} onChange={(e) => set('ownerEmail', e.target.value)} placeholder="owner@example.com" /></div>
           <div><label>Capacity (kg)</label><input type="number" value={form.capacityKg} onChange={(e) => set('capacityKg', e.target.value)} /></div>
           <div>
             <label>Used for</label>
@@ -93,7 +96,7 @@ export function Vehicles() {
               <tr key={v.code}>
                 <td><strong>{v.code}</strong></td>
                 <td>{v.attrs?.type ?? '—'}</td>
-                <td>{v.attrs?.owner === 'SELF' || !v.attrs?.owner ? <span className="badge DELIVERED">SELF</span> : <span className="badge AT_HUB">{v.attrs.owner}</span>}</td>
+                <td>{v.attrs?.owner === 'SELF' || !v.attrs?.owner ? <span className="badge DELIVERED">SELF</span> : <span className="badge AT_HUB">{v.attrs.owner}</span>}{(v.attrs?.ownerContact || v.attrs?.ownerEmail) && <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>{[v.attrs.ownerContact, v.attrs.ownerEmail].filter(Boolean).join(' · ')}</div>}</td>
                 <td>{v.attrs?.capacityKg ? `${v.attrs.capacityKg} kg` : '—'}</td>
                 <td>{v.attrs?.useFor ?? 'BOTH'}</td>
                 <td><button className="secondary" style={{ padding: '3px 9px', fontSize: 12 }} onClick={() => del(v.code)}>🗑</button></td>
