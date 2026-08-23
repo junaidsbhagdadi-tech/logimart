@@ -185,7 +185,13 @@ export class RateService {
     if (fs.mechanism) {
       const m = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'FUEL_MECHANISM', code: fs.mechanism } } });
       const a: any = m?.attrs || {};
-      if (m) { mode = a.mode || mode; basePct = a.basePct ?? basePct; baseFuel = a.baseFuelPrice ?? baseFuel; step = a.stepPerRupee ?? step; flat = a.percentage ?? flat; cap = a.maxPct ?? cap; }
+      if (m) {
+        mode = a.mode || mode; basePct = a.basePct ?? basePct; baseFuel = a.baseFuelPrice ?? baseFuel; flat = a.percentage ?? flat; cap = a.maxPct ?? cap;
+        // Simple model: "+X% for every ₹STEP above base" → per-₹1 step = pctPerStep / stepRupee.
+        step = Number(a.stepRupee) > 0 && a.pctPerStep != null && a.pctPerStep !== ''
+          ? Number(a.pctPerStep) / Number(a.stepRupee)
+          : (a.stepPerRupee ?? step);
+      }
     }
     if (String(mode || 'FLAT').toUpperCase() === 'DYNAMIC') {
       const diesel = await this.currentDieselPrice();

@@ -58,7 +58,8 @@ const MASTERS: MasterDef[] = [
     F('percentage', 'Flat %  (FLAT — fixed, e.g. 25)', { attr: true, type: 'number' }),
     F('basePct', 'Base DSC %  (DYNAMIC — the base surcharge, e.g. 10)', { attr: true, type: 'number' }),
     F('baseFuelPrice', 'Base diesel ₹/L  (DYNAMIC — blank → ₹98.33)', { attr: true, type: 'number' }),
-    F('stepPerRupee', '% per ₹1 diesel rise  (DYNAMIC — e.g. 2)', { attr: true, type: 'number' }),
+    F('pctPerStep', 'Add %  (DYNAMIC — e.g. 1)', { attr: true, type: 'number' }),
+    F('stepRupee', 'for every ₹ rise  (DYNAMIC — e.g. 0.50)', { attr: true, type: 'number' }),
     F('maxPct', 'Max % cap  (DYNAMIC — e.g. 50)', { attr: true, type: 'number' }),
   ] },
   { key: 'CHARGE', label: 'Charges', icon: '💱', fields: [
@@ -133,8 +134,12 @@ export function Masters() {
   const fref = Number(fa.baseFuelPrice) > 0 ? Number(fa.baseFuelPrice) : BASE_DIESEL;
   // only a RISE above the reference adds; a fall never drops below basePct.
   const frise = Math.max(0, (diesel || 0) - fref);
+  // "+X% for every ₹STEP above base" → per-₹1 step = X / STEP.
+  const fstepPer1 = Number(fa.stepRupee) > 0 && fa.pctPerStep != null && fa.pctPerStep !== ''
+    ? Number(fa.pctPerStep) / Number(fa.stepRupee)
+    : Number(fa.stepPerRupee || 0);
   const feff = fmode === 'DYNAMIC'
-    ? Math.max(0, Math.min(fcap, Number(fa.basePct || 0) + frise * Number(fa.stepPerRupee || 0)))
+    ? Math.max(0, Math.min(fcap, Number(fa.basePct || 0) + frise * fstepPer1))
     : Number(fa.percentage || 0);
 
   const val = (f: Field) => (f.attr ? form.attrs?.[f.key] ?? '' : form[f.key] ?? '');
@@ -292,7 +297,7 @@ export function Masters() {
             {feff > 60 && <div style={{ color: 'var(--warn)', fontWeight: 600, fontSize: 12.5, marginTop: 4 }}>⚠ {feff.toFixed(0)}% is very high — check the % per ₹1 rise and cap.</div>}
             {fmode === 'DYNAMIC' && (
               <p className="muted" style={{ marginTop: 6, marginBottom: 0 }}>
-                {Number(fa.basePct || 0)}% base + max(0, ₹{diesel || 0} − ₹{fref} base) × {Number(fa.stepPerRupee || 0)}%/₹ = <strong>{feff.toFixed(2)}%</strong>
+                {Number(fa.basePct || 0)}% base + (₹{diesel || 0} − ₹{fref}) rise ÷ ₹{Number(fa.stepRupee) > 0 ? Number(fa.stepRupee) : '—'} × {Number(fa.pctPerStep || 0)}% = <strong>{feff.toFixed(2)}%</strong>
               </p>
             )}
           </div>
