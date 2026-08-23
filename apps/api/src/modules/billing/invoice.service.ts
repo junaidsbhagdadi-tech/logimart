@@ -363,12 +363,13 @@ export class InvoiceService {
           heads[h.key] = v;
           headTotals[h.key] = +( (headTotals[h.key] ?? 0) + v ).toFixed(2);
         }
-        // legacy "other" that isn't broken into heads → park under a generic Other bucket
-        if (!bk) {
-          const other = n(l.otherCharges);
-          if (other) { heads['other'] = other; headTotals['other'] = +((headTotals['other'] ?? 0) + other).toFixed(2); }
-        }
         const taxable = n(l.amount);
+        // Anything in the line total not captured by the named heads (e.g. custom charges like MCC/
+        // RAS/PSS that live only in the breakup's `lines`) → a generic "Other Charges" bucket so the
+        // row always reconciles: Σ heads = taxable value.
+        const captured = Object.values(heads).reduce((s, v) => s + v, 0);
+        const other = +(taxable - captured).toFixed(2);
+        if (other > 0.01) { heads['other'] = other; headTotals['other'] = +((headTotals['other'] ?? 0) + other).toFixed(2); }
         const gst = +(taxable * GST_RATE).toFixed(2);
         taxableSum += taxable; grandSum += taxable + gst; kgSum += n(l.chargeableKg);
         if (isIntra) { cgstSum += gst / 2; sgstSum += gst / 2; } else { igstSum += gst; }
