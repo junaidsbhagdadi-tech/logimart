@@ -13,8 +13,8 @@ export function Riders() {
   const [cred, setCred] = useState<{ riderCode: string; pin: string; name: string; heading: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const load = () => api.listRiders().then(setRows).catch((e) => setError(e.message));
-  useEffect(load, []);
+  const load = () => { api.listRiders().then(setRows).catch((e) => setError(e.message)); };
+  useEffect(() => { load(); }, []);
   useEffect(() => { api.listHubs().then(setHubs).catch(() => {}); }, []);
 
   const set = (k: keyof typeof blank, v: string) => setForm((f) => ({ ...f, [k]: v }));
