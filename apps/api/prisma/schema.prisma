@@ -901,6 +901,7 @@ model FtlRate {
   vehicleType   String      // 8ft | 10ft | 14ft | 17ft | 20ft | 32FT SXL | 32ft MXL
   flatRate      Decimal     @db.Decimal(12, 2) // per-trip freight
   fuelPct       Decimal     @default(0) @db.Decimal(5, 2)
+  gstPct        Decimal     @default(18) @db.Decimal(5, 2) // GST % on the trip (GTA may differ, e.g. 5/12/18)
   effectiveFrom DateTime    @db.Date
 
   @@index([clientId, originZone, destZone, vehicleType])

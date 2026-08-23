@@ -3,7 +3,7 @@ import { api, Client } from '../api';
 import { Modal } from '../components/Modal';
 
 const FTL_TYPES = ['8ft', '10ft', '14ft', '17ft', '20ft', '32FT SXL', '32ft MXL'];
-const ftlBlank = { clientId: '', originZone: 'SOUTH', destZone: 'SOUTH', vehicleType: '32FT SXL', flatRate: '', fuelPct: '' };
+const ftlBlank = { clientId: '', originZone: 'SOUTH', destZone: 'SOUTH', vehicleType: '32FT SXL', flatRate: '', fuelPct: '', gstPct: '18' };
 
 /** Full-Truck-Load flat rates (per trip, by vehicle type). Separate from the per-kg/slab
  *  rate cards — FTL is priced by vehicle, not weight. */
@@ -31,6 +31,7 @@ export function FtlRates() {
         clientId: ftlForm.clientId ? +ftlForm.clientId : undefined,
         originZone: ftlForm.originZone, destZone: ftlForm.destZone, vehicleType: ftlForm.vehicleType,
         flatRate: +ftlForm.flatRate, fuelPct: ftlForm.fuelPct ? +ftlForm.fuelPct : 0,
+        gstPct: ftlForm.gstPct !== '' ? +ftlForm.gstPct : 18,
       });
       setMsg('FTL rate added'); setFtlForm({ ...ftlBlank }); setShowAdd(false); load();
     } catch (e: any) { setError(e.message); }
@@ -66,6 +67,7 @@ export function FtlRates() {
           </div>
           <div><label>Flat rate ₹ (per trip) *</label><input type="number" value={ftlForm.flatRate} onChange={(e) => setFtl('flatRate', e.target.value)} /></div>
           <div><label>Fuel %</label><input type="number" value={ftlForm.fuelPct} onChange={(e) => setFtl('fuelPct', e.target.value)} /></div>
+          <div><label>GST %</label><input type="number" value={ftlForm.gstPct} onChange={(e) => setFtl('gstPct', e.target.value)} placeholder="18" /></div>
         </div>
         <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
           <button className="secondary" onClick={() => setShowAdd(false)}>Cancel</button>
@@ -75,7 +77,7 @@ export function FtlRates() {
 
       <div className="card">
         <table>
-          <thead><tr><th>Customer</th><th>Lane</th><th>Vehicle</th><th>Flat ₹/trip</th><th>Fuel</th></tr></thead>
+          <thead><tr><th>Customer</th><th>Lane</th><th>Vehicle</th><th>Flat ₹/trip</th><th>Fuel</th><th>GST</th></tr></thead>
           <tbody>
             {ftlRows.map((f) => (
               <tr key={f.id}>
@@ -84,9 +86,10 @@ export function FtlRates() {
                 <td>{f.vehicleType}</td>
                 <td>₹{f.flatRate}</td>
                 <td>{f.fuelPct}%</td>
+                <td>{f.gstPct ?? 18}%</td>
               </tr>
             ))}
-            {ftlRows.length === 0 && <tr><td colSpan={5} className="muted">No FTL rates yet.</td></tr>}
+            {ftlRows.length === 0 && <tr><td colSpan={6} className="muted">No FTL rates yet.</td></tr>}
           </tbody>
         </table>
       </div>

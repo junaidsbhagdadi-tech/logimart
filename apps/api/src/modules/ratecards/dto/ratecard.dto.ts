@@ -30,5 +30,6 @@ export class CreateFtlRateDto {
   @IsString() vehicleType!: string;
   @IsNumber() @Min(0) flatRate!: number;
   @IsOptional() @IsNumber() @Min(0) fuelPct?: number;
+  @IsOptional() @IsNumber() @Min(0) gstPct?: number;
   @IsOptional() @IsISO8601() effectiveFrom?: string;
 }

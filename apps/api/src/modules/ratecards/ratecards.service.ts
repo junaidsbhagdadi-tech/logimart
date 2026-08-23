@@ -41,7 +41,7 @@ export class RateCardsService {
   // ---- FTL rates (per vehicle type / trip) ----
   createFtl(dto: {
     clientId?: number; originZone: string; destZone: string; vehicleType: string;
-    flatRate: number; fuelPct?: number; effectiveFrom?: string;
+    flatRate: number; fuelPct?: number; gstPct?: number; effectiveFrom?: string;
   }) {
     return this.prisma.ftlRate.create({
       data: {
@@ -51,6 +51,7 @@ export class RateCardsService {
         vehicleType: dto.vehicleType,
         flatRate: dec(dto.flatRate),
         fuelPct: dec(dto.fuelPct),
+        gstPct: dto.gstPct != null ? dec(dto.gstPct) : dec(18),
         effectiveFrom: dto.effectiveFrom ? new Date(dto.effectiveFrom) : new Date(),
       },
     });
