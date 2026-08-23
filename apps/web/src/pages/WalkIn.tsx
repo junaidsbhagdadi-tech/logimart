@@ -33,6 +33,13 @@ export function WalkIn() {
   const addBox = () => setBoxes((bs) => [...bs, { deadKg: '', l: '', w: '', h: '' }]);
   const delBox = (i: number) => setBoxes((bs) => bs.filter((_, idx) => idx !== i));
   const boxDead = boxes.reduce((s, b) => s + (Number(b.deadKg) || 0), 0);
+  // Chargeable weight = max(dead, volumetric). Volumetric = L×W×H ÷ 5000 (standard divisor;
+  // the rate card's own divisor applies at billing). Shown per box + as a total for the counter.
+  const VOL_DIV = 5000;
+  const boxVol = (b: { l: string; w: string; h: string }) =>
+    Number(b.l) > 0 && Number(b.w) > 0 && Number(b.h) > 0 ? (Number(b.l) * Number(b.w) * Number(b.h)) / VOL_DIV : 0;
+  const boxChg = (b: { deadKg: string; l: string; w: string; h: string }) => Math.max(Number(b.deadKg) || 0, boxVol(b));
+  const boxChargeable = boxes.reduce((s, b) => s + boxChg(b), 0);
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -201,12 +208,12 @@ export function WalkIn() {
         </div>
         <div className="card" style={{ padding: 12, marginTop: 12 }}>
           <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-            <strong>📦 Boxes ({boxes.length}) — total {boxDead || 0} kg</strong>
+            <strong>📦 Boxes ({boxes.length}) — dead {boxDead.toFixed(2)} kg · chargeable {boxChargeable.toFixed(2)} kg</strong>
             <button className="secondary" onClick={addBox} style={{ padding: '3px 10px', fontSize: 12 }}>＋ Add box</button>
           </div>
           <div style={{ overflowX: 'auto', marginTop: 8 }}>
             <table style={{ fontSize: 13 }}>
-              <thead><tr><th>#</th><th>Actual (dead) kg *</th><th>L cm</th><th>W cm</th><th>H cm</th><th></th></tr></thead>
+              <thead><tr><th>#</th><th>Actual (dead) kg *</th><th>L cm</th><th>W cm</th><th>H cm</th><th>Vol kg</th><th>Chargeable kg</th><th></th></tr></thead>
               <tbody>
                 {boxes.map((b, i) => (
                   <tr key={i}>
@@ -215,12 +222,15 @@ export function WalkIn() {
                     <td><input type="number" value={b.l} onChange={(e) => setBox(i, 'l', e.target.value)} style={{ width: 70 }} /></td>
                     <td><input type="number" value={b.w} onChange={(e) => setBox(i, 'w', e.target.value)} style={{ width: 70 }} /></td>
                     <td><input type="number" value={b.h} onChange={(e) => setBox(i, 'h', e.target.value)} style={{ width: 70 }} /></td>
+                    <td className="muted">{boxVol(b) ? boxVol(b).toFixed(2) : '—'}</td>
+                    <td><strong>{boxChg(b) ? boxChg(b).toFixed(2) : '—'}</strong></td>
                     <td>{boxes.length > 1 && <button className="secondary" style={{ padding: '2px 8px', fontSize: 12 }} onClick={() => delBox(i)}>✕</button>}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>Vol kg = L×W×H ÷ {VOL_DIV}. Chargeable = higher of dead &amp; vol. Billing uses the customer's rate-card divisor.</div>
         </div>
         <div className="row" style={{ marginTop: 14, justifyContent: 'flex-end' }}>
           <button onClick={book} disabled={busy}>{busy ? 'Booking…' : `Book & take ${pay === 'WALLET' ? 'wallet' : 'cash'} payment`}</button>
