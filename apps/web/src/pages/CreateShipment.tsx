@@ -76,6 +76,12 @@ export function CreateShipment() {
   const selProduct = products.find((p) => p.code === product);
   const serviceMode = selProduct?.mode || 'ROAD_PTL';
   const isFtl = serviceMode === 'ROAD_FTL';
+  // Customer-facing ETA: fastest transit days among carriers serving the destination — shown
+  // without any carrier/vendor names (clients never see who actually moves the shipment).
+  const clientEtaDays = (() => {
+    const t = svcOptions.map((o) => o.tatDays).filter((n): n is number => n != null);
+    return t.length ? Math.min(...t) : null;
+  })();
 
   const [pieces, setPieces] = useState<PieceForm[]>([{ ...blank }]);
   const [manualFreight, setManualFreight] = useState('');
@@ -358,7 +364,7 @@ export function CreateShipment() {
       <div className="card">
         <h2>Booking</h2>
         <div className="grid cols-3">
-          {!ownClientId && (
+          {!isClient && (
             <div>
               <label>Customer *</label>
               <input
@@ -388,6 +394,14 @@ export function CreateShipment() {
               <label>Account</label>
               <div style={{ padding: '9px 11px', border: '1px solid var(--border)', borderRadius: 10, background: '#f6f9f4', fontWeight: 600 }}>
                 {accounts[0].accountCode} — {accounts[0].legalName}
+              </div>
+            </div>
+          )}
+          {isClient && accounts.length === 0 && (
+            <div>
+              <label>Account</label>
+              <div style={{ padding: '9px 11px', border: '1px solid var(--warn, #e6a700)', borderRadius: 10, background: '#fff8e6', fontSize: 12 }}>
+                Your login isn’t linked to a customer account yet — please ask your account manager to link it.
               </div>
             </div>
           )}
@@ -437,7 +451,8 @@ export function CreateShipment() {
             {pinHint(destInfo)}
           </div>
         </div>
-        {svcOptions.length > 0 && (
+        {/* Staff see the carrier products (they pick the vendor); clients see only the ETA. */}
+        {!isClient && svcOptions.length > 0 && (
           <div style={{ marginTop: 10, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10, background: '#f6f9f4' }}>
             <div className="muted" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 6 }}>Carrier products serving {destPin} — fastest auto-picked</div>
             <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
@@ -453,6 +468,12 @@ export function CreateShipment() {
                 );
               })}
             </div>
+          </div>
+        )}
+        {isClient && product && clientEtaDays != null && (
+          <div style={{ marginTop: 10, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10, background: '#f6f9f4' }}>
+            ⏱️ <strong>Estimated transit: {clientEtaDays} {clientEtaDays === 1 ? 'day' : 'days'}</strong>
+            <span className="muted" style={{ fontSize: 12 }}> · {modeLabel(serviceMode)}{destInfo?.city ? ` to ${destInfo.city}` : ''}</span>
           </div>
         )}
       </div>
@@ -639,13 +660,14 @@ export function CreateShipment() {
               <option value="TO_PAY">To-Pay — collect freight from consignee</option>
             </select>
           </div>
-          {paymentTerm === 'TO_PAY' && (
+          {/* Freight amount is computed from the rate card — customers don't key it. Staff may. */}
+          {paymentTerm === 'TO_PAY' && !isClient && (
             <div>
               <label>Freight to collect ₹</label>
               <input type="number" value={freightToCollect} onChange={(e) => setFreightToCollect(e.target.value)} placeholder="collected at delivery" />
             </div>
           )}
-          <div style={{ gridColumn: paymentTerm === 'TO_PAY' ? undefined : 'span 2' }}>
+          <div style={{ gridColumn: (paymentTerm === 'TO_PAY' && !isClient) ? undefined : 'span 2' }}>
             <label>Draft on Delivery (DOD)</label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, color: 'var(--text)', marginTop: 4, cursor: 'pointer' }}>
               <input type="checkbox" style={{ width: 'auto' }} checked={isDod} onChange={(e) => setIsDod(e.target.checked)} />
