@@ -155,8 +155,13 @@ export class RateService {
   }
 
   /** Current diesel price (₹/L) — the variable behind dynamic fuel surcharges. */
-  private async currentDieselPrice(): Promise<number> {
-    const fp = await this.prisma.fuelPrice.findFirst({ where: { fuelType: 'DIESEL' }, orderBy: { effectiveFrom: 'desc' } });
+  /** Diesel price EFFECTIVE ON a date (the latest price whose effectiveFrom ≤ asOf). Omit asOf
+   *  for the current price. This makes DSC honour price effective-dates — a shipment is priced on
+   *  the diesel rate in force when it was booked, not whatever the price is today. */
+  private async currentDieselPrice(asOf?: Date): Promise<number> {
+    const where: any = { fuelType: 'DIESEL' };
+    if (asOf) where.effectiveFrom = { lte: asOf };
+    const fp = await this.prisma.fuelPrice.findFirst({ where, orderBy: { effectiveFrom: 'desc' } });
     return fp ? Number(fp.price) : 0;
   }
 
@@ -328,7 +333,7 @@ export class RateService {
    *             the one the card references, else the one flagged default — so every air card
    *             can share one fuel % set once in Masters.
    */
-  private async cardFuelPct(card: any, surface: boolean): Promise<number> {
+  private async cardFuelPct(card: any, surface: boolean, asOf?: Date): Promise<number> {
     // DSC (diesel-indexed) applies ONLY to surface products; air / express / DP always use flat FSC.
     const wantDynamic = surface && String(card.fuelMode ?? 'FLAT').toUpperCase() === 'DYNAMIC';
     // FLAT: an explicit % on the card wins outright.
@@ -336,7 +341,7 @@ export class RateService {
     const mechs = await this.prisma.masterEntry.findMany({ where: { type: 'FUEL_MECHANISM', active: true } });
     const isDyn = (m: any) => String((m.attrs as any)?.mode ?? 'FLAT').toUpperCase() === 'DYNAMIC';
     // An explicitly-linked mechanism wins only if it matches the required family (keeps air off diesel).
-    if (card.fuelMechanism) { const r = mechs.find((x) => x.code === card.fuelMechanism); if (r && isDyn(r) === wantDynamic) return this.pctFromMechanism(r); }
+    if (card.fuelMechanism) { const r = mechs.find((x) => x.code === card.fuelMechanism); if (r && isDyn(r) === wantDynamic) return this.pctFromMechanism(r, asOf); }
     // Otherwise inherit the default mechanism of the SAME family — DYNAMIC (diesel/Surface) or FLAT
     // (air/Express/DP) — with a network-specific default beating the all-vendors one. This is why a
     // Surface card follows the diesel mechanism automatically (base % + diesel rise) without per-card linking.
@@ -344,7 +349,7 @@ export class RateService {
     const defaults = mechs.filter((x) => (x.attrs as any)?.isDefault && isDyn(x) === wantDynamic);
     const m = defaults.find((x) => String((x.attrs as any)?.network ?? '').trim().toUpperCase() === net)
            || defaults.find((x) => !String((x.attrs as any)?.network ?? '').trim());
-    return m ? this.pctFromMechanism(m) : 0;
+    return m ? this.pctFromMechanism(m, asOf) : 0;
   }
 
   /** FSC % from a FUEL_MECHANISM master code (0 if missing). */
@@ -355,7 +360,7 @@ export class RateService {
   }
 
   /** FSC % implied by a mechanism row — FLAT reads its percentage; DYNAMIC indexes off current diesel. */
-  private async pctFromMechanism(m: any): Promise<number> {
+  private async pctFromMechanism(m: any, asOf?: Date): Promise<number> {
     const a: any = m.attrs || {};
     if (String(a.mode ?? 'FLAT').toUpperCase() !== 'DYNAMIC') return Number(a.percentage ?? 0);
     const basePct = Number(a.basePct ?? 0), cap = Number(a.maxPct ?? 0);
@@ -364,7 +369,7 @@ export class RateService {
     const step = Number(a.stepRupee) > 0 && a.pctPerStep != null && a.pctPerStep !== ''
       ? Number(a.pctPerStep) / Number(a.stepRupee)
       : Number(a.stepPerRupee ?? 0);
-    const diesel = await this.currentDieselPrice();
+    const diesel = await this.currentDieselPrice(asOf);
     const rise = Math.max(0, diesel - ref); // only a rise adds; a fall never drops below basePct
     const raw = basePct + rise * step;
     const ceiling = cap > 0 ? cap : DEFAULT_FUEL_CAP;
@@ -439,7 +444,9 @@ export class RateService {
 
     const freight = r2(Math.max(baseFreight, Number(card.minFreight ?? 0)));
     const useDsc = surface && String(card.fuelMode ?? 'FLAT').toUpperCase() === 'DYNAMIC';
-    const fuelPct = await this.cardFuelPct(card, surface);
+    // Price DSC on the diesel rate EFFECTIVE when the shipment was booked (honours price effective-dates).
+    const bookedAt = shipment.createdAt ? new Date(shipment.createdAt) : undefined;
+    const fuelPct = await this.cardFuelPct(card, surface, bookedAt);
     let fuel = r2(freight * (fuelPct / 100));
     const invVal = Number(shipment.shipmentValue ?? shipment.declaredValue ?? 0);
     // Accessorial DEFAULTS live on the CHARGE master (rate/min/perKg per code); a value on the

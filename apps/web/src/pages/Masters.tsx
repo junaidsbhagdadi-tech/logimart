@@ -56,8 +56,7 @@ const MASTERS: MasterDef[] = [
     F('mode', 'Calculation type (not transport mode)', { attr: true, type: 'select', options: ['FLAT', 'DYNAMIC'] }),
     F('isDefault', 'Default for its type (cards with blank fuel inherit — FLAT→Air/FSC, DYNAMIC→Surface/DSC)', { attr: true, type: 'checkbox' }),
     F('percentage', 'Flat %  (FLAT — fixed, e.g. 25)', { attr: true, type: 'number' }),
-    F('basePct', 'Base DSC %  (DYNAMIC — the base surcharge, e.g. 10)', { attr: true, type: 'number' }),
-    F('baseFuelPrice', 'Base diesel ₹/L  (DYNAMIC — blank → ₹98.33)', { attr: true, type: 'number' }),
+    F('basePct', 'Base DSC %  (DYNAMIC — the base surcharge at ₹98.33, e.g. 10)', { attr: true, type: 'number' }),
     F('pctPerStep', 'Add %  (DYNAMIC — e.g. 1)', { attr: true, type: 'number' }),
     F('stepRupee', 'for every ₹ rise  (DYNAMIC — e.g. 0.50)', { attr: true, type: 'number' }),
     F('maxPct', 'Max % cap  (DYNAMIC — e.g. 50)', { attr: true, type: 'number' }),
@@ -115,16 +114,21 @@ export function Masters() {
   const [error, setError] = useState('');
 
   const [diesel, setDiesel] = useState<number | null>(null);
+  const [dieselFrom, setDieselFrom] = useState<string | null>(null);
   const [newDiesel, setNewDiesel] = useState('');
+  const [newDieselDate, setNewDieselDate] = useState(''); // effective-from date for the price
   const saveDiesel = async () => {
     if (!newDiesel) return;
-    try { await api.setFuelPrice({ price: Number(newDiesel) }); setDiesel(Number(newDiesel)); setNewDiesel(''); setMsg(`✓ Current diesel set to ₹${newDiesel}/L`); }
-    catch (e: any) { setError(e.message); }
+    try {
+      await api.setFuelPrice({ price: Number(newDiesel), effectiveFrom: newDieselDate || undefined });
+      setDiesel(Number(newDiesel)); setNewDiesel(''); setNewDieselDate('');
+      setMsg(`✓ Diesel set to ₹${newDiesel}/L${newDieselDate ? ` effective ${newDieselDate}` : ''}. Shipments booked on/after this use the new rate.`);
+    } catch (e: any) { setError(e.message); }
   };
 
   const load = () => api.listMaster(typeKey).then(setRows).catch((e) => setError(e.message));
   useEffect(() => { setForm({}); setEditing(false); setError(''); setMsg(''); setQ(''); load(); /* eslint-disable-next-line */ }, [typeKey]);
-  useEffect(() => { api.getFuelPrice().then((r) => setDiesel(r.current)).catch(() => {}); }, []);
+  useEffect(() => { api.getFuelPrice().then((r) => { setDiesel(r.current); setDieselFrom((r as any).effectiveFrom ?? null); }).catch(() => {}); }, []);
 
   // Fuel Mechanism live calculator (effective surcharge % at the current diesel price)
   const fa = form.attrs || {};
@@ -258,13 +262,17 @@ export function Masters() {
         <div className="card" style={{ borderLeft: '4px solid var(--brand)' }}>
           <div className="row" style={{ gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
             <div>
-              <label>⛽ Current diesel price ₹/L <span className="muted">(drives every DYNAMIC / DSC card)</span></label>
-              <input type="number" step="0.01" value={newDiesel} onChange={(e) => setNewDiesel(e.target.value)} placeholder={diesel != null ? String(diesel) : 'e.g. 98.33'} style={{ width: 160 }} />
+              <label>⛽ New diesel price ₹/L <span className="muted">(drives every DYNAMIC / DSC card)</span></label>
+              <input type="number" step="0.01" value={newDiesel} onChange={(e) => setNewDiesel(e.target.value)} placeholder={diesel != null ? String(diesel) : 'e.g. 98.33'} style={{ width: 150 }} />
+            </div>
+            <div>
+              <label>Effective from <span className="muted">(blank = today)</span></label>
+              <input type="date" value={newDieselDate} onChange={(e) => setNewDieselDate(e.target.value)} style={{ width: 160 }} />
             </div>
             <button onClick={saveDiesel} disabled={!newDiesel}>Update price</button>
-            <span className="muted" style={{ fontSize: 13 }}>In force: <strong>{diesel != null ? `₹${diesel}/L` : 'not set'}</strong></span>
+            <span className="muted" style={{ fontSize: 13 }}>In force: <strong>{diesel != null ? `₹${diesel}/L` : 'not set'}</strong>{dieselFrom ? ` since ${new Date(dieselFrom).toLocaleDateString('en-GB')}` : ''}</span>
           </div>
-          <p className="muted" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>Change this whenever diesel moves — every Surface/DSC rate card recalculates its surcharge from the new price automatically. (Air/FSC uses a fixed %, unaffected.)</p>
+          <p className="muted" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>Set the price + its <strong>effective date</strong> whenever diesel moves. Surface/DSC shipments are priced on the rate <strong>in force when they were booked</strong> — so a price change only affects shipments on/after its effective date. Base reference is fixed at <strong>₹98.33</strong> (base DSC applies there). Air/FSC uses a fixed %, unaffected.</p>
         </div>
       )}
       {typeKey === 'FUEL_MECHANISM' && <AirFuelDefaults onSaved={load} />}
