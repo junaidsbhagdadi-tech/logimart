@@ -30,6 +30,7 @@ export interface ChargeBreakup {
 
 const r2 = (n: number) => +n.toFixed(2);
 const DEFAULT_FUEL_CAP = 50; // guardrail: dynamic fuel-surcharge % can't exceed this unless a maxPct is set
+const BASE_DIESEL = 98.33; // reference base diesel ₹/L — DSC = basePct + max(0, current − 98.33) × step
 
 @Injectable()
 export class RateService {
@@ -188,8 +189,10 @@ export class RateService {
     }
     if (String(mode || 'FLAT').toUpperCase() === 'DYNAMIC') {
       const diesel = await this.currentDieselPrice();
-      // variable part applies only to the rise above a reference diesel price; blank/0 ref => base only
-      const rise = Number(baseFuel) > 0 ? diesel - Number(baseFuel) : 0;
+      // DSC = basePct + (extra % for each ₹1 diesel rises ABOVE the reference base). Reference
+      // defaults to ₹98.33; only rises add (a fall never drops it below basePct).
+      const ref = Number(baseFuel) > 0 ? Number(baseFuel) : BASE_DIESEL;
+      const rise = Math.max(0, diesel - ref);
       const raw = Number(basePct ?? 0) + rise * Number(step ?? 0);
       const ceiling = cap != null && cap !== '' && Number(cap) > 0 ? Number(cap) : DEFAULT_FUEL_CAP;
       return Math.max(0, Math.min(ceiling, +raw.toFixed(2)));
