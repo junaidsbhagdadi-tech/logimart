@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { useAuth } from '../auth';
+import { Modal } from '../components/Modal';
 
 const blank = {
   pickupAddress: '', city: '', pincode: '', contactName: '', contactPhone: '', estPieces: '1',
@@ -12,13 +13,19 @@ export function Pickups() {
   const isClient = user?.role === 'CLIENT_ADMIN';
   const isOps = ['HUB_MANAGER', 'SYS_ADMIN'].includes(user?.role || '');
   const [rows, setRows] = useState<any[]>([]);
+  const [riders, setRiders] = useState<any[]>([]);
   const [form, setForm] = useState({ ...blank });
   const [error, setError] = useState('');
+  const [assigning, setAssigning] = useState<any | null>(null); // the pickup being assigned
+  const [selRider, setSelRider] = useState('');
 
   const load = () => {
     api.listPickups().then(setRows).catch((e) => setError(e.message));
   };
   useEffect(load, []);
+  // Ops staff need the rider list to assign pickups by name (not a raw user id).
+  useEffect(() => { if (isOps) api.listRiders().then((r) => setRiders(r.filter((x: any) => x.isActive !== false))).catch(() => {}); }, [isOps]);
+  const riderLabel = (id: any) => { const r = riders.find((x) => String(x.id) === String(id)); return r ? `${r.riderCode} · ${r.fullName}` : (id != null ? `#${id}` : '—'); };
 
   const set = (k: keyof typeof blank, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -44,10 +51,10 @@ export function Pickups() {
     } catch (e: any) { setError(e.message); }
   };
 
-  const assign = async (id: string) => {
-    const rider = prompt('Rider user id to assign:');
-    if (!rider) return;
-    try { await api.assignPickup(id, +rider); load(); } catch (e: any) { setError(e.message); }
+  const openAssign = (p: any) => { setAssigning(p); setSelRider(p.assignedRiderId != null ? String(p.assignedRiderId) : ''); setError(''); };
+  const doAssign = async () => {
+    if (!assigning || !selRider) return;
+    try { await api.assignPickup(assigning.id, +selRider); setAssigning(null); load(); } catch (e: any) { setError(e.message); }
   };
   const complete = async (id: string) => {
     try { await api.completePickup(id); load(); } catch (e: any) { setError(e.message); }
@@ -86,24 +93,49 @@ export function Pickups() {
 
       <div className="card">
         <table>
-          <thead><tr><th>#</th><th>Address</th><th>City</th><th>Boxes</th><th>Status</th>{isOps && <th></th>}</tr></thead>
+          <thead><tr><th>#</th><th>Address</th><th>City</th><th>Boxes</th><th>Status</th>{isOps && <th>Rider</th>}{isOps && <th></th>}</tr></thead>
           <tbody>
             {rows.map((p) => (
               <tr key={p.id}>
                 <td>{p.id}</td><td>{p.pickupAddress}</td><td>{p.city ?? '—'}</td><td>{p.estPieces}</td>
                 <td><span className={`badge ${p.status}`}>{p.status}</span></td>
+                {isOps && <td>{p.status === 'ASSIGNED' || p.status === 'PICKED' ? riderLabel(p.assignedRiderId) : '—'}</td>}
                 {isOps && (
-                  <td>
-                    {p.status === 'REQUESTED' && <button className="secondary" onClick={() => assign(p.id)}>Assign</button>}
-                    {p.status === 'ASSIGNED' && <button className="secondary" onClick={() => complete(p.id)}>Mark picked</button>}
+                  <td className="row" style={{ gap: 6 }}>
+                    {p.status === 'REQUESTED' && <button className="secondary" onClick={() => openAssign(p)}>Assign rider</button>}
+                    {p.status === 'ASSIGNED' && <>
+                      <button className="secondary" onClick={() => openAssign(p)}>Re-assign</button>
+                      <button className="secondary" onClick={() => complete(p.id)}>Mark picked</button>
+                    </>}
                   </td>
                 )}
               </tr>
             ))}
-            {rows.length === 0 && <tr><td colSpan={6} className="muted">No pickup requests.</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={7} className="muted">No pickup requests.</td></tr>}
           </tbody>
         </table>
       </div>
+
+      {assigning && (
+        <Modal title={`Assign rider — pickup #${assigning.id}`} width={460} onClose={() => setAssigning(null)}>
+          <p className="muted" style={{ marginTop: 0, fontSize: 12.5 }}>
+            The rider you pick here is who sees this pickup in the Rider app. {assigning.pickupAddress}{assigning.city ? `, ${assigning.city}` : ''}
+          </p>
+          {riders.length === 0
+            ? <div className="card" style={{ background: '#fff8e6', border: '1px solid #e6c34d', fontSize: 13 }}>No active riders yet — create one under <strong>Riders &amp; Drivers</strong> first.</div>
+            : <>
+                <label>Rider</label>
+                <select value={selRider} onChange={(e) => setSelRider(e.target.value)}>
+                  <option value="">— select a rider —</option>
+                  {riders.map((r) => <option key={r.id} value={r.id}>{r.riderCode} · {r.fullName}{r.phone ? ` · ${r.phone}` : ''}</option>)}
+                </select>
+              </>}
+          <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+            <button className="secondary" onClick={() => setAssigning(null)}>Cancel</button>
+            <button disabled={!selRider} onClick={doAssign}>Assign</button>
+          </div>
+        </Modal>
+      )}
     </>
   );
 }
