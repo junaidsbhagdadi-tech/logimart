@@ -653,6 +653,31 @@ export class InvoiceService {
 
   /** Customer self-service portal summary — shipment KPIs, 6-month trend, on-time %, invoices,
    *  credit, recent shipments (with POD). Scoped to the logged-in client. */
+  /** Accounts a client login may book under: its own account, plus any sibling accounts that
+   *  share its GSTIN (one company, multiple account codes). Includes shipper-default fields so
+   *  the booking form can prefill the pickup address. */
+  async bookableAccounts(clientId: number) {
+    const self = await this.prisma.b2bClient.findUnique({ where: { id: BigInt(clientId) } });
+    if (!self) return [];
+    const rows = self.gstin
+      ? await this.prisma.b2bClient.findMany({ where: { gstin: self.gstin }, orderBy: { accountCode: 'asc' } })
+      : [self];
+    return rows.map((c) => ({
+      id: String(c.id),
+      accountCode: c.accountCode,
+      legalName: c.legalName,
+      gstin: c.gstin,
+      addressLine: c.addressLine,
+      addressLine2: c.addressLine2,
+      pincode: c.pincode,
+      city: c.city,
+      state: c.state ?? c.billingState,
+      contactPerson: c.contactPerson ?? c.contactName,
+      contactPhone: c.contactPhone,
+      contactEmail: c.contactEmail,
+    }));
+  }
+
   async clientPortal(clientId: number) {
     const cid = BigInt(clientId);
     const client = await this.prisma.b2bClient.findUnique({ where: { id: cid } });

@@ -105,6 +105,13 @@ export class BillingController {
     return this.invoices.clientPortal(Number(req.user.clientId));
   }
 
+  /** Accounts the logged-in client can book under (own + same-GSTIN siblings) with shipper defaults. */
+  @Get('portal/accounts')
+  @Roles(UserRole.CLIENT_ADMIN)
+  portalAccounts(@Req() req: any) {
+    return this.invoices.bookableAccounts(Number(req.user.clientId));
+  }
+
   @Get('billing/clients/:id/statement')
   @Roles(UserRole.FINANCE_EXEC, UserRole.CLIENT_ADMIN, UserRole.SYS_ADMIN)
   statement(@Param('id') id: string) {

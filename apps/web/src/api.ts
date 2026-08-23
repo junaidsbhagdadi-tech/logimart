@@ -343,6 +343,7 @@ export const api = {
     }>(`/api/v1/billing/charge-breakup?${[clientId ? `clientId=${clientId}` : '', from ? `from=${from}` : '', to ? `to=${to}` : ''].filter(Boolean).join('&')}`),
   customerOverview: (clientId: string | number) => request<any>(`/api/v1/clients/${clientId}/overview`),
   portalOverview: () => request<any>('/api/v1/portal/overview'),
+  portalAccounts: () => request<any[]>('/api/v1/portal/accounts'),
   cancelShipment: (awb: string, reason?: string) =>
     request<{ awb: string; status: string }>(`/api/v1/shipments/${awb}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
   listInvoices: () => request<Invoice[]>('/api/v1/billing/invoices'),

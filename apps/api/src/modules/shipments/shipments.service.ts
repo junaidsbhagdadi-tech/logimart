@@ -62,6 +62,21 @@ export class ShipmentsService {
    * Create a master AWB and atomically generate one child piece per box.
    * Each child gets: childId (AWB-00N), sequenceNo, barcode payload, volKg.
    */
+  /** Set of account ids a client login may book under: its own + any sibling sharing its GSTIN. */
+  async bookableAccountIds(tokenClientId: number | string): Promise<Set<string>> {
+    const own = BigInt(tokenClientId);
+    const self = await this.prisma.b2bClient.findUnique({ where: { id: own }, select: { gstin: true } });
+    if (!self?.gstin) return new Set([String(own)]);
+    const rows = await this.prisma.b2bClient.findMany({ where: { gstin: self.gstin }, select: { id: true } });
+    return new Set(rows.map((r) => String(r.id)));
+  }
+
+  /** Validate a client's requested booking account, falling back to the login's own account. */
+  async clientBookingAccount(tokenClientId: number | string, requested?: number | string): Promise<number> {
+    const allowed = await this.bookableAccountIds(tokenClientId);
+    return requested != null && allowed.has(String(requested)) ? Number(requested) : Number(tokenClientId);
+  }
+
   async create(dto: CreateShipmentDto) {
     // ---- Credit control gate: block booking for inactive / over-limit accounts ----
     const client = await this.prisma.b2bClient.findUnique({

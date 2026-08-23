@@ -16,17 +16,23 @@ export class ShipmentsController {
 
   @Post()
   @Roles(UserRole.CLIENT_ADMIN, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
-  create(@Body() dto: CreateShipmentDto) {
+  async create(@Body() dto: CreateShipmentDto, @Req() req: any) {
+    // A client may only book under an account it owns (its own, or a same-GSTIN sibling).
+    if (req.user.role === UserRole.CLIENT_ADMIN) {
+      dto.clientId = await this.shipments.clientBookingAccount(req.user.clientId, dto.clientId);
+    }
     return this.shipments.create(dto);
   }
 
   /** Bulk booking — create up to 500 shipments from an uploaded sheet. */
   @Post('bulk')
   @Roles(UserRole.CLIENT_ADMIN, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
-  bulk(@Body() dto: { rows: CreateShipmentDto[] }, @Req() req: any) {
-    const rows = (dto.rows || []).slice(0, 500).map((r) =>
-      req.user.role === UserRole.CLIENT_ADMIN ? { ...r, clientId: Number(req.user.clientId) } : r,
-    );
+  async bulk(@Body() dto: { rows: CreateShipmentDto[] }, @Req() req: any) {
+    let rows = (dto.rows || []).slice(0, 500);
+    if (req.user.role === UserRole.CLIENT_ADMIN) {
+      const allowed = await this.shipments.bookableAccountIds(req.user.clientId);
+      rows = rows.map((r) => ({ ...r, clientId: r.clientId != null && allowed.has(String(r.clientId)) ? Number(r.clientId) : Number(req.user.clientId) }));
+    }
     return this.shipments.bulkCreate(rows);
   }
 

@@ -23,6 +23,8 @@ export function CreateShipment() {
   const isClient = user?.role === 'CLIENT_ADMIN'; // customers get a simplified form: no pricing/ops/carrier fields
 
   const [clients, setClients] = useState<Client[]>([]);
+  // Accounts a client login may book under (own + same-GSTIN siblings); drives the account prefill/dropdown.
+  const [accounts, setAccounts] = useState<any[]>([]);
   const [clientId, setClientId] = useState<number | ''>(ownClientId ?? '');
   const [custText, setCustText] = useState('');
   const [prodText, setProdText] = useState('');
@@ -133,19 +135,33 @@ export function CreateShipment() {
   const startFresh = () => { clearDraft(); window.location.reload(); };
 
   useEffect(() => { if (!ownClientId) api.listClients().then(setClients).catch(() => {}); }, [ownClientId]);
+  // Client logins can't list all clients — fetch just the account(s) they may book under.
+  useEffect(() => {
+    if (!isClient) return;
+    api.portalAccounts().then((rows) => {
+      setAccounts(rows);
+      // Default to the login's own account (or the only account) so the form is booking-ready.
+      const own = rows.find((r) => String(r.id) === String(ownClientId)) ?? rows[0];
+      if (own) setClientId(Number(own.id));
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isClient, ownClientId]);
 
-  // Auto-fill shipper from the selected customer's registered address (unless picking up elsewhere).
+  // Auto-fill shipper from the selected account's registered address (unless picking up elsewhere).
+  // Staff read from the full clients list; client logins read from their bookable accounts.
   useEffect(() => {
     if (pickupElsewhere || clientId === '') return;
-    const cl = clients.find((c) => String(c.id) === String(clientId));
+    const src = isClient ? accounts : clients;
+    const cl: any = src.find((c: any) => String(c.id) === String(clientId));
     if (!cl) return;
     setShp((prev) => ({
       ...prev,
       shipperName: cl.legalName ?? '',
-      shipperContact: cl.contactPerson ?? '',
+      shipperContact: (cl.contactPerson ?? cl.contactName) ?? '',
       shipperGstin: cl.gstin ?? '',
-      shipperAddress1: (cl as any).addressLine ?? '',
-      shipperPincode: (cl as any).pincode ?? '',
+      shipperAddress1: cl.addressLine ?? '',
+      shipperAddress2: cl.addressLine2 ?? prev.shipperAddress2,
+      shipperPincode: cl.pincode ?? '',
       shipperCity: cl.city ?? '',
       shipperState: cl.state ?? cl.billingState ?? '',
       shipperPhone: cl.contactPhone ?? '',
@@ -153,13 +169,27 @@ export function CreateShipment() {
       originLocation: cl.city ?? prev.originLocation,
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clientId, pickupElsewhere, clients]);
+  }, [clientId, pickupElsewhere, clients, accounts, isClient]);
+
+  // For a client, the pickup address IS the origin of record — keep the origin pincode tied to the
+  // shipper pincode (home address by default, or the "pickup elsewhere" address). This prevents a
+  // booking origin (e.g. Delhi) from contradicting the actual pickup city (e.g. Mumbai).
+  useEffect(() => {
+    if (!isClient) return;
+    if (shp.shipperPincode && shp.shipperPincode.length === 6 && shp.shipperPincode !== originPin) {
+      lookOrigin(shp.shipperPincode);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isClient, shp.shipperPincode]);
   useEffect(() => { api.listVendors().then((v) => setVendors(v.filter((x: any) => x.isActive !== false))).catch(() => {}); }, []);
   useEffect(() => {
     api.listHubs().then((hs) => {
       setHubs(hs);
-      if (hs[0]) setOriginHubId(Number(hs[0].id));
-      setDestHubId(Number((hs[1] ?? hs[0])?.id));
+      // Clients don't route via hubs — leave unassigned so staff route it later.
+      if (!isClient) {
+        if (hs[0]) setOriginHubId(Number(hs[0].id));
+        setDestHubId(Number((hs[1] ?? hs[0])?.id));
+      }
     }).catch(() => {});
     api.listMaster('PRODUCT').then((r) => setProducts(r.map((x) => ({ code: x.code, name: x.name, type: (x.attrs as any)?.productType || (x.attrs as any)?.groupType, mode: mapMode((x.attrs as any)?.service || (x.attrs as any)?.mode || (x.attrs as any)?.serviceMode || (x.attrs as any)?.groupType) })))).catch(() => {});
     api.listMaster('CHARGE').then((r) => setChargeMasters(r.map((x) => ({ code: x.code, name: x.name })))).catch(() => {});
@@ -344,6 +374,23 @@ export function CreateShipment() {
               <datalist id="lm-customers">{clients.map((cl) => <option key={cl.id} value={`${cl.accountCode} — ${cl.legalName}`} />)}</datalist>
             </div>
           )}
+          {/* Client login: their account is prefilled. Multiple account codes (same GSTIN) → pick one. */}
+          {isClient && accounts.length > 1 && (
+            <div>
+              <label>Account *</label>
+              <select value={clientId} onChange={(e) => setClientId(e.target.value ? +e.target.value : '')}>
+                {accounts.map((a) => <option key={a.id} value={a.id}>{a.accountCode} — {a.legalName}</option>)}
+              </select>
+            </div>
+          )}
+          {isClient && accounts.length === 1 && (
+            <div>
+              <label>Account</label>
+              <div style={{ padding: '9px 11px', border: '1px solid var(--border)', borderRadius: 10, background: '#f6f9f4', fontWeight: 600 }}>
+                {accounts[0].accountCode} — {accounts[0].legalName}
+              </div>
+            </div>
+          )}
           <div>
             <label>Product * <span className="muted">({products.length})</span></label>
             <select
@@ -357,7 +404,8 @@ export function CreateShipment() {
               Mode: <strong>{modeLabel(serviceMode)}</strong>{product && !selProduct?.mode ? ' (default — set this product’s mode in Masters)' : ''}
             </div>
           </div>
-          {hubs.length > 0 && (
+          {/* Hubs are internal routing — hidden from customers; staff route the shipment. */}
+          {hubs.length > 0 && !isClient && (
             <>
               <div>
                 <label>Origin hub <span className="muted">(optional — blank = direct)</span></label>
@@ -375,11 +423,14 @@ export function CreateShipment() {
               </div>
             </>
           )}
-          <div>
-            <label>Origin pincode</label>
-            <input value={originPin} onChange={(e) => lookOrigin(e.target.value)} maxLength={6} placeholder="e.g. 560001" />
-            {pinHint(originInfo)}
-          </div>
+          {/* For a client the origin follows the pickup address (below) — no separate origin pincode. */}
+          {!isClient && (
+            <div>
+              <label>Origin pincode</label>
+              <input value={originPin} onChange={(e) => lookOrigin(e.target.value)} maxLength={6} placeholder="e.g. 560001" />
+              {pinHint(originInfo)}
+            </div>
+          )}
           <div>
             <label>Destination pincode</label>
             <input value={destPin} onChange={(e) => lookDest(e.target.value)} maxLength={6} placeholder="e.g. 781001" />
