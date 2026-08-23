@@ -21,6 +21,10 @@ export function Customers() {
   const [tab, setTab] = useState<Tab>('Personal Information');
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<Client | null>(null);
+  const [hasCards, setHasCards] = useState(false); // customer has ≥1 rate card → hide legacy slab tabs
+  // Legacy Fuel/Other-Charges/Volumetric tabs are shown only for un-migrated slab customers (existing, no rate card).
+  const showLegacy = !!editing && !hasCards;
+  const visibleTabs = TABS.filter((t) => t === 'Personal Information' || t === 'Customer Address' || showLegacy);
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
 
@@ -91,6 +95,8 @@ export function Customers() {
 
   const openEdit = (c: Client) => {
     setEditing(c); setTab('Personal Information'); setError(''); setMsg('');
+    setHasCards(false);
+    api.listCustomerCards(c.id).then((cs) => setHasCards(Array.isArray(cs) && cs.length > 0)).catch(() => setHasCards(false));
     setForm({
       legalName: c.legalName ?? '', customerType: (c as any).customerType ?? 'Domestic', accountCode: c.accountCode ?? '',
       contactPhone: (c as any).contactPhone ?? '', contactEmail: (c as any).contactEmail ?? '', email2: (c as any).email2 ?? '',
@@ -151,7 +157,7 @@ export function Customers() {
 
       {showAdd && <Modal title="Customer" width={980} onClose={() => setShowAdd(false)}>
         <div className="tabbar">
-          {TABS.map((t) => (
+          {visibleTabs.map((t) => (
             <button key={t} className={'tab' + (t === tab ? ' active' : '') + (t !== 'Personal Information' ? ' soon' : '')} onClick={() => setTab(t)}>{t}</button>
           ))}
         </div>
