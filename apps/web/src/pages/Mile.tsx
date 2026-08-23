@@ -130,10 +130,12 @@ export function ManualScan() {
     const r = new FileReader(); r.onload = () => { setPodData(String(r.result)); setPodName(f.name); setErr(''); }; r.readAsDataURL(f);
   };
 
+  const MAX_BATCH = 500;
   const submit = async () => {
     setErr(''); setMsg('');
     const awbs = awb.split(/[\s,\n]+/).map((a) => a.trim()).filter(Boolean);
     if (!awbs.length) { setErr('Enter one or more AWBs.'); return; }
+    if (awbs.length > MAX_BATCH) { alert(`Maximum ${MAX_BATCH} AWBs at once — you have ${awbs.length}. Split into batches of ${MAX_BATCH} or fewer.`); return; }
     if (code === 'DLD' && !podData) { setErr('POD image is mandatory for Delivered (JPG / PNG / PDF).'); return; }
     setBusy(true);
     try {
@@ -162,8 +164,9 @@ export function ManualScan() {
           <div><label>Remark <span className="muted">(optional)</span></label><input value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="reason / note" /></div>
         </div>
         <div style={{ marginTop: 10 }}>
-          <label>AWBs <span className="muted">(one per line, or comma/space separated)</span></label>
+          <label>AWBs <span className="muted">(one per line, or comma/space separated — max {MAX_BATCH})</span></label>
           <textarea rows={4} value={awb} onChange={(e) => setAwb(e.target.value.toUpperCase())} placeholder="L1000000123&#10;L1000000124…" style={{ width: '100%', font: '13px monospace', padding: 12, border: '1px solid var(--border)', borderRadius: 11 }} />
+          <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>{awb.split(/[\s,\n]+/).map((a) => a.trim()).filter(Boolean).length} AWB(s)</div>
         </div>
         {code === 'DLD' && (
           <div style={{ marginTop: 10 }}>
