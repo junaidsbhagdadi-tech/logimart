@@ -58,15 +58,31 @@ export function TrackDetail() {
 
   return (
     <>
-      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-        <h1 style={{ margin: 0 }}>🧭 Track Shipment</h1>
-        <form onSubmit={(e) => search(undefined, e)} className="row" style={{ gap: 8 }}>
-          <input value={awb} onChange={(e) => setAwb(e.target.value.toUpperCase())} placeholder="Enter AWB…" style={{ width: 220 }} />
-          <button type="submit">Track</button>
-          {d && isSuper && <button type="button" className="secondary" onClick={reset} title="Purge scans & reset to MAN">↺ Reset</button>}
-        </form>
-      </div>
-      {error && <div className="error" style={{ marginTop: 12 }}>{error}</div>}
+      {!d ? (
+        // Centered hero search until a shipment is tracked.
+        <div style={{ minHeight: '62vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, textAlign: 'center', padding: '0 16px' }}>
+          <div style={{ fontSize: 46, lineHeight: 1 }}>🧭</div>
+          <h1 style={{ margin: 0 }}>Track Shipment</h1>
+          <p className="muted" style={{ margin: 0 }}>Enter an AWB number to see its live journey.</p>
+          <form onSubmit={(e) => search(undefined, e)} className="row" style={{ gap: 10, justifyContent: 'center', width: '100%', maxWidth: 540, marginTop: 4 }}>
+            <input autoFocus value={awb} onChange={(e) => setAwb(e.target.value.toUpperCase())} placeholder="Enter AWB…" style={{ flex: 1, maxWidth: 380, padding: '12px 16px', fontSize: 16 }} />
+            <button type="submit" style={{ padding: '12px 24px', fontSize: 15 }}>Track</button>
+          </form>
+          {error && <div className="error" style={{ marginTop: 8, maxWidth: 540, width: '100%' }}>{error}</div>}
+        </div>
+      ) : (
+        <>
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+            <h1 style={{ margin: 0 }}>🧭 Track Shipment</h1>
+            <form onSubmit={(e) => search(undefined, e)} className="row" style={{ gap: 8 }}>
+              <input value={awb} onChange={(e) => setAwb(e.target.value.toUpperCase())} placeholder="Enter AWB…" style={{ width: 220 }} />
+              <button type="submit">Track</button>
+              {isSuper && <button type="button" className="secondary" onClick={reset} title="Purge scans & reset to MAN">↺ Reset</button>}
+            </form>
+          </div>
+          {error && <div className="error" style={{ marginTop: 12 }}>{error}</div>}
+        </>
+      )}
       {msg && <div className="card" style={{ borderLeft: '4px solid var(--ok)' }}>{msg}</div>}
 
       {d && (
