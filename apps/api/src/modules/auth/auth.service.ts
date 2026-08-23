@@ -1,5 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { UserRole } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -16,7 +17,26 @@ export class AuthService {
 
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) throw new UnauthorizedException('Invalid credentials');
+    return this.issue(user);
+  }
 
+  /** Mobile-app login for field riders: Rider ID (e.g. RID001) + numeric PIN. */
+  async riderLogin(riderCode: string, pin: string) {
+    const code = (riderCode || '').trim().toUpperCase();
+    const user = await this.prisma.user.findUnique({ where: { riderCode: code } });
+    if (!user || !user.isActive || user.role !== 'DRIVER' || !user.pinHash) {
+      throw new UnauthorizedException('Invalid Rider ID or PIN');
+    }
+    const ok = await bcrypt.compare(pin, user.pinHash);
+    if (!ok) throw new UnauthorizedException('Invalid Rider ID or PIN');
+    return this.issue(user);
+  }
+
+  /** Build the JWT + user summary returned by every login path. */
+  private async issue(user: {
+    id: bigint; email: string; role: UserRole; clientId: bigint | null; hubId: bigint | null;
+    fullName: string; featureGrants: unknown; riderCode?: string | null;
+  }) {
     const payload = {
       sub: user.id.toString(),
       email: user.email,
@@ -31,6 +51,7 @@ export class AuthService {
         fullName: user.fullName,
         role: user.role,
         clientId: user.clientId?.toString() ?? null,
+        riderCode: user.riderCode ?? null,
         featureGrants: Array.isArray(user.featureGrants) ? (user.featureGrants as string[]) : null,
       },
     };

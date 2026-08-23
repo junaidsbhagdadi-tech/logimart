@@ -35,6 +35,7 @@ import { AdminModule } from './modules/admin/admin.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
 import { RiderModule } from './modules/rider/rider.module';
+import { RidersModule } from './modules/riders/riders.module';
 import { VendorsModule } from './modules/vendors/vendors.module';
 import { CrmModule } from './modules/crm/crm.module';
 import { TaxModule } from './modules/tax/tax.module';
@@ -93,6 +94,7 @@ const webDist = join(__dirname, '..', '..', 'web', 'dist');
     UploadsModule,
     FeedbackModule,
     RiderModule,
+    RidersModule,
     VendorsModule,
     CrmModule,
     TaxModule,

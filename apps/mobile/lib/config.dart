@@ -2,7 +2,7 @@
 ///   flutter run --dart-define=API_BASE=https://your-host
 const String kApiBase = String.fromEnvironment(
   'API_BASE',
-  defaultValue: 'https://brave-respect-production-1357.up.railway.app',
+  defaultValue: 'https://logimart-erp.onrender.com',
 );
 
 /// Checkpoints the ground staff can scan against (mirror of the server enum).

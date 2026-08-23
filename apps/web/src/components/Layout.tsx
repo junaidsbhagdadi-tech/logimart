@@ -103,6 +103,7 @@ export function Layout() {
     ] },
     { title: 'Insights & Admin', items: [
       { to: '/reports', icon: '📈', label: 'Reports', show: isAdminFin || canMaster },
+      { to: '/riders', icon: '🛵', label: 'Riders & Drivers', show: canMaster },
       { to: '/users', icon: '⚙️', label: 'Users', show: isSysAdmin },
       { to: '/audit', icon: '🕵', label: 'Audit Log', show: isSysAdmin },
       { to: '/feedback', icon: '💬', label: 'Feedback', show: isSysAdmin },

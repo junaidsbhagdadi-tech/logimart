@@ -391,6 +391,16 @@ export const api = {
   listUsers: () => request<any[]>('/api/v1/users'),
   createUser: (body: unknown) =>
     request('/api/v1/users', { method: 'POST', body: JSON.stringify(body) }),
+  // Riders / drivers (mobile-app field staff)
+  listRiders: () => request<any[]>('/api/v1/riders'),
+  createRider: (body: unknown) =>
+    request<{ id: string; riderCode: string; fullName: string; pin: string }>('/api/v1/riders', { method: 'POST', body: JSON.stringify(body) }),
+  updateRider: (id: string | number, body: unknown) =>
+    request(`/api/v1/riders/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  resetRiderPin: (id: string | number, pin?: string) =>
+    request<{ id: string; pin: string }>(`/api/v1/riders/${id}/reset-pin`, { method: 'POST', body: JSON.stringify(pin ? { pin } : {}) }),
+  deleteRider: (id: string | number) =>
+    request<{ ok: boolean; id: number }>(`/api/v1/riders/${id}`, { method: 'DELETE' }),
   updateUser: (id: string, body: unknown) =>
     request(`/api/v1/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteUser: (id: string | number) =>

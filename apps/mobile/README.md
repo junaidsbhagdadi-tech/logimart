@@ -27,7 +27,10 @@ flutter run --dart-define=API_BASE=https://brave-respect-production-1357.up.rail
 Default API base is already the Railway UAT URL (see `lib/config.dart`); override with
 `--dart-define=API_BASE=...` for production.
 
-**Login:** seeded ops user `warehouse@logimart.com` / `logimart1234` (or `driver@…`).
+**Login:** riders sign in with their **Rider ID + PIN** (created in the web admin →
+Riders & Drivers → the ID/PIN card is shown once on create). Tap *Staff sign-in* for
+warehouse handlers/managers using email + password (seeded `warehouse@logimart.com` /
+`logimart1234`). Default API base is now the Render prod URL (`lib/config.dart`).
 
 ## Permissions to add after `flutter create`
 - **Android** — `android/app/src/main/AndroidManifest.xml`:

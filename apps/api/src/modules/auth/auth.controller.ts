@@ -11,6 +11,15 @@ class LoginDto {
   password!: string;
 }
 
+class RiderLoginDto {
+  @IsString()
+  riderCode!: string;
+
+  @IsString()
+  @MinLength(4)
+  pin!: string;
+}
+
 @Controller('api/v1/auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
@@ -18,5 +27,11 @@ export class AuthController {
   @Post('login')
   login(@Body() dto: LoginDto) {
     return this.auth.login(dto.email, dto.password);
+  }
+
+  /** Field-rider login for the mobile app: Rider ID + PIN. */
+  @Post('rider-login')
+  riderLogin(@Body() dto: RiderLoginDto) {
+    return this.auth.riderLogin(dto.riderCode, dto.pin);
   }
 }

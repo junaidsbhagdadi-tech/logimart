@@ -22,6 +22,7 @@ import { Pickups } from './pages/Pickups';
 import { Manifests } from './pages/Manifests';
 import { InvoicePrint } from './pages/InvoicePrint';
 import { Users } from './pages/Users';
+import { Riders } from './pages/Riders';
 import { Feedback } from './pages/Feedback';
 import { Vendors } from './pages/Vendors';
 import { Vehicles } from './pages/Vehicles';
@@ -125,6 +126,7 @@ export function App() {
         <Route path="/reports" element={canReports ? <Reports /> : <Navigate to="/" replace />} />
         <Route path="/audit" element={user?.role === 'SYS_ADMIN' ? <AuditLog /> : <Navigate to="/" replace />} />
         <Route path="/users" element={user?.role === 'SYS_ADMIN' ? <Users /> : <Navigate to="/" replace />} />
+        <Route path="/riders" element={(user?.role === 'SYS_ADMIN' || user?.role === 'HUB_MANAGER') ? <Riders /> : <Navigate to="/" replace />} />
         <Route path="/feedback" element={user?.role === 'SYS_ADMIN' ? <Feedback /> : <Navigate to="/" replace />} />
         <Route path="/archive" element={user?.role === 'SYS_ADMIN' ? <Archive /> : <Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />

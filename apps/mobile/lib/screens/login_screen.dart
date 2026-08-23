@@ -9,8 +9,14 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _email = TextEditingController(text: 'warehouse@logimart.com');
-  final _password = TextEditingController(text: 'logimart1234');
+  // Rider (default) login — Rider ID + PIN
+  final _riderCode = TextEditingController();
+  final _pin = TextEditingController();
+  // Staff login — email + password (for warehouse handlers / managers)
+  final _email = TextEditingController();
+  final _password = TextEditingController();
+
+  bool _riderMode = true; // riders are the primary app users
   bool _busy = false;
   String? _error;
 
@@ -20,7 +26,11 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
     try {
-      await ApiClient.instance.login(_email.text.trim(), _password.text);
+      if (_riderMode) {
+        await ApiClient.instance.riderLogin(_riderCode.text, _pin.text);
+      } else {
+        await ApiClient.instance.login(_email.text.trim(), _password.text);
+      }
       if (mounted) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const ScanScreen()),
@@ -42,22 +52,42 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Logimart',
+              const Text('LogiMart',
                   style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
-              const Text('Ground Ops Scanner'),
+              Text(_riderMode ? 'Rider App' : 'Ground Ops Scanner'),
               const SizedBox(height: 24),
               if (_error != null)
-                Text(_error!, style: const TextStyle(color: Colors.red)),
-              TextField(
-                controller: _email,
-                decoration: const InputDecoration(labelText: 'Email'),
-                keyboardType: TextInputType.emailAddress,
-              ),
-              TextField(
-                controller: _password,
-                decoration: const InputDecoration(labelText: 'Password'),
-                obscureText: true,
-              ),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(_error!, style: const TextStyle(color: Colors.red)),
+                ),
+              if (_riderMode) ...[
+                TextField(
+                  controller: _riderCode,
+                  decoration:
+                      const InputDecoration(labelText: 'Rider ID (e.g. RID001)'),
+                  textCapitalization: TextCapitalization.characters,
+                  autocorrect: false,
+                ),
+                TextField(
+                  controller: _pin,
+                  decoration: const InputDecoration(labelText: 'PIN'),
+                  keyboardType: TextInputType.number,
+                  obscureText: true,
+                ),
+              ] else ...[
+                TextField(
+                  controller: _email,
+                  decoration: const InputDecoration(labelText: 'Email'),
+                  keyboardType: TextInputType.emailAddress,
+                  autocorrect: false,
+                ),
+                TextField(
+                  controller: _password,
+                  decoration: const InputDecoration(labelText: 'Password'),
+                  obscureText: true,
+                ),
+              ],
               const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
@@ -65,6 +95,18 @@ class _LoginScreenState extends State<LoginScreen> {
                   onPressed: _busy ? null : _login,
                   child: Text(_busy ? 'Signing in…' : 'Sign in'),
                 ),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: _busy
+                    ? null
+                    : () => setState(() {
+                          _riderMode = !_riderMode;
+                          _error = null;
+                        }),
+                child: Text(_riderMode
+                    ? 'Staff sign-in (email & password)'
+                    : 'Rider sign-in (Rider ID & PIN)'),
               ),
             ],
           ),

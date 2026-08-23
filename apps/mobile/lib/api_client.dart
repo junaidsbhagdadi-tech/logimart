@@ -51,6 +51,46 @@ class ApiClient {
     await _saveToken(jsonDecode(res.body)['accessToken'] as String);
   }
 
+  /// Field-rider login: Rider ID (e.g. RID001) + numeric PIN.
+  Future<void> riderLogin(String riderCode, String pin) async {
+    final res = await http.post(
+      Uri.parse('$kApiBase/api/v1/auth/rider-login'),
+      headers: {'content-type': 'application/json'},
+      body: jsonEncode({'riderCode': riderCode.trim().toUpperCase(), 'pin': pin.trim()}),
+    );
+    if (res.statusCode != 201 && res.statusCode != 200) {
+      throw Exception('Invalid Rider ID or PIN');
+    }
+    await _saveToken(jsonDecode(res.body)['accessToken'] as String);
+  }
+
+  /// The signed-in rider's assigned pickups + deliveries for the day.
+  Future<Map<String, dynamic>> myTasks() async {
+    final t = await token();
+    final res = await http.get(
+      Uri.parse('$kApiBase/api/v1/rider/tasks'),
+      headers: {'authorization': 'Bearer $t'},
+    );
+    if (res.statusCode != 200) {
+      throw Exception('Could not load tasks: ${res.statusCode}');
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  /// Record cash / To-Pay freight collected at delivery (allowed for DRIVER).
+  Future<Map<String, dynamic>> recordCod(String awb, double amount) async {
+    final t = await token();
+    final res = await http.post(
+      Uri.parse('$kApiBase/api/v1/shipments/$awb/collect-freight'),
+      headers: {'content-type': 'application/json', 'authorization': 'Bearer $t'},
+      body: jsonEncode({'amount': amount}),
+    );
+    if (res.statusCode != 201 && res.statusCode != 200) {
+      throw Exception('Collection failed: ${res.statusCode} ${res.body}');
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   /// Push a batch of offline scans. The server is idempotent on clientEventId,
   /// so re-sending after a flaky connection is always safe.
   Future<BulkSyncResult> bulkSync(String deviceId, List<Scan> scans) async {
