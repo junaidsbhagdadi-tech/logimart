@@ -65,6 +65,27 @@ export class UsersService {
     }
   }
 
+  /** Hard-delete a user. Can't delete yourself; if the user has recorded activity (scans/PODs),
+   *  detach it first so history survives, then remove the login. */
+  async remove(id: number, actingUserId?: number) {
+    if (actingUserId != null && Number(id) === Number(actingUserId)) {
+      throw new ConflictException('You cannot delete your own account.');
+    }
+    const u = await this.prisma.user.findUnique({ where: { id: BigInt(id) }, select: { id: true } });
+    if (!u) throw new NotFoundException('User not found');
+    // A user who has scanned/delivered can't be hard-deleted (audit trail is non-nullable) — deactivate instead.
+    const [scans, pods] = await Promise.all([
+      this.prisma.scanEvent.count({ where: { scannedById: BigInt(id) } }),
+      this.prisma.pod.count({ where: { deliveredById: BigInt(id) } }),
+    ]);
+    if (scans > 0 || pods > 0) {
+      throw new ConflictException(`This user has recorded activity (${scans} scan(s), ${pods} POD(s)) — deactivate it instead of deleting, to keep the audit trail.`);
+    }
+    await this.prisma.scanLog.updateMany({ where: { scannedById: BigInt(id) }, data: { scannedById: null } }).catch(() => {});
+    await this.prisma.user.delete({ where: { id: BigInt(id) } });
+    return { ok: true, id };
+  }
+
   /** Toggle active, change role, reset password, or assign feature access (super admin). */
   async update(id: number, dto: { isActive?: boolean; role?: UserRole; password?: string; featureGrants?: string[] | null }) {
     const u = await this.prisma.user.findUnique({ where: { id: BigInt(id) } });

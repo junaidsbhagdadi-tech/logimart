@@ -109,6 +109,7 @@ export function Users() {
                   <button className="secondary" onClick={() => toggle(u)}>{u.isActive ? 'Disable' : 'Enable'}</button>
                   <button className="secondary" onClick={() => resetPwd(u)}>Reset pwd</button>
                   {u.role !== 'SYS_ADMIN' && <button className="secondary" onClick={() => openGrants(u)} title="Assign feature access">🔑 Features{Array.isArray(u.featureGrants) ? ` (${u.featureGrants.length})` : ''}</button>}
+                  <button className="secondary" title="Delete user" onClick={async () => { if (!confirm(`Delete user ${u.email}? This cannot be undone.`)) return; try { await api.deleteUser(u.id); setMsg(`Deleted ${u.email}`); load(); } catch (e: any) { setError(e.message); } }}>🗑</button>
                 </td>
               </tr>
             ))}
