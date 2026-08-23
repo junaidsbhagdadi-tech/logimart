@@ -404,7 +404,9 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
 
-  const NumF = ({ label, k, step, max }: { label: string; k: string; step?: string; max?: number }) => (
+  // Inline render fn (NOT a component) — a <NumF/> component defined in-render remounts the
+  // input on every keystroke and steals focus. Calling numF(...) inlines the JSX so focus stays.
+  const numF = (label: string, k: string, step?: string, max?: number) => (
     <div><label style={{ fontSize: 12 }}>{label}</label>
       <input type="number" step={step} max={max} value={h[k]}
         onChange={(e) => { const v = e.target.value; set(k, max != null && v !== '' && Number(v) > max ? String(max) : v); }} />
@@ -435,10 +437,10 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
         <div><label style={{ fontSize: 12 }}>Mode <span className="muted">(from product)</span></label><input value={productMode(h.product) || h.mode || '—'} disabled /></div>
         <div><label style={{ fontSize: 12 }}>Service</label><input value={h.service} onChange={(e) => set('service', e.target.value)} placeholder="NDD/SDD (opt)" /></div>
 
-        <NumF label="Volumetric ÷ (your choice · cm³/CFT surface · max 27000)" k="volumetricDivisor" max={27000} />
-        <NumF label="CFT factor (kg/CFT · surface)" k="cft" step="0.01" />
-        <NumF label="Min chargeable (kg)" k="minChargeableKg" step="0.001" />
-        <NumF label="Min freight (₹)" k="minFreight" />
+        {numF('Volumetric ÷ (your choice · cm³/CFT surface · max 27000)', 'volumetricDivisor', undefined, 27000)}
+        {numF('CFT factor (kg/CFT · surface)', 'cft', '0.01')}
+        {numF('Min chargeable (kg)', 'minChargeableKg', '0.001')}
+        {numF('Min freight (₹)', 'minFreight')}
       </div>
 
       {/* City-specific special rates — override the zone rate for named destination cities */}
