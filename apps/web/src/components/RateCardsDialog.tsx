@@ -351,6 +351,11 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
   const cityRates: any[] = Array.isArray(h.cityRates) ? h.cityRates : [];
   // Courier (DP/TDD/NDD) vs cargo drives the slab structure: gram bands × A/B/C/OTHER, or ₹/kg × wide zone matrix.
   const fam: 'COURIER' | 'CARGO' = isCourierProduct(h.product) ? 'COURIER' : 'CARGO';
+  // Fuel model by transport mode: AIR/Express/DP → FSC (flat %); SURFACE/TRAIN → DSC (diesel-indexed).
+  // CFT applies to surface/train only (not air).
+  const groupOf = (code: string) => String(products.find((x) => x.code === code)?.attrs?.groupType || '').toUpperCase();
+  const isSurfaceMode = (() => { const g = groupOf(h.product); return g.includes('SURFACE') || g.includes('TRAIN') || g.includes('RAIL'); })();
+  const fuelLabel = isSurfaceMode ? 'DSC (Diesel Surcharge)' : 'FSC (Fuel Surcharge)';
   const zoneCols = fam === 'COURIER' ? COURIER_ZONES : zones;
   const slabTypes = fam === 'COURIER' ? COURIER_SLAB_TYPES : SLAB_TYPES;
   const courierDefaultRows = () => [
@@ -364,7 +369,11 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
 
   const set = (k: string, v: any) => setH((p: any) => ({ ...p, [k]: v }));
   const onProduct = (code: string) => {
-    setH((p: any) => ({ ...p, product: code, mode: productMode(code) || p.mode }));
+    const g = groupOf(code);
+    const surf = g.includes('SURFACE') || g.includes('TRAIN') || g.includes('RAIL');
+    // Auto-pick the fuel model: surface/train → DSC (DYNAMIC diesel), else FSC (FLAT). CFT is
+    // surface-only, so clear it for air. Mode auto-fills from the product.
+    setH((p: any) => ({ ...p, product: code, mode: productMode(code) || p.mode, fuelMode: surf ? 'DYNAMIC' : 'FLAT', cft: surf ? p.cft : 0 }));
     // A brand-new card follows the product's family; reset the (still-default) grid so DP gets
     // gram slabs + A/B/C/OTHER and cargo gets ₹/kg. Editing an existing card keeps its slabs.
     if (!card) setRows(isCourierProduct(code) ? courierDefaultRows() : cargoDefaultRows());
@@ -438,7 +447,7 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
         <div><label style={{ fontSize: 12 }}>Service</label><input value={h.service} onChange={(e) => set('service', e.target.value)} placeholder="NDD/SDD (opt)" /></div>
 
         {numF('Volumetric ÷ (your choice · cm³/CFT surface · max 27000)', 'volumetricDivisor', undefined, 27000)}
-        {numF('CFT factor (kg/CFT · surface)', 'cft', '0.01')}
+        {isSurfaceMode && numF('CFT factor (kg/CFT · surface)', 'cft', '0.01')}
         {numF('Min chargeable (kg)', 'minChargeableKg', '0.001')}
         {numF('Min freight (₹)', 'minFreight')}
       </div>
@@ -469,21 +478,22 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
         )}
       </div>
 
-      {/* FSC */}
+      {/* Fuel surcharge — FSC (air) or DSC (surface/train), auto-picked from the product */}
       <div className="card" style={{ padding: 12, marginTop: 12 }}>
+        <div style={{ marginBottom: 8 }}><strong style={{ fontSize: 13 }}>⛽ {fuelLabel}</strong> <span className="muted" style={{ fontSize: 11 }}>auto from product mode ({productMode(h.product) || h.mode || '—'}) — FSC for Air/Express/DP, DSC for Surface/Train</span></div>
         <div className="row" style={{ gap: 14, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          <div><label style={{ fontSize: 12 }}>FSC mode</label>
+          <div><label style={{ fontSize: 12 }}>{isSurfaceMode ? 'DSC' : 'FSC'} mode <span className="muted">(auto)</span></label>
             <select value={h.fuelMode} onChange={(e) => set('fuelMode', e.target.value)}><option>FLAT</option><option>DYNAMIC</option></select>
           </div>
           {h.fuelMode === 'FLAT'
-            ? <div><label style={{ fontSize: 12 }}>Fuel % <span className="muted">(flat — Air/Express/DP · blank → inherit master default)</span></label><input type="number" value={h.fuelPct} onChange={(e) => set('fuelPct', e.target.value)} placeholder="inherit" style={{ width: 120 }} /></div>
-            : <div><label style={{ fontSize: 12 }}>Diesel surcharge mechanism <span className="muted">(Surface · blank → default)</span></label>
+            ? <div><label style={{ fontSize: 12 }}>FSC % <span className="muted">(flat — Air/Express/DP · blank → inherit master default)</span></label><input type="number" value={h.fuelPct} onChange={(e) => set('fuelPct', e.target.value)} placeholder="inherit" style={{ width: 120 }} /></div>
+            : <div><label style={{ fontSize: 12 }}>Diesel surcharge mechanism <span className="muted">(Surface/Train · blank → default)</span></label>
                 <select value={h.fuelMechanism} onChange={(e) => set('fuelMechanism', e.target.value)}>
                   <option value="">Inherit default diesel mechanism</option>
                   {mechs.map((m) => <option key={m.code} value={m.code}>{m.code} — {m.name}</option>)}
                 </select>
               </div>}
-          <span className="muted" style={{ fontSize: 11 }}>FLAT = fixed fuel % (Air/Express/DP) · DYNAMIC = diesel-indexed surcharge (Surface). Set per card.</span>
+          <span className="muted" style={{ fontSize: 11 }}>FLAT = fixed fuel % (Air/Express/DP) · DYNAMIC = diesel-indexed surcharge (Surface/Train).</span>
         </div>
       </div>
 
