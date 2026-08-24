@@ -91,11 +91,15 @@ export function TrackDetail() {
             <h2 style={{ marginBottom: 12 }}>Shipment Details</h2>
             <div className="grid cols-4" style={{ gap: 16, rowGap: 18 }}>
               <Field label="AWB Number" value={d.awb} />
+              <Field label="Customer" value={(d as any).customerName} />
+              <Field label="Account No." value={(d as any).accountCode} color="var(--brand)" />
               <Field label="Forwarding No." value={d.forwardingAwb} color="var(--brand)" />
               <Field label="Pay Mode" value={d.payMode} />
               <Field label="Shipper" value={d.shipper} />
               <Field label="Origin" value={d.origin} />
+              <Field label="Origin Pincode" value={(d as any).originPincode} />
               <Field label="Destination" value={d.destination} />
+              <Field label="Destination Pincode" value={(d as any).destPincode} />
               <Field label="Current Location" value={d.currentLocation} />
               <Field label="Order Date (Manifested)" value={dateFmt(d.orderDate)} />
               <Field label="Current Status" value={`${d.currentLabel} — ${d.currentCode}`} color="var(--ok, #16a34a)" />

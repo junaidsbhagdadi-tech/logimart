@@ -58,8 +58,6 @@ export function Labels() {
           </div>
           <div className="ship-foot">
             <span><strong>{master.pieceCount}</strong> pcs</span>
-            <span>Dead <strong>{master.totalDeadKg}</strong> kg</span>
-            <span>Vol <strong>{master.totalVolKg}</strong> kg</span>
             {master.ewbNo && <span>EWB {master.ewbNo}</span>}
           </div>
           {master.goodsDesc && <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>Goods: {master.goodsDesc}</div>}

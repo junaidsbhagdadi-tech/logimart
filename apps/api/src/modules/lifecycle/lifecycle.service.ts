@@ -115,7 +115,7 @@ export class LifecycleService {
       where: { awb },
       include: {
         originHub: { select: { code: true, name: true } }, destHub: { select: { code: true, name: true } },
-        client: { select: { legalName: true } },
+        client: { select: { legalName: true, accountCode: true } },
         pieces: { orderBy: { sequenceNo: 'asc' }, select: { childId: true, sequenceNo: true, deadKg: true, volKg: true, status: true, lengthCm: true, widthCm: true, heightCm: true } },
       },
     });
@@ -133,6 +133,10 @@ export class LifecycleService {
       awb: s.awb,
       forwardingAwb: s.forwardingAwb ?? null,
       payMode,
+      customerName: (s as any).client?.legalName ?? null,
+      accountCode: (s as any).client?.accountCode ?? null,
+      originPincode: s.shipperPincode ?? null,
+      destPincode: s.destPincode ?? null,
       shipper: s.shipperName ?? (s as any).client?.legalName ?? null,
       origin: [s.originLocation, s.originHub?.code].filter(Boolean).join(' - ') || s.originZone,
       destination: [s.consigneeCity, s.destHub?.code].filter(Boolean).join(' - ') || s.destZone,
