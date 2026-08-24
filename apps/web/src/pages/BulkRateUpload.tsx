@@ -46,7 +46,7 @@ export function BulkRateUpload() {
   return (
     <>
       <h1>⬆ Bulk Rate Upload <span className="muted" style={{ fontSize: 13, fontWeight: 500 }}>— customer-code-wise</span></h1>
-      <p className="muted" style={{ marginTop: -14 }}>One workbook, many customers and products (Apex + Surface together). Columns: <code>CUSTOMER · VENDOR · PRODUCT · Origin\Dest · N1…NE3</code>. Each (customer, vendor, product) block becomes a rate card; the customer code must match an existing customer's account code.</p>
+      <p className="muted" style={{ marginTop: -14 }}>One workbook, many customers and products — <strong>Apex and Surface in the same file</strong>. Columns: <code>Customer Code · Vendor · Product · Origin\Dest · N1…NE3</code>. Each (customer, vendor, product) block becomes a rate card (Apex → Air, Surface → Surface). The template already lays out both product blocks — just replace <code>CUST001</code> with the real customer code and fill the ₹/kg cells. Customer codes must match existing customers.</p>
       {error && <div className="error">{error}</div>}
       {msg && <div className="card" style={{ borderLeft: '4px solid var(--ok)' }}>{msg}</div>}
 

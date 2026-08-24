@@ -353,24 +353,27 @@ export function downloadCourierTemplate() {
   XLSX.writeFile(wb, 'Logimart-courier-rate-template.xlsx');
 }
 
-/** Download a blank cargo (Apex/Surface) rate template with ONE 18×18 block per vendor.
- *  Columns: Customer Code · Vendor · Origin\Dest · <18 dest zones>. Fill a block per vendor;
- *  upload creates one rate card per vendor (the shipment's vendor pick then applies its rate). */
+/** Download a blank cargo rate template carrying BOTH Apex and Surface in one file.
+ *  Columns: Customer Code · Vendor · Product · Origin\Dest · <18 dest zones>. One 18-row block per
+ *  (vendor × product); upload creates one rate card each. APEX → Air card, SURFACE → Surface card.
+ *  Fill the ₹/kg cells; the Customer Code / Vendor / Product on the block's first row identify it. */
 export function downloadCargoTemplate(vendorNames: string[] = []) {
   const zones = ['N1', 'N2', 'N3', 'N4', 'C1', 'C2', 'W1', 'W2', 'W3', 'S1', 'S2', 'S3', 'E1', 'E2', 'E3', 'NE1', 'NE2', 'NE3'];
-  const header = ['Customer Code', 'Vendor', 'Origin \\ Dest', ...zones];
+  const header = ['Customer Code', 'Vendor', 'Product', 'Origin \\ Dest', ...zones];
   const blank = zones.map(() => '');
-  // SELF (own network) first, then a block per known vendor.
-  const blocks = ['SELF', ...Array.from(new Set(vendorNames.map((v) => String(v).trim()).filter(Boolean)))];
-  const aoa: any[][] = [];
-  for (const vend of blocks) {
-    aoa.push(header);
-    zones.forEach((oz, i) => aoa.push(['', i === 0 ? vend : '', oz, ...blank]));
-    aoa.push([]); // spacer between vendor blocks
+  const vendors = ['SELF', ...Array.from(new Set(vendorNames.map((v) => String(v).trim()).filter(Boolean)))];
+  const products = ['APEX', 'SURFACE']; // both products in one workbook
+  const aoa: any[][] = [header];
+  for (const vend of vendors) {
+    for (const prod of products) {
+      // First row of each block carries Customer Code + Vendor + Product; the rest are origin rows.
+      zones.forEach((oz, i) => aoa.push([i === 0 ? 'CUST001' : '', i === 0 ? vend : '', i === 0 ? prod : '', oz, ...blank]));
+      aoa.push([]); // spacer between blocks
+    }
   }
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Apex And surface');
+  XLSX.utils.book_append_sheet(wb, ws, 'Apex And Surface');
   XLSX.writeFile(wb, 'Logimart-cargo-rate-template.xlsx');
 }
 
