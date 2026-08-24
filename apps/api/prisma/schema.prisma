@@ -1142,6 +1142,30 @@ model Claim {
   @@map("claims")
 }
 
+// Monthly vendor-deduction register (Claims & Insurance): amounts deducted from vendors for
+// service failures, keyed on the AWB. Columns mirror the ops "Monthly deduction detail" sheet.
+model VendorDeduction {
+  id            BigInt    @id @default(autoincrement())
+  awb           String                                  // AWB no (mandatory)
+  vendorName    String                                  // Vendor name (mandatory)
+  vendorAcCode  String?                                 // Vendor A/c code (mandatory)
+  pickupDate    DateTime?                               // pickup date (mandatory)
+  deliveryDate  DateTime?                               // delivery date (optional)
+  emailCommDate DateTime?                               // email communication date (mandatory)
+  madeToNames   String?                                 // "made to" names (mandatory)
+  reason        String?                                 // reason for deduction (mandatory)
+  amount        Decimal   @default(0) @db.Decimal(14, 2) // deduction amount (mandatory)
+  attachment    String?                                 // pic / email comm — link or reference (mandatory)
+  customerCode  String?                                 // Customer Code (mandatory)
+  periodMonth   String?                                 // YYYY-MM bucket for the monthly view
+  createdById   BigInt?
+  createdAt     DateTime  @default(now())
+
+  @@index([periodMonth])
+  @@index([awb])
+  @@map("vendor_deductions")
+}
+
 // ============================ DOCUMENT / KYC VAULT ============================
 // Metadata row; the bytes live in Upload (kind='document'). Polymorphic link to
 // any entity (client / vendor / shipment) via entityType + entityId.

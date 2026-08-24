@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
+import { Deductions } from './Deductions';
 
 const TYPES = ['damage', 'loss', 'shortage', 'delay'];
 const STATUS_BADGE: Record<string, string> = {
@@ -14,6 +15,7 @@ export function Claims() {
   const [form, setForm] = useState({ ...blank });
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
+  const [tab, setTab] = useState<'claims' | 'deductions'>('claims');
 
   const load = () => { api.listClaims().then(setRows).catch((e) => setError(e.message)); };
   useEffect(load, []);
@@ -48,6 +50,16 @@ export function Claims() {
   return (
     <>
       <h1>Claims &amp; Insurance</h1>
+      <div className="card" style={{ padding: 12 }}>
+        <div className="row" style={{ gap: 8 }}>
+          <button className={tab === 'claims' ? '' : 'secondary'} style={{ padding: '8px 14px' }} onClick={() => setTab('claims')}>🛡 Claims</button>
+          <button className={tab === 'deductions' ? '' : 'secondary'} style={{ padding: '8px 14px' }} onClick={() => setTab('deductions')}>➖ Monthly Deductions</button>
+        </div>
+      </div>
+
+      {tab === 'deductions' && <Deductions />}
+
+      {tab === 'claims' && (<>
       {error && <div className="error">{error}</div>}
       {msg && <div className="card" style={{ borderLeft: '4px solid var(--brand)' }}>{msg}</div>}
 
@@ -97,6 +109,7 @@ export function Claims() {
           </tbody>
         </table>
       </div>
+      </>)}
     </>
   );
 }

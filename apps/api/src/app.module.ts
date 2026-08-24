@@ -41,6 +41,7 @@ import { CrmModule } from './modules/crm/crm.module';
 import { TaxModule } from './modules/tax/tax.module';
 import { NotesModule } from './modules/notes/notes.module';
 import { ClaimsModule } from './modules/claims/claims.module';
+import { DeductionsModule } from './modules/deductions/deductions.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { APP_INTERCEPTOR } from '@nestjs/core';
@@ -100,6 +101,7 @@ const webDist = join(__dirname, '..', '..', 'web', 'dist');
     TaxModule,
     NotesModule,
     ClaimsModule,
+    DeductionsModule,
     DocumentsModule,
     AuditModule,
   ],
