@@ -34,6 +34,7 @@ export function CreateShipment() {
   const [destPin, setDestPin] = useState('');
   const [originInfo, setOriginInfo] = useState<PinInfo | null>(null);
   const [destInfo, setDestInfo] = useState<PinInfo | null>(null);
+  const [destWarn, setDestWarn] = useState('');
 
   const [c, setC] = useState({
     consigneeName: '', consigneePhone: '', consigneeAddress: '', consigneeCity: '',
@@ -226,8 +227,17 @@ export function CreateShipment() {
       setSvcOptions(opts);
       const best = opts.find((o) => /^BLUEDART-/.test(o.network)) || opts.find((o) => o.network.startsWith('BLUEDART')) || opts[0];
       if (best) setSvc((s) => ({ ...s, vendor: best.network, service: best.mode || s.service }));
-      if (best?.isOda) setFlags((f) => ({ ...f, oda: true }));
-    } else { setDestInfo(null); setSvcOptions([]); }
+      // ODA is a property of the destination area — auto-set it from the pincode directory OR any
+      // serving network flagged ODA (not just whichever carrier happens to be fastest).
+      const odaAuto = (info?.isOda ?? false) || opts.some((o) => o.isOda);
+      setFlags((f) => ({ ...f, oda: odaAuto }));
+      // Warn when the destination isn't in the serviceability master (no network serves it).
+      setDestWarn(opts.length === 0
+        ? (info?.known
+            ? 'In the pincode directory, but no serviceable network covers it — confirm serviceability before booking.'
+            : 'This pincode is not in the serviceability master — check the pincode / add it under Pincodes.')
+        : '');
+    } else { setDestInfo(null); setSvcOptions([]); setDestWarn(''); }
   };
 
   const lookShipper = async (p: string) => {
@@ -256,7 +266,7 @@ export function CreateShipment() {
         destZone: destInfo?.region ?? 'SOUTH',
         originPincode: originPin || undefined,
         destPincode: destPin || undefined,
-        isOda: flags.oda || (destInfo?.isOda ?? false),
+        isOda: flags.oda || (destInfo?.isOda ?? false) || svcOptions.some((o) => o.isOda),
         apptDelivery: flags.appt,
         consigneeName: c.consigneeName || undefined,
         consigneePhone: c.consigneePhone || undefined,
@@ -449,6 +459,8 @@ export function CreateShipment() {
             <label>Destination pincode</label>
             <input value={destPin} onChange={(e) => lookDest(e.target.value)} maxLength={6} placeholder="e.g. 781001" />
             {pinHint(destInfo)}
+            {flags.oda && <div style={{ fontSize: 11, marginTop: 4, fontWeight: 700, color: 'var(--warn, #b26a00)' }}>⚠ ODA — out-of-delivery-area (auto-detected)</div>}
+            {destWarn && <div style={{ fontSize: 11.5, marginTop: 4, padding: '6px 8px', borderRadius: 8, background: '#fdecea', border: '1px solid #e0736a', color: '#a4291e' }}>⚠ {destWarn}</div>}
           </div>
         </div>
         {/* Staff see the carrier products (they pick the vendor); clients see only the ETA. */}
