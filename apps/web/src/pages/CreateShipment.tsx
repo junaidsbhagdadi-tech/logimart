@@ -35,6 +35,7 @@ export function CreateShipment() {
   const [originInfo, setOriginInfo] = useState<PinInfo | null>(null);
   const [destInfo, setDestInfo] = useState<PinInfo | null>(null);
   const [destWarn, setDestWarn] = useState('');
+  const [destBlocked, setDestBlocked] = useState(false); // dest pincode not in the master → block booking
 
   const [c, setC] = useState({
     consigneeName: '', consigneePhone: '', consigneeAddress: '', consigneeCity: '',
@@ -231,13 +232,17 @@ export function CreateShipment() {
       // serving network flagged ODA (not just whichever carrier happens to be fastest).
       const odaAuto = (info?.isOda ?? false) || opts.some((o) => o.isOda);
       setFlags((f) => ({ ...f, oda: odaAuto }));
-      // Warn when the destination isn't in the serviceability master (no network serves it).
-      setDestWarn(opts.length === 0
-        ? (info?.known
-            ? 'In the pincode directory, but no serviceable network covers it — confirm serviceability before booking.'
-            : 'This pincode is not in the serviceability master — check the pincode / add it under Pincodes.')
-        : '');
-    } else { setDestInfo(null); setSvcOptions([]); setDestWarn(''); }
+      // Hard-block if the pincode isn't in the master; soft-warn if it's known but unserved.
+      if (info && info.known === false) {
+        setDestBlocked(true);
+        setDestWarn('This pincode is not in the pincode master — booking is blocked. Add it under Pincodes first.');
+      } else {
+        setDestBlocked(false);
+        setDestWarn(opts.length === 0 && info?.known
+          ? 'In the pincode directory, but no serviceable network covers it — confirm serviceability before booking.'
+          : '');
+      }
+    } else { setDestInfo(null); setSvcOptions([]); setDestWarn(''); setDestBlocked(false); }
   };
 
   const lookShipper = async (p: string) => {
@@ -735,8 +740,8 @@ export function CreateShipment() {
         </div>
       </div>
 
-      <button onClick={submit} disabled={busy || !clientId || pieces.some((p) => !p.deadKg)}>
-        {busy ? 'Creating…' : `Create AWB + ${pieces.length} child labels`}
+      <button onClick={submit} disabled={busy || !clientId || destBlocked || pieces.some((p) => !p.deadKg)}>
+        {busy ? 'Creating…' : destBlocked ? 'Destination pincode not serviceable' : `Create AWB + ${pieces.length} child labels`}
       </button>
     </>
   );

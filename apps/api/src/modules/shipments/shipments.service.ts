@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Prisma, ShipmentStatus, PieceStatus, ScanCheckpoint } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -110,6 +110,10 @@ export class ShipmentsService {
       dto.originPincode ? this.prisma.pincode.findUnique({ where: { pincode: dto.originPincode } }) : null,
       dto.destPincode ? this.prisma.pincode.findUnique({ where: { pincode: dto.destPincode } }) : null,
     ]);
+    // Hard-block: a supplied destination pincode must exist in the pincode master.
+    if (dto.destPincode && !destPin) {
+      throw new BadRequestException(`Destination pincode ${dto.destPincode} is not in the pincode master — add it under Pincodes before booking.`);
+    }
     const zoneFor = (pin: any, pincode?: string, fallback?: string): string | undefined => {
       const fam = String(dto.product ?? '').toUpperCase();
       const isSurface = ['SURFACE', 'SFC', 'HUB'].includes(fam) || /ROAD|RAIL|SURFACE/i.test(String(dto.serviceMode ?? ''));
