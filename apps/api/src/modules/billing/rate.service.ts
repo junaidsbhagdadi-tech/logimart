@@ -394,7 +394,8 @@ export class RateService {
   }
 
   // Default DEL/NCR pincode prefixes (editable via SETTING · GREEN_TAX · attrs.prefixes).
-  private static NCR_PREFIXES = ['110', '111', '121', '122', '124', '131', '201', '203', '245'];
+  // Delhi (110), Faridabad (121), Gurgaon/Gurugram (122), Noida + Ghaziabad (201).
+  private static NCR_PREFIXES = ['110', '121', '122', '201'];
 
   /**
    * Green tax (environmental surcharge) applicability. Only DEL/NCR shipments qualify, gated by a

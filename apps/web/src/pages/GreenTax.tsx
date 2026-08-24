@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 
-const DEFAULT_PREFIXES = ['110', '111', '121', '122', '124', '131', '201', '203', '245'];
+const DEFAULT_PREFIXES = ['110', '121', '122', '201'];
 const DIRECTIONS = [
   { v: 'INBOUND', label: 'Inbound — delivered into DEL/NCR (destination)' },
   { v: 'OUTBOUND', label: 'Outbound — picked up in DEL/NCR (origin)' },
@@ -52,7 +52,7 @@ export function GreenTax() {
           <label>DEL/NCR pincode prefixes <span className="muted">(comma-separated — a pincode is DEL/NCR if it starts with any of these)</span></label>
           <textarea value={prefixes} onChange={(e) => setPrefixes(e.target.value)} rows={2} style={{ width: '100%', fontFamily: 'monospace' }} />
           <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
-            Defaults cover Delhi (110/111), Faridabad (121), Gurugram (122), Rohtak/Bahadurgarh (124), Sonipat (131), Noida/Ghaziabad (201), Bulandshahr (203), Hapur (245). Add/remove to match your NCR policy.
+            Covers Delhi (110), Faridabad (121), Gurgaon/Gurugram (122), Noida &amp; Ghaziabad (201). Add/remove prefixes to match your NCR policy.
           </div>
         </div>
 
