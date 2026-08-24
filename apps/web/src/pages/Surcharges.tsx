@@ -8,6 +8,11 @@ const OSW_DEFAULT = [
   { fromKg: 201, toKg: 999999, perKg: '' },
 ];
 const RAS_STATES = ['Bihar', 'Jharkhand', 'Jammu & Kashmir', 'Kerala'];
+const MCC_CITIES = [
+  { code: 'BOM', name: 'Mumbai' }, { code: 'DEL', name: 'Delhi' }, { code: 'GGN', name: 'Gurgaon' },
+  { code: 'NDA', name: 'Noida' }, { code: 'MAA', name: 'Chennai' }, { code: 'BLR', name: 'Bangalore' },
+  { code: 'HYD', name: 'Hyderabad' }, { code: 'AHD', name: 'Ahmedabad' }, { code: 'CCU', name: 'Kolkata' },
+];
 const slabLabel = (s: { fromKg: number; toKg: number }) => (s.toKg >= 999999 ? `${s.fromKg} kg & above` : `${s.fromKg}–${s.toKg} kg`);
 
 export function Surcharges() {
@@ -16,6 +21,7 @@ export function Surcharges() {
   const [slabs, setSlabs] = useState(OSW_DEFAULT.map((s) => ({ ...s })));
   const [rasPerKg, setRasPerKg] = useState('');
   const [rasStates, setRasStates] = useState<string[]>([...RAS_STATES]);
+  const [mccCities, setMccCities] = useState<string[]>(MCC_CITIES.map((c) => c.code));
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
 
@@ -32,6 +38,8 @@ export function Surcharges() {
         if (ras.attrs.perKg != null) setRasPerKg(String(ras.attrs.perKg));
         if (Array.isArray(ras.attrs.states) && ras.attrs.states.length) setRasStates(ras.attrs.states);
       }
+      const mcc = rows.find((r) => r.code === 'MCC');
+      if (mcc?.attrs && Array.isArray(mcc.attrs.cities) && mcc.attrs.cities.length) setMccCities(mcc.attrs.cities.map((c: any) => String(c).toUpperCase()));
     }).catch(() => {});
   }, []);
 
@@ -51,6 +59,14 @@ export function Surcharges() {
     } catch (e: any) { setError(e.message); }
   };
   const toggleState = (s: string) => setRasStates((cur) => (cur.includes(s) ? cur.filter((x) => x !== s) : [...cur, s]));
+  const toggleCity = (c: string) => setMccCities((cur) => (cur.includes(c) ? cur.filter((x) => x !== c) : [...cur, c]));
+  const saveMcc = async () => {
+    setMsg(''); setError('');
+    try {
+      await api.saveMaster('SETTING', { code: 'MCC', name: 'MCC — Metro Congestion Charge (metro cities)', attrs: { cities: mccCities }, active: true });
+      setMsg('✓ MCC cities saved.');
+    } catch (e: any) { setError(e.message); }
+  };
 
   return (
     <>
@@ -100,6 +116,19 @@ export function Surcharges() {
           ))}
         </div>
         <button style={{ marginTop: 16 }} onClick={saveRas}>Save RAS</button>
+      </div>
+
+      <div className="card">
+        <h2 style={{ marginTop: 0 }}>🏙 MCC — Metro Congestion Charge</h2>
+        <p className="muted" style={{ marginTop: -6, fontSize: 13 }}>The Metro Congestion Charge (a rate-card charge) is billed <strong>only</strong> when the shipment's <strong>origin or destination</strong> is one of these metros. Set the ₹ rate on the customer's rate card (charge code <strong>MCC</strong>); this list controls where it applies.</p>
+        <div className="row" style={{ gap: 16, flexWrap: 'wrap', marginTop: 4 }}>
+          {MCC_CITIES.map((c) => (
+            <label key={c.code} className="row" style={{ gap: 6, alignItems: 'center', fontWeight: 600 }}>
+              <input type="checkbox" style={{ width: 'auto' }} checked={mccCities.includes(c.code)} onChange={() => toggleCity(c.code)} /> {c.name} <span className="muted" style={{ fontWeight: 400 }}>({c.code})</span>
+            </label>
+          ))}
+        </div>
+        <button style={{ marginTop: 16 }} onClick={saveMcc}>Save MCC cities</button>
       </div>
     </>
   );

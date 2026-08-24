@@ -431,6 +431,30 @@ export class RateService {
     return { thresholdCm, thresholdKg, slabs };
   }
 
+  // Metro city → accepted aliases (codes + common names), for MCC matching.
+  private static METRO_ALIAS: Record<string, string[]> = {
+    BOM: ['BOM', 'MUMBAI', 'BOMBAY', 'NAVIMUMBAI'], DEL: ['DEL', 'DELHI', 'NEWDELHI'],
+    GGN: ['GGN', 'GURGAON', 'GURUGRAM'], NDA: ['NDA', 'NOIDA', 'GREATERNOIDA'],
+    MAA: ['MAA', 'CHENNAI', 'MADRAS'], BLR: ['BLR', 'BANGALORE', 'BENGALURU'],
+    HYD: ['HYD', 'HYDERABAD', 'SECUNDERABAD'], AHD: ['AHD', 'AHMEDABAD', 'AMDAVAD'],
+    CCU: ['CCU', 'KOLKATA', 'CALCUTTA'],
+  };
+
+  /** MCC (Metro Congestion Charge) config: the metro cities it applies to (origin or destination). */
+  private async mccSetting(): Promise<string[]> {
+    const cfg = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'SETTING', code: 'MCC' } } }).catch(() => null);
+    const a: any = cfg?.attrs || {};
+    const cities = Array.isArray(a.cities) && a.cities.length ? a.cities : Object.keys(RateService.METRO_ALIAS);
+    return cities.map((c: any) => String(c).toUpperCase());
+  }
+
+  /** True if the shipment's origin OR destination city is one of the configured metros. */
+  private metroApplies(cities: string[], destPin: any, originPin: any, shipment: any): boolean {
+    const norm = (s: any) => String(s ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const tokens = new Set([destPin?.city, originPin?.city, shipment.consigneeCity, shipment.originLocation, shipment.shipperCity].map(norm).filter(Boolean));
+    return cities.some((code) => (RateService.METRO_ALIAS[code] || [code]).some((alias) => tokens.has(norm(alias))));
+  }
+
   /** RAS (Remote Area Surcharge) config: per-kg rate + the destination states it applies to. */
   private async rasSetting(): Promise<{ perKg: number; states: string[] }> {
     const cfg = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'SETTING', code: 'RAS' } } }).catch(() => null);
@@ -589,6 +613,7 @@ export class RateService {
 
     // Custom charges: any CHARGE-master code configured on the card beyond the built-in heads.
     const BUILT_IN = new Set(['FOV', 'ODA', 'TOPAY', 'APPT', 'LOADING', 'UNLOADING', 'DOCKET', 'AWB', 'EMERGENCY', 'ENVIRONMENT', 'ENVIRONMENTAL', 'OSP', 'FSC', 'FUEL', 'FREIGHT']);
+    const mccCities = await this.mccSetting();
     const customLines: { head: string; amount: number }[] = [];
     let customTotal = 0;
     let fuelableExtra = 0; // custom charges flagged "FSC applicable" — fuel is charged on these too
@@ -598,6 +623,9 @@ export class RateService {
       // value: rate-card override → master default (cargo only) → 0. Courier bills only card values.
       const v = cget(cm.code, 'value', 0);
       if (!v) continue;
+      // Metro Congestion Charge: only when origin/destination is one of the configured metros.
+      const isMcc = code === 'MCC' || /metro|congest/i.test(cm.name);
+      if (isMcc && !this.metroApplies(mccCities, destPin, originPin, shipment)) continue;
       const cmin = cget(cm.code, 'min', 0);
       // "Chargeable/Actual Weight" bill per chargeable kg; Freight/Value are %; else FLAT ₹.
       const baseOn = String((cm.attrs as any)?.baseOn || 'FLAT').toUpperCase();
