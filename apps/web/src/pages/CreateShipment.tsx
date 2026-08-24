@@ -92,20 +92,6 @@ export function CreateShipment() {
   })();
   // To-Pay applies only to reverse-pickup products.
   const isReverseProduct = ['TAPEX', 'TOSFC', 'TODP'].includes(String(product).toUpperCase());
-  // Re-pick the carrier to match the product's mode when the product changes (unless staff overrode it).
-  useEffect(() => {
-    if (vendorTouched || !svcOptions.length) return;
-    const air = /AIR/i.test(serviceMode);
-    const opts = svcOptions.filter((o) => { const mm = String(o.mode || '').toUpperCase(); return air ? /AIR|EXP/.test(mm) : /SURF|ROAD|RAIL/.test(mm); });
-    const list = opts.length ? opts : svcOptions;
-    if (!list.some((o) => o.network === svc.vendor)) {
-      const best = list.find((o) => /^BLUEDART/.test(o.network)) || list[0];
-      if (best) setSvc((s) => ({ ...s, vendor: best.network, service: best.mode || s.service }));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [product, svcOptions, vendorTouched, serviceMode]);
-  // To-Pay is only valid for reverse products — force Prepaid otherwise.
-  useEffect(() => { if (!isReverseProduct && paymentTerm === 'TO_PAY') setPaymentTerm('PREPAID'); }, [isReverseProduct, paymentTerm]);
   // Show the VENDOR name on carrier chips (not the raw "VENDOR-PRODUCT" network code).
   const vendorLabel = (network: string) => {
     const norm = (s: string) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -223,6 +209,20 @@ export function CreateShipment() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isClient, shp.shipperPincode]);
   useEffect(() => { api.listVendors().then((v) => setVendors(v.filter((x: any) => x.isActive !== false))).catch(() => {}); }, []);
+  // Re-pick the carrier to match the product's mode when the product changes (unless staff overrode it).
+  useEffect(() => {
+    if (vendorTouched || !svcOptions.length) return;
+    const air = /AIR/i.test(serviceMode);
+    const opts = svcOptions.filter((o) => { const mm = String(o.mode || '').toUpperCase(); return air ? /AIR|EXP/.test(mm) : /SURF|ROAD|RAIL/.test(mm); });
+    const list = opts.length ? opts : svcOptions;
+    if (!list.some((o) => o.network === svc.vendor)) {
+      const best = list.find((o) => /^BLUEDART/.test(o.network)) || list[0];
+      if (best) setSvc((s) => ({ ...s, vendor: best.network, service: best.mode || s.service }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product, svcOptions, vendorTouched, serviceMode]);
+  // To-Pay is only valid for reverse products — force Prepaid otherwise.
+  useEffect(() => { if (!isReverseProduct && paymentTerm === 'TO_PAY') setPaymentTerm('PREPAID'); }, [isReverseProduct, paymentTerm]);
   useEffect(() => {
     api.listHubs().then((hs) => {
       setHubs(hs);
