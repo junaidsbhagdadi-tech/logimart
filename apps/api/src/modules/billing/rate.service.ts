@@ -22,7 +22,8 @@ export interface ChargeBreakup {
   awb?: number;
   emergency?: number;
   environment?: number;
-  osp?: number;
+  osp?: number; // OSW oversize/overweight (kept as `osp` for back-compat)
+  ras?: number; // Remote Area Surcharge
   subtotal: number; // pre-GST total of all charge heads
   lines: { code?: string; head: string; amount: number }[];
   overridden?: boolean; // true when a manual per-shipment charge override was applied
@@ -418,6 +419,26 @@ export class RateService {
     return destNcr; // INBOUND (default): only when delivered into DEL/NCR
   }
 
+  /** OSW (oversize/overweight) config: dimension threshold + per-kg rate by weight slab. */
+  private async oswSetting(): Promise<{ thresholdCm: number; slabs: { fromKg: number; toKg: number; perKg: number }[] }> {
+    const cfg = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'SETTING', code: 'OSW' } } }).catch(() => null);
+    const a: any = cfg?.attrs || {};
+    const thresholdCm = Number(a.thresholdCm) > 0 ? Number(a.thresholdCm) : 119;
+    const slabs = (Array.isArray(a.slabs) ? a.slabs : [])
+      .map((s: any) => ({ fromKg: Number(s.fromKg) || 0, toKg: Number(s.toKg) > 0 ? Number(s.toKg) : 1e9, perKg: Number(s.perKg) || 0 }))
+      .filter((s: any) => s.perKg > 0);
+    return { thresholdCm, slabs };
+  }
+
+  /** RAS (Remote Area Surcharge) config: per-kg rate + the destination states it applies to. */
+  private async rasSetting(): Promise<{ perKg: number; states: string[] }> {
+    const cfg = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'SETTING', code: 'RAS' } } }).catch(() => null);
+    const a: any = cfg?.attrs || {};
+    const perKg = Number(a.perKg) || 0;
+    const states = (Array.isArray(a.states) ? a.states : []).map((s: any) => String(s).toLowerCase().replace(/[^a-z]/g, '')).filter(Boolean);
+    return { perKg, states };
+  }
+
   /**
    * EDL (= ODA) from the network's standard matrix when the destination pincode is an
    * EDL location. Matrix cell by (distance-km band × chargeable-weight band); fallbacks:
@@ -497,14 +518,15 @@ export class RateService {
     if (fovPct > 0 || fovMin > 0) fov = r2(Math.max((invVal * fovPct) / 100, fovMin));
     // ODA / EDL apply to CARGO products only — never to DP/courier.
     // For cargo: the network EDL matrix wins when the destination is an EDL location; else the card's ODA.
+    // Load origin/dest pincode rows once (cargo only) — reused by ODA, EDL and RAS.
+    const [destPin, originPin] = !isCourier ? await Promise.all([
+      shipment.destPincode ? this.prisma.pincode.findUnique({ where: { pincode: shipment.destPincode } }) : null,
+      shipment.shipperPincode ? this.prisma.pincode.findUnique({ where: { pincode: shipment.shipperPincode } }) : null,
+    ]) : [null, null];
     let oda = 0;
     let odaLabel = 'ODA';
     if (!isCourier) {
       // ODA applies if EITHER end is an out-of-delivery-area pincode — pickup ODA counts too.
-      const [destPin, originPin] = await Promise.all([
-        shipment.destPincode ? this.prisma.pincode.findUnique({ where: { pincode: shipment.destPincode } }) : null,
-        shipment.shipperPincode ? this.prisma.pincode.findUnique({ where: { pincode: shipment.shipperPincode } }) : null,
-      ]);
       const edl = await this.edlCharge(this.deriveNetwork(shipment), destPin, chargeableKg);
       const odaFlat = cget('ODA', 'value', card.odaFlat), odaMin = cget('ODA', 'min', card.odaMin);
       const odaPerKg = cget('ODA', 'perKg', card.odaPerKg);
@@ -533,8 +555,24 @@ export class RateService {
     const bands: any[] = Array.isArray(card.handlingBands) ? card.handlingBands : [];
     const hb = bands.find((b) => chargeableKg >= Number(b.fromKg ?? 0) && chargeableKg <= Number(b.toKg ?? 1e9));
     const handling = hb ? r2(Number(hb.perPcs ?? 0) * pcs) : 0;
-    const oversize = pieces.some((p) => Number(p.deadKg) > 69 || [p.lengthCm, p.widthCm, p.heightCm].some((d) => Number(d || 0) > 119));
-    const osp = oversize ? r2(cget('OSP', 'value', card.ospCharge)) : 0;
+    // OSW (oversize/overweight): any piece dimension over the threshold (default 119cm) → per-kg by
+    // the chargeable-weight slab (Masters · SETTING/OSW). Falls back to the card's flat OSP if unset.
+    const oswCfg = await this.oswSetting();
+    const overDim = pieces.some((p) => [p.lengthCm, p.widthCm, p.heightCm].some((d) => Number(d || 0) > oswCfg.thresholdCm));
+    let osw = 0;
+    if (oswCfg.slabs.length) {
+      if (overDim) { const slab = oswCfg.slabs.find((s) => chargeableKg >= s.fromKg && chargeableKg <= s.toKg); if (slab) osw = r2(chargeableKg * slab.perKg); }
+    } else {
+      const oversize = pieces.some((p) => Number(p.deadKg) > 69 || [p.lengthCm, p.widthCm, p.heightCm].some((d) => Number(d || 0) > 119));
+      osw = oversize ? r2(cget('OSP', 'value', card.ospCharge)) : 0;
+    }
+    // RAS (Remote Area Surcharge): cargo only, per-kg for configured destination states (Masters · SETTING/RAS).
+    let ras = 0;
+    if (!isCourier) {
+      const rasCfg = await this.rasSetting();
+      const st = String(destPin?.state ?? shipment.consigneeState ?? '').toLowerCase().replace(/[^a-z]/g, '');
+      if (rasCfg.perKg > 0 && st && rasCfg.states.includes(st)) ras = r2(chargeableKg * rasCfg.perKg);
+    }
 
     // Custom charges: any CHARGE-master code configured on the card beyond the built-in heads.
     const BUILT_IN = new Set(['FOV', 'ODA', 'TOPAY', 'APPT', 'LOADING', 'UNLOADING', 'DOCKET', 'AWB', 'EMERGENCY', 'ENVIRONMENT', 'ENVIRONMENTAL', 'OSP', 'FSC', 'FUEL', 'FREIGHT']);
@@ -575,17 +613,18 @@ export class RateService {
     if (emergency > 0) lines.push({ code: 'EMERGENCY', head: `Emergency surcharge ${cget('EMERGENCY', 'value', card.emergencyCharge)}% of freight`, amount: emergency });
     if (environment > 0) lines.push({ code: 'ENVIRONMENT', head: 'Environmental surcharge', amount: environment });
     if (handling > 0) lines.push({ code: 'HANDLING', head: 'Handling', amount: handling });
-    if (osp > 0) lines.push({ code: 'OSP', head: 'OSP (oversize)', amount: osp });
+    if (osw > 0) lines.push({ code: 'OSW', head: 'OSW (oversize/overweight)', amount: osw });
+    if (ras > 0) lines.push({ code: 'RAS', head: 'RAS (Remote Area Surcharge)', amount: ras });
     if (topay > 0) lines.push({ code: 'TOPAY', head: 'To-Pay charge', amount: topay });
     if (appt > 0) lines.push({ code: 'APPT', head: `Appointment delivery (${cget('APPT', 'value', card.apptCharge)}/kg${apptMin ? `, min ₹${apptMin}` : ''})`, amount: appt });
     if (loading > 0) lines.push({ code: 'LOADING', head: 'Loading', amount: loading });
     if (unloading > 0) lines.push({ code: 'UNLOADING', head: 'Unloading', amount: unloading });
     if (docket > 0) lines.push({ code: 'DOCKET', head: 'Docket', amount: docket });
     for (const cl of customLines) lines.push({ code: `CUSTOM:${cl.head.toUpperCase()}`, head: cl.head, amount: cl.amount });
-    const subtotal = r2(freight + fuel + fov + oda + awb + emergency + environment + handling + osp + topay + appt + loading + unloading + docket + customTotal);
+    const subtotal = r2(freight + fuel + fov + oda + awb + emergency + environment + handling + osw + ras + topay + appt + loading + unloading + docket + customTotal);
     return {
       chargeableKg, freight, fuel, fov, oda, docket, handling, topay, appt, loading, unloading,
-      awb, emergency, environment, osp,
+      awb, emergency, environment, osp: osw, ras,
       subtotal, lines, basis: `card ${card.network}/${card.product} — ${priceBasis}`,
     };
   }

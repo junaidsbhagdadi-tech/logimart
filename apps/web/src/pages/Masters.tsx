@@ -3,6 +3,7 @@ import { api } from '../api';
 import { Modal } from '../components/Modal';
 import { AirFuelDefaults } from '../components/AirFuelDefaults';
 import { GreenTax } from './GreenTax';
+import { Surcharges } from './Surcharges';
 
 type Field = { key: string; label: string; type?: 'text' | 'number' | 'select' | 'checkbox'; options?: string[]; attr?: boolean };
 type MasterDef = { key: string; label: string; icon: string; fields: Field[] };
@@ -106,7 +107,7 @@ const MASTERS: MasterDef[] = [
 
 export function Masters() {
   const [typeKey, setTypeKey] = useState(MASTERS[0].key);
-  const [panel, setPanel] = useState<'master' | 'green'>('master');
+  const [panel, setPanel] = useState<'master' | 'green' | 'surcharges'>('master');
   const def = MASTERS.find((m) => m.key === typeKey)!;
   const [rows, setRows] = useState<any[]>([]);
   const [form, setForm] = useState<Record<string, any>>({});
@@ -223,10 +224,12 @@ export function Masters() {
             </button>
           ))}
           <button className={panel === 'green' ? '' : 'secondary'} style={{ padding: '8px 14px' }} onClick={() => setPanel('green')}>🌱 Green Tax</button>
+          <button className={panel === 'surcharges' ? '' : 'secondary'} style={{ padding: '8px 14px' }} onClick={() => setPanel('surcharges')}>📦 OSW / RAS</button>
         </div>
       </div>
 
       {panel === 'green' && <GreenTax />}
+      {panel === 'surcharges' && <Surcharges />}
       {panel === 'master' && (<>
 
       {error && <div className="error">{error}</div>}
