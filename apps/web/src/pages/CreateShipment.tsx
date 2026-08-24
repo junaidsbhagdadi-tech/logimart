@@ -84,6 +84,17 @@ export function CreateShipment() {
     const t = svcOptions.map((o) => o.tatDays).filter((n): n is number => n != null);
     return t.length ? Math.min(...t) : null;
   })();
+  // Show the VENDOR name on carrier chips (not the raw "VENDOR-PRODUCT" network code).
+  const vendorLabel = (network: string) => {
+    const norm = (s: string) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const prefix = String(network || '').split('-')[0];
+    const np = norm(prefix);
+    const v = vendors.find((x) => {
+      const nm = norm(x.name), cd = norm(x.vendorCode);
+      return !!np && (cd === np || nm === np || (nm && nm.startsWith(np)) || (cd && np.startsWith(cd)));
+    });
+    return v ? v.name : prefix;
+  };
 
   const [pieces, setPieces] = useState<PieceForm[]>([{ ...blank }]);
   const [manualFreight, setManualFreight] = useState('');
@@ -471,7 +482,7 @@ export function CreateShipment() {
         {/* Staff see the carrier products (they pick the vendor); clients see only the ETA. */}
         {!isClient && svcOptions.length > 0 && (
           <div style={{ marginTop: 10, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10, background: '#f6f9f4' }}>
-            <div className="muted" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 6 }}>Carrier products serving {destPin} — fastest auto-picked</div>
+            <div className="muted" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 6 }}>Carriers serving {destPin} — fastest auto-picked</div>
             <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
               {svcOptions.map((o) => {
                 const picked = o.network === svc.vendor;
@@ -479,8 +490,9 @@ export function CreateShipment() {
                   <button key={o.network} type="button"
                     className={picked ? '' : 'secondary'}
                     style={{ padding: '6px 12px', fontSize: 12 }}
+                    title={o.network}
                     onClick={() => setSvc((s) => ({ ...s, vendor: o.network, service: o.mode || s.service }))}>
-                    {o.network} · {o.mode ?? '—'} · {o.tatDays != null ? `${o.tatDays}d` : 'TAT ?'}{o.isOda ? ' · ODA' : ''}{picked ? ' ✓' : ''}
+                    {vendorLabel(o.network)} · {o.mode ?? '—'} · {o.tatDays != null ? `${o.tatDays}d` : 'TAT ?'}{o.isOda ? ' · ODA' : ''}{picked ? ' ✓' : ''}
                   </button>
                 );
               })}
