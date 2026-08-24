@@ -120,6 +120,13 @@ export class ShipmentsController {
     return this.shipments.collectFreight(awb, dto.amount, BigInt(req.user.sub));
   }
 
+  /** Manually override this shipment's charges (finance/ops). Body: { overrides: { CODE: amount } } or null to clear. */
+  @Post(':awb/charge-overrides')
+  @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  setChargeOverrides(@Param('awb') awb: string, @Body() dto: { overrides: Record<string, number> | null }) {
+    return this.shipments.setChargeOverrides(awb, dto?.overrides ?? null);
+  }
+
   /** Booking-time payment at the counter: cash or wallet debit. Returns receipt data. */
   @Post(':awb/pay')
   @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)

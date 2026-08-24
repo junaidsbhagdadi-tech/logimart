@@ -24,7 +24,8 @@ export interface ChargeBreakup {
   environment?: number;
   osp?: number;
   subtotal: number; // pre-GST total of all charge heads
-  lines: { head: string; amount: number }[];
+  lines: { code?: string; head: string; amount: number }[];
+  overridden?: boolean; // true when a manual per-shipment charge override was applied
   basis: string; // 'card:… | slab… | per-kg | ftl | manual'
 }
 
@@ -553,28 +554,28 @@ export class RateService {
     // Charges marked "FSC applicable" add to the fuel-surcharge base.
     if (fuelableExtra > 0 && fuelPct > 0) fuel = r2(fuel + (fuelableExtra * fuelPct) / 100);
 
-    const lines = [{ head: `Freight (${priceBasis})`, amount: freight }];
+    const lines: { code: string; head: string; amount: number }[] = [{ code: 'FREIGHT', head: `Freight (${priceBasis})`, amount: freight }];
     // Diesel Surcharge only for surface (DSC); air/express/DP show flat "Fuel".
     const fscLabel = useDsc ? 'Diesel Surcharge' : 'Fuel';
-    if (fuel > 0) lines.push({ head: `${fscLabel} ${fuelPct}%`, amount: fuel });
+    if (fuel > 0) lines.push({ code: 'FUEL', head: `${fscLabel} ${fuelPct}%`, amount: fuel });
     if (fov > 0) {
       // Label from the EFFECTIVE FOV (charges JSON), not the stale card.fovPct column — otherwise a
       // card that bills 0.2% via `charges` mis-shows "FOV 0%". Flag when the ₹ minimum dominated.
       const byMin = (invVal * fovPct) / 100 < fovMin;
-      lines.push({ head: byMin ? `FOV (min ₹${fovMin})` : `FOV ${fovPct}% on ₹${invVal}`, amount: fov });
+      lines.push({ code: 'FOV', head: byMin ? `FOV (min ₹${fovMin})` : `FOV ${fovPct}% on ₹${invVal}`, amount: fov });
     }
-    if (oda > 0) lines.push({ head: odaLabel, amount: oda });
-    if (awb > 0) lines.push({ head: 'Airwaybill charges', amount: awb });
-    if (emergency > 0) lines.push({ head: `Emergency surcharge ${cget('EMERGENCY', 'value', card.emergencyCharge)}% of freight`, amount: emergency });
-    if (environment > 0) lines.push({ head: 'Environmental surcharge', amount: environment });
-    if (handling > 0) lines.push({ head: 'Handling', amount: handling });
-    if (osp > 0) lines.push({ head: 'OSP (oversize)', amount: osp });
-    if (topay > 0) lines.push({ head: 'To-Pay charge', amount: topay });
-    if (appt > 0) lines.push({ head: `Appointment delivery (${cget('APPT', 'value', card.apptCharge)}/kg${apptMin ? `, min ₹${apptMin}` : ''})`, amount: appt });
-    if (loading > 0) lines.push({ head: 'Loading', amount: loading });
-    if (unloading > 0) lines.push({ head: 'Unloading', amount: unloading });
-    if (docket > 0) lines.push({ head: 'Docket', amount: docket });
-    for (const cl of customLines) lines.push(cl);
+    if (oda > 0) lines.push({ code: 'ODA', head: odaLabel, amount: oda });
+    if (awb > 0) lines.push({ code: 'AWB', head: 'Airwaybill charges', amount: awb });
+    if (emergency > 0) lines.push({ code: 'EMERGENCY', head: `Emergency surcharge ${cget('EMERGENCY', 'value', card.emergencyCharge)}% of freight`, amount: emergency });
+    if (environment > 0) lines.push({ code: 'ENVIRONMENT', head: 'Environmental surcharge', amount: environment });
+    if (handling > 0) lines.push({ code: 'HANDLING', head: 'Handling', amount: handling });
+    if (osp > 0) lines.push({ code: 'OSP', head: 'OSP (oversize)', amount: osp });
+    if (topay > 0) lines.push({ code: 'TOPAY', head: 'To-Pay charge', amount: topay });
+    if (appt > 0) lines.push({ code: 'APPT', head: `Appointment delivery (${cget('APPT', 'value', card.apptCharge)}/kg${apptMin ? `, min ₹${apptMin}` : ''})`, amount: appt });
+    if (loading > 0) lines.push({ code: 'LOADING', head: 'Loading', amount: loading });
+    if (unloading > 0) lines.push({ code: 'UNLOADING', head: 'Unloading', amount: unloading });
+    if (docket > 0) lines.push({ code: 'DOCKET', head: 'Docket', amount: docket });
+    for (const cl of customLines) lines.push({ code: `CUSTOM:${cl.head.toUpperCase()}`, head: cl.head, amount: cl.amount });
     const subtotal = r2(freight + fuel + fov + oda + awb + emergency + environment + handling + osp + topay + appt + loading + unloading + docket + customTotal);
     return {
       chargeableKg, freight, fuel, fov, oda, docket, handling, topay, appt, loading, unloading,
@@ -584,10 +585,41 @@ export class RateService {
   }
 
   /**
-   * Resolve charges for a shipment: manual override > FTL flat rate >
-   * customer rate card (revamped) > legacy weight-slab tariff > per-kg card.
+   * Charges for a shipment, with any manual per-shipment overrides applied on top of the computed
+   * tariff. This is the single entry point used by quotes, invoicing, and reweigh comparisons.
    */
   async chargesForShipment(shipment: any, pieces: WeightLike[]): Promise<ChargeBreakup | null> {
+    const breakup = await this.resolveCharges(shipment, pieces);
+    return this.applyOverrides(shipment, breakup);
+  }
+
+  /** Manual per-shipment charge overrides: shipment.chargeOverrides = { CODE|head: amount }. A matching
+   *  line's amount is replaced; freight/fuel typed totals + subtotal are recomputed so invoicing agrees. */
+  private applyOverrides(shipment: any, breakup: ChargeBreakup | null): ChargeBreakup | null {
+    if (!breakup) return breakup;
+    const ov = shipment?.chargeOverrides;
+    if (!ov || typeof ov !== 'object' || Array.isArray(ov)) return breakup;
+    const map: Record<string, any> = ov;
+    const keyOf = (l: any) => String(l.code ?? l.head).toUpperCase();
+    let changed = false;
+    for (const l of breakup.lines as any[]) {
+      const v = map[keyOf(l)] ?? map[l.head] ?? map[l.code];
+      if (v != null && v !== '' && !isNaN(Number(v))) { l.amount = r2(Number(v)); changed = true; }
+    }
+    if (!changed) return breakup;
+    const find = (code: string) => (breakup.lines as any[]).find((l) => keyOf(l) === code);
+    const fr = find('FREIGHT'); if (fr) breakup.freight = fr.amount;
+    const fu = find('FUEL'); if (fu) breakup.fuel = fu.amount;
+    breakup.subtotal = r2((breakup.lines as any[]).reduce((t, l) => t + Number(l.amount || 0), 0));
+    breakup.overridden = true;
+    return breakup;
+  }
+
+  /**
+   * Resolve charges for a shipment: manual freight override > FTL flat rate >
+   * customer rate card (revamped) > legacy weight-slab tariff > per-kg card.
+   */
+  private async resolveCharges(shipment: any, pieces: WeightLike[]): Promise<ChargeBreakup | null> {
     const chargeableKg = await this.chargeableKgFor(shipment, pieces);
 
     // 1) one-time / agreed manual freight override

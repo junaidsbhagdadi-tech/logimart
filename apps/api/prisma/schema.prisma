@@ -442,6 +442,7 @@ model Shipment {
   // ---- consignment / India compliance ----
   lrNumber       String?   @unique // Lorry Receipt / GC Note number
   declaredValue  Decimal?  @db.Decimal(14, 2) // goods value (e-way bill threshold)
+  chargeOverrides Json?    // manual per-shipment charge overrides { CODE: amount } — wins over computed
   hsnCode        String?
   goodsDesc      String?
   consignorGstin String?

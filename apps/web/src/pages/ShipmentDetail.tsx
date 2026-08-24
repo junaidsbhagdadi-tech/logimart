@@ -11,8 +11,11 @@ export function ShipmentDetail() {
   const canReweigh = ['WAREHOUSE_HANDLER', 'HUB_MANAGER', 'FINANCE_EXEC', 'SYS_ADMIN'].includes(user?.role || '');
   const canCollect = ['DRIVER', 'HUB_MANAGER', 'FINANCE_EXEC', 'SYS_ADMIN'].includes(user?.role || '');
   const canHandover = ['HUB_MANAGER', 'FINANCE_EXEC', 'SYS_ADMIN'].includes(user?.role || '');
+  const canEditCharges = ['HUB_MANAGER', 'FINANCE_EXEC', 'SYS_ADMIN'].includes(user?.role || '');
   const [s, setS] = useState<Shipment | null>(null);
   const [quote, setQuote] = useState<RateQuote | null>(null);
+  const [editCharges, setEditCharges] = useState(false);
+  const [edited, setEdited] = useState<Record<string, string>>({});
   const [podFile, setPodFile] = useState<File | null>(null);
   const [reweighMode, setReweighMode] = useState(false);
   const [rw, setRw] = useState<Record<number, string>>({});
@@ -51,7 +54,32 @@ export function ShipmentDetail() {
 
   const getQuote = async () => {
     setError('');
-    try { setQuote(await api.rateQuote(awb!)); } catch (e: any) { setError(e.message); }
+    try { setQuote(await api.rateQuote(awb!)); setEditCharges(false); } catch (e: any) { setError(e.message); }
+  };
+
+  const lineKey = (l: { code?: string; head: string }) => l.code || l.head;
+  const startEditCharges = () => {
+    if (!quote) return;
+    const seed: Record<string, string> = {};
+    quote.lines.forEach((l) => { seed[lineKey(l)] = String(l.amount.toFixed(2)); });
+    setEdited(seed); setEditCharges(true);
+  };
+  const editedSubtotal = () => Object.values(edited).reduce((t, v) => t + (Number(v) || 0), 0);
+  const saveOverrides = async () => {
+    if (!quote) return;
+    setError(''); setMsg('');
+    // Send only heads whose amount actually changed from the computed value.
+    const overrides: Record<string, number> = {};
+    quote.lines.forEach((l) => { const v = edited[lineKey(l)]; if (v !== undefined && v !== '' && Math.abs(Number(v) - l.amount) > 0.001) overrides[lineKey(l)] = +Number(v).toFixed(2); });
+    try {
+      await api.setChargeOverrides(awb!, Object.keys(overrides).length ? overrides : null);
+      setMsg(Object.keys(overrides).length ? '✓ Charges overridden — invoice will use these amounts.' : '✓ No changes.');
+      await getQuote();
+    } catch (e: any) { setError(e.message); }
+  };
+  const resetOverrides = async () => {
+    setError(''); setMsg('');
+    try { await api.setChargeOverrides(awb!, null); setMsg('✓ Charges reset to computed tariff.'); await getQuote(); } catch (e: any) { setError(e.message); }
   };
 
   const generateEway = async () => {
@@ -260,17 +288,37 @@ export function ShipmentDetail() {
 
       {quote && (
         <div className="card" style={{ borderLeft: '4px solid var(--brand)' }}>
-          <strong>Rate quote</strong> — {quote.chargeableKg} kg chargeable{quote.isOda ? ' · ODA' : ''}
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+            <strong>Rate quote</strong> — {quote.chargeableKg} kg chargeable{quote.isOda ? ' · ODA' : ''}
+            {(quote as any).overridden && <span className="badge PARTIAL" title="Manual charge override active">✎ Overridden</span>}
+            {canEditCharges && !(s as any).invoiced && (
+              <div className="row" style={{ gap: 8 }}>
+                {!editCharges
+                  ? <><button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={startEditCharges}>✎ Edit charges</button>
+                      {(quote as any).overridden && <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={resetOverrides}>↺ Reset to computed</button>}</>
+                  : <><button style={{ padding: '4px 10px', fontSize: 12 }} onClick={saveOverrides}>Save</button>
+                      <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => setEditCharges(false)}>Cancel</button></>}
+              </div>
+            )}
+          </div>
           <table style={{ marginTop: 8 }}>
             <tbody>
               {quote.lines.map((l) => (
-                <tr key={l.head}><td>{l.head}</td><td style={{ textAlign: 'right' }}>₹{l.amount.toFixed(2)}</td></tr>
+                <tr key={lineKey(l)}>
+                  <td>{l.head}</td>
+                  <td style={{ textAlign: 'right' }}>
+                    {editCharges
+                      ? <input type="number" value={edited[lineKey(l)] ?? ''} onChange={(e) => setEdited((m) => ({ ...m, [lineKey(l)]: e.target.value }))} style={{ width: 120, textAlign: 'right', padding: '4px 8px' }} />
+                      : <>₹{l.amount.toFixed(2)}</>}
+                  </td>
+                </tr>
               ))}
-              <tr><td><strong>Subtotal</strong></td><td style={{ textAlign: 'right' }}><strong>₹{quote.subtotal.toFixed(2)}</strong></td></tr>
-              <tr><td>GST 18%</td><td style={{ textAlign: 'right' }}>₹{quote.gst.toFixed(2)}</td></tr>
-              <tr><td><strong>Grand total</strong></td><td style={{ textAlign: 'right' }}><strong>₹{quote.grandTotal.toFixed(2)}</strong></td></tr>
+              <tr><td><strong>Subtotal</strong></td><td style={{ textAlign: 'right' }}><strong>₹{(editCharges ? editedSubtotal() : quote.subtotal).toFixed(2)}</strong></td></tr>
+              <tr><td>GST 18%</td><td style={{ textAlign: 'right' }}>₹{(editCharges ? editedSubtotal() * 0.18 : quote.gst).toFixed(2)}</td></tr>
+              <tr><td><strong>Grand total</strong></td><td style={{ textAlign: 'right' }}><strong>₹{(editCharges ? editedSubtotal() * 1.18 : quote.grandTotal).toFixed(2)}</strong></td></tr>
             </tbody>
           </table>
+          {editCharges && <p className="muted" style={{ fontSize: 11, marginTop: 6 }}>Edit any charge amount and Save — the invoice for this AWB will use these amounts. Reset restores the computed tariff. Locked once invoiced.</p>}
         </div>
       )}
 

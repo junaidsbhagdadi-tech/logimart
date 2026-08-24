@@ -160,9 +160,10 @@ export interface RateQuote {
   docket: number;
   handling: number;
   subtotal: number;
-  lines: { head: string; amount: number }[];
+  lines: { code?: string; head: string; amount: number }[];
   gst: number;
   grandTotal: number;
+  overridden?: boolean;
 }
 export interface Client {
   id: string;
@@ -328,6 +329,8 @@ export const api = {
 
   // ---- finance ----
   rateQuote: (awb: string) => request<RateQuote>(`/api/v1/shipments/${awb}/rate-quote`),
+  setChargeOverrides: (awb: string, overrides: Record<string, number> | null) =>
+    request<{ ok: boolean; awb: string; overrides: Record<string, number> | null }>(`/api/v1/shipments/${awb}/charge-overrides`, { method: 'POST', body: JSON.stringify({ overrides }) }),
   transferShipment: (awb: string, clientId: string | number) =>
     request<{ awb: string; transferredTo: { id: string; legalName: string; accountCode: string } }>(`/api/v1/shipments/${awb}/transfer`, { method: 'POST', body: JSON.stringify({ clientId }) }),
   billWorksheet: (clientId: string | number, from?: string, to?: string) =>

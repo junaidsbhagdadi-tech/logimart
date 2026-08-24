@@ -518,6 +518,24 @@ export class ShipmentsService {
   }
 
   /** Master AWB with per-piece status rollup. */
+  /** Set (or clear) manual per-shipment charge overrides { CODE: amount }. Blocked once invoiced. */
+  async setChargeOverrides(awbRaw: string, overrides: Record<string, number> | null) {
+    const awb = String(awbRaw || '').trim().toUpperCase();
+    const s = await this.prisma.shipment.findUnique({
+      where: { awb },
+      select: { id: true, _count: { select: { invoiceLines: true } } },
+    });
+    if (!s) throw new NotFoundException(`AWB ${awb} not found`);
+    if (s._count.invoiceLines > 0) throw new ConflictException('This shipment is already invoiced — charges are locked.');
+    const clean = overrides && typeof overrides === 'object'
+      ? Object.fromEntries(Object.entries(overrides as Record<string, any>)
+          .filter(([, v]) => v != null && v !== '' && !isNaN(Number(v)))
+          .map(([k, v]) => [k, +Number(v).toFixed(2)]))
+      : null;
+    await this.prisma.shipment.update({ where: { id: s.id }, data: { chargeOverrides: clean && Object.keys(clean).length ? clean : Prisma.DbNull } });
+    return { ok: true, awb, overrides: clean };
+  }
+
   async findByAwb(awb: string) {
     const shipment = await this.prisma.shipment.findUnique({
       where: { awb },
