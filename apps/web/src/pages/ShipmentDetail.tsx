@@ -189,8 +189,16 @@ export function ShipmentDetail() {
 
   return (
     <>
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h1>{s.awb} {(s as any).invoiced && <span className="badge CANCELLED" title={`Invoiced${(s as any).invoiceNo ? ` on ${(s as any).invoiceNo}` : ''} — locked for editing`} style={{ fontSize: 12, verticalAlign: 'middle' }}>🔒 {(s as any).invoiceNo ?? 'INVOICED'}</span>}</h1>
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <h1 style={{ marginBottom: 2 }}>{s.awb} {(s as any).invoiced && <span className="badge CANCELLED" title={`Invoiced${(s as any).invoiceNo ? ` on ${(s as any).invoiceNo}` : ''} — locked for editing`} style={{ fontSize: 12, verticalAlign: 'middle' }}>🔒 {(s as any).invoiceNo ?? 'INVOICED'}</span>}</h1>
+          {(s as any).client && (
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--brand)' }}>
+              {(s as any).client.legalName}
+              {(s as any).client.accountCode && <span className="muted" style={{ fontWeight: 500, fontSize: 13 }}> · {(s as any).client.accountCode}</span>}
+            </div>
+          )}
+        </div>
         <div className="row">
           <button className="secondary" onClick={load}>↻ Refresh</button>
           <button className="secondary" onClick={getQuote}>₹ Rate quote</button>
