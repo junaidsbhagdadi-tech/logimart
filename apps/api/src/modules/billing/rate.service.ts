@@ -500,13 +500,19 @@ export class RateService {
     let oda = 0;
     let odaLabel = 'ODA';
     if (!isCourier) {
-      const destPin = shipment.destPincode ? await this.prisma.pincode.findUnique({ where: { pincode: shipment.destPincode } }) : null;
+      // ODA applies if EITHER end is an out-of-delivery-area pincode — pickup ODA counts too.
+      const [destPin, originPin] = await Promise.all([
+        shipment.destPincode ? this.prisma.pincode.findUnique({ where: { pincode: shipment.destPincode } }) : null,
+        shipment.shipperPincode ? this.prisma.pincode.findUnique({ where: { pincode: shipment.shipperPincode } }) : null,
+      ]);
       const edl = await this.edlCharge(this.deriveNetwork(shipment), destPin, chargeableKg);
       const odaFlat = cget('ODA', 'value', card.odaFlat), odaMin = cget('ODA', 'min', card.odaMin);
       const odaPerKg = cget('ODA', 'perKg', card.odaPerKg);
+      const anyOda = shipment.isOda || destPin?.isOda || originPin?.isOda;
       if (edl > 0) { oda = edl; odaLabel = 'EDL (ODA)'; }
-      else if (shipment.isOda && (odaFlat > 0 || odaPerKg > 0 || odaMin > 0)) {
+      else if (anyOda && (odaFlat > 0 || odaPerKg > 0 || odaMin > 0)) {
         oda = r2(Math.max(odaFlat + odaPerKg * chargeableKg, odaMin));
+        odaLabel = originPin?.isOda && !destPin?.isOda ? 'ODA (origin)' : 'ODA';
       }
     }
     const topay = shipment.paymentTerm === 'TO_PAY' ? r2(cget('TOPAY', 'value', card.topayCharge)) : 0;

@@ -76,6 +76,12 @@ export class PincodesController {
     return this.pincodes.serviceOptions(pincode);
   }
 
+  /** Accurate origin→destination lane TAT (zone matrix), per mode. */
+  @Get('lane-tat/:origin/:dest')
+  laneTat(@Param('origin') origin: string, @Param('dest') dest: string) {
+    return this.pincodes.laneTat(origin, dest);
+  }
+
   @Get(':pincode')
   lookup(@Param('pincode') pincode: string) {
     return this.pincodes.lookup(pincode);

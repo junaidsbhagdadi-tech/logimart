@@ -17,7 +17,17 @@ export function BulkRateUpload() {
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
 
+  const [products, setProducts] = useState<string[]>(['APEX', 'SURFACE']);
   useEffect(() => { api.listClients().then(setClients).catch((e) => setError(e.message)); }, []);
+  // Domestic products only (exclude international) — one template block per product.
+  useEffect(() => {
+    api.listMaster('PRODUCT').then((rows) => {
+      const dom = rows
+        .filter((r) => !/INTERNATIONAL/i.test(r.name) && !/international/i.test(String(r.attrs?.productType ?? '')) && String(r.attrs?.groupType ?? '').toLowerCase() !== 'international')
+        .map((r) => r.code.toUpperCase());
+      if (dom.length) setProducts(Array.from(new Set(dom)));
+    }).catch(() => {});
+  }, []);
 
   const upload = async (f?: File) => {
     if (!f) return; setError(''); setMsg(''); setResults([]); setBusy(true);
@@ -46,7 +56,7 @@ export function BulkRateUpload() {
   return (
     <>
       <h1>⬆ Bulk Rate Upload <span className="muted" style={{ fontSize: 13, fontWeight: 500 }}>— customer-code-wise</span></h1>
-      <p className="muted" style={{ marginTop: -14 }}>One workbook, many customers and products — <strong>Apex and Surface in the same file</strong>. Columns: <code>Customer Code · Vendor · Product · Origin\Dest · N1…NE3</code>. Each (customer, vendor, product) block becomes a rate card (Apex → Air, Surface → Surface). The template already lays out both product blocks — just replace <code>CUST001</code> with the real customer code and fill the ₹/kg cells. Customer codes must match existing customers.</p>
+      <p className="muted" style={{ marginTop: -14 }}>One workbook, many customers and products — <strong>all domestic products in the same file</strong> (international excluded). Columns: <code>Customer Code · Vendor · Product · Origin\Dest · N1…NE3</code>. Each (customer, vendor, product) block becomes a rate card. The template pre-lays a block per domestic product — just replace <code>CUST001</code> with the real customer code and fill the ₹/kg cells (leave a product's block blank to skip it). Customer codes must match existing customers.</p>
       {error && <div className="error">{error}</div>}
       {msg && <div className="card" style={{ borderLeft: '4px solid var(--ok)' }}>{msg}</div>}
 
@@ -54,7 +64,7 @@ export function BulkRateUpload() {
         <strong>Upload rate workbook</strong>
         <input type="file" accept=".xlsx,.xls,.xlsb,.csv" disabled={busy} onChange={(e) => upload(e.target.files?.[0])} />
         {busy && <span className="muted">Processing…</span>}
-        <button className="secondary" style={{ marginLeft: 'auto' }} onClick={async () => { (await import('../lib/rateSheet')).downloadCargoTemplate(); }}>⬇ Cargo matrix template</button>
+        <button className="secondary" style={{ marginLeft: 'auto' }} onClick={async () => { (await import('../lib/rateSheet')).downloadCargoTemplate([], products); }}>⬇ Cargo matrix template ({products.length} products)</button>
       </div>
 
       {results.length > 0 && (

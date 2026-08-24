@@ -357,12 +357,12 @@ export function downloadCourierTemplate() {
  *  Columns: Customer Code · Vendor · Product · Origin\Dest · <18 dest zones>. One 18-row block per
  *  (vendor × product); upload creates one rate card each. APEX → Air card, SURFACE → Surface card.
  *  Fill the ₹/kg cells; the Customer Code / Vendor / Product on the block's first row identify it. */
-export function downloadCargoTemplate(vendorNames: string[] = []) {
+export function downloadCargoTemplate(vendorNames: string[] = [], productCodes: string[] = ['APEX', 'SURFACE']) {
   const zones = ['N1', 'N2', 'N3', 'N4', 'C1', 'C2', 'W1', 'W2', 'W3', 'S1', 'S2', 'S3', 'E1', 'E2', 'E3', 'NE1', 'NE2', 'NE3'];
   const header = ['Customer Code', 'Vendor', 'Product', 'Origin \\ Dest', ...zones];
   const blank = zones.map(() => '');
   const vendors = ['SELF', ...Array.from(new Set(vendorNames.map((v) => String(v).trim()).filter(Boolean)))];
-  const products = ['APEX', 'SURFACE']; // both products in one workbook
+  const products = Array.from(new Set((productCodes.length ? productCodes : ['APEX', 'SURFACE']).map((p) => String(p).trim().toUpperCase()).filter(Boolean)));
   const aoa: any[][] = [header];
   for (const vend of vendors) {
     for (const prod of products) {

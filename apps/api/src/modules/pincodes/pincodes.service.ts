@@ -121,6 +121,34 @@ export class PincodesService {
   }
 
   /** Which networks/products serve a pincode — one row per network, fastest TAT first. */
+  /** Accurate lane TAT for an origin→destination pincode pair, from the ZONE_TAT matrix (per mode). */
+  async laneTat(originPincode: string, destPincode: string) {
+    const [o, d] = await Promise.all([
+      this.prisma.pincode.findUnique({ where: { pincode: String(originPincode).trim() } }),
+      this.prisma.pincode.findUnique({ where: { pincode: String(destPincode).trim() } }),
+    ]);
+    const norm = (z: any) => (z ? String(z).replace(/\s+/g, '').toUpperCase() : null);
+    const zoneFor = (p: any, mode: string) => norm(mode === 'SURFACE' ? p?.surfaceZone : p?.apexZone) || norm(p?.region);
+    const lanes: { mode: string; originZone: string | null; destZone: string | null; tatDays: number | null }[] = [];
+    for (const mode of ['APEX', 'SURFACE']) {
+      const oz = zoneFor(o, mode), dz = zoneFor(d, mode);
+      let days: number | null = null;
+      if (oz && dz) {
+        for (const code of [`SELF__${mode}`, mode]) {
+          const entry = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'ZONE_TAT', code } } });
+          const m = Number((entry?.attrs as any)?.matrix?.[oz]?.[dz]);
+          if (m > 0) { days = m; break; }
+        }
+      }
+      lanes.push({ mode: mode === 'APEX' ? 'AIR' : 'SURFACE', originZone: oz, destZone: dz, tatDays: days });
+    }
+    return {
+      origin: { pincode: originPincode, city: o?.city ?? null, state: o?.state ?? null, region: o?.region ?? null, isOda: o?.isOda ?? false, known: !!o },
+      dest: { pincode: destPincode, city: d?.city ?? null, state: d?.state ?? null, region: d?.region ?? null, isOda: d?.isOda ?? false, known: !!d },
+      lanes,
+    };
+  }
+
   async serviceOptions(pincode: string) {
     const rows = await this.prisma.serviceablePincode.findMany({
       where: { pincode: pincode.trim(), isActive: true },

@@ -431,6 +431,11 @@ export const api = {
     request('/api/v1/pincodes', { method: 'POST', body: JSON.stringify(body) }),
   // ---- serviceability coverage (SELF network / vendor-wise) ----
   serviceOptions: (pincode: string) => request<{ network: string; mode: string | null; tatDays: number | null; isOda: boolean; city: string | null }[]>(`/api/v1/pincodes/service-options/${pincode}`),
+  laneTat: (origin: string, dest: string) => request<{
+    origin: { pincode: string; city: string | null; state: string | null; region: string | null; isOda: boolean; known: boolean };
+    dest: { pincode: string; city: string | null; state: string | null; region: string | null; isOda: boolean; known: boolean };
+    lanes: { mode: string; originZone: string | null; destZone: string | null; tatDays: number | null }[];
+  }>(`/api/v1/pincodes/lane-tat/${origin}/${dest}`),
   serviceNetworks: () => request<string[]>('/api/v1/pincodes/service-areas/networks'),
   listServiceAreas: (network?: string, limit = 500) =>
     request<{ id: string; pincode: string; city: string | null; state: string | null; network: string; mode: string | null; tatDays: number | null; isOda: boolean }[]>(
