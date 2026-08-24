@@ -80,10 +80,32 @@ export function CreateShipment() {
   const isFtl = serviceMode === 'ROAD_FTL';
   // Customer-facing ETA: fastest transit days among carriers serving the destination — shown
   // without any carrier/vendor names (clients never see who actually moves the shipment).
+  // Only show carriers whose mode matches the selected product (surface product → surface carriers).
+  const airProduct = /AIR/i.test(serviceMode);
+  const carrierOptions = (() => {
+    const m = svcOptions.filter((o) => { const mm = String(o.mode || '').toUpperCase(); return airProduct ? /AIR|EXP/.test(mm) : /SURF|ROAD|RAIL/.test(mm); });
+    return m.length ? m : svcOptions;
+  })();
   const clientEtaDays = (() => {
-    const t = svcOptions.map((o) => o.tatDays).filter((n): n is number => n != null);
+    const t = carrierOptions.map((o) => o.tatDays).filter((n): n is number => n != null);
     return t.length ? Math.min(...t) : null;
   })();
+  // To-Pay applies only to reverse-pickup products.
+  const isReverseProduct = ['TAPEX', 'TOSFC', 'TODP'].includes(String(product).toUpperCase());
+  // Re-pick the carrier to match the product's mode when the product changes (unless staff overrode it).
+  useEffect(() => {
+    if (vendorTouched || !svcOptions.length) return;
+    const air = /AIR/i.test(serviceMode);
+    const opts = svcOptions.filter((o) => { const mm = String(o.mode || '').toUpperCase(); return air ? /AIR|EXP/.test(mm) : /SURF|ROAD|RAIL/.test(mm); });
+    const list = opts.length ? opts : svcOptions;
+    if (!list.some((o) => o.network === svc.vendor)) {
+      const best = list.find((o) => /^BLUEDART/.test(o.network)) || list[0];
+      if (best) setSvc((s) => ({ ...s, vendor: best.network, service: best.mode || s.service }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product, svcOptions, vendorTouched, serviceMode]);
+  // To-Pay is only valid for reverse products — force Prepaid otherwise.
+  useEffect(() => { if (!isReverseProduct && paymentTerm === 'TO_PAY') setPaymentTerm('PREPAID'); }, [isReverseProduct, paymentTerm]);
   // Show the VENDOR name on carrier chips (not the raw "VENDOR-PRODUCT" network code).
   const vendorLabel = (network: string) => {
     const norm = (s: string) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -480,11 +502,11 @@ export function CreateShipment() {
           </div>
         </div>
         {/* Staff see the carrier products (they pick the vendor); clients see only the ETA. */}
-        {!isClient && svcOptions.length > 0 && (
+        {!isClient && carrierOptions.length > 0 && (
           <div style={{ marginTop: 10, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10, background: '#f6f9f4' }}>
             <div className="muted" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 6 }}>Carriers serving {destPin} — fastest auto-picked</div>
             <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-              {svcOptions.map((o) => {
+              {carrierOptions.map((o) => {
                 const picked = o.network === svc.vendor;
                 return (
                   <button key={o.network} type="button"
@@ -686,8 +708,10 @@ export function CreateShipment() {
             <label>Freight payment term</label>
             <select value={paymentTerm} onChange={(e) => setPaymentTerm(e.target.value as 'PREPAID' | 'TO_PAY')}>
               <option value="PREPAID">Prepaid — bill to account</option>
-              <option value="TO_PAY">To-Pay — collect freight from consignee</option>
+              {/* To-Pay is only for reverse-pickup products (TAPEX / TOSFC / TODP). */}
+              {isReverseProduct && <option value="TO_PAY">To-Pay — collect freight from consignee</option>}
             </select>
+            {!isReverseProduct && <div className="muted" style={{ fontSize: 11, marginTop: 3 }}>To-Pay is available only on reverse products (TAPEX / TOSFC / TODP).</div>}
           </div>
           {/* Freight amount is computed from the rate card — customers don't key it. Staff may. */}
           {paymentTerm === 'TO_PAY' && !isClient && (
