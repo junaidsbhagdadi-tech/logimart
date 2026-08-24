@@ -27,6 +27,40 @@ export class DeductionsService {
     return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
   }
 
+  /** Auto-fill helper: pull vendor / customer / pickup+delivery dates for an AWB. */
+  async awbLookup(awbRaw: string) {
+    const awb = String(awbRaw || '').trim().toUpperCase();
+    if (!awb) return null;
+    const s = await this.prisma.shipment.findUnique({
+      where: { awb },
+      include: { client: { select: { accountCode: true, legalName: true } } },
+    });
+    if (!s) return null;
+    // Resolve the vendor name/code from the shipment's network (e.g. "BLUEDART-SFC" → Blue Dart).
+    let vendorName = s.vendor || '';
+    let vendorAcCode = '';
+    if (s.vendor) {
+      const prefix = s.vendor.split('-')[0];
+      const v = await this.prisma.vendor.findFirst({
+        where: { OR: [{ vendorCode: s.vendor }, { name: s.vendor }, { vendorCode: prefix }, { name: { contains: prefix, mode: 'insensitive' } }] },
+        select: { name: true, vendorCode: true },
+      });
+      if (v) { vendorName = v.name; vendorAcCode = v.vendorCode || ''; }
+    }
+    const scans = await this.prisma.scanLog.findMany({ where: { awb, eventType: { in: ['PKD', 'DLD'] } }, orderBy: { scanAt: 'asc' }, select: { eventType: true, scanAt: true } });
+    const iso = (d?: Date | null) => (d ? new Date(d).toISOString().slice(0, 10) : '');
+    const pkd = scans.find((x) => x.eventType === 'PKD');
+    const dld = scans.find((x) => x.eventType === 'DLD');
+    return {
+      awb,
+      vendorName,
+      vendorAcCode,
+      customerCode: s.client?.accountCode ?? '',
+      pickupDate: iso(pkd?.scanAt ?? s.createdAt),
+      deliveryDate: iso(dld?.scanAt),
+    };
+  }
+
   list(month?: string) {
     return this.prisma.vendorDeduction.findMany({
       where: month ? { periodMonth: month } : undefined,

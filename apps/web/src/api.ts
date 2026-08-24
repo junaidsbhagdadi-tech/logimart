@@ -644,6 +644,7 @@ export const api = {
   // ---- claims & insurance ----
   listClaims: (status?: string) => request<any[]>(`/api/v1/claims${status ? '?status=' + status : ''}`),
   listDeductions: (month?: string) => request<any[]>(`/api/v1/deductions${month ? '?month=' + month : ''}`),
+  deductionAwbLookup: (awb: string) => request<{ awb: string; vendorName: string; vendorAcCode: string; customerCode: string; pickupDate: string; deliveryDate: string } | null>(`/api/v1/deductions/awb/${encodeURIComponent(awb)}`),
   createDeduction: (body: unknown) => request<any>('/api/v1/deductions', { method: 'POST', body: JSON.stringify(body) }),
   deleteDeduction: (id: string | number) => request<{ ok: boolean }>(`/api/v1/deductions/${id}`, { method: 'DELETE' }),
   createClaim: (body: unknown) => request<any>('/api/v1/claims', { method: 'POST', body: JSON.stringify(body) }),

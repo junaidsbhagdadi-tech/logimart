@@ -12,6 +12,7 @@ const slabLabel = (s: { fromKg: number; toKg: number }) => (s.toKg >= 999999 ? `
 
 export function Surcharges() {
   const [thresholdCm, setThresholdCm] = useState('119');
+  const [thresholdKg, setThresholdKg] = useState('69');
   const [slabs, setSlabs] = useState(OSW_DEFAULT.map((s) => ({ ...s })));
   const [rasPerKg, setRasPerKg] = useState('');
   const [rasStates, setRasStates] = useState<string[]>([...RAS_STATES]);
@@ -23,6 +24,7 @@ export function Surcharges() {
       const osw = rows.find((r) => r.code === 'OSW');
       if (osw?.attrs) {
         if (osw.attrs.thresholdCm) setThresholdCm(String(osw.attrs.thresholdCm));
+        if (osw.attrs.thresholdKg) setThresholdKg(String(osw.attrs.thresholdKg));
         if (Array.isArray(osw.attrs.slabs) && osw.attrs.slabs.length) setSlabs(osw.attrs.slabs.map((s: any) => ({ fromKg: Number(s.fromKg) || 0, toKg: Number(s.toKg) || 999999, perKg: s.perKg != null ? String(s.perKg) : '' })));
       }
       const ras = rows.find((r) => r.code === 'RAS');
@@ -37,7 +39,7 @@ export function Surcharges() {
     setMsg(''); setError('');
     const clean = slabs.map((s) => ({ fromKg: Number(s.fromKg) || 0, toKg: Number(s.toKg) || 999999, perKg: Number(s.perKg) || 0 }));
     try {
-      await api.saveMaster('SETTING', { code: 'OSW', name: 'OSW — Oversize/Overweight (₹/kg by slab)', attrs: { thresholdCm: Number(thresholdCm) || 119, slabs: clean }, active: true });
+      await api.saveMaster('SETTING', { code: 'OSW', name: 'OSW — Oversize/Overweight (₹/kg by slab)', attrs: { thresholdCm: Number(thresholdCm) || 119, thresholdKg: Number(thresholdKg) || 69, slabs: clean }, active: true });
       setMsg('✓ OSW saved.');
     } catch (e: any) { setError(e.message); }
   };
@@ -57,10 +59,16 @@ export function Surcharges() {
 
       <div className="card">
         <h2 style={{ marginTop: 0 }}>📦 OSW — Oversize / Overweight</h2>
-        <p className="muted" style={{ marginTop: -6, fontSize: 13 }}>Applies when <strong>any box dimension exceeds the threshold</strong>. Charged as <strong>chargeable weight (max of volumetric/actual) × the ₹/kg for its weight slab</strong>. Cargo products only.</p>
-        <div style={{ maxWidth: 260 }}>
-          <label>Dimension threshold (cm)</label>
-          <input type="number" value={thresholdCm} onChange={(e) => setThresholdCm(e.target.value)} />
+        <p className="muted" style={{ marginTop: -6, fontSize: 13 }}>Applies when <strong>any box dimension exceeds the cm threshold</strong> <em>or</em> <strong>any piece exceeds the kg threshold</strong>. Charged as <strong>chargeable weight (max of volumetric/actual) × the ₹/kg for its weight slab</strong>. Cargo products only.</p>
+        <div className="row" style={{ gap: 14 }}>
+          <div style={{ maxWidth: 200 }}>
+            <label>Dimension threshold (cm)</label>
+            <input type="number" value={thresholdCm} onChange={(e) => setThresholdCm(e.target.value)} />
+          </div>
+          <div style={{ maxWidth: 200 }}>
+            <label>Weight threshold (kg)</label>
+            <input type="number" value={thresholdKg} onChange={(e) => setThresholdKg(e.target.value)} />
+          </div>
         </div>
         <table style={{ marginTop: 14, maxWidth: 460 }}>
           <thead><tr><th>Weight slab</th><th style={{ textAlign: 'right' }}>Rate (₹ / kg)</th></tr></thead>

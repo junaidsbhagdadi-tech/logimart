@@ -419,15 +419,16 @@ export class RateService {
     return destNcr; // INBOUND (default): only when delivered into DEL/NCR
   }
 
-  /** OSW (oversize/overweight) config: dimension threshold + per-kg rate by weight slab. */
-  private async oswSetting(): Promise<{ thresholdCm: number; slabs: { fromKg: number; toKg: number; perKg: number }[] }> {
+  /** OSW (oversize/overweight) config: dimension + per-piece weight thresholds + per-kg rate by weight slab. */
+  private async oswSetting(): Promise<{ thresholdCm: number; thresholdKg: number; slabs: { fromKg: number; toKg: number; perKg: number }[] }> {
     const cfg = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'SETTING', code: 'OSW' } } }).catch(() => null);
     const a: any = cfg?.attrs || {};
     const thresholdCm = Number(a.thresholdCm) > 0 ? Number(a.thresholdCm) : 119;
+    const thresholdKg = Number(a.thresholdKg) > 0 ? Number(a.thresholdKg) : 69;
     const slabs = (Array.isArray(a.slabs) ? a.slabs : [])
       .map((s: any) => ({ fromKg: Number(s.fromKg) || 0, toKg: Number(s.toKg) > 0 ? Number(s.toKg) : 1e9, perKg: Number(s.perKg) || 0 }))
       .filter((s: any) => s.perKg > 0);
-    return { thresholdCm, slabs };
+    return { thresholdCm, thresholdKg, slabs };
   }
 
   /** RAS (Remote Area Surcharge) config: per-kg rate + the destination states it applies to. */
@@ -558,7 +559,8 @@ export class RateService {
     // OSW (oversize/overweight): any piece dimension over the threshold (default 119cm) → per-kg by
     // the chargeable-weight slab (Masters · SETTING/OSW). Falls back to the card's flat OSP if unset.
     const oswCfg = await this.oswSetting();
-    const overDim = pieces.some((p) => [p.lengthCm, p.widthCm, p.heightCm].some((d) => Number(d || 0) > oswCfg.thresholdCm));
+    // Oversize (any dimension over the cm threshold) OR overweight (any piece over the kg threshold).
+    const overDim = pieces.some((p) => [p.lengthCm, p.widthCm, p.heightCm].some((d) => Number(d || 0) > oswCfg.thresholdCm) || Number(p.deadKg) > oswCfg.thresholdKg);
     let osw = 0;
     if (oswCfg.slabs.length) {
       if (overDim) { const slab = oswCfg.slabs.find((s) => chargeableKg >= s.fromKg && chargeableKg <= s.toKg); if (slab) osw = r2(chargeableKg * slab.perKg); }

@@ -30,6 +30,11 @@ export class DeductionsController {
     return this.deductions.list(month);
   }
 
+  @Get('awb/:awb')
+  awbLookup(@Param('awb') awb: string) {
+    return this.deductions.awbLookup(awb);
+  }
+
   @Post()
   create(@Body() dto: DeductionDto, @Req() req: any) {
     return this.deductions.create(dto, req.user?.sub ? Number(req.user.sub) : undefined);

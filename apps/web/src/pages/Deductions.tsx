@@ -36,6 +36,28 @@ export function Deductions() {
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const missing = COLS.filter((c) => c.req && !String(form[c.key] ?? '').trim()).map((c) => c.label);
+  const [lookupMsg, setLookupMsg] = useState('');
+
+  // Auto-fill vendor / customer / dates from the AWB.
+  const fetchAwb = async (awbRaw: string) => {
+    const awb = String(awbRaw || '').trim();
+    if (!awb) return;
+    setLookupMsg('Looking up…');
+    try {
+      const r = await api.deductionAwbLookup(awb);
+      if (!r) { setLookupMsg('AWB not found — enter details manually.'); return; }
+      setForm((f) => ({
+        ...f,
+        awb: r.awb,
+        vendorName: r.vendorName || f.vendorName,
+        vendorAcCode: r.vendorAcCode || f.vendorAcCode,
+        customerCode: r.customerCode || f.customerCode,
+        pickupDate: r.pickupDate || f.pickupDate,
+        deliveryDate: r.deliveryDate || f.deliveryDate,
+      }));
+      setLookupMsg('✓ Auto-filled from AWB');
+    } catch { setLookupMsg('Lookup failed — enter details manually.'); }
+  };
 
   const save = async () => {
     setError(''); setMsg('');
@@ -76,7 +98,7 @@ export function Deductions() {
           <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} title="Filter by month (blank = all)" />
           <button className="secondary" onClick={exportXls} disabled={!rows.length}>⬇ XLS</button>
           <button className="secondary" onClick={exportCsv} disabled={!rows.length}>⬇ CSV</button>
-          <button onClick={() => { setForm({ ...blank, pickupDate: '', }); setAdding(true); setError(''); }}>＋ Add deduction</button>
+          <button onClick={() => { setForm({ ...blank }); setAdding(true); setError(''); setLookupMsg(''); }}>＋ Add deduction</button>
         </div>
       </div>
       {error && <div className="error" style={{ marginTop: 10 }}>{error}</div>}
@@ -114,7 +136,10 @@ export function Deductions() {
               <div key={c.key} style={c.key === 'reason' || c.key === 'attachment' ? { gridColumn: 'span 2' } : undefined}>
                 <label style={{ fontSize: 12 }}>{c.label} {c.req ? <span style={{ color: 'var(--danger, #c0392b)' }}>*</span> : <span className="muted">(opt)</span>}</label>
                 <input type={c.date ? 'date' : c.num ? 'number' : 'text'} value={form[c.key]} onChange={(e) => set(c.key, e.target.value)}
-                  placeholder={c.key === 'attachment' ? 'link to pic / email' : ''} />
+                  placeholder={c.key === 'awb' ? 'enter AWB — auto-fills the rest' : c.key === 'attachment' ? 'link to pic / email' : ''}
+                  onBlur={c.key === 'awb' ? (e) => fetchAwb(e.target.value) : undefined}
+                  onKeyDown={c.key === 'awb' ? (e) => { if (e.key === 'Enter') { e.preventDefault(); fetchAwb((e.target as HTMLInputElement).value); } } : undefined} />
+                {c.key === 'awb' && lookupMsg && <div className="muted" style={{ fontSize: 11, marginTop: 3, color: lookupMsg.startsWith('✓') ? 'var(--ok, #16a34a)' : 'var(--muted)' }}>{lookupMsg}</div>}
               </div>
             ))}
           </div>
