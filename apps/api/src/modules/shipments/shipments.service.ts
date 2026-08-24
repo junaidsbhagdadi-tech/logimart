@@ -527,11 +527,18 @@ export class ShipmentsService {
     });
     if (!s) throw new NotFoundException(`AWB ${awb} not found`);
     if (s._count.invoiceLines > 0) throw new ConflictException('This shipment is already invoiced — charges are locked.');
-    const clean = overrides && typeof overrides === 'object'
-      ? Object.fromEntries(Object.entries(overrides as Record<string, any>)
-          .filter(([, v]) => v != null && v !== '' && !isNaN(Number(v)))
-          .map(([k, v]) => [k, +Number(v).toFixed(2)]))
-      : null;
+    let clean: Record<string, any> | null = null;
+    if (overrides && typeof overrides === 'object') {
+      const { _add, ...rest } = overrides as Record<string, any>;
+      clean = Object.fromEntries(Object.entries(rest)
+        .filter(([, v]) => v != null && v !== '' && !Array.isArray(v) && !isNaN(Number(v)))
+        .map(([k, v]) => [k, +Number(v).toFixed(2)]));
+      // Preserve ad-hoc added lines: [{ head, amount }].
+      const add = Array.isArray(_add) ? _add
+        .map((a: any) => ({ head: String(a?.head || '').trim(), amount: +Number(a?.amount || 0).toFixed(2) }))
+        .filter((a: any) => a.head && a.amount) : [];
+      if (add.length) clean._add = add;
+    }
     await this.prisma.shipment.update({ where: { id: s.id }, data: { chargeOverrides: clean && Object.keys(clean).length ? clean : Prisma.DbNull } });
     return { ok: true, awb, overrides: clean };
   }

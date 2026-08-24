@@ -662,7 +662,13 @@ export class RateService {
     let changed = false;
     for (const l of breakup.lines as any[]) {
       const v = map[keyOf(l)] ?? map[l.head] ?? map[l.code];
-      if (v != null && v !== '' && !isNaN(Number(v))) { l.amount = r2(Number(v)); changed = true; }
+      if (v != null && v !== '' && !Array.isArray(v) && !isNaN(Number(v))) { l.amount = r2(Number(v)); changed = true; }
+    }
+    // Ad-hoc lines added on the shipment (chargeOverrides._add = [{ head, amount }]).
+    const add = Array.isArray(map._add) ? map._add : [];
+    for (const a of add) {
+      const amt = Number(a?.amount);
+      if (a?.head && amt) { (breakup.lines as any[]).push({ code: `ADHOC:${String(a.head).toUpperCase()}`, head: String(a.head), amount: r2(amt) }); changed = true; }
     }
     if (!changed) return breakup;
     const find = (code: string) => (breakup.lines as any[]).find((l) => keyOf(l) === code);

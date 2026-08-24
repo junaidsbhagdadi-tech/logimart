@@ -22,6 +22,7 @@ export function ShipmentDetail() {
   const [quote, setQuote] = useState<RateQuote | null>(null);
   const [editCharges, setEditCharges] = useState(false);
   const [edited, setEdited] = useState<Record<string, string>>({});
+  const [adhoc, setAdhoc] = useState<{ head: string; amount: string }[]>([]);
   const [podFile, setPodFile] = useState<File | null>(null);
   const [reweighMode, setReweighMode] = useState(false);
   const [rw, setRw] = useState<Record<number, string>>({});
@@ -64,22 +65,26 @@ export function ShipmentDetail() {
   };
 
   const lineKey = (l: { code?: string; head: string }) => l.code || l.head;
+  const isAdhoc = (l: { code?: string }) => String(l.code || '').startsWith('ADHOC:');
   const startEditCharges = () => {
     if (!quote) return;
-    const seed: Record<string, string> = {};
-    quote.lines.forEach((l) => { seed[lineKey(l)] = String(l.amount.toFixed(2)); });
-    setEdited(seed); setEditCharges(true);
+    const seed: Record<string, string> = {}; const ah: { head: string; amount: string }[] = [];
+    quote.lines.forEach((l) => { if (isAdhoc(l)) ah.push({ head: l.head, amount: String(l.amount.toFixed(2)) }); else seed[lineKey(l)] = String(l.amount.toFixed(2)); });
+    setEdited(seed); setAdhoc(ah); setEditCharges(true);
   };
-  const editedSubtotal = () => Object.values(edited).reduce((t, v) => t + (Number(v) || 0), 0);
+  const editedSubtotal = () =>
+    Object.values(edited).reduce((t, v) => t + (Number(v) || 0), 0) + adhoc.reduce((t, a) => t + (Number(a.amount) || 0), 0);
   const saveOverrides = async () => {
     if (!quote) return;
     setError(''); setMsg('');
-    // Send only heads whose amount actually changed from the computed value.
-    const overrides: Record<string, number> = {};
-    quote.lines.forEach((l) => { const v = edited[lineKey(l)]; if (v !== undefined && v !== '' && Math.abs(Number(v) - l.amount) > 0.001) overrides[lineKey(l)] = +Number(v).toFixed(2); });
+    // Send only heads whose amount actually changed from the computed value, plus any ad-hoc lines.
+    const overrides: Record<string, any> = {};
+    quote.lines.forEach((l) => { if (isAdhoc(l)) return; const v = edited[lineKey(l)]; if (v !== undefined && v !== '' && Math.abs(Number(v) - l.amount) > 0.001) overrides[lineKey(l)] = +Number(v).toFixed(2); });
+    const add = adhoc.filter((a) => a.head.trim() && Number(a.amount)).map((a) => ({ head: a.head.trim(), amount: +Number(a.amount).toFixed(2) }));
+    if (add.length) overrides._add = add;
     try {
       await api.setChargeOverrides(awb!, Object.keys(overrides).length ? overrides : null);
-      setMsg(Object.keys(overrides).length ? '✓ Charges overridden — invoice will use these amounts.' : '✓ No changes.');
+      setMsg(Object.keys(overrides).length ? '✓ Charges saved — invoice for this AWB will use these amounts.' : '✓ No changes.');
       await getQuote();
     } catch (e: any) { setError(e.message); }
   };
@@ -309,22 +314,34 @@ export function ShipmentDetail() {
           </div>
           <table style={{ marginTop: 8 }}>
             <tbody>
-              {quote.lines.map((l) => (
+              {quote.lines.filter((l) => !(editCharges && isAdhoc(l))).map((l) => (
                 <tr key={lineKey(l)}>
                   <td>{l.head}</td>
                   <td style={{ textAlign: 'right' }}>
-                    {editCharges
+                    {editCharges && !isAdhoc(l)
                       ? <input type="number" value={edited[lineKey(l)] ?? ''} onChange={(e) => setEdited((m) => ({ ...m, [lineKey(l)]: e.target.value }))} style={{ width: 120, textAlign: 'right', padding: '4px 8px' }} />
                       : <>₹{l.amount.toFixed(2)}</>}
                   </td>
                 </tr>
               ))}
+              {editCharges && adhoc.map((a, i) => (
+                <tr key={`adhoc-${i}`}>
+                  <td><input value={a.head} placeholder="charge name" onChange={(e) => setAdhoc((m) => m.map((x, idx) => idx === i ? { ...x, head: e.target.value } : x))} style={{ width: '90%', padding: '4px 8px' }} /></td>
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <input type="number" value={a.amount} placeholder="₹" onChange={(e) => setAdhoc((m) => m.map((x, idx) => idx === i ? { ...x, amount: e.target.value } : x))} style={{ width: 100, textAlign: 'right', padding: '4px 8px' }} />
+                    <button className="secondary" title="Remove" style={{ padding: '2px 8px', fontSize: 12, marginLeft: 6 }} onClick={() => setAdhoc((m) => m.filter((_, idx) => idx !== i))}>✕</button>
+                  </td>
+                </tr>
+              ))}
+              {editCharges && (
+                <tr><td colSpan={2}><button className="secondary" style={{ padding: '3px 10px', fontSize: 12 }} onClick={() => setAdhoc((m) => [...m, { head: '', amount: '' }])}>＋ Add ad-hoc charge</button></td></tr>
+              )}
               <tr><td><strong>Subtotal</strong></td><td style={{ textAlign: 'right' }}><strong>₹{(editCharges ? editedSubtotal() : quote.subtotal).toFixed(2)}</strong></td></tr>
               <tr><td>GST 18%</td><td style={{ textAlign: 'right' }}>₹{(editCharges ? editedSubtotal() * 0.18 : quote.gst).toFixed(2)}</td></tr>
               <tr><td><strong>Grand total</strong></td><td style={{ textAlign: 'right' }}><strong>₹{(editCharges ? editedSubtotal() * 1.18 : quote.grandTotal).toFixed(2)}</strong></td></tr>
             </tbody>
           </table>
-          {editCharges && <p className="muted" style={{ fontSize: 11, marginTop: 6 }}>Edit any charge amount and Save — the invoice for this AWB will use these amounts. Reset restores the computed tariff. Locked once invoiced.</p>}
+          {editCharges && <p className="muted" style={{ fontSize: 11, marginTop: 6 }}>Edit any amount, or <strong>＋ Add ad-hoc charge</strong> for a one-off line, then Save — the invoice for this AWB uses these amounts. Reset restores the computed tariff. Locked once invoiced.</p>}
         </div>
       )}
 
