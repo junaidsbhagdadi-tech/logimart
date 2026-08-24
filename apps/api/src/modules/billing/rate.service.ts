@@ -556,24 +556,35 @@ export class RateService {
     const bands: any[] = Array.isArray(card.handlingBands) ? card.handlingBands : [];
     const hb = bands.find((b) => chargeableKg >= Number(b.fromKg ?? 0) && chargeableKg <= Number(b.toKg ?? 1e9));
     const handling = hb ? r2(Number(hb.perPcs ?? 0) * pcs) : 0;
-    // OSW (oversize/overweight): any piece dimension over the threshold (default 119cm) → per-kg by
-    // the chargeable-weight slab (Masters · SETTING/OSW). Falls back to the card's flat OSP if unset.
-    const oswCfg = await this.oswSetting();
-    // Oversize (any dimension over the cm threshold) OR overweight (any piece over the kg threshold).
-    const overDim = pieces.some((p) => [p.lengthCm, p.widthCm, p.heightCm].some((d) => Number(d || 0) > oswCfg.thresholdCm) || Number(p.deadKg) > oswCfg.thresholdKg);
+    // OSW (oversize/overweight): any dimension over the cm threshold OR any piece over the kg threshold
+    // → chargeable weight × the slab ₹/kg. Rate card's OSW override (card.charges.OSW) wins over Masters.
+    const oswMaster = await this.oswSetting();
+    const cardOsw: any = (card.charges as any)?.OSW ?? (card.charges as any)?.osw;
+    const cardOswSlabs = (Array.isArray(cardOsw?.slabs) ? cardOsw.slabs : [])
+      .map((s: any) => ({ fromKg: Number(s.fromKg) || 0, toKg: Number(s.toKg) > 0 ? Number(s.toKg) : 1e9, perKg: Number(s.perKg) || 0 }))
+      .filter((s: any) => s.perKg > 0);
+    const oswThresholdCm = Number(cardOsw?.thresholdCm) > 0 ? Number(cardOsw.thresholdCm) : oswMaster.thresholdCm;
+    const oswThresholdKg = Number(cardOsw?.thresholdKg) > 0 ? Number(cardOsw.thresholdKg) : oswMaster.thresholdKg;
+    const oswSlabs = cardOswSlabs.length ? cardOswSlabs : oswMaster.slabs;
+    const overDim = pieces.some((p) => [p.lengthCm, p.widthCm, p.heightCm].some((d) => Number(d || 0) > oswThresholdCm) || Number(p.deadKg) > oswThresholdKg);
     let osw = 0;
-    if (oswCfg.slabs.length) {
-      if (overDim) { const slab = oswCfg.slabs.find((s) => chargeableKg >= s.fromKg && chargeableKg <= s.toKg); if (slab) osw = r2(chargeableKg * slab.perKg); }
+    if (oswSlabs.length) {
+      if (overDim) { const slab = oswSlabs.find((s) => chargeableKg >= s.fromKg && chargeableKg <= s.toKg); if (slab) osw = r2(chargeableKg * slab.perKg); }
     } else {
       const oversize = pieces.some((p) => Number(p.deadKg) > 69 || [p.lengthCm, p.widthCm, p.heightCm].some((d) => Number(d || 0) > 119));
       osw = oversize ? r2(cget('OSP', 'value', card.ospCharge)) : 0;
     }
-    // RAS (Remote Area Surcharge): cargo only, per-kg for configured destination states (Masters · SETTING/RAS).
+    // RAS (Remote Area Surcharge): cargo only, per-kg for the configured states. Rate card's RAS
+    // override (card.charges.RAS.value + optional states) wins over Masters · SETTING/RAS.
     let ras = 0;
     if (!isCourier) {
-      const rasCfg = await this.rasSetting();
-      const st = String(destPin?.state ?? shipment.consigneeState ?? '').toLowerCase().replace(/[^a-z]/g, '');
-      if (rasCfg.perKg > 0 && st && rasCfg.states.includes(st)) ras = r2(chargeableKg * rasCfg.perKg);
+      const rasMaster = await this.rasSetting();
+      const cardRas: any = (card.charges as any)?.RAS ?? (card.charges as any)?.ras;
+      const norm = (s: any) => String(s ?? '').toLowerCase().replace(/[^a-z]/g, '');
+      const perKg = Number(cardRas?.value ?? cardRas?.perKg) || rasMaster.perKg;
+      const states = (Array.isArray(cardRas?.states) && cardRas.states.length ? cardRas.states.map(norm) : rasMaster.states);
+      const st = norm(destPin?.state ?? shipment.consigneeState);
+      if (perKg > 0 && st && states.includes(st)) ras = r2(chargeableKg * perKg);
     }
 
     // Custom charges: any CHARGE-master code configured on the card beyond the built-in heads.

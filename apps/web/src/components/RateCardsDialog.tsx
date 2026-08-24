@@ -347,6 +347,14 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
     return { ...seed, ...(card?.charges || {}) };
   });
   const setCharge = (code: string, field: string, v: string) => setChg((p) => ({ ...p, [code]: { ...(p[code] || {}), [field]: v } }));
+  // OSW override helpers (per-card): threshold + 4 weight slabs stored under chg.OSW.
+  const OSW_SLABS = [{ fromKg: 0, toKg: 30 }, { fromKg: 31, toKg: 70 }, { fromKg: 71, toKg: 200 }, { fromKg: 201, toKg: 999999 }];
+  const slabLbl = (s: { fromKg: number; toKg: number }) => (s.toKg >= 999999 ? `${s.fromKg} kg+` : `${s.fromKg}–${s.toKg} kg`);
+  const setOsw = (k: string, v: string) => setChg((p) => ({ ...p, OSW: { ...(p.OSW || {}), [k]: v } }));
+  const setOswSlab = (i: number, v: string) => setChg((p) => {
+    const slabs = OSW_SLABS.map((s, idx) => ({ fromKg: s.fromKg, toKg: s.toKg, perKg: idx === i ? v : (p.OSW?.slabs?.[idx]?.perKg ?? '') }));
+    return { ...p, OSW: { ...(p.OSW || {}), slabs } };
+  });
   const baseOf = (c: any) => String(c.attrs?.baseOn || 'FLAT').toUpperCase();
   const productMode = (code: string) => {
     const p = products.find((x) => x.code === code); const g = String(p?.attrs?.groupType || '').toUpperCase();
@@ -545,6 +553,28 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
           </div>
         )}
         <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>ODA / EDL apply to <strong>cargo only</strong> (never DP/courier) — EDL matrix wins on EDL pincodes, else the flat/kg/min here. Emergency = % of freight; Appointment = ₹/kg (chargeable) or its min. FSC is set above.</p>
+      </div>
+
+      {/* RAS / OSW per-card overrides — blank inherits Masters → OSW/RAS */}
+      <div className="card" style={{ padding: 12, marginTop: 12 }}>
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <strong>Surcharge overrides — RAS / OSW</strong>
+          <span className="muted" style={{ fontSize: 11 }}>Leave blank to inherit <strong>Masters → OSW / RAS</strong>; a value here overrides for this card only.</span>
+        </div>
+        <div className="grid cols-4" style={{ gap: 12, marginTop: 8 }}>
+          <div><label style={{ fontSize: 12 }}>RAS (₹/kg)</label><input type="number" value={chg.RAS?.value ?? ''} onChange={(e) => setCharge('RAS', 'value', e.target.value)} placeholder="inherit" /></div>
+          <div><label style={{ fontSize: 12 }}>OSW dim threshold (cm)</label><input type="number" value={chg.OSW?.thresholdCm ?? ''} onChange={(e) => setOsw('thresholdCm', e.target.value)} placeholder="119" /></div>
+          <div><label style={{ fontSize: 12 }}>OSW weight threshold (kg)</label><input type="number" value={chg.OSW?.thresholdKg ?? ''} onChange={(e) => setOsw('thresholdKg', e.target.value)} placeholder="69" /></div>
+        </div>
+        <div style={{ marginTop: 8 }}>
+          <label style={{ fontSize: 12 }}>OSW rate ₹/kg by weight slab <span className="muted">(blank = inherit)</span></label>
+          <div className="grid cols-4" style={{ gap: 8, marginTop: 4 }}>
+            {OSW_SLABS.map((s, i) => (
+              <div key={i}><label style={{ fontSize: 11 }} className="muted">{slabLbl(s)}</label>
+                <input type="number" value={chg.OSW?.slabs?.[i]?.perKg ?? ''} onChange={(e) => setOswSlab(i, e.target.value)} placeholder="₹/kg" /></div>
+            ))}
+          </div>
+        </div>
       </div>
 
       <div className="grid cols-4" style={{ gap: 12, marginTop: 12 }}>
