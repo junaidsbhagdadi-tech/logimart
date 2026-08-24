@@ -393,6 +393,29 @@ export class RateService {
     return +Math.max(dead, vol, Number(card.minChargeableKg ?? 0)).toFixed(3);
   }
 
+  // Default DEL/NCR pincode prefixes (editable via SETTING · GREEN_TAX · attrs.prefixes).
+  private static NCR_PREFIXES = ['110', '111', '121', '122', '124', '131', '201', '203', '245'];
+
+  /**
+   * Green tax (environmental surcharge) applicability. Only DEL/NCR shipments qualify, gated by a
+   * configurable direction: INBOUND (delivered into NCR — dest pincode), OUTBOUND (picked up in
+   * NCR — origin pincode), or BOTH. Config: MasterEntry SETTING/GREEN_TAX attrs { direction, prefixes }.
+   */
+  private async greenTaxApplies(shipment: any): Promise<boolean> {
+    const cfg = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'SETTING', code: 'GREEN_TAX' } } }).catch(() => null);
+    const a: any = cfg?.attrs || {};
+    const direction = String(a.direction || 'INBOUND').toUpperCase();
+    const prefixes: string[] = Array.isArray(a.prefixes) && a.prefixes.length
+      ? a.prefixes.map((p: any) => String(p).trim()).filter(Boolean)
+      : RateService.NCR_PREFIXES;
+    const isNcr = (pin?: string | null) => !!pin && prefixes.some((pre) => String(pin).startsWith(pre));
+    const destNcr = isNcr(shipment.destPincode);
+    const originNcr = isNcr(shipment.shipperPincode ?? shipment.originPincode);
+    if (direction === 'OUTBOUND') return originNcr;
+    if (direction === 'BOTH') return destNcr || originNcr;
+    return destNcr; // INBOUND (default): only when delivered into DEL/NCR
+  }
+
   /**
    * EDL (= ODA) from the network's standard matrix when the destination pincode is an
    * EDL location. Matrix cell by (distance-km band × chargeable-weight band); fallbacks:
@@ -494,7 +517,9 @@ export class RateService {
     const awb = r2(cget('AWB', 'value', card.awbCharge));
     // Emergency surcharge: a % of freight (not a flat ₹).
     const emergency = r2(freight * cget('EMERGENCY', 'value', card.emergencyCharge) / 100);
-    const environment = r2(cget('ENVIRONMENT', 'value', card.environmentCharge));
+    // Green tax (environmental surcharge): only for DEL/NCR, per the configured direction
+    // (inbound = delivered into NCR / outbound = picked up in NCR / both). Applies to all products.
+    const environment = (await this.greenTaxApplies(shipment)) ? r2(cget('ENVIRONMENT', 'value', card.environmentCharge)) : 0;
     // handling: weight-banded ₹/pcs; OSP: oversize (dim>119cm or pcs>69kg)
     const pcs = pieces.length;
     const bands: any[] = Array.isArray(card.handlingBands) ? card.handlingBands : [];

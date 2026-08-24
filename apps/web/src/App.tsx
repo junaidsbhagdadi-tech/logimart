@@ -12,6 +12,7 @@ import { InvoiceDetail } from './pages/InvoiceDetail';
 import { Track } from './pages/Track';
 import { TrackDetail } from './pages/TrackDetail';
 import { PincodeSearch } from './pages/PincodeSearch';
+import { GreenTax } from './pages/GreenTax';
 import { Archive } from './pages/Archive';
 import { Customers } from './pages/Customers';
 import { FtlRates } from './pages/FtlRates';
@@ -125,6 +126,7 @@ export function App() {
         {/* Standard Charges merged into Masters → Charges (default rate/min per charge). Keep old bookmarks working. */}
         <Route path="/standard-charges" element={<Navigate to="/masters" replace />} />
         <Route path="/bulk-rate-upload" element={canMaster ? <BulkRateUpload /> : <Navigate to="/" replace />} />
+        <Route path="/green-tax" element={canMaster ? <GreenTax /> : <Navigate to="/" replace />} />
         <Route path="/reports" element={canReports ? <Reports /> : <Navigate to="/" replace />} />
         <Route path="/audit" element={user?.role === 'SYS_ADMIN' ? <AuditLog /> : <Navigate to="/" replace />} />
         <Route path="/users" element={user?.role === 'SYS_ADMIN' ? <Users /> : <Navigate to="/" replace />} />
