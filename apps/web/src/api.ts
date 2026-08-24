@@ -434,7 +434,7 @@ export const api = {
   laneTat: (origin: string, dest: string) => request<{
     origin: { pincode: string; city: string | null; state: string | null; region: string | null; isOda: boolean; known: boolean };
     dest: { pincode: string; city: string | null; state: string | null; region: string | null; isOda: boolean; known: boolean };
-    lanes: { mode: string; originZone: string | null; destZone: string | null; tatDays: number | null }[];
+    lanes: { mode: string; originZone: string | null; destZone: string | null; tatDays: number | null; estimate?: boolean }[];
   }>(`/api/v1/pincodes/lane-tat/${origin}/${dest}`),
   serviceNetworks: () => request<string[]>('/api/v1/pincodes/service-areas/networks'),
   listServiceAreas: (network?: string, limit = 500) =>

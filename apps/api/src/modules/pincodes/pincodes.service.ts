@@ -129,7 +129,15 @@ export class PincodesService {
     ]);
     const norm = (z: any) => (z ? String(z).replace(/\s+/g, '').toUpperCase() : null);
     const zoneFor = (p: any, mode: string) => norm(mode === 'SURFACE' ? p?.surfaceZone : p?.apexZone) || norm(p?.region);
-    const lanes: { mode: string; originZone: string | null; destZone: string | null; tatDays: number | null }[] = [];
+    // Fallback source: the destination's committed transit per network (ServiceablePincode).
+    const destServ = await this.prisma.serviceablePincode.findMany({ where: { pincode: String(destPincode).trim(), isActive: true }, select: { mode: true, tatDays: true } });
+    const servTat = (mode: string): number | null => {
+      const hit = destServ
+        .filter((r) => (mode === 'SURFACE' ? /SURF|ROAD|RAIL/i : /AIR|APEX|EXP/i).test(String(r.mode ?? '')) && r.tatDays != null)
+        .map((r) => Number(r.tatDays));
+      return hit.length ? Math.min(...hit) : null;
+    };
+    const lanes: { mode: string; originZone: string | null; destZone: string | null; tatDays: number | null; estimate: boolean }[] = [];
     for (const mode of ['APEX', 'SURFACE']) {
       const oz = zoneFor(o, mode), dz = zoneFor(d, mode);
       let days: number | null = null;
@@ -140,7 +148,10 @@ export class PincodesService {
           if (m > 0) { days = m; break; }
         }
       }
-      lanes.push({ mode: mode === 'APEX' ? 'AIR' : 'SURFACE', originZone: oz, destZone: dz, tatDays: days });
+      // Fall back to the destination's committed transit when the zone matrix has no entry for this lane.
+      const estimate = days == null;
+      if (days == null) days = servTat(mode);
+      lanes.push({ mode: mode === 'APEX' ? 'AIR' : 'SURFACE', originZone: oz, destZone: dz, tatDays: days, estimate: estimate && days != null });
     }
     return {
       origin: { pincode: originPincode, city: o?.city ?? null, state: o?.state ?? null, region: o?.region ?? null, isOda: o?.isOda ?? false, known: !!o },

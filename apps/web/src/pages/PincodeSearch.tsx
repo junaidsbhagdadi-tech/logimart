@@ -90,7 +90,7 @@ export function PincodeSearch() {
                       <td><strong>{l.mode}</strong></td>
                       <td>{l.originZone ?? '—'}</td>
                       <td>{l.destZone ?? '—'}</td>
-                      <td>{l.tatDays != null ? `${l.tatDays} day${l.tatDays === 1 ? '' : 's'}` : <span className="muted">no TAT for this lane</span>}</td>
+                      <td>{l.tatDays != null ? <>{l.tatDays} day{l.tatDays === 1 ? '' : 's'}{l.estimate && <span className="muted" style={{ fontSize: 11 }}> · est. (destination)</span>}</> : <span className="muted">no TAT for this lane</span>}</td>
                     </tr>
                   ))}
                 </tbody>

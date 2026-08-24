@@ -180,7 +180,13 @@ function RateUpload({ client, products, vendors, onCancel, onSaved }: {
     const g = String(products.find((x) => x.code === code)?.attrs?.groupType || '').toUpperCase();
     return g.includes('AIR') ? 'AIR' : g.includes('SURFACE') ? 'SURFACE' : '';
   };
+  const [famSel, setFamSel] = useState<'CARGO' | 'COURIER'>('CARGO');
   const [network, setNetwork] = useState('SELF');
+  // Courier products (DP/TDD/NDD) picked here; cargo products come from the file's Product column.
+  const courierProducts = products.filter((p) => family(p.code) === 'COURIER');
+  const cargoProductCodes = products
+    .filter((p) => family(p.code) === 'CARGO' && !/INTERNATIONAL/i.test(p.name) && String(p.attrs?.groupType ?? '').toLowerCase() !== 'international')
+    .map((p) => p.code.toUpperCase());
   const [product, setProduct] = useState(products[0]?.code ?? '');
   const [fuelPct, setFuelPct] = useState('');
   const [fovPct, setFovPct] = useState('');
@@ -188,11 +194,11 @@ function RateUpload({ client, products, vendors, onCancel, onSaved }: {
   const [minChargeableKg, setMinChargeableKg] = useState('');
   const [minFreight, setMinFreight] = useState('');
   const [result, setResult] = useState<ParseResult | null>(null);
-  const [blocks, setBlocks] = useState<{ vendor: string; slabs: any[] }[]>([]); // cargo: one per vendor
+  const [blocks, setBlocks] = useState<{ vendor: string; product: string; slabs: any[] }[]>([]); // cargo: one per (vendor, product)
   const [fileName, setFileName] = useState('');
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
 
-  const fam = family(product);
+  const fam = famSel;
   // Map a sheet vendor label → card network code (SELF, or the vendor's code/name).
   const toNetwork = (vend: string) => {
     const v = String(vend || '').trim().toUpperCase();
@@ -206,9 +212,10 @@ function RateUpload({ client, products, vendors, onCancel, onSaved }: {
     try {
       const m = await import('../lib/rateSheet');
       if (fam === 'CARGO') {
-        const bl = await m.parseCargoByVendor(f);
-        const kept = bl.filter((b) => b.slabs.length);
-        if (!kept.length) { setErr('No vendor rate blocks parsed — fill at least one vendor block (₹/kg per zone).'); return; }
+        // Read the Product column: one card per (vendor, product) block, all for this customer.
+        const bl = await m.parseBulkCargoRates(f);
+        const kept = bl.filter((b) => b.slabs.length).map((b) => ({ vendor: b.vendor || 'SELF', product: (b.product || product).toUpperCase(), slabs: b.slabs }));
+        if (!kept.length) { setErr('No rate blocks parsed — fill at least one product block (₹/kg per zone).'); return; }
         setBlocks(kept);
       } else {
         setResult(await m.parseRateWorkbook(f, fam as any));
@@ -217,17 +224,19 @@ function RateUpload({ client, products, vendors, onCancel, onSaved }: {
   };
   const create = async () => {
     setErr('');
-    if (!product) { setErr('Pick a product.'); return; }
     setBusy(true);
     try {
-      const head = { clientId: client.id, product, mode: productMode(product), fuelPct: fuelPct || 0, fovPct: fovPct || 0, fovMin: fovMin || 0, minChargeableKg: minChargeableKg || 0, minFreight: minFreight || 0 };
+      const acc = { clientId: client.id, fuelPct: fuelPct || 0, fovPct: fovPct || 0, fovMin: fovMin || 0, minChargeableKg: minChargeableKg || 0, minFreight: minFreight || 0 };
       if (fam === 'CARGO') {
-        if (!blocks.length) { setErr('No vendor rate blocks parsed — upload a filled cargo matrix.'); return; }
+        if (!blocks.length) { setErr('No rate blocks parsed — upload a filled cargo matrix.'); return; }
+        // One card per (vendor, product) block — the product comes from the file's Product column.
         for (const b of blocks) {
           const net = toNetwork(b.vendor);
-          await api.createCustomerCard({ ...head, network: net, vendor: net === 'SELF' ? null : net, slabs: b.slabs });
+          await api.createCustomerCard({ ...acc, product: b.product, mode: productMode(b.product) || 'SURFACE', network: net, vendor: net === 'SELF' ? null : net, slabs: b.slabs });
         }
       } else {
+        if (!product) { setErr('Pick a product.'); return; }
+        const head = { ...acc, product, mode: productMode(product) };
         const slabs = result?.slabs ?? [];
         if (!slabs.length) { setErr(`No rates parsed — upload a filled ${fam.toLowerCase()} matrix.`); return; }
         await api.createCustomerCard({ ...head, network, vendor: network === 'SELF' ? null : network, slabs });
@@ -241,27 +250,35 @@ function RateUpload({ client, products, vendors, onCancel, onSaved }: {
       <h3 style={{ marginTop: 4 }}>⬆ Upload rate matrix</h3>
       {err && <div className="error">{err}</div>}
       <div className="grid cols-3" style={{ gap: 12 }}>
-        {fam === 'CARGO' ? (
-          <div>
-            <label style={{ fontSize: 12 }}>Network</label>
-            <input value="Per vendor (from file)" disabled title="Cargo: the file's Vendor column drives the network — one card per vendor." />
-          </div>
-        ) : (
-          <div>
-            <label style={{ fontSize: 12 }}>Network</label>
-            <select value={network} onChange={(e) => setNetwork(e.target.value)}>
-              <option value="SELF">SELF / All networks</option>
-              {vendors.map((v) => <option key={v.id} value={(v.vendorCode || v.name).toUpperCase()}>{v.name}</option>)}
-            </select>
-          </div>
-        )}
         <div>
-          <label style={{ fontSize: 12 }}>Product *</label>
-          <select value={product} onChange={(e) => { setProduct(e.target.value); setResult(null); setBlocks([]); }}>
-            {products.map((p) => <option key={p.code} value={p.code}>{p.code} — {p.name}</option>)}
+          <label style={{ fontSize: 12 }}>Rate family</label>
+          <select value={famSel} onChange={(e) => { setFamSel(e.target.value as any); setResult(null); setBlocks([]); }}>
+            <option value="CARGO">Cargo — per-kg (all cargo products in one file)</option>
+            <option value="COURIER">Courier — DP / TDD / NDD (weight slabs)</option>
           </select>
         </div>
-        <div><label style={{ fontSize: 12 }}>Family</label><input value={fam} disabled /></div>
+        {fam === 'CARGO' ? (
+          <div>
+            <label style={{ fontSize: 12 }}>Product &amp; Network</label>
+            <input value="From file (Product + Vendor columns)" disabled title="Cargo: the file's Product & Vendor columns drive the cards — one per (vendor × product)." />
+          </div>
+        ) : (
+          <>
+            <div>
+              <label style={{ fontSize: 12 }}>Network</label>
+              <select value={network} onChange={(e) => setNetwork(e.target.value)}>
+                <option value="SELF">SELF / All networks</option>
+                {vendors.map((v) => <option key={v.id} value={(v.vendorCode || v.name).toUpperCase()}>{v.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 12 }}>Product *</label>
+              <select value={product} onChange={(e) => { setProduct(e.target.value); setResult(null); setBlocks([]); }}>
+                {courierProducts.map((p) => <option key={p.code} value={p.code}>{p.code} — {p.name}</option>)}
+              </select>
+            </div>
+          </>
+        )}
         <div><label style={{ fontSize: 12 }}>Fuel %</label><input type="number" value={fuelPct} onChange={(e) => setFuelPct(e.target.value)} /></div>
         <div><label style={{ fontSize: 12 }}>FOV %</label><input type="number" value={fovPct} onChange={(e) => setFovPct(e.target.value)} /></div>
         <div><label style={{ fontSize: 12 }}>FOV min ₹</label><input type="number" value={fovMin} onChange={(e) => setFovMin(e.target.value)} /></div>
@@ -273,18 +290,18 @@ function RateUpload({ client, products, vendors, onCancel, onSaved }: {
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
           <label style={{ fontSize: 12 }}>Rate matrix file (.xlsx / .xlsb) — {fam} layout</label>
           <button className="secondary" style={{ padding: '3px 10px', fontSize: 12 }}
-            onClick={async () => { const m = await import('../lib/rateSheet'); fam === 'COURIER' ? m.downloadCourierTemplate() : m.downloadCargoTemplate(vendors.map((v) => String(v.vendorCode || v.name))); }}>
-            ⬇ Blank {fam.toLowerCase()} template{fam === 'CARGO' ? ' (per vendor)' : ''}
+            onClick={async () => { const m = await import('../lib/rateSheet'); fam === 'COURIER' ? m.downloadCourierTemplate() : m.downloadCargoTemplate(vendors.map((v) => String(v.vendorCode || v.name)), cargoProductCodes); }}>
+            ⬇ Blank {fam.toLowerCase()} template{fam === 'CARGO' ? ` (${cargoProductCodes.length} products)` : ''}
           </button>
         </div>
         <input type="file" accept=".xlsx,.xlsb,.xls,.csv" onChange={(e) => onFile(e.target.files?.[0])} />
         {fam === 'CARGO' && blocks.length > 0 && (
           <div style={{ marginTop: 10, fontSize: 13 }}>
-            <div><b>{fileName}</b> — <b>{blocks.length}</b> vendor card{blocks.length > 1 ? 's' : ''} to create:</div>
+            <div><b>{fileName}</b> — <b>{blocks.length}</b> card{blocks.length > 1 ? 's' : ''} to create:</div>
             <table style={{ marginTop: 6 }}>
-              <thead><tr><th style={{ textAlign: 'left' }}>Vendor (file)</th><th>→ Network</th><th style={{ textAlign: 'right' }}>Rate cells</th></tr></thead>
+              <thead><tr><th style={{ textAlign: 'left' }}>Product</th><th style={{ textAlign: 'left' }}>Vendor (file)</th><th>→ Network</th><th style={{ textAlign: 'right' }}>Rate cells</th></tr></thead>
               <tbody>{blocks.map((b, i) => (
-                <tr key={i}><td>{b.vendor}</td><td><strong>{toNetwork(b.vendor)}</strong></td><td style={{ textAlign: 'right' }}>{b.slabs.length}</td></tr>
+                <tr key={i}><td><strong>{b.product}</strong></td><td>{b.vendor}</td><td><strong>{toNetwork(b.vendor)}</strong></td><td style={{ textAlign: 'right' }}>{b.slabs.length}</td></tr>
               ))}</tbody>
             </table>
           </div>
