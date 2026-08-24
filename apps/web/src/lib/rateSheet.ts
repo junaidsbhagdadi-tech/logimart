@@ -20,13 +20,16 @@ export const TAT_ZONES = ['N1', 'N2', 'N3', 'N4', 'C1', 'C2', 'W1', 'W2', 'W3', 
  * { MODE: { originZone: { destZone: days } } }. Robust to cell offset — finds each
  * sheet's zone header row and the origin column, then reads the day matrix.
  */
-export async function parseTatWorkbook(file: File): Promise<Record<string, Record<string, Record<string, number>>>> {
+export async function parseTatWorkbook(file: File, fallbackMode?: string): Promise<Record<string, Record<string, Record<string, number>>>> {
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: 'array' });
   const out: Record<string, Record<string, Record<string, number>>> = {};
+  const fb = String(fallbackMode ?? '').trim().toUpperCase();
   for (const name of wb.SheetNames) {
     const raw = name.trim().toUpperCase();
-    const mode = raw === 'AIR' ? 'APEX' : raw;
+    let mode = raw === 'AIR' ? 'APEX' : raw;
+    // A sheet not named SURFACE/AIR/APEX (e.g. "Sheet1") is treated as the UI-selected mode.
+    if (mode !== 'SURFACE' && mode !== 'APEX') mode = fb === 'AIR' ? 'APEX' : fb;
     if (mode !== 'SURFACE' && mode !== 'APEX') continue;
     const rows = XLSX.utils.sheet_to_json<any[]>(wb.Sheets[name], { header: 1, raw: true, blankrows: false });
     let hdrRow = -1, hdrScore = -1;

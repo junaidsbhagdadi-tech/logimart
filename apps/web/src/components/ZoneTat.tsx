@@ -46,7 +46,7 @@ export function ZoneTat() {
     if (!f) return; setErr(''); setMsg('');
     try {
       const { parseTatWorkbook } = await import('../lib/rateSheet');
-      const parsed = await parseTatWorkbook(f);
+      const parsed = await parseTatWorkbook(f, mode);
       setStore((s) => ({
         ...s,
         ...(parsed.SURFACE ? { [keyOf(vendor, 'SURFACE')]: parsed.SURFACE } : {}),
