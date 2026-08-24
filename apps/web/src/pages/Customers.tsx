@@ -37,12 +37,21 @@ export function Customers() {
   const [rcClient, setRcClient] = useState<Client | null>(null);
 
   const [sel, setSel] = useState<Set<string>>(new Set());
+  const [q, setQ] = useState('');
   const load = () => { api.listClients().then(setClients).catch((e) => setError(e.message)); setSel(new Set()); };
   useEffect(load, []);
 
+  // Search across code / name / GSTIN / PAN / city / contact.
+  const filtered = clients.filter((c) => {
+    const s = q.trim().toLowerCase();
+    if (!s) return true;
+    return [c.accountCode, c.legalName, c.gstin, c.pan, c.city, (c as any).contactPhone, (c as any).contactEmail]
+      .some((v) => String(v ?? '').toLowerCase().includes(s));
+  });
+
   const toggleSel = (id: string) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const allSelected = clients.length > 0 && sel.size === clients.length;
-  const toggleSelAll = () => setSel(allSelected ? new Set() : new Set(clients.map((c) => String(c.id))));
+  const allSelected = filtered.length > 0 && filtered.every((c) => sel.has(String(c.id)));
+  const toggleSelAll = () => setSel(allSelected ? new Set() : new Set(filtered.map((c) => String(c.id))));
 
   const removeOne = async (c: Client) => {
     if (!confirm(`Delete customer ${c.legalName}? This cannot be undone.`)) return;
@@ -274,7 +283,13 @@ export function Customers() {
       </div>
 
       <div className="card">
-        <h2>Customers ({clients.length})</h2>
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+          <h2 style={{ margin: 0 }}>Customers ({q.trim() ? `${filtered.length} of ${clients.length}` : clients.length})</h2>
+          <div style={{ position: 'relative', minWidth: 260 }}>
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="🔍 Search name, code, GSTIN, PAN, city…" style={{ width: '100%', padding: '9px 30px 9px 12px' }} />
+            {q && <button className="secondary" title="Clear" onClick={() => setQ('')} style={{ position: 'absolute', right: 4, top: 4, padding: '2px 8px', fontSize: 13 }}>✕</button>}
+          </div>
+        </div>
         {sel.size > 0 && (
           <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-soft, #f2f4f7)', borderRadius: 8, padding: '8px 12px', marginBottom: 10 }}>
             <span><strong>{sel.size}</strong> selected</span>
@@ -287,7 +302,7 @@ export function Customers() {
         <table>
           <thead><tr><th style={{ width: 32 }}><input type="checkbox" checked={allSelected} onChange={toggleSelAll} style={{ width: 'auto' }} /></th><th>Code</th><th>Name</th><th>GSTIN</th><th>PAN</th><th>City</th><th>Credit limit</th><th>Outstanding</th><th>Terms</th><th>Rate Cards</th><th>Status</th><th>Active</th></tr></thead>
           <tbody>
-            {clients.map((c) => (
+            {filtered.map((c) => (
               <tr key={c.id} style={{ opacity: c.isActive === false ? 0.5 : 1, ...(sel.has(String(c.id)) ? { background: 'var(--bg-soft, #f2f4f7)' } : {}) }}>
                 <td><input type="checkbox" checked={sel.has(String(c.id))} onChange={() => toggleSel(String(c.id))} style={{ width: 'auto' }} /></td>
                 <td>{c.accountCode}</td><td><Link to={`/customers/${c.id}/overview`} title="Open Customer 360"><strong>{c.legalName}</strong></Link></td><td>{c.gstin ?? '—'}</td><td>{c.pan ?? '—'}</td>
@@ -307,6 +322,9 @@ export function Customers() {
                 </td>
               </tr>
             ))}
+            {filtered.length === 0 && (
+              <tr><td colSpan={12} className="muted" style={{ textAlign: 'center', padding: 18 }}>{q.trim() ? `No customers match “${q.trim()}”.` : 'No customers yet.'}</td></tr>
+            )}
           </tbody>
         </table>
       </div>
