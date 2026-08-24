@@ -22,6 +22,7 @@ export function Layout() {
     { title: 'Overview', items: [
       { to: '/', icon: '📊', label: 'My Dashboard', end: true },
       { to: '/tracker', icon: '🧭', label: 'Track Shipment' },
+      { to: '/pincode-search', icon: '📍', label: 'Pincode Search' },
     ] },
     { title: 'My Shipments', items: [
       { to: '/create', icon: '➕', label: 'Book Shipment' },
@@ -49,6 +50,7 @@ export function Layout() {
     { title: 'Overview', items: [
       { to: '/', icon: '📊', label: 'Dashboard', end: true },
       { to: '/tracker', icon: '🧭', label: 'Track Shipment' },
+      { to: '/pincode-search', icon: '📍', label: 'Pincode Search' },
     ] },
     { title: 'Operations', items: [
       { to: '/create', icon: '➕', label: 'New Shipment' },

@@ -11,6 +11,7 @@ import { Invoices } from './pages/Invoices';
 import { InvoiceDetail } from './pages/InvoiceDetail';
 import { Track } from './pages/Track';
 import { TrackDetail } from './pages/TrackDetail';
+import { PincodeSearch } from './pages/PincodeSearch';
 import { Archive } from './pages/Archive';
 import { Customers } from './pages/Customers';
 import { FtlRates } from './pages/FtlRates';
@@ -70,6 +71,7 @@ export function App() {
       <Route element={<Layout />}>
         <Route path="/" element={user?.role === 'CLIENT_ADMIN' ? <ClientPortal /> : <Dashboard />} />
         <Route path="/tracker" element={<TrackDetail />} />
+        <Route path="/pincode-search" element={<PincodeSearch />} />
         <Route path="/tracker/:awb" element={<TrackDetail />} />
         <Route path="/create" element={<CreateShipment />} />
         <Route path="/awb-list" element={<AwbEntryList />} />
