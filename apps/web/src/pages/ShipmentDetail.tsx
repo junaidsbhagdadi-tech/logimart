@@ -3,6 +3,12 @@ import { Link, useParams } from 'react-router-dom';
 import { api, RateQuote, Shipment } from '../api';
 import { useAuth } from '../auth';
 
+// Friendly service labels (the raw enum like ROAD_PTL is internal).
+const MODE_LABELS: Record<string, string> = {
+  ROAD_PTL: 'Surface (PTL)', ROAD_FTL: 'Surface (FTL)', RAIL: 'Train', TRAIN: 'Train',
+  AIR_EXPRESS: 'Air Express', AIR: 'Air', ECOM: 'Surface (E-com)', SURFACE: 'Surface',
+};
+
 export function ShipmentDetail() {
   const { awb } = useParams();
   const { user } = useAuth();
@@ -325,8 +331,10 @@ export function ShipmentDetail() {
       <div className="card">
         <div className="grid cols-3">
           <div><label>Status</label><span className={`badge ${s.status}`}>{s.status}</span></div>
-          <div><label>Service</label>{s.serviceMode}</div>
+          <div><label>Service</label>{MODE_LABELS[s.serviceMode] ?? s.serviceMode}{s.product ? ` · ${s.product}` : ''}</div>
           <div><label>Route</label>{s.originZone} → {s.destZone}</div>
+          <div><label>Shipper</label>{(s as any).shipperName || (s as any).client?.legalName || '—'}</div>
+          <div><label>Consignee</label>{(s as any).consigneeName || '—'}{(s as any).consigneeCity ? ` · ${(s as any).consigneeCity}` : ''}</div>
           {s.expectedDelivery && <div><label>Expected delivery</label>{new Date(s.expectedDelivery).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} <span className="muted" style={{ fontSize: 11 }}>(booking + TAT)</span></div>}
           <div><label>Boxes delivered</label>{s.rollup.delivered} / {s.rollup.pieceCount} {s.rollup.isShort && <span className="badge PARTIAL">SHORT</span>}</div>
           <div><label>Total dead</label>{s.totalDeadKg} kg</div>

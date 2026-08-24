@@ -112,21 +112,7 @@ function ExcelExNote({ s, q }: { s: any; q: any }) {
               <div>STAMP &amp; SIGNATURE: _____________________________</div>
             </div>
           </td>
-          <td style={{ width: '36%', verticalAlign: 'top' }}>
-            <table className="amt"><tbody>
-              <tr><td>Freight Charge</td><td>{charge(q, 'freight')}</td></tr>
-              <tr><td>Service Charge</td><td></td></tr>
-              <tr><td>Insurance Charge</td><td>{charge(q, 'fov')}</td></tr>
-              <tr><td>Fuel Surcharge</td><td>{charge(q, 'fuel')}</td></tr>
-              <tr className="b"><td>SUB-TOTAL</td><td>{q ? rup(q.freight + q.fuel + q.fov) : ''}</td></tr>
-              <tr><td>Other Charges</td><td>{q ? rup(q.oda + q.docket + q.handling) : ''}</td></tr>
-              <tr className="b"><td>TOTAL</td><td>{q ? rup(q.subtotal) : ''}</td></tr>
-              <tr><td>SGST</td><td>{rup(gst / 2)}</td></tr>
-              <tr><td>CGST</td><td>{rup(gst / 2)}</td></tr>
-              <tr><td>IGST</td><td></td></tr>
-              <tr className="b grand"><td>GRAND TOTAL</td><td>{q ? rup(q.grandTotal) : ''}</td></tr>
-            </tbody></table>
-          </td>
+          <AsAgreed />
         </tr>
       </tbody></table>
       <div className="foot">Corp. Add.: Seq No MHP 2494 H. No 27/2, Gali No 2, Block A, Mahipalpur Extn, New Delhi 110037 · +011-71859599 · Non-negotiable consignment note · <b>SHIPPER COPY</b></div>
@@ -135,6 +121,15 @@ function ExcelExNote({ s, q }: { s: any; q: any }) {
 }
 
 const shipperName = (s: any) => s.shipperName || s.client?.legalName || '';
+
+/** Charges are not printed on the consignment note — stamped "AS AGREED" instead. */
+function AsAgreed() {
+  return (
+    <td style={{ width: '36%', verticalAlign: 'middle', textAlign: 'center' }}>
+      <div className="asagreed">AS AGREED</div>
+    </td>
+  );
+}
 
 // ============ ExcelEx Air Cargo (APEX) / Surface Cargo (SURFACE) ============
 function CargoNote({ s, q, surface }: { s: any; q: any; surface: boolean }) {
@@ -201,15 +196,7 @@ function CargoNote({ s, q, surface }: { s: any; q: any; surface: boolean }) {
               <div>Name: ___________________ Sign: ___________ Date: ________</div>
             </div>
           </td>
-          <td style={{ width: '36%', verticalAlign: 'top' }}>
-            <table className="amt"><tbody>
-              <tr><th colSpan={2}>Details &nbsp; — &nbsp; Amount (Rs.)</th></tr>
-              {rows.map((r) => <tr key={r}><td>{r}</td><td>{amt(r)}</td></tr>)}
-              <tr className="b"><td>TOTAL</td><td>{q ? rup(q.subtotal) : ''}</td></tr>
-              <tr><td>GST</td><td>{q ? rup(q.gst) : ''}</td></tr>
-              <tr className="b grand"><td>GRAND TOTAL</td><td>{q ? rup(q.grandTotal) : ''}</td></tr>
-            </tbody></table>
-          </td>
+          <AsAgreed />
         </tr>
       </tbody></table>
       <div className="foot">Corp. Add.: MHP 2494 H. No 27/2, Gali No 2, Block A, Mahipalpur Extn, New Delhi 110037 · www.excelexlog.com · NON-NEGOTIABLE — AT OWNER'S RISK · <b>SHIPPER'S COPY</b></div>
@@ -241,6 +228,7 @@ const PRINT_CSS = `
 .note table.amt td:last-child, .note table.amt th:last-child { text-align:right; width:42%; }
 .note table.amt tr.b td { font-weight:800; }
 .note table.amt tr.grand td { font-size:13px; background:#f0f0f0; }
+.note .asagreed { display:inline-block; transform:rotate(-16deg); font-size:26px; font-weight:800; letter-spacing:3px; color:#b0b7bd; border:2px solid #b0b7bd; border-radius:8px; padding:8px 16px; opacity:.75; white-space:nowrap; }
 .note .foot { font-size:8.5px; color:#333; margin-top:6px; text-align:center; }
 .note.excelex .logo, .note.excelex .sub, .note.excelex .party .ph b { color:#12459c; }
 /* Cargo (APEX / SURFACE) prints larger for readability */
