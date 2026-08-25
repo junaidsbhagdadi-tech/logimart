@@ -22,6 +22,7 @@ const COLS: { key: string; label: string; req: boolean; date?: boolean; num?: bo
 const STATUS_OPTS = ['ongoing', 'closed', 'rejected', 'disputed'];
 const blank: Record<string, string> = Object.fromEntries(COLS.map((c) => [c.key, '']));
 const d10 = (v: any) => (v ? new Date(v).toLocaleDateString('en-GB') : '');
+const isoDate = (v: any) => { const d = new Date(v); return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10); };
 const cell = (r: any, c: { key: string; date?: boolean; num?: boolean }) =>
   c.date ? d10(r[c.key]) : c.num ? (r[c.key] != null ? Number(r[c.key]).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '') : (r[c.key] ?? '');
 
@@ -32,6 +33,7 @@ export function Deductions() {
   const [month, setMonth] = useState(''); // '' = all months
   const [form, setForm] = useState({ ...blank });
   const [adding, setAdding] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
 
@@ -67,9 +69,20 @@ export function Deductions() {
     setError(''); setMsg('');
     if (missing.length) { setError('Missing mandatory: ' + missing.join(', ')); return; }
     try {
-      await api.createDeduction({ ...form, amount: form.amount ? +form.amount : 0 });
-      setForm({ ...blank }); setAdding(false); setMsg('✓ Deduction added'); load();
+      const body = { ...form, amount: form.amount ? +form.amount : 0 };
+      if (editId) { await api.updateDeduction(editId, body); setMsg('✓ Deduction updated'); }
+      else { await api.createDeduction(body); setMsg('✓ Deduction added'); }
+      setForm({ ...blank }); setAdding(false); setEditId(null); load();
     } catch (e: any) { setError(e.message); }
+  };
+  // Open the modal prefilled from a row for editing.
+  const openEdit = (r: any) => {
+    const f: Record<string, string> = { ...blank };
+    for (const c of COLS) {
+      const v = r[c.key];
+      f[c.key] = v == null ? '' : c.date ? isoDate(v) : String(v);
+    }
+    setForm(f); setEditId(String(r.id)); setAdding(true); setError(''); setLookupMsg('');
   };
   const del = async (r: any) => { if (!confirm(`Delete deduction for ${r.awb}?`)) return; try { await api.deleteDeduction(r.id); load(); } catch (e: any) { setError(e.message); } };
 
@@ -102,7 +115,7 @@ export function Deductions() {
           <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} title="Filter by month (blank = all)" />
           <button className="secondary" onClick={exportXls} disabled={!rows.length}>⬇ XLS</button>
           <button className="secondary" onClick={exportCsv} disabled={!rows.length}>⬇ CSV</button>
-          <button onClick={() => { setForm({ ...blank }); setAdding(true); setError(''); setLookupMsg(''); }}>＋ Add deduction</button>
+          <button onClick={() => { setForm({ ...blank }); setEditId(null); setAdding(true); setError(''); setLookupMsg(''); }}>＋ Add deduction</button>
         </div>
       </div>
       {error && <div className="error" style={{ marginTop: 10 }}>{error}</div>}
@@ -124,7 +137,10 @@ export function Deductions() {
                       : c.key === 'amount' ? <strong>{cell(r, c)}</strong> : cell(r, c)}
                   </td>
                 ))}
-                <td><button className="secondary" style={{ padding: '2px 8px', fontSize: 12 }} title="Delete" onClick={() => del(r)}>🗑</button></td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  <button className="secondary" style={{ padding: '2px 8px', fontSize: 12, marginRight: 4 }} title="Edit" onClick={() => openEdit(r)}>✏️</button>
+                  <button className="secondary" style={{ padding: '2px 8px', fontSize: 12 }} title="Delete" onClick={() => del(r)}>🗑</button>
+                </td>
               </tr>
             ))}
             {rows.length === 0 && <tr><td colSpan={COLS.length + 1} className="muted" style={{ textAlign: 'center', padding: 18 }}>No deductions{month ? ` for ${month}` : ''} yet — click “Add deduction”.</td></tr>}
@@ -133,7 +149,7 @@ export function Deductions() {
       </div>
 
       {adding && (
-        <Modal title="Add deduction" width={720} onClose={() => setAdding(false)}>
+        <Modal title={editId ? 'Edit deduction' : 'Add deduction'} width={720} onClose={() => { setAdding(false); setEditId(null); }}>
           {error && <div className="error">{error}</div>}
           <div className="grid cols-3" style={{ gap: 12 }}>
             {COLS.map((c) => (
@@ -150,8 +166,8 @@ export function Deductions() {
             ))}
           </div>
           <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-            <button className="secondary" onClick={() => setAdding(false)}>Cancel</button>
-            <button disabled={!!missing.length} onClick={save}>Save deduction</button>
+            <button className="secondary" onClick={() => { setAdding(false); setEditId(null); }}>Cancel</button>
+            <button disabled={!!missing.length} onClick={save}>{editId ? 'Save changes' : 'Save deduction'}</button>
           </div>
         </Modal>
       )}

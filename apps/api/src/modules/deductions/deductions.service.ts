@@ -97,6 +97,33 @@ export class DeductionsService {
     });
   }
 
+  async update(id: number, dto: DeductionInput) {
+    const existing = await this.prisma.vendorDeduction.findUnique({ where: { id: BigInt(id) }, select: { id: true } });
+    if (!existing) throw new NotFoundException('Deduction not found');
+    const d = (s?: string) => (s ? new Date(s) : null);
+    const period = this.monthOf(dto.pickupDate) || this.monthOf(dto.emailCommDate) || undefined;
+    return this.prisma.vendorDeduction.update({
+      where: { id: BigInt(id) },
+      data: {
+        awb: String(dto.awb || '').trim().toUpperCase(),
+        vendorName: dto.vendorName?.trim() || '',
+        vendorAcCode: dto.vendorAcCode?.trim() || null,
+        pickupDate: d(dto.pickupDate),
+        deliveryDate: d(dto.deliveryDate),
+        emailCommDate: d(dto.emailCommDate),
+        madeToNames: dto.madeToNames?.trim() || null,
+        reason: dto.reason?.trim() || null,
+        amount: new Prisma.Decimal(Number(dto.amount) || 0),
+        attachment: dto.attachment?.trim() || null,
+        customerCode: dto.customerCode?.trim()?.toUpperCase() || null,
+        approvedAmount: dto.approvedAmount != null && !isNaN(Number(dto.approvedAmount)) ? new Prisma.Decimal(Number(dto.approvedAmount)) : null,
+        status: dto.status?.trim() || 'ongoing',
+        remark: dto.remark?.trim() || null,
+        ...(period ? { periodMonth: period } : {}),
+      },
+    });
+  }
+
   async remove(id: number) {
     const row = await this.prisma.vendorDeduction.findUnique({ where: { id: BigInt(id) }, select: { id: true } });
     if (!row) throw new NotFoundException('Deduction not found');

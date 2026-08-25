@@ -664,6 +664,7 @@ export const api = {
   listDeductions: (month?: string) => request<any[]>(`/api/v1/deductions${month ? '?month=' + month : ''}`),
   deductionAwbLookup: (awb: string) => request<{ awb: string; vendorName: string; vendorAcCode: string; customerCode: string; pickupDate: string; deliveryDate: string } | null>(`/api/v1/deductions/awb/${encodeURIComponent(awb)}`),
   createDeduction: (body: unknown) => request<any>('/api/v1/deductions', { method: 'POST', body: JSON.stringify(body) }),
+  updateDeduction: (id: string | number, body: unknown) => request<any>(`/api/v1/deductions/${id}`, { method: 'POST', body: JSON.stringify(body) }),
   deleteDeduction: (id: string | number) => request<{ ok: boolean }>(`/api/v1/deductions/${id}`, { method: 'DELETE' }),
   createClaim: (body: unknown) => request<any>('/api/v1/claims', { method: 'POST', body: JSON.stringify(body) }),
   reviewClaim: (id: string, body: unknown) => request(`/api/v1/claims/${id}/review`, { method: 'POST', body: JSON.stringify(body) }),

@@ -43,6 +43,11 @@ export class DeductionsController {
     return this.deductions.create(dto, req.user?.sub ? Number(req.user.sub) : undefined);
   }
 
+  @Post(':id')
+  update(@Param('id') id: string, @Body() dto: DeductionDto) {
+    return this.deductions.update(Number(id), dto);
+  }
+
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.deductions.remove(Number(id));
