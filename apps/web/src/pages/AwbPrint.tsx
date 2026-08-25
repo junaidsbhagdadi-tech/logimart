@@ -122,11 +122,20 @@ function ExcelExNote({ s, q }: { s: any; q: any }) {
 
 const shipperName = (s: any) => s.shipperName || s.client?.legalName || '';
 
-/** Charges are not printed on the consignment note — stamped "AS AGREED" instead. */
+/** Standard charge heads shown on the consignment note. Amounts are left blank and the box is
+ *  stamped with an "AS AGREED" watermark (the rate is settled per the customer's contract). */
+const CHARGE_HEADS = ['Freight', 'Fuel Surcharge', 'AWB Fee', 'FOV Charges', 'ODA Charges', 'RAS Charges', 'VCHC Charges', 'DC Charges', 'Other Charges'];
 function AsAgreed() {
   return (
-    <td style={{ width: '36%', verticalAlign: 'middle', textAlign: 'center' }}>
-      <div className="asagreed">AS AGREED</div>
+    <td style={{ width: '36%', verticalAlign: 'top', padding: 0 }}>
+      <div className="agreedbox">
+        <table className="amt"><tbody>
+          <tr className="b"><td>CHARGES</td><td>AMOUNT ₹</td></tr>
+          {CHARGE_HEADS.map((h) => <tr key={h}><td>{h}</td><td>&nbsp;</td></tr>)}
+          <tr className="grand"><td>TOTAL</td><td>&nbsp;</td></tr>
+        </tbody></table>
+        <div className="asagreed">AS AGREED</div>
+      </div>
     </td>
   );
 }
@@ -228,7 +237,13 @@ const PRINT_CSS = `
 .note table.amt td:last-child, .note table.amt th:last-child { text-align:right; width:42%; }
 .note table.amt tr.b td { font-weight:800; }
 .note table.amt tr.grand td { font-size:13px; background:#f0f0f0; }
-.note .asagreed { display:inline-block; transform:rotate(-16deg); font-size:26px; font-weight:800; letter-spacing:3px; color:#b0b7bd; border:2px solid #b0b7bd; border-radius:8px; padding:8px 16px; opacity:.75; white-space:nowrap; }
+/* Charge-head box with an "AS AGREED" watermark over it (heads stay readable, amounts blank). */
+.note .agreedbox { position:relative; height:100%; }
+.note .agreedbox table.amt { width:100%; height:100%; }
+.note .agreedbox table.amt td:last-child { text-align:right; width:44%; }
+.note .agreedbox table.amt tr.b td { font-weight:800; background:#f3f4f6; }
+.note .agreedbox table.amt tr.grand td { font-weight:800; background:#f0f0f0; }
+.note .asagreed { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%) rotate(-18deg); font-size:24px; font-weight:800; letter-spacing:3px; color:#c0392b; border:2px solid #c0392b; border-radius:8px; padding:5px 14px; opacity:.28; white-space:nowrap; pointer-events:none; }
 .note .foot { font-size:8.5px; color:#333; margin-top:6px; text-align:center; }
 .note.excelex .logo, .note.excelex .sub, .note.excelex .party .ph b { color:#12459c; }
 /* Cargo (APEX / SURFACE) prints larger for readability */
