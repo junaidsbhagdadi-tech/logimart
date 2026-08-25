@@ -14,6 +14,9 @@ interface DeductionInput {
   amount?: number;
   attachment?: string;
   customerCode?: string;
+  approvedAmount?: number;
+  status?: string;
+  remark?: string;
 }
 
 @Injectable()
@@ -85,6 +88,9 @@ export class DeductionsService {
         amount: new Prisma.Decimal(Number(dto.amount) || 0),
         attachment: dto.attachment?.trim() || null,
         customerCode: dto.customerCode?.trim()?.toUpperCase() || null,
+        approvedAmount: dto.approvedAmount != null && !isNaN(Number(dto.approvedAmount)) ? new Prisma.Decimal(Number(dto.approvedAmount)) : null,
+        status: dto.status?.trim() || 'ongoing',
+        remark: dto.remark?.trim() || null,
         periodMonth: period,
         createdById: userId != null ? BigInt(userId) : null,
       },

@@ -1157,6 +1157,9 @@ model VendorDeduction {
   amount        Decimal   @default(0) @db.Decimal(14, 2) // deduction amount (mandatory)
   attachment    String?                                 // pic / email comm — link or reference (mandatory)
   customerCode  String?                                 // Customer Code (mandatory)
+  approvedAmount Decimal?  @db.Decimal(14, 2)            // amount approved by the vendor
+  status        String?   @default("ongoing")           // ongoing | closed | rejected | disputed
+  remark        String?                                 // free-text remark
   periodMonth   String?                                 // YYYY-MM bucket for the monthly view
   createdById   BigInt?
   createdAt     DateTime  @default(now())

@@ -392,7 +392,11 @@ export class RateService {
         }, 0).toFixed(3);
       }
     }
-    return +Math.max(dead, vol, Number(card.minChargeableKg ?? 0)).toFixed(3);
+    let cw = Math.max(dead, vol, Number(card.minChargeableKg ?? 0));
+    // Round UP to the next whole kg for all products except courier DP / e-commerce.
+    const noRound = ['DP', 'TDD', 'NDD', 'ECOM', 'ECOMM'].includes(String(shipment.product ?? '').toUpperCase());
+    if (!noRound && cw > 0) cw = Math.ceil(cw);
+    return +cw.toFixed(3);
   }
 
   // Default DEL/NCR pincode prefixes (editable via SETTING · GREEN_TAX · attrs.prefixes).
@@ -551,15 +555,23 @@ export class RateService {
     let oda = 0;
     let odaLabel = 'ODA';
     if (!isCourier) {
-      // ODA applies if EITHER end is an out-of-delivery-area pincode — pickup ODA counts too.
-      const edl = await this.edlCharge(this.deriveNetwork(shipment), destPin, chargeableKg);
       const odaFlat = cget('ODA', 'value', card.odaFlat), odaMin = cget('ODA', 'min', card.odaMin);
       const odaPerKg = cget('ODA', 'perKg', card.odaPerKg);
-      const anyOda = shipment.isOda || destPin?.isOda || originPin?.isOda;
-      if (edl > 0) { oda = edl; odaLabel = 'EDL (ODA)'; }
-      else if (anyOda && (odaFlat > 0 || odaPerKg > 0 || odaMin > 0)) {
-        oda = r2(Math.max(odaFlat + odaPerKg * chargeableKg, odaMin));
-        odaLabel = originPin?.isOda && !destPin?.isOda ? 'ODA (origin)' : 'ODA';
+      const cardOdaSet = odaFlat > 0 || odaPerKg > 0 || odaMin > 0;
+      const isEdlLoc = (p: any) => !!p && !!p.edl && String(p.edl).toUpperCase() !== 'REGULAR';
+      const destOda = shipment.isOda || destPin?.isOda || isEdlLoc(destPin);
+      const originOda = originPin?.isOda || isEdlLoc(originPin);
+      // Charge ODA per out-of-delivery-area end — twice when BOTH pickup and delivery are ODA.
+      const ends = (destOda ? 1 : 0) + (originOda ? 1 : 0);
+      if (ends > 0) {
+        // The card's flat/₹-kg/min ODA WINS over the network EDL matrix when it's configured.
+        const unit = cardOdaSet
+          ? r2(Math.max(odaFlat + odaPerKg * chargeableKg, odaMin))
+          : await this.edlCharge(this.deriveNetwork(shipment), destPin, chargeableKg);
+        oda = r2(unit * ends);
+        odaLabel = ends === 2 ? 'ODA (pickup + delivery)'
+          : originOda && !destOda ? 'ODA (origin)'
+          : cardOdaSet ? 'ODA' : 'EDL (ODA)';
       }
     }
     const topay = shipment.paymentTerm === 'TO_PAY' ? r2(cget('TOPAY', 'value', card.topayCharge)) : 0;
@@ -590,13 +602,14 @@ export class RateService {
     const oswThresholdCm = Number(cardOsw?.thresholdCm) > 0 ? Number(cardOsw.thresholdCm) : oswMaster.thresholdCm;
     const oswThresholdKg = Number(cardOsw?.thresholdKg) > 0 ? Number(cardOsw.thresholdKg) : oswMaster.thresholdKg;
     const oswSlabs = cardOswSlabs.length ? cardOswSlabs : oswMaster.slabs;
-    const overDim = pieces.some((p) => [p.lengthCm, p.widthCm, p.heightCm].some((d) => Number(d || 0) > oswThresholdCm) || Number(p.deadKg) > oswThresholdKg);
+    // OSW is charged PER PIECE that breaches the size/weight threshold (the slab rate is ₹/pcs).
+    const overPieces = pieces.filter((p) => [p.lengthCm, p.widthCm, p.heightCm].some((d) => Number(d || 0) > oswThresholdCm) || Number(p.deadKg) > oswThresholdKg).length;
     let osw = 0;
     if (oswSlabs.length) {
-      if (overDim) { const slab = oswSlabs.find((s) => chargeableKg >= s.fromKg && chargeableKg <= s.toKg); if (slab) osw = r2(chargeableKg * slab.perKg); }
+      if (overPieces > 0) { const slab = oswSlabs.find((s) => chargeableKg >= s.fromKg && chargeableKg <= s.toKg); if (slab) osw = r2(overPieces * slab.perKg); }
     } else {
-      const oversize = pieces.some((p) => Number(p.deadKg) > 69 || [p.lengthCm, p.widthCm, p.heightCm].some((d) => Number(d || 0) > 119));
-      osw = oversize ? r2(cget('OSP', 'value', card.ospCharge)) : 0;
+      const overFlat = pieces.filter((p) => Number(p.deadKg) > 69 || [p.lengthCm, p.widthCm, p.heightCm].some((d) => Number(d || 0) > 119)).length;
+      osw = overFlat > 0 ? r2(overFlat * cget('OSP', 'value', card.ospCharge)) : 0;
     }
     // RAS (Remote Area Surcharge): cargo only, per-kg for the configured states. Rate card's RAS
     // override (card.charges.RAS.value + optional states) wins over Masters · SETTING/RAS.

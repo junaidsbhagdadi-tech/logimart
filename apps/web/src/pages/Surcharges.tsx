@@ -75,7 +75,7 @@ export function Surcharges() {
 
       <div className="card">
         <h2 style={{ marginTop: 0 }}>📦 OSW — Oversize / Overweight</h2>
-        <p className="muted" style={{ marginTop: -6, fontSize: 13 }}>Applies when <strong>any box dimension exceeds the cm threshold</strong> <em>or</em> <strong>any piece exceeds the kg threshold</strong>. Charged as <strong>chargeable weight (max of volumetric/actual) × the ₹/kg for its weight slab</strong>. Cargo products only.</p>
+        <p className="muted" style={{ marginTop: -6, fontSize: 13 }}>Applies when <strong>any box dimension exceeds the cm threshold</strong> <em>or</em> <strong>any piece exceeds the kg threshold</strong>. Charged <strong>per oversized piece × the ₹/pcs for the shipment's weight slab</strong>. Cargo products only.</p>
         <div className="row" style={{ gap: 14 }}>
           <div style={{ maxWidth: 200 }}>
             <label>Dimension threshold (cm)</label>
@@ -87,7 +87,7 @@ export function Surcharges() {
           </div>
         </div>
         <table style={{ marginTop: 14, maxWidth: 460 }}>
-          <thead><tr><th>Weight slab</th><th style={{ textAlign: 'right' }}>Rate (₹ / kg)</th></tr></thead>
+          <thead><tr><th>Weight slab</th><th style={{ textAlign: 'right' }}>Rate (₹ / pcs)</th></tr></thead>
           <tbody>
             {slabs.map((s, i) => (
               <tr key={i}>

@@ -15,7 +15,11 @@ const COLS: { key: string; label: string; req: boolean; date?: boolean; num?: bo
   { key: 'amount', label: 'Deduction amount', req: true, num: true },
   { key: 'attachment', label: 'Attach Pic / email comm', req: true },
   { key: 'customerCode', label: 'Customer Code', req: true },
+  { key: 'approvedAmount', label: 'Approved amount (vendor)', req: false, num: true },
+  { key: 'status', label: 'Claim status', req: false },
+  { key: 'remark', label: 'Remark', req: false },
 ];
+const STATUS_OPTS = ['ongoing', 'closed', 'rejected', 'disputed'];
 const blank: Record<string, string> = Object.fromEntries(COLS.map((c) => [c.key, '']));
 const d10 = (v: any) => (v ? new Date(v).toLocaleDateString('en-GB') : '');
 const cell = (r: any, c: { key: string; date?: boolean; num?: boolean }) =>
@@ -135,10 +139,12 @@ export function Deductions() {
             {COLS.map((c) => (
               <div key={c.key} style={c.key === 'reason' || c.key === 'attachment' ? { gridColumn: 'span 2' } : undefined}>
                 <label style={{ fontSize: 12 }}>{c.label} {c.req ? <span style={{ color: 'var(--danger, #c0392b)' }}>*</span> : <span className="muted">(opt)</span>}</label>
-                <input type={c.date ? 'date' : c.num ? 'number' : 'text'} value={form[c.key]} onChange={(e) => set(c.key, e.target.value)}
-                  placeholder={c.key === 'awb' ? 'enter AWB — auto-fills the rest' : c.key === 'attachment' ? 'link to pic / email' : ''}
-                  onBlur={c.key === 'awb' ? (e) => fetchAwb(e.target.value) : undefined}
-                  onKeyDown={c.key === 'awb' ? (e) => { if (e.key === 'Enter') { e.preventDefault(); fetchAwb((e.target as HTMLInputElement).value); } } : undefined} />
+                {c.key === 'status'
+                  ? <select value={form.status || 'ongoing'} onChange={(e) => set('status', e.target.value)}>{STATUS_OPTS.map((o) => <option key={o} value={o}>{o}</option>)}</select>
+                  : <input type={c.date ? 'date' : c.num ? 'number' : 'text'} value={form[c.key]} onChange={(e) => set(c.key, e.target.value)}
+                      placeholder={c.key === 'awb' ? 'enter AWB — auto-fills the rest' : c.key === 'attachment' ? 'link to pic / email' : ''}
+                      onBlur={c.key === 'awb' ? (e) => fetchAwb(e.target.value) : undefined}
+                      onKeyDown={c.key === 'awb' ? (e) => { if (e.key === 'Enter') { e.preventDefault(); fetchAwb((e.target as HTMLInputElement).value); } } : undefined} />}
                 {c.key === 'awb' && lookupMsg && <div className="muted" style={{ fontSize: 11, marginTop: 3, color: lookupMsg.startsWith('✓') ? 'var(--ok, #16a34a)' : 'var(--muted)' }}>{lookupMsg}</div>}
               </div>
             ))}

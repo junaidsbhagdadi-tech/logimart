@@ -17,6 +17,9 @@ class DeductionDto {
   @IsOptional() @IsNumber() amount?: number;
   @IsOptional() @IsString() attachment?: string;
   @IsOptional() @IsString() customerCode?: string;
+  @IsOptional() @IsNumber() approvedAmount?: number;
+  @IsOptional() @IsString() status?: string;
+  @IsOptional() @IsString() remark?: string;
 }
 
 @Controller('api/v1/deductions')
