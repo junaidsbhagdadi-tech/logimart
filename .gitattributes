@@ -1,0 +1,5 @@
+# Force LF for shell scripts and deploy files so they run on the Linux server
+# regardless of the OS they were committed from (avoids "bad interpreter: bash\r").
+*.sh            text eol=lf
+deploy/**       text eol=lf
+*.template      text eol=lf
