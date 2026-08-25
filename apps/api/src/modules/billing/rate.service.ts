@@ -16,6 +16,7 @@ export interface ChargeBreakup {
   docket: number;
   handling: number;
   topay?: number;
+  dod?: number; // DOD (Draft/Demand on Delivery) handling charge
   appt?: number;
   loading?: number;
   unloading?: number;
@@ -383,14 +384,18 @@ export class RateService {
     if (shipment.chargeWeight != null && Number(shipment.chargeWeight) > 0) return +Number(shipment.chargeWeight).toFixed(3);
     const dead = pieces.reduce((s, p) => s + Number(p.deadKg), 0);
     let vol = pieces.reduce((s, p) => s + Number(p.volKg || 0), 0);
-    if (this.isSurface(shipment.serviceMode)) {
-      const divisor = Number(card.volumetricDivisor ?? 0), cft = Number(card.cft ?? 0);
-      if (divisor > 0 && cft > 0) {
-        vol = +pieces.reduce((s, p) => {
-          const l = Number(p.lengthCm || 0), w = Number(p.widthCm || 0), h = Number(p.heightCm || 0);
-          return s + (l && w && h ? (l * w * h / divisor) * cft : 0);
-        }, 0).toFixed(3);
-      }
+    // Recompute volumetric from the CARD's divisor whenever it sets one — for EVERY product, not just
+    // surface (previously air/express other than Apex ignored the card divisor and used the booking-time
+    // default divisor). Surface additionally scales by the card's CFT factor when set; air uses the plain divisor.
+    const divisor = Number(card.volumetricDivisor ?? 0), cft = Number(card.cft ?? 0);
+    const surfaceVol = this.isSurface(shipment.serviceMode);
+    if (divisor > 0) {
+      vol = +pieces.reduce((s, p) => {
+        const l = Number(p.lengthCm || 0), w = Number(p.widthCm || 0), h = Number(p.heightCm || 0);
+        if (!(l && w && h)) return s;
+        const base = (l * w * h) / divisor;
+        return s + (surfaceVol && cft > 0 ? base * cft : base);
+      }, 0).toFixed(3);
     }
     let cw = Math.max(dead, vol, Number(card.minChargeableKg ?? 0));
     // Round UP to the next whole kg for all products except courier DP / e-commerce.
@@ -488,8 +493,34 @@ export class RateService {
 
   /** Price a shipment fully from its CustomerRateCard: freight (slabs) + every accessorial on the card. */
   async chargesFromRateCard(shipment: any, pieces: any[]): Promise<ChargeBreakup | null> {
-    const card = await this.resolveRateCard(shipment);
+    let card: any = await this.resolveRateCard(shipment);
     if (!card) return null;
+    // #18/#14: SELF-card accessorials + add-on charges apply to EVERY vendor unless the vendor card
+    // overrides them. When the resolved card is vendor-specific, merge the SELF card (same product)
+    // UNDERNEATH it: the vendor card's freight grid + any set charge wins; blank columns and unset
+    // charge codes fall back to SELF. So you upload SELF once and every carrier inherits the add-ons.
+    if (String(card.network ?? 'SELF').toUpperCase() !== 'SELF') {
+      const now = new Date();
+      const selfCard: any = await this.prisma.customerRateCard.findFirst({
+        where: {
+          clientId: shipment.clientId, isActive: true, product: card.product,
+          network: { equals: 'SELF', mode: 'insensitive' },
+          validFrom: { lte: now }, OR: [{ validTo: null }, { validTo: { gte: now } }],
+        },
+        include: { slabs: true },
+      });
+      if (selfCard) {
+        const merged: any = { ...selfCard, ...card };
+        for (const k of Object.keys(selfCard)) if (merged[k] == null) merged[k] = selfCard[k];
+        // Deep-merge charges per code so a vendor entry overrides only the fields it sets.
+        const sc: any = selfCard.charges || {}, vc: any = card.charges || {};
+        const mc: any = { ...sc };
+        for (const k of Object.keys(vc)) mc[k] = (vc[k] && typeof vc[k] === 'object' && sc[k] && typeof sc[k] === 'object') ? { ...sc[k], ...vc[k] } : vc[k];
+        merged.charges = mc;
+        merged.slabs = card.slabs; // keep the vendor card's freight grid
+        card = merged;
+      }
+    }
     const chargeableKg = this.cardChargeableKg(shipment, pieces, card);
     // Zone match is space- and case-insensitive so "NE 1" (pincode) matches "NE1" (rate card).
     const norm = (x: any) => String(x ?? '').replace(/\s+/g, '').toUpperCase();
@@ -574,7 +605,16 @@ export class RateService {
           : cardOdaSet ? 'ODA' : 'EDL (ODA)';
       }
     }
-    const topay = shipment.paymentTerm === 'TO_PAY' ? r2(cget('TOPAY', 'value', card.topayCharge)) : 0;
+    // To-Pay / reverse-pickup charge: applies when freight is collected at delivery (TO_PAY) OR the
+    // product is a reverse pickup (TAPEX / TOSFC / TODP), which inherently carries the reverse charge.
+    const isReverse = ['TAPEX', 'TOSFC', 'TODP'].includes(prod) || /REVERSE/.test(prod);
+    const topay = (shipment.paymentTerm === 'TO_PAY' || isReverse) ? r2(cget('TOPAY', 'value', card.topayCharge)) : 0;
+    // DOD (Draft/Demand on Delivery): handling charge when a DD/cheque is collected at delivery.
+    // Bills as max(% of the DOD amount, flat min) — configure via Charges master (code DOD) or the card.
+    const dodAmt = Number(shipment.dodAmount ?? 0);
+    const dodPct = cget('DOD', 'value', (card as any).dodPct);
+    const dodMin = cget('DOD', 'min', (card as any).dodMin);
+    const dod = shipment.isDod && (dodPct > 0 || dodMin > 0) ? r2(Math.max((dodAmt * dodPct) / 100, dodMin)) : 0;
     // Appointment delivery: per-kg (chargeable) with a ₹ minimum. (value = ₹/kg, min = floor ₹)
     const apptMin = cget('APPT', 'min', 0);
     const appt = shipment.apptDelivery ? r2(Math.max(cget('APPT', 'value', card.apptCharge) * chargeableKg, apptMin)) : 0;
@@ -625,7 +665,7 @@ export class RateService {
     }
 
     // Custom charges: any CHARGE-master code configured on the card beyond the built-in heads.
-    const BUILT_IN = new Set(['FOV', 'ODA', 'TOPAY', 'APPT', 'LOADING', 'UNLOADING', 'DOCKET', 'AWB', 'EMERGENCY', 'ENVIRONMENT', 'ENVIRONMENTAL', 'OSP', 'FSC', 'FUEL', 'FREIGHT']);
+    const BUILT_IN = new Set(['FOV', 'ODA', 'TOPAY', 'DOD', 'APPT', 'LOADING', 'UNLOADING', 'DOCKET', 'AWB', 'EMERGENCY', 'ENVIRONMENT', 'ENVIRONMENTAL', 'OSP', 'FSC', 'FUEL', 'FREIGHT']);
     const mccCities = await this.mccSetting();
     const customLines: { head: string; amount: number }[] = [];
     let customTotal = 0;
@@ -669,15 +709,16 @@ export class RateService {
     if (handling > 0) lines.push({ code: 'HANDLING', head: 'Handling', amount: handling });
     if (osw > 0) lines.push({ code: 'OSW', head: 'OSW (oversize/overweight)', amount: osw });
     if (ras > 0) lines.push({ code: 'RAS', head: 'RAS (Remote Area Surcharge)', amount: ras });
-    if (topay > 0) lines.push({ code: 'TOPAY', head: 'To-Pay charge', amount: topay });
+    if (topay > 0) lines.push({ code: 'TOPAY', head: isReverse ? 'Reverse pickup charge' : 'To-Pay charge', amount: topay });
+    if (dod > 0) lines.push({ code: 'DOD', head: `DOD charge${dodPct > 0 ? ` (${dodPct}% of ₹${dodAmt})` : ''}`, amount: dod });
     if (appt > 0) lines.push({ code: 'APPT', head: `Appointment delivery (${cget('APPT', 'value', card.apptCharge)}/kg${apptMin ? `, min ₹${apptMin}` : ''})`, amount: appt });
     if (loading > 0) lines.push({ code: 'LOADING', head: 'Loading', amount: loading });
     if (unloading > 0) lines.push({ code: 'UNLOADING', head: 'Unloading', amount: unloading });
     if (docket > 0) lines.push({ code: 'DOCKET', head: 'Docket', amount: docket });
     for (const cl of customLines) lines.push({ code: `CUSTOM:${cl.head.toUpperCase()}`, head: cl.head, amount: cl.amount });
-    const subtotal = r2(freight + fuel + fov + oda + awb + emergency + environment + handling + osw + ras + topay + appt + loading + unloading + docket + customTotal);
+    const subtotal = r2(freight + fuel + fov + oda + awb + emergency + environment + handling + osw + ras + topay + dod + appt + loading + unloading + docket + customTotal);
     return {
-      chargeableKg, freight, fuel, fov, oda, docket, handling, topay, appt, loading, unloading,
+      chargeableKg, freight, fuel, fov, oda, docket, handling, topay, dod, appt, loading, unloading,
       awb, emergency, environment, osp: osw, ras,
       subtotal, lines, basis: `card ${card.network}/${card.product} — ${priceBasis}`,
     };

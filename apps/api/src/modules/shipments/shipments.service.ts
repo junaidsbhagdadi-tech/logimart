@@ -116,8 +116,19 @@ export class ShipmentsService {
     }
     const zoneFor = (pin: any, pincode?: string, fallback?: string): string | undefined => {
       const fam = String(dto.product ?? '').toUpperCase();
+      const isCourier = ['DP', 'TDD', 'NDD'].includes(fam);
+      const isEcom = ['ECOM', 'ECOMM', 'ECOMMERCE'].includes(fam);
       const isSurface = ['SURFACE', 'SFC', 'HUB'].includes(fam) || /ROAD|RAIL|SURFACE/i.test(String(dto.serviceMode ?? ''));
-      const zRaw = pin && (['DP', 'TDD', 'NDD'].includes(fam) ? pin.dpZone : fam === 'APEX' ? pin.apexZone : isSurface ? pin.surfaceZone : pin.ecomZone);
+      // Zone grid by product family. Only DP-family uses the courier A/B/C grid and only ECOM uses the
+      // e-com grid; every OTHER product (Apex + all other air/express products) shares the air (apex)
+      // grid — previously they fell through to the (often-empty) e-com column and dropped to a broad
+      // region like "North", so their zone never matched the rate card.
+      const zRaw = pin && (
+        isCourier ? pin.dpZone
+        : isSurface ? pin.surfaceZone
+        : isEcom ? (pin.ecomZone || pin.apexZone)
+        : (pin.apexZone || pin.ecomZone)
+      );
       const z = zRaw ? String(zRaw).replace(/\s+/g, '').toUpperCase() : zRaw; // "NE 1" -> "NE1"
       return z || pin?.region || (pincode ? regionFromPincode(pincode) : undefined) || fallback;
     };

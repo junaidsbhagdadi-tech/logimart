@@ -205,6 +205,7 @@ export class InvoiceService {
     for (const s of shipments) {
       const b: any = (await this.rates.chargesForShipment(s, s.pieces)) || {};
       const num = (x: any) => +(Number(x ?? 0)).toFixed(2);
+      const reverseProd = ['TAPEX', 'TOSFC', 'TODP'].includes(String(s.product ?? '').toUpperCase());
       const sub = num(b.subtotal);
       const gst = +(sub * GST_RATE).toFixed(2);
       rows.push({
@@ -219,10 +220,11 @@ export class InvoiceService {
         Description: '', EntryLocked: 'Unlocked',
         Freight: num(b.freight), 'AIRWAYBILL CHARGES': num(b.awb), 'Emergency Sit. Surhrg.': num(b.emergency),
         'ENVIRONMENTAL SURCHARGE': num(b.environment), 'EXTRA DELIVERY LOCATION': num(b.oda), TDD: 0, NDD: 0,
-        'FREIGHT ON VALUE': num(b.fov), 'OVER SIZE PCS': num(b.osp), 'PICKUP CHARGES': 0, 'TOPAY CHARGES': num(b.topay),
-        'VALUABLE CARGO HANDLING CHARGE': num(b.handling), 'CHEQUE/DD ON DELIVERY': 0, 'APPOINTMENT DELIVERY': num(b.appt),
-        'Packaging charges': 0, 'Pikcup charges': 0, 'Reverse pick up ( Topay)': 0, 'DEMMURAGE CHARGE': 0,
-        'Other Charges 1': num(b.loading), 'Other Charges 2': num(b.unloading), 'RAS CHARGE': 0, 'Currency Adjustment': 0,
+        'FREIGHT ON VALUE': num(b.fov), 'OVER SIZE PCS': num(b.osp), 'PICKUP CHARGES': 0,
+        'TOPAY CHARGES': reverseProd ? 0 : num(b.topay),
+        'VALUABLE CARGO HANDLING CHARGE': num(b.handling), 'CHEQUE/DD ON DELIVERY': num(b.dod), 'APPOINTMENT DELIVERY': num(b.appt),
+        'Packaging charges': 0, 'Pikcup charges': 0, 'Reverse pick up ( Topay)': reverseProd ? num(b.topay) : 0, 'DEMMURAGE CHARGE': 0,
+        'Other Charges 1': num(b.loading), 'Other Charges 2': num(b.unloading), 'RAS CHARGE': num(b.ras), 'Currency Adjustment': 0,
         FuelSurcharge: num(b.fuel), TaxIGST: intraState ? 0 : gst, SBCessSGST: intraState ? +(gst / 2).toFixed(2) : 0,
         KKCessCGST: intraState ? +(gst / 2).toFixed(2) : 0, TotalSales: +(sub + gst).toFixed(2),
       });
