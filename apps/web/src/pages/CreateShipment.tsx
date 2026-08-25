@@ -63,6 +63,7 @@ export function CreateShipment() {
   const [hubs, setHubs] = useState<{ id: string; code: string; name: string }[]>([]);
   const [originHubId, setOriginHubId] = useState<number | ''>('');
   const [destHubId, setDestHubId] = useState<number | ''>('');
+  const [direct, setDirect] = useState(true); // #3 point-to-point routing (no hub) — default for walk-ins
   const [ewbNo, setEwbNo] = useState('');
 
   // services + charges (from the Product / Charges masters)
@@ -127,7 +128,7 @@ export function CreateShipment() {
   const [draftRestored, setDraftRestored] = useState(false);
   const draftSnapshot = () => ({
     clientId, custText, prodText, ftl, originPin, destPin, c, shp, svc, flags,
-    originHubId, destHubId, ewbNo, product, docType, chargeWeight, charges, chargeCode, chargeAmt,
+    originHubId, destHubId, direct, ewbNo, product, docType, chargeWeight, charges, chargeCode, chargeAmt,
     paymentTerm, freightToCollect, isDod, dodInstrument, dodAmount, manualFreight, manualAwb, pieces, pickupElsewhere,
   });
   // restore once on mount
@@ -142,6 +143,7 @@ export function CreateShipment() {
         if (d.ftl) setFtl(d.ftl); if (d.originPin != null) setOriginPin(d.originPin); if (d.destPin != null) setDestPin(d.destPin);
         if (d.c) setC(d.c); if (d.shp) setShp(d.shp); if (d.svc) setSvc(d.svc); if (d.flags) setFlags(d.flags);
         if (d.originHubId !== undefined) setOriginHubId(d.originHubId); if (d.destHubId !== undefined) setDestHubId(d.destHubId);
+        if (d.direct != null) setDirect(d.direct); else if (d.originHubId || d.destHubId) setDirect(false);
         if (d.ewbNo != null) setEwbNo(d.ewbNo); if (d.product != null) setProduct(d.product); if (d.docType) setDocType(d.docType);
         if (d.chargeWeight != null) setChargeWeight(d.chargeWeight); if (Array.isArray(d.charges)) setCharges(d.charges);
         if (d.chargeCode != null) setChargeCode(d.chargeCode); if (d.chargeAmt != null) setChargeAmt(d.chargeAmt);
@@ -506,20 +508,32 @@ export function CreateShipment() {
               Mode: <strong>{modeLabel(serviceMode)}</strong>{product && !selProduct?.mode ? ' (default — set this product’s mode in Masters)' : ''}
             </div>
           </div>
-          {/* Hubs are internal routing — hidden from customers; staff route the shipment. */}
-          {hubs.length > 0 && !isClient && (
+          {/* Routing — internal; hidden from customers. #3: an explicit Direct (point-to-point) option
+              for walk-ins, or route via hubs. Direct clears both hubs. */}
+          {!isClient && (
+            <div>
+              <label>Routing</label>
+              <div className="row" style={{ gap: 6 }}>
+                <button type="button" className={direct ? '' : 'secondary'} style={{ flex: 1, padding: '8px 10px', fontSize: 13 }}
+                  onClick={() => { setDirect(true); setOriginHubId(''); setDestHubId(''); }} title="Point-to-point — no hub routing">🎯 Direct (point-to-point)</button>
+                <button type="button" className={!direct ? '' : 'secondary'} style={{ flex: 1, padding: '8px 10px', fontSize: 13 }}
+                  onClick={() => setDirect(false)} disabled={hubs.length === 0} title={hubs.length === 0 ? 'No hubs configured' : 'Route through a hub'}>🏭 Via hub</button>
+              </div>
+            </div>
+          )}
+          {hubs.length > 0 && !isClient && !direct && (
             <>
               <div>
-                <label>Origin hub <span className="muted">(optional — blank = direct)</span></label>
+                <label>Origin hub</label>
                 <select value={originHubId} onChange={(e) => setOriginHubId(e.target.value ? +e.target.value : '')}>
-                  <option value="">— Direct (no hub) —</option>
+                  <option value="">— select origin hub —</option>
                   {hubs.map((hb) => <option key={hb.id} value={hb.id}>{hb.code} — {hb.name}</option>)}
                 </select>
               </div>
               <div>
-                <label>Destination hub <span className="muted">(optional — blank = direct)</span></label>
+                <label>Destination hub</label>
                 <select value={destHubId} onChange={(e) => setDestHubId(e.target.value ? +e.target.value : '')}>
-                  <option value="">— Direct (no hub) —</option>
+                  <option value="">— select destination hub —</option>
                   {hubs.map((hb) => <option key={hb.id} value={hb.id}>{hb.code} — {hb.name}</option>)}
                 </select>
               </div>
