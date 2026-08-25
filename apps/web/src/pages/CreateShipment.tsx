@@ -55,7 +55,7 @@ export function CreateShipment() {
   // home location" to enter a different pickup address manually.
   const [pickupElsewhere, setPickupElsewhere] = useState(false);
   // services extras
-  const [svc, setSvc] = useState({ vendor: '', service: '', shipmentValue: '', referenceNo: '', isCommercial: false, isMedical: false });
+  const [svc, setSvc] = useState({ vendor: 'SELF', service: 'SELF', shipmentValue: '', referenceNo: '', forwardingAwb: '', isCommercial: false, isMedical: false });
   const [flags, setFlags] = useState({ oda: false, appt: false });
   const [svcOptions, setSvcOptions] = useState<{ network: string; mode: string | null; tatDays: number | null; isOda: boolean }[]>([]);
 
@@ -215,7 +215,8 @@ export function CreateShipment() {
     const air = /AIR/i.test(serviceMode);
     const opts = svcOptions.filter((o) => { const mm = String(o.mode || '').toUpperCase(); return air ? /AIR|EXP/.test(mm) : /SURF|ROAD|RAIL/.test(mm); });
     const list = opts.length ? opts : svcOptions;
-    if (!list.some((o) => o.network === svc.vendor)) {
+    // Keep SELF as the default — only re-pick a mode-matching carrier if a specific carrier was chosen.
+    if (svc.vendor && svc.vendor !== 'SELF' && !list.some((o) => o.network === svc.vendor)) {
       const best = list.find((o) => /^BLUEDART/.test(o.network)) || list[0];
       if (best) setSvc((s) => ({ ...s, vendor: best.network, service: best.mode || s.service }));
     }
@@ -256,11 +257,9 @@ export function CreateShipment() {
       setDestInfo(info);
       // auto-fetch city + state from the pincode master (expand city code → full name)
       if (info) setC((prev) => ({ ...prev, consigneeCity: info.city ? expandCity(info.city) : prev.consigneeCity, consigneeState: info.state ?? prev.consigneeState }));
-      // which carrier products serve this pincode? auto-pick the fastest BlueDart product.
+      // which carriers serve this pincode? (shown as chips + ETA; vendor stays SELF unless staff pick one)
       const opts = await api.serviceOptions(p).catch(() => []);
       setSvcOptions(opts);
-      const best = opts.find((o) => /^BLUEDART-/.test(o.network)) || opts.find((o) => o.network.startsWith('BLUEDART')) || opts[0];
-      if (best) setSvc((s) => ({ ...s, vendor: best.network, service: best.mode || s.service }));
       // ODA is a property of the destination area — auto-set it from the pincode directory OR any
       // serving network flagged ODA (not just whichever carrier happens to be fastest).
       const odaAuto = (info?.isOda ?? false) || opts.some((o) => o.isOda);
@@ -327,6 +326,7 @@ export function CreateShipment() {
         service: svc.service || undefined,
         shipmentValue: svc.shipmentValue ? +svc.shipmentValue : undefined,
         referenceNo: svc.referenceNo || undefined,
+        forwardingAwb: svc.forwardingAwb?.trim() || undefined,
         isCommercial: svc.isCommercial,
         isMedical: svc.isMedical,
         hsnCode: c.hsnCode || undefined,
@@ -644,6 +644,7 @@ export function CreateShipment() {
           {!isClient && <div><label>Service</label><input value={svc.service} onChange={(e) => setSvc({ ...svc, service: e.target.value })} placeholder="SELF / DHL / …" /></div>}
           <div><label>Shipment value ₹</label><input type="number" value={svc.shipmentValue} onChange={(e) => setSvc({ ...svc, shipmentValue: e.target.value })} /></div>
           <div><label>Reference No.</label><input value={svc.referenceNo} onChange={(e) => setSvc({ ...svc, referenceNo: e.target.value })} /></div>
+          {!isClient && <div><label>Forwarding AWB <span className="muted">(vendor's carrier AWB)</span></label><input value={svc.forwardingAwb} onChange={(e) => setSvc({ ...svc, forwardingAwb: e.target.value })} placeholder="e.g. 58001396353" /></div>}
         </div>
         <div className="row" style={{ gap: 20, marginTop: 10 }}>
           <label className="row" style={{ gap: 6, fontWeight: 600, color: 'var(--text)' }}><input type="checkbox" style={{ width: 'auto' }} checked={svc.isCommercial} onChange={(e) => setSvc({ ...svc, isCommercial: e.target.checked })} /> Commercial</label>

@@ -207,6 +207,7 @@ export class ShipmentsService {
         // ---- services extras ----
         vendor: dto.vendor || null,
         service: dto.service || null,
+        forwardingAwb: (dto as any).forwardingAwb || null,
         shipmentValue: dto.shipmentValue != null ? new Prisma.Decimal(dto.shipmentValue) : null,
         isCommercial: dto.isCommercial ?? false,
         isMedical: dto.isMedical ?? false,
