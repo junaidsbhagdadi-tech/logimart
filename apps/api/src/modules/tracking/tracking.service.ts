@@ -25,6 +25,14 @@ export class TrackingService {
       .map((l) => ({ checkpoint: l.eventType, label: labelOf(l.eventType), at: l.scanAt }));
 
     const delivered = s.pieces.filter((p) => p.status === 'DELIVERED').length;
+    // EDD fallback for legacy shipments booked before the promise date was stored.
+    const eddFallback = () => {
+      const surface = /SURFACE|ROAD|RAIL/i.test(String(s.serviceMode)) || ['SURFACE', 'HUB'].includes(String(s.product ?? '').toUpperCase());
+      const sameZone = String(s.originZone).toUpperCase() === String(s.destZone).toUpperCase();
+      const base = new Date(s.createdAt); base.setHours(0, 0, 0, 0);
+      base.setDate(base.getDate() + (surface ? (sameZone ? 2 : 4) : (sameZone ? 1 : 2)));
+      return base;
+    };
     return {
       awb: s.awb,
       status: s.status,
@@ -34,7 +42,7 @@ export class TrackingService {
       pieceCount: s.pieceCount,
       delivered,
       isShort: delivered > 0 && delivered < s.pieceCount,
-      expectedDelivery: s.expectedDelivery,
+      expectedDelivery: s.expectedDelivery ?? eddFallback(),
       timeline,
     };
   }

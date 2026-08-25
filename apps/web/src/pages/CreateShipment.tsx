@@ -196,6 +196,9 @@ export function CreateShipment() {
       shipperEmail: cl.contactEmail ?? '',
       originLocation: cl.city ?? prev.originLocation,
     }));
+    // Default the rating origin to the customer's pincode too, so the Booking origin field isn't blank
+    // (staff can still override it — see lookOrigin, which then reflects back into the pickup detail).
+    if (cl.pincode && String(cl.pincode) !== originPin) setOriginPin(String(cl.pincode));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, pickupElsewhere, clients, accounts, isClient]);
 
@@ -248,8 +251,20 @@ export function CreateShipment() {
 
   const lookOrigin = async (p: string) => {
     setOriginPin(p);
-    if (/^\d{6}$/.test(p)) setOriginInfo(await api.lookupPincode(p).catch(() => null));
-    else setOriginInfo(null);
+    if (/^\d{6}$/.test(p)) {
+      const info = await api.lookupPincode(p).catch(() => null);
+      setOriginInfo(info);
+      // Staff: reflect the entered origin pincode in the pickup (shipper) detail so the AWB's origin
+      // isn't stuck on the customer's registered city — fixes "origin shows customer address even with
+      // a different origin pincode". Address lines are left intact for the operator to adjust.
+      if (info && !isClient) setShp((prev) => ({
+        ...prev,
+        shipperPincode: p,
+        shipperCity: info.city ? expandCity(info.city) : prev.shipperCity,
+        shipperState: info.state ?? prev.shipperState,
+        originLocation: info.city ? expandCity(info.city) : prev.originLocation,
+      }));
+    } else setOriginInfo(null);
   };
   const lookDest = async (p: string) => {
     setDestPin(p);
@@ -280,9 +295,11 @@ export function CreateShipment() {
 
   const lookShipper = async (p: string) => {
     setS('shipperPincode', p);
+    // The pickup pincode IS the rating origin — keep them tied so a changed pickup updates the origin.
     if (/^\d{6}$/.test(p)) {
+      setOriginPin(p);
       const info = await api.lookupPincode(p).catch(() => null);
-      if (info) setShp((prev) => ({ ...prev, shipperCity: info.city ? expandCity(info.city) : prev.shipperCity, shipperState: info.state ?? prev.shipperState }));
+      if (info) { setOriginInfo(info); setShp((prev) => ({ ...prev, shipperCity: info.city ? expandCity(info.city) : prev.shipperCity, shipperState: info.state ?? prev.shipperState, originLocation: info.city ? expandCity(info.city) : prev.originLocation })); }
     }
   };
   const setCf = (k: keyof typeof c, v: string) => setC((p) => ({ ...p, [k]: v }));
@@ -576,7 +593,9 @@ export function CreateShipment() {
             🚚 Pickup out of home location
           </label>
         </div>
-        <fieldset disabled={!pickupElsewhere && clientId !== ''} style={{ border: 'none', margin: 0, padding: 0, minInlineSize: 'auto' }}>
+        {/* Staff/walk-in: pickup detail stays editable (auto-filled from the customer, but override-able,
+            e.g. a different origin). Only client-portal logins are locked to their registered address. */}
+        <fieldset disabled={isClient && !pickupElsewhere && clientId !== ''} style={{ border: 'none', margin: 0, padding: 0, minInlineSize: 'auto' }}>
         <div className="grid cols-4" style={{ marginTop: 10 }}>
           <div><label>Origin</label><input value={shp.originLocation} onChange={(e) => setS('originLocation', e.target.value)} placeholder="e.g. DELHI" /></div>
           <div><label>Company name</label><input value={shp.shipperName} onChange={(e) => setS('shipperName', e.target.value)} /></div>

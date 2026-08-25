@@ -35,12 +35,16 @@ export class ShipmentsService {
     const mode = surface ? 'SURFACE' : 'APEX';
     const net = String(vendor ?? '').trim().toUpperCase() || 'SELF';
     const orig = String(originZone).toUpperCase(), dest = String(destZone).toUpperCase();
+    const addDays = (n: number) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + n); return d; };
     for (const code of [`${net}__${mode}`, `SELF__${mode}`, mode]) {
       const entry = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'ZONE_TAT', code } } });
       const days = Number((entry?.attrs as any)?.matrix?.[orig]?.[dest]);
-      if (days > 0) { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + days); return d; }
+      if (days > 0) return addDays(days);
     }
-    return null;
+    // Fallback so an EDD always shows even before the ZONE_TAT matrix is fully configured:
+    // same zone → 1 (air) / 2 (surface); otherwise 2 (air) / 4 (surface).
+    const sameZone = orig === dest;
+    return addDays(surface ? (sameZone ? 2 : 4) : (sameZone ? 1 : 2));
   }
 
   /**

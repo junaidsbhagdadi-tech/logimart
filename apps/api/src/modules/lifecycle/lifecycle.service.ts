@@ -128,6 +128,15 @@ export class LifecycleService {
     const riderOf = (...codes: string[]) => { for (const c of codes) { const l = mile.find((x) => x.eventType === c); if (l) return uname(l.scannedById); } return null; };
     const payMode = s.isDod ? 'DOD' : s.paymentTerm === 'TO_PAY' ? 'FOD' : 'PPD';
     const manAt = mile.find((l) => l.eventType === 'MAN')?.scanAt ?? s.createdAt;
+    // EDD fallback for shipments booked before the promise date was stored: booking date + default TAT
+    // (air 1 same-zone / 2 else; surface 2 / 4). Keeps the tracker's EDD populated for legacy AWBs.
+    const eddFallback = () => {
+      const surface = /SURFACE|ROAD|RAIL/i.test(String(s.serviceMode)) || ['SURFACE', 'HUB'].includes(String(s.product ?? '').toUpperCase());
+      const sameZone = String(s.originZone).toUpperCase() === String(s.destZone).toUpperCase();
+      const base = new Date(manAt); base.setHours(0, 0, 0, 0);
+      base.setDate(base.getDate() + (surface ? (sameZone ? 2 : 4) : (sameZone ? 1 : 2)));
+      return base;
+    };
 
     return {
       awb: s.awb,
@@ -145,7 +154,7 @@ export class LifecycleService {
       currentCode: s.statusCode ?? 'MAN',
       currentLabel: labelOf(String(s.statusCode ?? 'MAN')),
       remarks: s.exceptionFlag ?? null,
-      edd: s.expectedDelivery ?? null,
+      edd: s.expectedDelivery ?? eddFallback(),
       serviceType: s.product ?? s.service ?? null,
       tripRoute: [s.originHub?.code, s.destHub?.code].filter(Boolean).join(' → ') || null,
       pickupRider: riderOf('PKD'),
