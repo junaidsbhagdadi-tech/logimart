@@ -116,6 +116,8 @@ export class InvoiceService {
       .slice(-5)}`;
     const dueDate = new Date(new Date(periodEnd).getTime() + client.creditDays * 86400000);
 
+    // Created as a DRAFT — editable (add/remove AWBs) and NOT yet posted to the ledger. Locking the
+    // invoice (#5) posts the ledger charge + credit exposure and marks it ISSUED. (#8 add/remove before lock.)
     const invoice = await this.prisma.invoice.create({
       data: {
         clientId: client.id,
@@ -130,7 +132,7 @@ export class InvoiceService {
         placeOfSupply,
         sacCode: '996812', // SAC for goods transport / courier (matches billing app)
         total: new Prisma.Decimal(total),
-        status: InvoiceStatus.ISSUED,
+        status: InvoiceStatus.DRAFT,
         dueDate,
         issuedAt: new Date(),
         lines: {
@@ -149,31 +151,117 @@ export class InvoiceService {
       include: { lines: true },
     });
 
-    // Ledger charge + credit exposure
-    const newBalance = +(Number(client.outstandingBal) + total).toFixed(2);
-    await this.prisma.ledgerEntry.create({
+    return { invoice, creditHold: false, draft: true, newBalance: Number(client.outstandingBal), creditLimit: client.creditLimit };
+  }
+
+  /** Re-total a DRAFT invoice's tax split from its current line amounts (after add/remove). */
+  private async recomputeInvoiceTotals(invoiceId: bigint) {
+    const inv = await this.prisma.invoice.findUnique({ where: { id: invoiceId }, include: { lines: true, client: { select: { gstin: true } } } });
+    if (!inv) throw new NotFoundException('Invoice not found');
+    const subtotal = +inv.lines.reduce((s, l) => s + Number(l.amount), 0).toFixed(2);
+    const tax = +(subtotal * GST_RATE).toFixed(2);
+    const total = +(subtotal + tax).toFixed(2);
+    const carrierState = COMPANY.stateCode;
+    const clientState = inv.client.gstin && inv.client.gstin.length >= 2 ? inv.client.gstin.slice(0, 2) : null;
+    const intraState = clientState ? clientState === carrierState : true;
+    await this.prisma.invoice.update({
+      where: { id: invoiceId },
       data: {
-        clientId: client.id,
-        invoiceId: invoice.id,
-        entryType: 'charge',
-        amount: new Prisma.Decimal(total),
-        balanceAfter: new Prisma.Decimal(newBalance),
+        subtotal: new Prisma.Decimal(subtotal), tax: new Prisma.Decimal(tax), total: new Prisma.Decimal(total),
+        cgst: new Prisma.Decimal(intraState ? +(tax / 2).toFixed(2) : 0),
+        sgst: new Prisma.Decimal(intraState ? +(tax / 2).toFixed(2) : 0),
+        igst: new Prisma.Decimal(intraState ? 0 : tax),
       },
     });
+    return { subtotal, tax, total, lineCount: inv.lines.length };
+  }
+
+  /** Add an AWB to a DRAFT invoice (#8). The shipment must be uninvoiced and belong to the same client. */
+  async addAwbToInvoice(invoiceId: number, awbRaw: string) {
+    const inv = await this.prisma.invoice.findUnique({ where: { id: BigInt(invoiceId) } });
+    if (!inv) throw new NotFoundException('Invoice not found');
+    if (inv.status !== InvoiceStatus.DRAFT) throw new BadRequestException('Only a DRAFT invoice can be edited — unlock is not allowed once locked.');
+    const awb = String(awbRaw || '').trim().toUpperCase();
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, include: { pieces: { select: { status: true, deadKg: true, volKg: true, lengthCm: true, widthCm: true, heightCm: true } } } });
+    if (!s) throw new NotFoundException(`AWB ${awb} not found`);
+    if (s.clientId !== inv.clientId) throw new BadRequestException(`${awb} belongs to a different customer.`);
+    if (s.status === 'CANCELLED') throw new BadRequestException(`${awb} is cancelled.`);
+    const existing = await this.prisma.invoiceLineItem.findFirst({ where: { shipmentId: s.id }, select: { invoiceId: true } });
+    if (existing) throw new BadRequestException(`${awb} is already on invoice ${existing.invoiceId === inv.id ? 'this one' : '#' + existing.invoiceId}.`);
+    const charges = await this.rates.chargesForShipment(s, s.pieces);
+    if (!charges) throw new BadRequestException(`No rate configured for ${awb} — cannot bill it.`);
+    const amount = charges.subtotal;
+    const freight = +(Number(charges.freight ?? 0)).toFixed(2);
+    const fuel = +(Number(charges.fuel ?? 0)).toFixed(2);
+    await this.prisma.invoiceLineItem.create({
+      data: {
+        invoiceId: inv.id, shipmentId: s.id,
+        chargeableKg: new Prisma.Decimal(charges.chargeableKg), amount: new Prisma.Decimal(amount),
+        freight: new Prisma.Decimal(freight), fuel: new Prisma.Decimal(fuel),
+        otherCharges: new Prisma.Decimal(+(amount - freight - fuel).toFixed(2)), breakup: charges as any, disputeReason: null,
+      },
+    });
+    const totals = await this.recomputeInvoiceTotals(inv.id);
+    return { ok: true, awb, ...totals, message: `${awb} added.` };
+  }
+
+  /** Remove an AWB line from a DRAFT invoice (#8). */
+  async removeAwbFromInvoice(invoiceId: number, shipmentId: number) {
+    const inv = await this.prisma.invoice.findUnique({ where: { id: BigInt(invoiceId) } });
+    if (!inv) throw new NotFoundException('Invoice not found');
+    if (inv.status !== InvoiceStatus.DRAFT) throw new BadRequestException('Only a DRAFT invoice can be edited.');
+    const line = await this.prisma.invoiceLineItem.findFirst({ where: { invoiceId: inv.id, shipmentId: BigInt(shipmentId) } });
+    if (!line) throw new NotFoundException('That AWB is not on this invoice.');
+    await this.prisma.invoiceLineItem.delete({ where: { id: line.id } });
+    const totals = await this.recomputeInvoiceTotals(inv.id);
+    return { ok: true, ...totals, message: 'AWB removed.' };
+  }
+
+  /** Lock (issue) a DRAFT invoice (#5): posts the ledger charge + credit exposure and marks it ISSUED. */
+  async lockInvoice(invoiceId: number) {
+    const inv = await this.prisma.invoice.findUnique({ where: { id: BigInt(invoiceId) }, include: { _count: { select: { lines: true } } } });
+    if (!inv) throw new NotFoundException('Invoice not found');
+    if (inv.status !== InvoiceStatus.DRAFT) throw new BadRequestException('Invoice is already locked.');
+    if (inv._count.lines === 0) throw new BadRequestException('Cannot lock an empty invoice — add at least one AWB.');
+    const client = await this.prisma.b2bClient.findUnique({ where: { id: inv.clientId } });
+    if (!client) throw new NotFoundException('Client not found');
+    const total = Number(inv.total);
+    const newBalance = +(Number(client.outstandingBal) + total).toFixed(2);
+    await this.prisma.ledgerEntry.create({
+      data: { clientId: client.id, invoiceId: inv.id, entryType: 'charge', amount: new Prisma.Decimal(total), balanceAfter: new Prisma.Decimal(newBalance) },
+    });
     const overLimit = newBalance > Number(client.creditLimit);
-    await this.prisma.b2bClient.update({
-      where: { id: client.id },
-      data: { outstandingBal: new Prisma.Decimal(newBalance), isCreditHold: overLimit },
-    });
-
+    await this.prisma.b2bClient.update({ where: { id: client.id }, data: { outstandingBal: new Prisma.Decimal(newBalance), isCreditHold: overLimit } });
+    const updated = await this.prisma.invoice.update({ where: { id: inv.id }, data: { status: InvoiceStatus.ISSUED, issuedAt: new Date() } });
     await this.notifications.notify({
-      channel: 'email',
-      recipient: client.accountCode,
-      kind: 'invoice',
-      message: `Invoice ${invoice.invoiceNo} issued: ₹${total} due ${dueDate.toISOString().slice(0, 10)}${overLimit ? ' — ACCOUNT ON CREDIT HOLD' : ''}.`,
+      channel: 'email', recipient: client.accountCode, kind: 'invoice',
+      message: `Invoice ${inv.invoiceNo} issued: ₹${total} due ${new Date(inv.dueDate).toISOString().slice(0, 10)}${overLimit ? ' — ACCOUNT ON CREDIT HOLD' : ''}.`,
     });
+    return { invoice: updated, creditHold: overLimit, newBalance, creditLimit: client.creditLimit };
+  }
 
-    return { invoice, creditHold: overLimit, newBalance, creditLimit: client.creditLimit };
+  /** Delete an invoice (#4). DRAFT deletes freely; a locked (ISSUED) invoice reverses its ledger charge and
+   *  frees the AWBs to be billed again. Blocked once any payment/adjustment has been recorded against it. */
+  async deleteInvoice(invoiceId: number) {
+    const inv = await this.prisma.invoice.findUnique({ where: { id: BigInt(invoiceId) } });
+    if (!inv) throw new NotFoundException('Invoice not found');
+    const entries = await this.prisma.ledgerEntry.findMany({ where: { invoiceId: inv.id } });
+    const hasPayment = entries.some((e) => e.entryType !== 'charge');
+    if (hasPayment || inv.status === InvoiceStatus.PAID || inv.status === InvoiceStatus.PARTIALLY_PAID) {
+      throw new BadRequestException('This invoice has payments recorded — reverse the payment before deleting.');
+    }
+    // Reverse the ledger impact (net of this invoice's entries) off the client's balance, then remove them.
+    const net = entries.reduce((s, e) => s + Number(e.amount), 0);
+    if (net !== 0) {
+      const client = await this.prisma.b2bClient.findUnique({ where: { id: inv.clientId } });
+      if (client) {
+        const newBalance = +(Number(client.outstandingBal) - net).toFixed(2);
+        await this.prisma.b2bClient.update({ where: { id: client.id }, data: { outstandingBal: new Prisma.Decimal(newBalance), isCreditHold: newBalance > Number(client.creditLimit) } });
+      }
+    }
+    if (entries.length) await this.prisma.ledgerEntry.deleteMany({ where: { invoiceId: inv.id } });
+    await this.prisma.invoice.delete({ where: { id: inv.id } }); // cascades invoice lines → frees the AWBs
+    return { ok: true, invoiceId, invoiceNo: inv.invoiceNo, message: `Invoice ${inv.invoiceNo} deleted.` };
   }
 
   /** Customer ids with at least one shipment in the period, excluding cash/wallet (prepaid) accounts. */

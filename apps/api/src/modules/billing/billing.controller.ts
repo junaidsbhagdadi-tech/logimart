@@ -66,6 +66,34 @@ export class BillingController {
     return this.invoices.pay(Number(id), dto.amount, dto.tds ?? 0, dto.other ?? 0, dto.otherNote);
   }
 
+  /** Lock (issue) a DRAFT invoice — posts the ledger charge and freezes it (#5). */
+  @Post('billing/invoices/:id/lock')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  lock(@Param('id') id: string) {
+    return this.invoices.lockInvoice(Number(id));
+  }
+
+  /** Add an AWB to a DRAFT invoice (#8). */
+  @Post('billing/invoices/:id/add-awb')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  addAwb(@Param('id') id: string, @Body() dto: { awb: string }) {
+    return this.invoices.addAwbToInvoice(Number(id), dto?.awb);
+  }
+
+  /** Remove an AWB line from a DRAFT invoice (#8). */
+  @Post('billing/invoices/:id/remove-awb')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  removeAwb(@Param('id') id: string, @Body() dto: { shipmentId: number }) {
+    return this.invoices.removeAwbFromInvoice(Number(id), Number(dto?.shipmentId));
+  }
+
+  /** Delete an invoice (#4) — DRAFT freely; a locked one reverses its ledger charge. Blocked if paid. */
+  @Post('billing/invoices/:id/delete')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  remove(@Param('id') id: string) {
+    return this.invoices.deleteInvoice(Number(id));
+  }
+
   /** Generate (sandbox) GST e-invoice IRN for the invoice. */
   @Post('billing/invoices/:id/einvoice')
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)

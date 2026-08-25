@@ -374,6 +374,16 @@ export const api = {
       '/api/v1/billing/invoices/' + invoiceId + '/pay',
       { method: 'POST', body: JSON.stringify(body) },
     ),
+  lockInvoice: (invoiceId: string) =>
+    request<{ creditHold: boolean; newBalance: number }>('/api/v1/billing/invoices/' + invoiceId + '/lock', { method: 'POST' }),
+  deleteInvoice: (invoiceId: string) =>
+    request<{ ok: boolean; invoiceNo: string; message: string }>('/api/v1/billing/invoices/' + invoiceId + '/delete', { method: 'POST' }),
+  addAwbToInvoice: (invoiceId: string, awb: string) =>
+    request<{ ok: boolean; awb: string; subtotal: number; total: number; lineCount: number; message: string }>(
+      '/api/v1/billing/invoices/' + invoiceId + '/add-awb', { method: 'POST', body: JSON.stringify({ awb }) }),
+  removeAwbFromInvoice: (invoiceId: string, shipmentId: number) =>
+    request<{ ok: boolean; subtotal: number; total: number; lineCount: number; message: string }>(
+      '/api/v1/billing/invoices/' + invoiceId + '/remove-awb', { method: 'POST', body: JSON.stringify({ shipmentId }) }),
 
   // ---- tax filing ----
   gstReport: (from: string, to: string) => request<any>(`/api/v1/tax/gst?from=${from}&to=${to}`),

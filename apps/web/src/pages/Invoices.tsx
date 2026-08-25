@@ -116,14 +116,14 @@ export function Invoices() {
       if (scope === 'SINGLE') {
         if (!clientId) { setError('Pick a customer.'); return; }
         const res = await api.generateInvoice(clientId, periodStart, periodEnd);
-        setMsg(`Created ${res.invoice.invoiceNo} — total ₹${res.invoice.total}${res.creditHold ? ' (CREDIT HOLD!)' : ''}`);
+        setMsg(`Draft ${res.invoice.invoiceNo} created — total ₹${res.invoice.total}. Review AWBs, then 🔒 Lock to issue it.`);
       } else {
         const ids = scope === 'MULTIPLE' ? pickIds : [];
         if (scope === 'MULTIPLE' && !ids.length) { setError('Select at least one customer.'); return; }
         const res = await api.generateInvoiceBatch(scope, ids, periodStart, periodEnd);
         const errs = res.results.filter((r) => !r.ok);
         const errNote = errs.length ? ` · ${errs.length} skipped (${[...new Set(errs.map((e) => e.error))].slice(0, 2).join('; ')})` : '';
-        setMsg(`Generated ${res.created} invoice(s) · ₹${res.totalBilled.toLocaleString('en-IN')} billed${res.creditHolds ? ` · ${res.creditHolds} on CREDIT HOLD` : ''}${errNote}`);
+        setMsg(`Generated ${res.created} draft invoice(s) · ₹${res.totalBilled.toLocaleString('en-IN')} · review & 🔒 Lock each to issue${errNote}`);
       }
       load();
     } catch (e: any) {
@@ -132,6 +132,27 @@ export function Invoices() {
   };
   const togglePick = (id: number) => setPickIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
   const billableClients = clients.filter((c) => !c.isCash && c.accountType !== 'WALLET');
+
+  // #5 lock (issue) · #4 delete · #8 add AWB to a DRAFT invoice
+  const lockInv = async (inv: any) => {
+    if (!confirm(`Lock invoice ${inv.invoiceNo}? It will be posted to the customer's ledger and can no longer be edited.`)) return;
+    setError(''); setMsg('');
+    try { const r = await api.lockInvoice(String(inv.id)); setMsg(`🔒 ${inv.invoiceNo} locked${r.creditHold ? ' — customer now on CREDIT HOLD' : ''}.`); load(); }
+    catch (e: any) { setError(e.message); }
+  };
+  const delInv = async (inv: any) => {
+    if (!confirm(`Delete invoice ${inv.invoiceNo}?${inv.status !== 'DRAFT' ? '\n\nThis will REVERSE its ledger charge and free its AWBs to be billed again.' : ''}`)) return;
+    setError(''); setMsg('');
+    try { const r = await api.deleteInvoice(String(inv.id)); setMsg(r.message); load(); }
+    catch (e: any) { setError(e.message); }
+  };
+  const addAwb = async (inv: any) => {
+    const awb = window.prompt(`Add an AWB to draft invoice ${inv.invoiceNo}:`);
+    if (!awb || !awb.trim()) return;
+    setError(''); setMsg('');
+    try { const r = await api.addAwbToInvoice(String(inv.id), awb.trim()); setMsg(`${r.message} — ${r.lineCount} AWB(s), new total ₹${r.total.toLocaleString('en-IN')}.`); load(); }
+    catch (e: any) { setError(e.message); }
+  };
 
   return (
     <>
@@ -257,8 +278,15 @@ export function Invoices() {
                     <td style={{ textAlign: 'right' }}><strong>₹{num(inv.total).toLocaleString('en-IN')}</strong></td>
                     <td><span className={`badge ${inv.status}`}>{inv.status}</span></td>
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      <Link to={`/invoices/${inv.id}`}><button className="secondary" style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }}>👁</button></Link>
-                      <a href={`/invoices/${inv.id}/print`} target="_blank" rel="noreferrer"><button className="secondary" style={{ padding: '3px 8px', fontSize: 12 }}>🖨</button></a>
+                      <Link to={`/invoices/${inv.id}`}><button className="secondary" style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }} title="View / edit AWBs">👁</button></Link>
+                      <a href={`/invoices/${inv.id}/print`} target="_blank" rel="noreferrer"><button className="secondary" style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }} title="Print">🖨</button></a>
+                      {isFinance && inv.status === 'DRAFT' && <>
+                        <button className="secondary" style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }} title="Add an AWB" onClick={() => addAwb(inv)}>＋AWB</button>
+                        <button style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }} title="Lock / issue this invoice" onClick={() => lockInv(inv)}>🔒 Lock</button>
+                      </>}
+                      {isFinance && inv.status !== 'PAID' && inv.status !== 'PARTIALLY_PAID' && (
+                        <button className="secondary" style={{ padding: '3px 8px', fontSize: 12, color: 'var(--danger, #c0392b)' }} title="Delete invoice" onClick={() => delInv(inv)}>🗑</button>
+                      )}
                     </td>
                   </tr>
                 ))}

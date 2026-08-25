@@ -36,6 +36,21 @@ export function InvoiceDetail() {
     }
   };
 
+  // #8 add/remove AWBs on a DRAFT invoice · #5 lock
+  const addAwb = async () => {
+    const awb = window.prompt('Add an AWB to this draft invoice:');
+    if (!awb || !awb.trim()) return;
+    try { await api.addAwbToInvoice(id!, awb.trim()); setError(''); load(); } catch (e: any) { setError(e.message); }
+  };
+  const removeAwb = async (shipmentId: string) => {
+    if (!confirm('Remove this AWB from the draft invoice?')) return;
+    try { await api.removeAwbFromInvoice(id!, Number(shipmentId)); setError(''); load(); } catch (e: any) { setError(e.message); }
+  };
+  const lock = async () => {
+    if (!confirm('Lock this invoice? It will be posted to the customer ledger and can no longer be edited.')) return;
+    try { await api.lockInvoice(id!); setError(''); load(); } catch (e: any) { setError(e.message); }
+  };
+
   const [payOpen, setPayOpen] = useState(false);
   const [pf, setPf] = useState({ amount: '', tds: '', other: '', otherNote: '' });
 
@@ -110,8 +125,17 @@ export function InvoiceDetail() {
       </div>
 
       <div className="card">
-        <h2>Line items</h2>
-        <p className="muted">Disputed lines are locked; clean lines remain payable.</p>
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 style={{ margin: 0 }}>Line items</h2>
+          {isFinance && inv.status === 'DRAFT' && (
+            <div className="row" style={{ gap: 8 }}>
+              <span className="badge DRAFT" title="Editable until locked">DRAFT — editable</span>
+              <button className="secondary" onClick={addAwb}>＋ Add AWB</button>
+              <button onClick={lock} disabled={!inv.lines.length}>🔒 Lock invoice</button>
+            </div>
+          )}
+        </div>
+        <p className="muted">{inv.status === 'DRAFT' ? 'Add or remove AWBs, then Lock to post this invoice to the ledger.' : 'Disputed lines are locked; clean lines remain payable.'}</p>
         <table>
           <thead>
             <tr><th>Shipment</th><th>Chargeable kg</th><th>Amount</th><th>State</th><th></th></tr>
@@ -133,7 +157,9 @@ export function InvoiceDetail() {
                   )}
                 </td>
                 <td>
-                  {canDispute && !l.isDisputed && (
+                  {isFinance && inv.status === 'DRAFT' ? (
+                    <button className="secondary" style={{ color: 'var(--danger, #c0392b)' }} title="Remove this AWB from the invoice" onClick={() => removeAwb(l.shipmentId)}>✕ Remove</button>
+                  ) : canDispute && !l.isDisputed && (
                     <button className="secondary" onClick={() => dispute(l.shipmentId)}>Dispute</button>
                   )}
                 </td>
