@@ -4,8 +4,8 @@
  * details (legal name, address, GSTIN, AWB/LR prefix) once provided.
  */
 export const COMPANY = {
-  legalName: 'EXCELEX EXPRESS LOGISTICS LLP', // billing legal entity (LogiMart is the operating brand)
-  brand: 'Logimart',
+  legalName: 'EXCELEX EXPRESS LOGISTICS LLP', // billing legal entity
+  brand: 'ExcelEx Express',
   tagline: 'Surface & Domestic Air Cargo',
   address: {
     line1: 'Office No. 27/2, Road No. 2, Block A, Near Aeroporto Hotel',

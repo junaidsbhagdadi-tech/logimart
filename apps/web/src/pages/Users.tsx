@@ -18,7 +18,7 @@ export function Users() {
   const [copied, setCopied] = useState(false);
 
   const credText = (c: { email: string; password: string; url: string }) =>
-    `LogiMart login\nURL: ${c.url}\nEmail: ${c.email}\nTemporary password: ${c.password}\nPlease sign in and change your password.`;
+    `ExcelEx Express login\nURL: ${c.url}\nEmail: ${c.email}\nTemporary password: ${c.password}\nPlease sign in and change your password.`;
   const copyCred = async () => {
     if (!cred) return;
     try { await navigator.clipboard.writeText(credText(cred)); setCopied(true); setTimeout(() => setCopied(false), 2000); }

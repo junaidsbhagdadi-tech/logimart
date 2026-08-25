@@ -353,7 +353,7 @@ export function downloadCourierTemplate() {
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'DP, TDD AND NDD');
-  XLSX.writeFile(wb, 'Logimart-courier-rate-template.xlsx');
+  XLSX.writeFile(wb, 'ExcelEx-courier-rate-template.xlsx');
 }
 
 /** Download a blank cargo rate template carrying BOTH Apex and Surface in one file.
@@ -377,7 +377,7 @@ export function downloadCargoTemplate(vendorNames: string[] = [], productCodes: 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Apex And Surface');
-  XLSX.writeFile(wb, 'Logimart-cargo-rate-template.xlsx');
+  XLSX.writeFile(wb, 'ExcelEx-cargo-rate-template.xlsx');
 }
 
 /** Export a customer's rate cards to XLS for review: a Summary sheet + one sheet per card

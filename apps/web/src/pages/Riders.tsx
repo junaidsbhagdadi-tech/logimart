@@ -21,7 +21,7 @@ export function Riders() {
   const hubName = (id: any) => { const h = hubs.find((x) => String(x.id) === String(id)); return h ? `${h.code}` : '—'; };
 
   const credText = (c: { riderCode: string; pin: string }) =>
-    `LogiMart Rider app login\nRider ID: ${c.riderCode}\nPIN: ${c.pin}\nOpen the LogiMart Rider app and sign in with your Rider ID + PIN.`;
+    `ExcelEx Express Rider app login\nRider ID: ${c.riderCode}\nPIN: ${c.pin}\nOpen the ExcelEx Rider app and sign in with your Rider ID + PIN.`;
   const copyCred = async () => {
     if (!cred) return;
     try { await navigator.clipboard.writeText(credText(cred)); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* visible to copy */ }
@@ -63,7 +63,7 @@ export function Riders() {
   return (
     <>
       <h1>🛵 Riders &amp; Drivers</h1>
-      <p className="muted" style={{ marginTop: -8 }}>Field staff who use the LogiMart Rider mobile app. Each rider signs in with their <strong>Rider ID + PIN</strong>.</p>
+      <p className="muted" style={{ marginTop: -8 }}>Field staff who use the ExcelEx Rider mobile app. Each rider signs in with their <strong>Rider ID + PIN</strong>.</p>
       {error && <div className="error">{error}</div>}
       {msg && <div className="card" style={{ borderLeft: '4px solid var(--brand)' }}>{msg}</div>}
       {cred && (

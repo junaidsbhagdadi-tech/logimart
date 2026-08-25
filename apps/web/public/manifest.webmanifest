@@ -1,12 +1,12 @@
 {
-  "name": "LogiMart Delivery",
+  "name": "ExcelEx Delivery",
   "short_name": "Delivery",
-  "description": "LogiMart rider delivery app — find AWB, capture POD.",
+  "description": "ExcelEx Express rider delivery app — find AWB, capture POD.",
   "start_url": "/deliver",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#15356e",
-  "theme_color": "#15356e",
+  "background_color": "#16308f",
+  "theme_color": "#1e44be",
   "icons": []
 }

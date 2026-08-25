@@ -1,36 +1,41 @@
 :root {
-  /* deep green-black ink for text/headings (kept the --navy name so the cascade holds) */
-  --navy: #0c1e16;
-  --navy-deep: #08150f;
-  /* green-forward brand */
-  --brand: #0ea26b;
-  --brand-2: #0b8457;
-  --brand-light: #0b8457;
-  --sky: #0ea26b;         /* primary green accent (kept name) */
-  --sky-bright: #14c07d;
-  --sky-soft: #e6f6ee;    /* soft green wash */
-  /* colorful supporting accents */
+  /* ExcelEx Express — royal blue primary, green accent, ash-grey ground.
+     (kept the legacy --navy / --sky variable names so the whole cascade holds) */
+  --navy: #17233b;        /* navy-slate ink — headings / text */
+  --navy-deep: #0f1830;
+  --brand: #1e44be;       /* ExcelEx royal blue */
+  --brand-2: #16308f;
+  --brand-light: #16308f;
+  --sky: #1e44be;         /* primary accent = blue (kept name) */
+  --sky-bright: #3e6be0;
+  --sky-soft: #e8edfb;    /* soft blue wash — hovers / focus / selected */
+  /* ExcelEx green accent */
+  --green: #57a83a;
+  --green-2: #3f8a28;
+  --green-soft: #e8f3e2;
+  /* supporting accents */
   --a-blue: #2e86ff;
-  --a-amber: #f59e0b;
-  --a-coral: #f43f6e;
-  --a-violet: #7c5cff;
+  --a-amber: #f0a81e;
+  --a-coral: #f0537a;
+  --a-violet: #7a5cf0;
   --a-teal: #12b5a5;
-  --bg: #eef3f0;          /* green-biased off-white */
+  --bg: #d7dadf;          /* ash grey */
+  --bg-2: #cdd1d7;
   --card: #ffffff;
   --surface: var(--card);
-  --surface-2: #f4faf6;   /* faint green wash for table heads / insets */
-  --bg-soft: var(--surface-2);  /* alias used across screens for insets/selected rows */
-  --danger: #c0392b;      /* destructive actions */
-  --text: #0c1e16;
-  --muted: #5c6e65;
-  --faint: #86988f;
-  --border: #e1ebe4;
-  --ok: #12b76a;
-  --warn: #f59e0b;
-  --bad: #f04438;
+  --surface-2: #f1f3f6;   /* neutral wash for table heads / insets */
+  --bg-soft: var(--surface-2);
+  --danger: #c0392b;
+  --text: #17233b;
+  --muted: #5a6576;
+  --faint: #8b95a4;
+  --border: #d7dce2;
+  --ok: #2e9e4f;
+  --warn: #e4930c;
+  --bad: #e23d4b;
   --radius: 16px;
-  --shadow: 0 1px 2px rgba(6,32,22,.05), 0 10px 28px -12px rgba(6,32,22,.16);
-  --shadow-lg: 0 24px 60px -20px rgba(6,32,22,.30);
+  --shadow: 0 1px 2px rgba(23,35,59,.05), 0 10px 28px -12px rgba(23,35,59,.20);
+  --shadow-lg: 0 24px 60px -20px rgba(23,35,59,.34);
 }
 
 * { box-sizing: border-box; }
@@ -48,16 +53,16 @@ body::before {
   content: '';
   position: fixed; inset: 0; z-index: -2;
   background:
-    radial-gradient(640px 640px at 94% -10%, rgba(14,162,107,.14), transparent 60%),
-    radial-gradient(700px 700px at -8% 4%, rgba(46,134,255,.08), transparent 58%),
-    linear-gradient(180deg, #f2f8f4 0%, #e8f1eb 100%);
+    radial-gradient(700px 520px at 100% -10%, rgba(30,68,190,.12), transparent 60%),
+    radial-gradient(680px 680px at -8% 6%, rgba(87,168,58,.07), transparent 58%),
+    linear-gradient(180deg, #dadde2 0%, #cdd1d7 100%);
 }
 body::after {
   content: '';
   position: fixed; inset: 0; z-index: -1;
-  background-image: radial-gradient(rgba(12,30,22,.04) 1px, transparent 1px);
+  background-image: radial-gradient(rgba(23,35,59,.045) 1px, transparent 1px);
   background-size: 24px 24px;
-  mask-image: linear-gradient(180deg, rgba(0,0,0,.45), rgba(0,0,0,.10));
+  mask-image: linear-gradient(180deg, rgba(0,0,0,.40), rgba(0,0,0,.08));
 }
 a { color: var(--brand-light); text-decoration: none; }
 
@@ -283,7 +288,7 @@ tbody tr:hover td { background: var(--sky-soft); }
 .kpi { position: relative; overflow: hidden; }
 .kpi::after {
   content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px;
-  background: linear-gradient(90deg, var(--brand), var(--a-blue));
+  background: linear-gradient(90deg, var(--brand), var(--green));
 }
 
 /* ============ standalone pages (login / track) ============ */
@@ -291,9 +296,9 @@ tbody tr:hover td { background: var(--sky-soft); }
   min-height: 100vh;
   display:flex; align-items:center; justify-content:center;
   background:
-    radial-gradient(700px 700px at 15% 10%, rgba(52,196,110,.28), transparent 55%),
-    radial-gradient(760px 760px at 85% 90%, rgba(20,23,28,.45), transparent 55%),
-    linear-gradient(150deg, #33383f 0%, #1a1d22 100%);
+    radial-gradient(720px 720px at 12% 8%, rgba(62,107,224,.34), transparent 55%),
+    radial-gradient(680px 680px at 88% 92%, rgba(87,168,58,.24), transparent 55%),
+    linear-gradient(150deg, #1c2b52 0%, #0f1830 100%);
   padding: 20px;
 }
 .login-card {
