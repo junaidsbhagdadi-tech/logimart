@@ -381,7 +381,13 @@ export class RateService {
 
   /** Chargeable weight under a card: operator override > max(dead, card-volumetric, minChargeableKg). */
   private cardChargeableKg(shipment: any, pieces: any[], card: any): number {
-    if (shipment.chargeWeight != null && Number(shipment.chargeWeight) > 0) return +Number(shipment.chargeWeight).toFixed(3);
+    const noRoundP = ['DP', 'TDD', 'NDD', 'ECOM', 'ECOMM'].includes(String(shipment.product ?? '').toUpperCase());
+    if (shipment.chargeWeight != null && Number(shipment.chargeWeight) > 0) {
+      // A manual chargeable-weight override still rounds UP to the next kg for all products except DP/Ecom (#7).
+      let cw = Number(shipment.chargeWeight);
+      if (!noRoundP && cw > 0) cw = Math.ceil(cw);
+      return +cw.toFixed(3);
+    }
     const dead = pieces.reduce((s, p) => s + Number(p.deadKg), 0);
     let vol = pieces.reduce((s, p) => s + Number(p.volKg || 0), 0);
     // Recompute volumetric from the CARD's divisor whenever it sets one — for EVERY product, not just
@@ -399,8 +405,7 @@ export class RateService {
     }
     let cw = Math.max(dead, vol, Number(card.minChargeableKg ?? 0));
     // Round UP to the next whole kg for all products except courier DP / e-commerce.
-    const noRound = ['DP', 'TDD', 'NDD', 'ECOM', 'ECOMM'].includes(String(shipment.product ?? '').toUpperCase());
-    if (!noRound && cw > 0) cw = Math.ceil(cw);
+    if (!noRoundP && cw > 0) cw = Math.ceil(cw);
     return +cw.toFixed(3);
   }
 
@@ -659,9 +664,15 @@ export class RateService {
       const cardRas: any = (card.charges as any)?.RAS ?? (card.charges as any)?.ras;
       const norm = (s: any) => String(s ?? '').toLowerCase().replace(/[^a-z]/g, '');
       const perKg = Number(cardRas?.value ?? cardRas?.perKg) || rasMaster.perKg;
-      const states = (Array.isArray(cardRas?.states) && cardRas.states.length ? cardRas.states.map(norm) : rasMaster.states);
+      const states = (Array.isArray(cardRas?.states) && cardRas.states.length ? cardRas.states.map(norm) : rasMaster.states).filter(Boolean);
       const st = norm(destPin?.state ?? shipment.consigneeState);
-      if (perKg > 0 && st && states.includes(st)) ras = r2(chargeableKg * perKg);
+      // RAS is strictly AREA-specific: it applies ONLY when the destination state is one of the configured
+      // remote states — never globally. An empty state list disables RAS entirely (so a stray per-kg rate
+      // can't leak onto every shipment). J&K name variants (Jammu & Kashmir / Jammu and Kashmir) match.
+      const matches = (dest: string, cfg: string) => !!dest && !!cfg && (dest === cfg || dest.includes(cfg) || cfg.includes(dest)
+        || ((cfg.includes('jammu') || cfg.includes('kashmir')) && (dest.includes('jammu') || dest.includes('kashmir'))));
+      const isRemote = states.some((s: string) => matches(st, s));
+      if (perKg > 0 && st && isRemote) ras = r2(chargeableKg * perKg);
     }
 
     // Custom charges: any CHARGE-master code configured on the card beyond the built-in heads.
@@ -690,7 +701,9 @@ export class RateService {
       if (amt > 0) { customLines.push({ head: cm.name, amount: amt }); customTotal += amt; if ((cm.attrs as any)?.applyFuel) fuelableExtra += amt; }
     }
     // Charges marked "FSC applicable" add to the fuel-surcharge base.
-    if (fuelableExtra > 0 && fuelPct > 0) fuel = r2(fuel + (fuelableExtra * fuelPct) / 100);
+    // FSC also applies on the ODA/EDL charge (#1) in addition to any "FSC applicable" custom charges.
+    const fuelBaseExtra = fuelableExtra + oda;
+    if (fuelBaseExtra > 0 && fuelPct > 0) fuel = r2(fuel + (fuelBaseExtra * fuelPct) / 100);
 
     const lines: { code: string; head: string; amount: number }[] = [{ code: 'FREIGHT', head: `Freight (${priceBasis})`, amount: freight }];
     // Diesel Surcharge only for surface (DSC); air/express/DP show flat "Fuel".

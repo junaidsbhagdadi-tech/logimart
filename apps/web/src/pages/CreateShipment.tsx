@@ -357,7 +357,10 @@ export function CreateShipment() {
         ewbNo: needEway && ewbNo ? ewbNo : undefined,
         product: product || undefined,
         docType,
-        chargeWeight: chargeWeight ? +chargeWeight : undefined,
+        // Only send chargeWeight when the operator EXPLICITLY overrode it — otherwise let the rate
+        // engine compute it from the card (per-product divisor/cft + round-up to next kg). Auto-sending
+        // the booking-time value was short-circuiting both (#7 round-off, #9 divisor for non-Apex).
+        chargeWeight: cwTouched && chargeWeight ? +chargeWeight : undefined,
         charges: charges.length ? charges : undefined,
         paymentTerm,
         freightToCollect: paymentTerm === 'TO_PAY' && freightToCollect ? +freightToCollect : undefined,
