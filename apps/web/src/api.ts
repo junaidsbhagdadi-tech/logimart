@@ -582,6 +582,8 @@ export const api = {
     request<any>(`/api/v1/rate-cards/cards/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   delCustomerCard: (id: string | number) =>
     request(`/api/v1/rate-cards/cards/${id}`, { method: 'DELETE' }),
+  copyCardCharges: (id: string | number) =>
+    request<{ ok: boolean; product: string; copiedTo: number; networks: string[] }>(`/api/v1/rate-cards/cards/${id}/copy-charges`, { method: 'POST' }),
 
   // ---- vendors ----
   listVendors: () => request<any[]>('/api/v1/vendors'),

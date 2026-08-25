@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateRateCardDto } from './dto/ratecard.dto';
@@ -175,6 +175,32 @@ export class RateCardsService {
 
   removeCard(id: number) {
     return this.prisma.customerRateCard.delete({ where: { id: BigInt(id) } });
+  }
+
+  /**
+   * Copy the accessorial "other charges" from one card to every other card of the SAME customer &
+   * product (all vendors + SELF), leaving each card's freight grid / fuel / divisor untouched (#10).
+   * The copied charges remain editable per vendor afterwards.
+   */
+  async copyChargesToSiblings(id: number) {
+    const src = await this.prisma.customerRateCard.findUnique({ where: { id: BigInt(id) } });
+    if (!src) throw new NotFoundException('Rate card not found');
+    const siblings = await this.prisma.customerRateCard.findMany({
+      where: { clientId: src.clientId, product: src.product, id: { not: src.id } },
+      select: { id: true, network: true },
+    });
+    const data: Prisma.CustomerRateCardUpdateInput = {
+      charges: (src.charges as any) ?? {},
+      fovPct: src.fovPct, fovMin: src.fovMin,
+      odaFlat: src.odaFlat, odaPerKg: src.odaPerKg, odaMin: src.odaMin,
+      topayCharge: src.topayCharge, apptCharge: src.apptCharge,
+      loadingCharge: src.loadingCharge, unloadingCharge: src.unloadingCharge,
+      docketCharge: src.docketCharge, awbCharge: src.awbCharge,
+      emergencyCharge: src.emergencyCharge, environmentCharge: src.environmentCharge,
+      ospCharge: src.ospCharge, handlingBands: (src.handlingBands as any) ?? [],
+    };
+    for (const s of siblings) await this.prisma.customerRateCard.update({ where: { id: s.id }, data });
+    return { ok: true, product: src.product, copiedTo: siblings.length, networks: siblings.map((s) => s.network) };
   }
 
   // ============================================================================

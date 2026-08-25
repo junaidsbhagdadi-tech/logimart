@@ -53,6 +53,13 @@ export class RateCardsController {
     return this.rateCards.removeCard(Number(id));
   }
 
+  /** Copy this card's accessorial charges to every same-product card (all vendors + SELF) (#10). */
+  @Post('cards/:id/copy-charges')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  copyCharges(@Param('id') id: string) {
+    return this.rateCards.copyChargesToSiblings(Number(id));
+  }
+
   // ---- EDL (ODA) matrix, per vendor/network ----
   @Get('edl')
   @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)

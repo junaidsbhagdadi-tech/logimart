@@ -44,6 +44,17 @@ export function RateCardsDialog({ client, onClose }: { client: Client; onClose: 
     try { await api.delCustomerCard(id); load(); } catch (e: any) { setErr(e.message); }
   };
 
+  // #10 copy this card's accessorial "other charges" to every same-product card (all vendors + SELF).
+  const copyCharges = async (card: any) => {
+    if (!confirm(`Copy ${card.product} accessorial charges (FOV/ODA/To-Pay/AWB/handling…) to every other ${card.product} card for this customer (all vendors + SELF)? Freight & fuel stay per-card. They remain editable afterwards.`)) return;
+    try {
+      const r = await api.copyCardCharges(card.id);
+      setErr('');
+      load();
+      alert(r.copiedTo ? `Copied ${card.product} charges to ${r.copiedTo} card(s): ${r.networks.join(', ')}` : `No other ${card.product} cards to copy to.`);
+    } catch (e: any) { setErr(e.message); }
+  };
+
   const grouped = useMemo(() => {
     const m = new Map<string, any[]>();
     for (const c of cards) { const k = c.network || 'SELF'; if (!m.has(k)) m.set(k, []); m.get(k)!.push(c); }
@@ -83,7 +94,7 @@ export function RateCardsDialog({ client, onClose }: { client: Client; onClose: 
                 <div style={{ fontWeight: 800, fontSize: 13, letterSpacing: .3, color: 'var(--muted)', margin: '4px 0 8px' }}>
                   {network === 'SELF' ? '🏠 SELF NETWORK' : `🚚 ${network}`}
                 </div>
-                {list.map((c) => <CardView key={c.id} card={c} zones={zones} onEdit={() => setEditing(c)} onDelete={() => del(c.id)} />)}
+                {list.map((c) => <CardView key={c.id} card={c} zones={zones} onEdit={() => setEditing(c)} onDelete={() => del(c.id)} onCopyCharges={() => copyCharges(c)} />)}
               </div>
             ))}
           </>
@@ -94,7 +105,7 @@ export function RateCardsDialog({ client, onClose }: { client: Client; onClose: 
 }
 
 /** Read-only card: charges chip-strip + zone × slab matrix. */
-function CardView({ card, zones, onEdit, onDelete }: { card: any; zones: string[]; onEdit: () => void; onDelete: () => void }) {
+function CardView({ card, zones, onEdit, onDelete, onCopyCharges }: { card: any; zones: string[]; onEdit: () => void; onDelete: () => void; onCopyCharges: () => void }) {
   const cols = useMemo(() => {
     const zs = new Set<string>(zones);
     (card.slabs || []).forEach((s: any) => zs.add(s.zone));
@@ -138,6 +149,7 @@ function CardView({ card, zones, onEdit, onDelete }: { card: any; zones: string[
           {card.label && <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>{card.label}</span>}
         </div>
         <div className="row" style={{ gap: 6 }}>
+          <button className="secondary" style={{ padding: '3px 10px', fontSize: 12 }} title="Copy these accessorial charges to every same-product card (all vendors + SELF)" onClick={onCopyCharges}>📋 Copy charges → vendors</button>
           <button className="secondary" style={{ padding: '3px 10px', fontSize: 12 }} onClick={onEdit}>✎ Edit</button>
           <button className="secondary" style={{ padding: '3px 10px', fontSize: 12 }} onClick={onDelete}>🗑</button>
         </div>
