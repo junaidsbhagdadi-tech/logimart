@@ -440,7 +440,7 @@ export function CreateShipment() {
           {isClient && accounts.length === 1 && (
             <div>
               <label>Account</label>
-              <div style={{ padding: '9px 11px', border: '1px solid var(--border)', borderRadius: 10, background: '#f6f9f4', fontWeight: 600 }}>
+              <div style={{ padding: '9px 11px', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--surface-2)', fontWeight: 600 }}>
                 {accounts[0].accountCode} — {accounts[0].legalName}
               </div>
             </div>
@@ -503,7 +503,7 @@ export function CreateShipment() {
         </div>
         {/* Staff see the carrier products (they pick the vendor); clients see only the ETA. */}
         {!isClient && carrierOptions.length > 0 && (
-          <div style={{ marginTop: 10, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10, background: '#f6f9f4' }}>
+          <div style={{ marginTop: 10, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--surface-2)' }}>
             <div className="muted" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 6 }}>Carriers serving {destPin} — fastest auto-picked</div>
             <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
               {carrierOptions.map((o) => {
@@ -522,7 +522,7 @@ export function CreateShipment() {
           </div>
         )}
         {isClient && product && clientEtaDays != null && (
-          <div style={{ marginTop: 10, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10, background: '#f6f9f4' }}>
+          <div style={{ marginTop: 10, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--surface-2)' }}>
             ⏱️ <strong>Estimated transit: {clientEtaDays} {clientEtaDays === 1 ? 'day' : 'days'}</strong>
             <span className="muted" style={{ fontSize: 12 }}> · {modeLabel(serviceMode)}{destInfo?.city ? ` to ${destInfo.city}` : ''}</span>
           </div>

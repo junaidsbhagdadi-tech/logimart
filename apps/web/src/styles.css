@@ -17,7 +17,10 @@
   --a-teal: #12b5a5;
   --bg: #eef3f0;          /* green-biased off-white */
   --card: #ffffff;
+  --surface: var(--card);
   --surface-2: #f4faf6;   /* faint green wash for table heads / insets */
+  --bg-soft: var(--surface-2);  /* alias used across screens for insets/selected rows */
+  --danger: #c0392b;      /* destructive actions */
   --text: #0c1e16;
   --muted: #5c6e65;
   --faint: #86988f;

@@ -160,7 +160,7 @@ export function Vendors() {
             <span><strong>{sel.size}</strong> selected</span>
             <div className="row" style={{ gap: 8 }}>
               <button className="secondary" style={{ padding: '4px 12px', fontSize: 13 }} onClick={() => setSel(new Set())}>Clear</button>
-              <button style={{ padding: '4px 12px', fontSize: 13, background: '#c0392b' }} onClick={bulkDelete}>🗑 Delete selected</button>
+              <button style={{ padding: '4px 12px', fontSize: 13, background: 'var(--bad)' }} onClick={bulkDelete}>🗑 Delete selected</button>
             </div>
           </div>
         )}

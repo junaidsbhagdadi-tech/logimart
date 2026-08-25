@@ -59,7 +59,7 @@ export function GreenTax() {
         <button style={{ marginTop: 16 }} disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save policy'}</button>
       </div>
 
-      <div className="card" style={{ background: 'var(--bg-soft, #f6f9f4)', fontSize: 13 }}>
+      <div className="card" style={{ background: 'var(--bg-soft, var(--surface-2))', fontSize: 13 }}>
         <strong>Note:</strong> this screen controls <em>where</em> green tax applies. The <em>amount</em> is the <code>ENVIRONMENT</code> charge configured on the rate card (or the Masters default) — set/edit it there. If a shipment isn't DEL/NCR per this policy, no green tax is billed even if the charge is configured.
       </div>
     </>
