@@ -56,6 +56,7 @@ export function CreateShipment() {
   const [pickupElsewhere, setPickupElsewhere] = useState(false);
   // services extras
   const [svc, setSvc] = useState({ vendor: 'SELF', service: 'SELF', shipmentValue: '', referenceNo: '', forwardingAwb: '', isCommercial: false, isMedical: false });
+  const [entryTab, setEntryTab] = useState<'AWB' | 'PROFORMA' | 'FORWARDING'>('AWB');
   const [flags, setFlags] = useState({ oda: false, appt: false });
   const [svcOptions, setSvcOptions] = useState<{ network: string; mode: string | null; tatDays: number | null; isOda: boolean }[]>([]);
 
@@ -409,7 +410,26 @@ export function CreateShipment() {
       )}
       {error && <div className="error" style={{ marginTop: 16 }}>{error}</div>}
 
-      <div className="card">
+      {/* Xpresion-style entry tabs: AWB (main) · Proforma (international) · Forwarding (vendor hand-off) */}
+      <div className="row" style={{ gap: 4, marginTop: 14, borderBottom: '2px solid var(--line, #d7dadf)' }}>
+        {([
+          ['AWB', '📦 AWB', 'Shipper, consignee, services & charges, pieces, payment'],
+          ['PROFORMA', '🧾 Proforma', 'International / customs invoice (enable later)'],
+          ['FORWARDING', '🔀 Forwarding', "Vendor hand-off & forwarding AWB"],
+        ] as const).map(([key, label, hint]) => (
+          <button key={key} type="button" title={hint} onClick={() => setEntryTab(key)}
+            className={entryTab === key ? '' : 'secondary'}
+            style={{
+              borderRadius: '8px 8px 0 0', padding: '9px 18px', fontWeight: 700, fontSize: 14,
+              border: 'none', borderBottom: entryTab === key ? '3px solid var(--brand)' : '3px solid transparent',
+              background: entryTab === key ? 'var(--surface, #fff)' : 'transparent',
+              color: entryTab === key ? 'var(--brand)' : 'var(--muted)', boxShadow: 'none',
+            }}>{label}</button>
+        ))}
+      </div>
+
+      {entryTab === 'AWB' && (<>
+      <div className="card" style={{ marginTop: 14 }}>
         <h2>Booking</h2>
         <div className="grid cols-3">
           {!isClient && (
@@ -644,7 +664,6 @@ export function CreateShipment() {
           {!isClient && <div><label>Service</label><input value={svc.service} onChange={(e) => setSvc({ ...svc, service: e.target.value })} placeholder="SELF / DHL / …" /></div>}
           <div><label>Shipment value ₹</label><input type="number" value={svc.shipmentValue} onChange={(e) => setSvc({ ...svc, shipmentValue: e.target.value })} /></div>
           <div><label>Reference No.</label><input value={svc.referenceNo} onChange={(e) => setSvc({ ...svc, referenceNo: e.target.value })} /></div>
-          {!isClient && <div><label>Forwarding AWB <span className="muted">(vendor's carrier AWB)</span></label><input value={svc.forwardingAwb} onChange={(e) => setSvc({ ...svc, forwardingAwb: e.target.value })} placeholder="e.g. 58001396353" /></div>}
         </div>
         <div className="row" style={{ gap: 20, marginTop: 10 }}>
           <label className="row" style={{ gap: 6, fontWeight: 600, color: 'var(--text)' }}><input type="checkbox" style={{ width: 'auto' }} checked={svc.isCommercial} onChange={(e) => setSvc({ ...svc, isCommercial: e.target.checked })} /> Commercial</label>
@@ -776,8 +795,53 @@ export function CreateShipment() {
           <div className="muted">Totals: dead <strong>{totalDead.toFixed(2)}</strong> kg · vol <strong>{totalVol.toFixed(2)}</strong> kg</div>
         </div>
       </div>
+      </>)}
 
-      <button onClick={submit} disabled={busy || !clientId || destBlocked || pieces.some((p) => !p.deadKg)}>
+      {entryTab === 'PROFORMA' && (
+        <div className="card" style={{ marginTop: 14, borderLeft: '4px solid var(--brand)' }}>
+          <h2>🧾 Proforma / International invoice</h2>
+          <p className="muted" style={{ marginTop: -6 }}>
+            For international (CSB/customs) shipments — manifest GST detail and per-box invoice lines (HSN, qty, value, IGST).
+          </p>
+          <div className="card" style={{ background: 'var(--surface-2, #f1f3f6)', textAlign: 'center', padding: '28px 20px' }}>
+            <div style={{ fontSize: 30 }}>🌐</div>
+            <div style={{ fontWeight: 700, marginTop: 6 }}>Enabled for international shipments</div>
+            <p className="muted" style={{ fontSize: 13, maxWidth: 460, margin: '6px auto 0' }}>
+              This tab holds the customs proforma (Term of Invoice, Export Reason, HSN line items, IGST). It'll be switched on when international products go live — domestic AWBs don't need it.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {entryTab === 'FORWARDING' && (
+        <div className="card" style={{ marginTop: 14 }}>
+          <h2>🔀 Forwarding &amp; vendor hand-off</h2>
+          <p className="muted" style={{ marginTop: -6 }}>
+            When this AWB is handed to a delivery vendor, capture their carrier AWB and lane here. {isClient && 'Managed by the ExcelEx team.'}
+          </p>
+          {isClient ? (
+            <div className="muted" style={{ fontSize: 13 }}>Forwarding details are handled by the ExcelEx operations team.</div>
+          ) : (
+            <div className="grid cols-3">
+              <div>
+                <label>Booking vendor</label>
+                <input value={svc.vendor || 'SELF'} readOnly title="Set under the AWB tab → Services" style={{ background: 'var(--surface-2, #f1f3f6)' }} />
+              </div>
+              <div>
+                <label>Service</label>
+                <input value={svc.service || 'SELF'} readOnly title="Set under the AWB tab → Services" style={{ background: 'var(--surface-2, #f1f3f6)' }} />
+              </div>
+              <div>
+                <label>Forwarding AWB <span className="muted">(vendor's carrier AWB)</span></label>
+                <input value={svc.forwardingAwb} onChange={(e) => setSvc({ ...svc, forwardingAwb: e.target.value })} placeholder="e.g. 58001396353" />
+              </div>
+            </div>
+          )}
+          <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>Vendor cost isn't captured here — margins come from the uploaded vendor bill.</p>
+        </div>
+      )}
+
+      <button style={{ marginTop: 16 }} onClick={submit} disabled={busy || !clientId || destBlocked || pieces.some((p) => !p.deadKg)}>
         {busy ? 'Creating…' : destBlocked ? 'Destination pincode not serviceable' : `Create AWB + ${pieces.length} child labels`}
       </button>
     </>
