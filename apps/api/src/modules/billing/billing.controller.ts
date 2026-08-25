@@ -4,7 +4,7 @@ import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles } from '../../common/rbac/roles.decorator';
 import { RateService } from './rate.service';
 import { InvoiceService } from './invoice.service';
-import { DisputeDto, GenerateInvoiceDto, PayDto } from './dto/billing.dto';
+import { DisputeDto, GenerateBatchDto, GenerateInvoiceDto, PayDto } from './dto/billing.dto';
 
 @Controller('api/v1')
 @UseGuards(RolesGuard)
@@ -25,6 +25,16 @@ export class BillingController {
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
   generate(@Body() dto: GenerateInvoiceDto) {
     return this.invoices.generate(dto.clientId, dto.periodStart, dto.periodEnd);
+  }
+
+  /** Batch run: single / multiple / all customers for a period. */
+  @Post('billing/invoices/generate-batch')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  async generateBatch(@Body() dto: GenerateBatchDto) {
+    const ids = dto.scope === 'ALL'
+      ? await this.invoices.eligibleClientIdsForPeriod(dto.periodStart, dto.periodEnd)
+      : (dto.clientIds ?? []);
+    return this.invoices.generateMany(ids, dto.periodStart, dto.periodEnd);
   }
 
   @Get('billing/invoices')

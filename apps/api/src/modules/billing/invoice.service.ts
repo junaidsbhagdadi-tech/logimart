@@ -176,6 +176,47 @@ export class InvoiceService {
     return { invoice, creditHold: overLimit, newBalance, creditLimit: client.creditLimit };
   }
 
+  /** Customer ids with at least one shipment in the period, excluding cash/wallet (prepaid) accounts. */
+  async eligibleClientIdsForPeriod(periodStart: string, periodEnd: string): Promise<number[]> {
+    const grouped = await this.prisma.shipment.groupBy({
+      by: ['clientId'],
+      where: { createdAt: { gte: new Date(periodStart), lte: new Date(periodEnd) } },
+      _count: { _all: true },
+    });
+    const ids = grouped.map((g) => g.clientId);
+    if (!ids.length) return [];
+    const clients = await this.prisma.b2bClient.findMany({
+      where: { id: { in: ids }, isCash: false, NOT: { accountType: 'WALLET' } },
+      select: { id: true },
+    });
+    return clients.map((c) => Number(c.id));
+  }
+
+  /**
+   * Batch invoice run over many customers. Each customer is billed independently — one with no
+   * billable shipments (or already fully billed) is skipped, not fatal, so an "all customers" run
+   * still completes. Returns a per-customer summary.
+   */
+  async generateMany(clientIds: number[], periodStart: string, periodEnd: string) {
+    const results: { clientId: number; ok: boolean; invoiceNo?: string; total?: number; creditHold?: boolean; error?: string }[] = [];
+    for (const cid of clientIds) {
+      try {
+        const r = await this.generate(cid, periodStart, periodEnd);
+        results.push({ clientId: cid, ok: true, invoiceNo: r.invoice.invoiceNo, total: Number(r.invoice.total), creditHold: r.creditHold });
+      } catch (e: any) {
+        results.push({ clientId: cid, ok: false, error: e?.message || 'failed' });
+      }
+    }
+    const created = results.filter((r) => r.ok);
+    return {
+      created: created.length,
+      skipped: results.length - created.length,
+      totalBilled: +created.reduce((s, r) => s + (r.total || 0), 0).toFixed(2),
+      creditHolds: created.filter((r) => r.creditHold).length,
+      results,
+    };
+  }
+
   /**
    * Bill-working export — one row per AWB with every charge head, matching the
    * "Customer bill working" sheet columns exactly (59 cols). Charges come from the

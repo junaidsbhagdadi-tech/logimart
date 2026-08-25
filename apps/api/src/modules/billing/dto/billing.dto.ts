@@ -1,7 +1,15 @@
-import { IsInt, IsISO8601, IsNumber, IsOptional, IsString, Min, MinLength } from 'class-validator';
+import { IsArray, IsIn, IsInt, IsISO8601, IsNumber, IsOptional, IsString, Min, MinLength } from 'class-validator';
 
 export class GenerateInvoiceDto {
   @IsInt() clientId!: number;
+  @IsISO8601() periodStart!: string;
+  @IsISO8601() periodEnd!: string;
+}
+
+/** Batch invoice run: one customer, a chosen set, or every eligible customer for the period. */
+export class GenerateBatchDto {
+  @IsIn(['SINGLE', 'MULTIPLE', 'ALL']) scope!: 'SINGLE' | 'MULTIPLE' | 'ALL';
+  @IsOptional() @IsArray() @IsInt({ each: true }) clientIds?: number[]; // required for SINGLE/MULTIPLE
   @IsISO8601() periodStart!: string;
   @IsISO8601() periodEnd!: string;
 }

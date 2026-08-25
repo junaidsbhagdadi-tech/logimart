@@ -356,6 +356,11 @@ export const api = {
       '/api/v1/billing/invoices/generate',
       { method: 'POST', body: JSON.stringify({ clientId, periodStart, periodEnd }) },
     ),
+  generateInvoiceBatch: (scope: 'SINGLE' | 'MULTIPLE' | 'ALL', clientIds: number[], periodStart: string, periodEnd: string) =>
+    request<{ created: number; skipped: number; totalBilled: number; creditHolds: number; results: { clientId: number; ok: boolean; invoiceNo?: string; total?: number; creditHold?: boolean; error?: string }[] }>(
+      '/api/v1/billing/invoices/generate-batch',
+      { method: 'POST', body: JSON.stringify({ scope, clientIds, periodStart, periodEnd }) },
+    ),
   disputeLine: (invoiceId: string, shipmentId: number, reason: string) =>
     request('/api/v1/billing/invoices/' + invoiceId + '/dispute', {
       method: 'POST',

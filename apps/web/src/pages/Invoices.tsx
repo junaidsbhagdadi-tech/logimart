@@ -26,6 +26,9 @@ export function Invoices() {
   const [periodEnd, setPeriodEnd] = useState(
     new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10),
   );
+  const [scope, setScope] = useState<'SINGLE' | 'MULTIPLE' | 'ALL'>('SINGLE');
+  const [pickIds, setPickIds] = useState<number[]>([]);
+  const [genBusy, setGenBusy] = useState(false);
 
   const load = () => {
     api.listInvoices().then(setInvoices).catch((e) => setError(e.message));
@@ -108,14 +111,27 @@ export function Invoices() {
   const generate = async () => {
     setError('');
     setMsg('');
+    setGenBusy(true);
     try {
-      const res = await api.generateInvoice(clientId, periodStart, periodEnd);
-      setMsg(`Created ${res.invoice.invoiceNo} — total ₹${res.invoice.total}${res.creditHold ? ' (CREDIT HOLD!)' : ''}`);
+      if (scope === 'SINGLE') {
+        if (!clientId) { setError('Pick a customer.'); return; }
+        const res = await api.generateInvoice(clientId, periodStart, periodEnd);
+        setMsg(`Created ${res.invoice.invoiceNo} — total ₹${res.invoice.total}${res.creditHold ? ' (CREDIT HOLD!)' : ''}`);
+      } else {
+        const ids = scope === 'MULTIPLE' ? pickIds : [];
+        if (scope === 'MULTIPLE' && !ids.length) { setError('Select at least one customer.'); return; }
+        const res = await api.generateInvoiceBatch(scope, ids, periodStart, periodEnd);
+        const errs = res.results.filter((r) => !r.ok);
+        const errNote = errs.length ? ` · ${errs.length} skipped (${[...new Set(errs.map((e) => e.error))].slice(0, 2).join('; ')})` : '';
+        setMsg(`Generated ${res.created} invoice(s) · ₹${res.totalBilled.toLocaleString('en-IN')} billed${res.creditHolds ? ` · ${res.creditHolds} on CREDIT HOLD` : ''}${errNote}`);
+      }
       load();
     } catch (e: any) {
       setError(e.message);
-    }
+    } finally { setGenBusy(false); }
   };
+  const togglePick = (id: number) => setPickIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  const billableClients = clients.filter((c) => !c.isCash && c.accountType !== 'WALLET');
 
   return (
     <>
@@ -139,12 +155,54 @@ export function Invoices() {
       {isFinance && (
         <div className="card">
           <h2>Generate consolidated invoice</h2>
+          {/* #5 scope: one customer, a chosen set, or every eligible customer for the period */}
+          <div className="row" style={{ gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+            {([['SINGLE', '👤 Single customer'], ['MULTIPLE', '👥 Multiple customers'], ['ALL', '🏢 All customers']] as const).map(([k, label]) => (
+              <button key={k} type="button" className={scope === k ? '' : 'secondary'} onClick={() => setScope(k)} style={{ padding: '7px 14px' }}>{label}</button>
+            ))}
+          </div>
           <div className="grid cols-3">
-            <div><label>Client ID</label><input type="number" value={clientId} onChange={(e) => setClientId(+e.target.value)} /></div>
+            {scope === 'SINGLE' && (
+              <div>
+                <label>Customer</label>
+                <select value={clientId} onChange={(e) => setClientId(+e.target.value)}>
+                  <option value={0}>— select customer —</option>
+                  {billableClients.map((c) => <option key={c.id} value={c.id}>{c.accountCode} — {c.legalName}</option>)}
+                </select>
+              </div>
+            )}
             <div><label>Period start</label><input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} /></div>
             <div><label>Period end</label><input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} /></div>
           </div>
-          <button style={{ marginTop: 12 }} onClick={generate}>Generate invoice</button>
+
+          {scope === 'MULTIPLE' && (
+            <div style={{ marginTop: 10 }}>
+              <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                <label style={{ margin: 0 }}>Select customers <span className="muted">({pickIds.length} selected)</span></label>
+                <div className="row" style={{ gap: 6 }}>
+                  <button type="button" className="secondary" style={{ padding: '3px 10px', fontSize: 12 }} onClick={() => setPickIds(billableClients.map((c) => Number(c.id)))}>Select all</button>
+                  <button type="button" className="secondary" style={{ padding: '3px 10px', fontSize: 12 }} onClick={() => setPickIds([])}>Clear</button>
+                </div>
+              </div>
+              <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid var(--line, #d7dadf)', borderRadius: 8, padding: 8, marginTop: 6, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 4 }}>
+                {billableClients.map((c) => (
+                  <label key={c.id} className="row" style={{ gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                    <input type="checkbox" style={{ width: 'auto' }} checked={pickIds.includes(Number(c.id))} onChange={() => togglePick(Number(c.id))} />
+                    <span>{c.accountCode} — {c.legalName}</span>
+                  </label>
+                ))}
+                {billableClients.length === 0 && <span className="muted" style={{ fontSize: 13 }}>No billable customers loaded.</span>}
+              </div>
+            </div>
+          )}
+
+          {scope === 'ALL' && (
+            <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>Bills <strong>every customer</strong> with shipments in this period (cash/wallet prepaid accounts are skipped automatically). Customers with nothing to bill are skipped without error.</p>
+          )}
+
+          <button style={{ marginTop: 12 }} onClick={generate} disabled={genBusy}>
+            {genBusy ? 'Generating…' : scope === 'SINGLE' ? 'Generate invoice' : scope === 'MULTIPLE' ? `Generate for ${pickIds.length || '—'} customer(s)` : 'Generate for all customers'}
+          </button>
         </div>
       )}
 
