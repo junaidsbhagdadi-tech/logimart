@@ -45,6 +45,35 @@ export function ShipmentDetail() {
     catch (e: any) { setError(e.message); }
   };
 
+  // #11 edit AWB after creation (blocked once invoiced)
+  const [editOpen, setEditOpen] = useState(false);
+  const [ef, setEf] = useState<Record<string, string>>({});
+  const openEdit = () => {
+    if (!s) return;
+    setEf({
+      product: s.product ?? '', vendor: (s as any).vendor ?? '', service: (s as any).service ?? '',
+      docType: s.docType ?? '', paymentTerm: (s as any).paymentTerm ?? 'PREPAID',
+      consigneeName: (s as any).consigneeName ?? '', consigneePhone: (s as any).consigneePhone ?? '',
+      consigneeCity: (s as any).consigneeCity ?? '', consigneeState: (s as any).consigneeState ?? '',
+      destPincode: (s as any).destPincode ?? '', consigneeGstin: (s as any).consigneeGstin ?? '',
+      goodsDesc: (s as any).goodsDesc ?? '', referenceNo: (s as any).referenceNo ?? '',
+      shipmentValue: (s as any).shipmentValue != null ? String((s as any).shipmentValue) : '',
+    });
+    setEditOpen(true); setError(''); setMsg('');
+  };
+  const setEfield = (k: string, v: string) => setEf((f) => ({ ...f, [k]: v }));
+  const saveEdit = async () => {
+    if (!awb) return;
+    setError(''); setMsg('');
+    try {
+      const patch: Record<string, any> = { ...ef };
+      patch.shipmentValue = ef.shipmentValue === '' ? null : Number(ef.shipmentValue);
+      const r = await api.editShipment(awb, patch);
+      setMsg(`✓ ${r.message}${r.rezoned ? ' Zone/EDD re-derived.' : ''}`);
+      setEditOpen(false); load();
+    } catch (e: any) { setError(e.message); }
+  };
+
   const load = () => {
     if (!awb) return;
     api.getShipment(awb).then((sh) => { setS(sh); setFwd({ vendor: sh.vendor || '', forwardingAwb: sh.forwardingAwb || '' }); }).catch((e) => setError(e.message));
@@ -254,6 +283,7 @@ export function ShipmentDetail() {
           {canAssign && <button className="secondary" onClick={handoffBd}>📦 Hand to BlueDart</button>}
           {canAssign && s.bdWaybill && <button className="secondary" onClick={trackBd}>🔎 BlueDart track</button>}
           {canReweigh && <button className="secondary" onClick={() => { setReweighMode((v) => !v); setMsg(''); }}>⚖ {reweighMode ? 'Cancel re-weigh' : 'Re-weigh'}</button>}
+          {canEditCharges && !(s as any).invoiced && <button className="secondary" onClick={openEdit} title="Edit product, consignee, vendor & other details">✏️ Edit AWB</button>}
           {isSysAdmin && <button className="secondary" onClick={() => { setTransferOpen((v) => !v); setMsg(''); setError(''); }} title="Wrong-entry transfer to another customer">🔄 Transfer</button>}
           <Link to={`/shipments/${s.awb}/labels`}><button>🏷 Print labels</button></Link>
           <a href={`/shipments/${s.awb}/awb-print`} target="_blank" rel="noreferrer"><button>🖨 Print AWB</button></a>
@@ -274,6 +304,43 @@ export function ShipmentDetail() {
             </select>
             <button disabled={!transferId} onClick={doTransfer}>Transfer AWB</button>
             <button className="secondary" onClick={() => setTransferOpen(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {editOpen && (
+        <div className="card" style={{ borderLeft: '4px solid var(--brand)' }}>
+          <h2 style={{ marginBottom: 4 }}>✏️ Edit AWB {s.awb}</h2>
+          <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Change product, consignee, vendor or values. Changing the product or destination pincode re-derives the zone, ODA and EDD. Charges are recomputed live. Blocked once invoiced.</p>
+          <div className="grid cols-3" style={{ gap: 12 }}>
+            <div><label>Product</label><input value={ef.product} onChange={(e) => setEfield('product', e.target.value.toUpperCase())} placeholder="e.g. APEX / SFC / DP" /></div>
+            <div><label>Vendor</label>
+              <input list="sd-edit-vendors" value={ef.vendor} onChange={(e) => setEfield('vendor', e.target.value.toUpperCase())} placeholder="SELF or code" />
+              <datalist id="sd-edit-vendors">{vendors.map((v) => <option key={v.id} value={(v.vendorCode || v.name).toUpperCase()}>{v.vendorCode} — {v.name}</option>)}</datalist>
+            </div>
+            <div><label>Doc type</label>
+              <select value={ef.docType} onChange={(e) => setEfield('docType', e.target.value)}>
+                <option value="">—</option><option value="NDOX">NDOX</option><option value="DOX">DOX</option>
+              </select>
+            </div>
+            <div><label>Consignee name</label><input value={ef.consigneeName} onChange={(e) => setEfield('consigneeName', e.target.value)} /></div>
+            <div><label>Consignee phone</label><input value={ef.consigneePhone} onChange={(e) => setEfield('consigneePhone', e.target.value)} /></div>
+            <div><label>Consignee GSTIN</label><input value={ef.consigneeGstin} onChange={(e) => setEfield('consigneeGstin', e.target.value.toUpperCase())} /></div>
+            <div><label>Dest pincode</label><input value={ef.destPincode} maxLength={6} onChange={(e) => setEfield('destPincode', e.target.value)} placeholder="re-derives zone/EDD" /></div>
+            <div><label>Consignee city</label><input value={ef.consigneeCity} onChange={(e) => setEfield('consigneeCity', e.target.value)} /></div>
+            <div><label>Consignee state</label><input value={ef.consigneeState} onChange={(e) => setEfield('consigneeState', e.target.value)} /></div>
+            <div><label>Payment term</label>
+              <select value={ef.paymentTerm} onChange={(e) => setEfield('paymentTerm', e.target.value)}>
+                <option value="PREPAID">Prepaid</option><option value="TO_PAY">To-Pay</option>
+              </select>
+            </div>
+            <div><label>Shipment value ₹</label><input type="number" value={ef.shipmentValue} onChange={(e) => setEfield('shipmentValue', e.target.value)} /></div>
+            <div><label>Reference No.</label><input value={ef.referenceNo} onChange={(e) => setEfield('referenceNo', e.target.value)} /></div>
+            <div style={{ gridColumn: 'span 2' }}><label>Goods description</label><input value={ef.goodsDesc} onChange={(e) => setEfield('goodsDesc', e.target.value)} /></div>
+          </div>
+          <div className="row" style={{ gap: 8, marginTop: 14, justifyContent: 'flex-end' }}>
+            <button className="secondary" onClick={() => setEditOpen(false)}>Cancel</button>
+            <button onClick={saveEdit}>Save changes</button>
           </div>
         </div>
       )}

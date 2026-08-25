@@ -141,6 +141,13 @@ export class ShipmentsController {
     return this.shipments.setForwarding(awb, dto);
   }
 
+  /** Edit an AWB after creation (product / consignee / vendor / values …). Blocked once invoiced. */
+  @Post(':awb/edit')
+  @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  editShipment(@Param('awb') awb: string, @Body() dto: any) {
+    return this.shipments.editShipment(awb, dto);
+  }
+
   /** MPS labels for every child box. ?format=zpl | json (default json). */
   @Get(':awb/print-mps-labels')
   async labelsForAwb(@Param('awb') awb: string) {

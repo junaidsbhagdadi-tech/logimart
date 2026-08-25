@@ -25,6 +25,26 @@ export class ShipmentsService {
   }
 
   /**
+   * Product-specific zone from the pincode master. Only DP-family uses the courier A/B/C grid and only
+   * ECOM uses the e-com grid; every OTHER product (Apex + all other air/express products) shares the air
+   * (apex) grid. Falls back to broad region → region-from-pincode → the supplied fallback zone.
+   */
+  private productZone(pin: any, product?: string, serviceMode?: string, pincode?: string, fallback?: string): string | undefined {
+    const fam = String(product ?? '').toUpperCase();
+    const isCourier = ['DP', 'TDD', 'NDD'].includes(fam);
+    const isEcom = ['ECOM', 'ECOMM', 'ECOMMERCE'].includes(fam);
+    const isSurface = ['SURFACE', 'SFC', 'HUB'].includes(fam) || /ROAD|RAIL|SURFACE/i.test(String(serviceMode ?? ''));
+    const zRaw = pin && (
+      isCourier ? pin.dpZone
+      : isSurface ? pin.surfaceZone
+      : isEcom ? (pin.ecomZone || pin.apexZone)
+      : (pin.apexZone || pin.ecomZone)
+    );
+    const z = zRaw ? String(zRaw).replace(/\s+/g, '').toUpperCase() : zRaw; // "NE 1" -> "NE1"
+    return z || pin?.region || (pincode ? regionFromPincode(pincode) : undefined) || fallback;
+  }
+
+  /**
    * Promised delivery date = today + transit TAT for the origin→dest zone. TAT is vendor-specific
    * (ZONE_TAT master, code `<VENDOR>__<MODE>`), resolved vendor → SELF → legacy `<MODE>`.
    * SURFACE matrix for surface products, else APEX. Null if no TAT covers the zone pair.
@@ -118,26 +138,8 @@ export class ShipmentsService {
     if (dto.destPincode && !destPin) {
       throw new BadRequestException(`Destination pincode ${dto.destPincode} is not in the pincode master — add it under Pincodes before booking.`);
     }
-    const zoneFor = (pin: any, pincode?: string, fallback?: string): string | undefined => {
-      const fam = String(dto.product ?? '').toUpperCase();
-      const isCourier = ['DP', 'TDD', 'NDD'].includes(fam);
-      const isEcom = ['ECOM', 'ECOMM', 'ECOMMERCE'].includes(fam);
-      const isSurface = ['SURFACE', 'SFC', 'HUB'].includes(fam) || /ROAD|RAIL|SURFACE/i.test(String(dto.serviceMode ?? ''));
-      // Zone grid by product family. Only DP-family uses the courier A/B/C grid and only ECOM uses the
-      // e-com grid; every OTHER product (Apex + all other air/express products) shares the air (apex)
-      // grid — previously they fell through to the (often-empty) e-com column and dropped to a broad
-      // region like "North", so their zone never matched the rate card.
-      const zRaw = pin && (
-        isCourier ? pin.dpZone
-        : isSurface ? pin.surfaceZone
-        : isEcom ? (pin.ecomZone || pin.apexZone)
-        : (pin.apexZone || pin.ecomZone)
-      );
-      const z = zRaw ? String(zRaw).replace(/\s+/g, '').toUpperCase() : zRaw; // "NE 1" -> "NE1"
-      return z || pin?.region || (pincode ? regionFromPincode(pincode) : undefined) || fallback;
-    };
-    const originZone = zoneFor(originPin, dto.originPincode, dto.originZone) || dto.originZone;
-    const destZone = zoneFor(destPin, dto.destPincode, dto.destZone) || dto.destZone;
+    const originZone = this.productZone(originPin, dto.product, dto.serviceMode, dto.originPincode, dto.originZone) || dto.originZone;
+    const destZone = this.productZone(destPin, dto.product, dto.serviceMode, dto.destPincode, dto.destZone) || dto.destZone;
     let isOda = dto.isOda ?? false;
     if (destPin && (destPin.isOda || (destPin.edl && destPin.edl.toUpperCase() !== 'REGULAR'))) isOda = true;
 
@@ -435,6 +437,69 @@ export class ShipmentsService {
       select: { awb: true, vendor: true, forwardingAwb: true, forwardingAt: true },
     });
     return { ...updated, message: `${awb} forwarded${updated.vendor ? ' via ' + updated.vendor : ''}${forwardingAwb ? ' — ref ' + forwardingAwb : ''}.` };
+  }
+
+  /**
+   * Edit an existing AWB after creation (#11): product, consignee, vendor, values, etc. Blocked once
+   * the AWB is invoiced (cancel/rebill first). Changing product or a pincode re-derives the zone grid,
+   * ODA flag and EDD so rating stays correct. Charges are computed live, so no stored total to patch.
+   */
+  async editShipment(awbRaw: string, dto: any) {
+    const awb = String(awbRaw || '').trim().toUpperCase();
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, include: { _count: { select: { invoiceLines: true } } } });
+    if (!s) throw new NotFoundException(`AWB ${awb} not found`);
+    if (s._count.invoiceLines > 0) throw new ConflictException('This AWB is already invoiced — cancel/rebill the invoice before editing.');
+
+    const data: any = {};
+    const str = (k: string, v: any) => { if (v !== undefined) data[k] = v === null || String(v).trim() === '' ? null : String(v).trim(); };
+    const upper = (k: string, v: any) => { if (v !== undefined) data[k] = v ? String(v).trim().toUpperCase() : null; };
+    const dec = (k: string, v: any) => { if (v !== undefined) data[k] = v != null && v !== '' && !isNaN(Number(v)) ? new Prisma.Decimal(Number(v)) : null; };
+
+    str('consigneeName', dto.consigneeName);
+    str('consigneePhone', dto.consigneePhone);
+    str('consigneeAddress', dto.consigneeAddress);
+    str('consigneeCity', dto.consigneeCity);
+    str('consigneeState', dto.consigneeState);
+    str('consigneeGstin', dto.consigneeGstin);
+    str('goodsDesc', dto.goodsDesc);
+    str('hsnCode', dto.hsnCode);
+    str('shipperName', dto.shipperName);
+    str('referenceNo', dto.referenceNo);
+    str('service', dto.service);
+    upper('product', dto.product);
+    upper('vendor', dto.vendor);
+    if (dto.docType !== undefined) data.docType = dto.docType || null;
+    if (dto.paymentTerm !== undefined) data.paymentTerm = dto.paymentTerm;
+    dec('shipmentValue', dto.shipmentValue);
+    dec('declaredValue', dto.declaredValue);
+    dec('chargeWeight', dto.chargeWeight);
+
+    // Pincode / product changes → re-derive zones, ODA and EDD.
+    const newDestPin = dto.destPincode !== undefined ? (String(dto.destPincode || '').trim() || null) : s.destPincode;
+    const newOriginPin = dto.shipperPincode !== undefined ? (String(dto.shipperPincode || '').trim() || null) : s.shipperPincode;
+    if (dto.destPincode !== undefined) data.destPincode = newDestPin;
+    if (dto.shipperPincode !== undefined) data.shipperPincode = newOriginPin;
+    const newProduct = dto.product !== undefined ? (data.product ?? s.product) : s.product;
+    const productChanged = dto.product !== undefined && data.product !== s.product;
+    const destChanged = dto.destPincode !== undefined && newDestPin !== s.destPincode;
+    const originChanged = dto.shipperPincode !== undefined && newOriginPin !== s.shipperPincode;
+
+    if (productChanged || destChanged || originChanged) {
+      const [originPin, destPin] = await Promise.all([
+        newOriginPin ? this.prisma.pincode.findUnique({ where: { pincode: newOriginPin } }) : null,
+        newDestPin ? this.prisma.pincode.findUnique({ where: { pincode: newDestPin } }) : null,
+      ]);
+      if (newDestPin && !destPin) throw new BadRequestException(`Destination pincode ${newDestPin} is not in the pincode master.`);
+      const originZone = this.productZone(originPin, newProduct, s.serviceMode, newOriginPin ?? undefined, s.originZone) || s.originZone;
+      const destZone = this.productZone(destPin, newProduct, s.serviceMode, newDestPin ?? undefined, s.destZone) || s.destZone;
+      data.originZone = originZone;
+      data.destZone = destZone;
+      if (destPin && (destPin.isOda || (destPin.edl && String(destPin.edl).toUpperCase() !== 'REGULAR'))) data.isOda = true;
+      data.expectedDelivery = await this.expectedDeliveryFor(newProduct ?? undefined, s.serviceMode, originZone, destZone, data.vendor ?? s.vendor ?? undefined);
+    }
+
+    await this.prisma.shipment.update({ where: { id: s.id }, data });
+    return { ok: true, awb, message: `${awb} updated.`, rezoned: productChanged || destChanged || originChanged };
   }
 
   /** Recent shipments, optionally scoped to a single client, with light rollup. */

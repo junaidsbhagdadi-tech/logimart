@@ -55,6 +55,17 @@ export function AwbEntryList() {
 
   const setFilter = (k: string, v: string) => { setFilters((f) => ({ ...f, [k]: v })); setPage(0); };
 
+  // Excel export of the CURRENTLY FILTERED rows (not just the visible page).
+  const exportXls = async () => {
+    const XLSX = await import('xlsx');
+    const head = COLS.map((c) => c.label);
+    const data = filtered.map((r) => COLS.map((c) => (c.key === 'bookDate' ? fmtDate(r.bookDate) : ((r as any)[c.key] ?? ''))));
+    const ws = XLSX.utils.aoa_to_sheet([head, ...data]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Shipments');
+    XLSX.writeFile(wb, `shipments-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
   return (
     <>
       <h1>📝 Shipment List</h1>
@@ -65,8 +76,12 @@ export function AwbEntryList() {
           <div className="row" style={{ gap: 8 }}>
             <button className="secondary" onClick={load} title="Refresh">⟳ Refresh</button>
             {Object.values(filters).some(Boolean) && <button className="secondary" onClick={() => setFilters({})}>Clear filters</button>}
+            <button className="secondary" onClick={exportXls} disabled={!filtered.length} title="Download the filtered list to Excel">⬇ Excel</button>
           </div>
-          <Link to="/create"><button>➕ New Shipment</button></Link>
+          <div className="row" style={{ gap: 8 }}>
+            <Link to="/bulk"><button className="secondary" title="Bulk import shipments from Excel">📥 Excel import</button></Link>
+            <Link to="/create"><button>➕ New Shipment</button></Link>
+          </div>
         </div>
 
         <div style={{ overflowX: 'auto' }}>

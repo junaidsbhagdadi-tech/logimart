@@ -318,6 +318,9 @@ export const api = {
   setForwarding: (awb: string, body: { vendor?: string; forwardingAwb?: string }) =>
     request<{ awb: string; vendor: string | null; forwardingAwb: string | null; message: string }>(
       `/api/v1/shipments/${awb}/forwarding`, { method: 'POST', body: JSON.stringify(body) }),
+  editShipment: (awb: string, patch: Record<string, any>) =>
+    request<{ ok: boolean; awb: string; message: string; rezoned: boolean }>(
+      `/api/v1/shipments/${awb}/edit`, { method: 'POST', body: JSON.stringify(patch) }),
   payAtBooking: (awb: string, amount: number, method: 'CASH' | 'WALLET') =>
     request<{ awb: string; method: string; amount: number; walletBalance: number | null; customer: string; accountCode: string; collectedAt: string; message: string }>(
       `/api/v1/shipments/${awb}/pay`, { method: 'POST', body: JSON.stringify({ amount, method }) }),
