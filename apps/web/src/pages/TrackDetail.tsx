@@ -238,19 +238,32 @@ export function TrackDetail() {
             )}
 
             {tab === 'Consignee Detail' && (
-              <div className="grid cols-2" style={{ gap: 14 }}>
+              <div className="grid cols-3" style={{ gap: 14 }}>
                 <Field label="Name" value={d.consignee.name} />
-                <Field label="Phone" value={d.consignee.phone} />
-                <Field label="City" value={d.consignee.city} />
+                <Field label="Contact Person" value={(d.consignee as any).contact} />
+                <Field label="Phone / Mobile" value={d.consignee.phone
+                  ? <a href={`tel:${d.consignee.phone}`}>{d.consignee.phone}</a> : '—'} color="var(--brand)" />
                 <Field label="Address" value={d.consignee.address} />
+                <Field label="City" value={d.consignee.city} />
+                <Field label="State" value={(d.consignee as any).state} />
+                <Field label="Pincode" value={(d.consignee as any).pincode} />
+                <Field label="GSTIN" value={(d.consignee as any).gstin} />
               </div>
             )}
 
             {tab === 'Pickup Detail' && (
-              <div className="grid cols-2" style={{ gap: 14 }}>
-                <Field label="Shipper" value={d.shipper} />
-                <Field label="Origin" value={d.origin} />
-                <Field label="Pickup Rider" value={d.pickupRider} />
+              <div className="grid cols-3" style={{ gap: 14 }}>
+                <Field label="Shipper" value={(d as any).shipperDetail?.name ?? d.shipper} />
+                <Field label="Contact Person" value={(d as any).shipperDetail?.contact} />
+                <Field label="Phone / Mobile" value={(d as any).shipperDetail?.mobile || (d as any).shipperDetail?.phone
+                  ? <a href={`tel:${(d as any).shipperDetail?.mobile || (d as any).shipperDetail?.phone}`}>{(d as any).shipperDetail?.mobile || (d as any).shipperDetail?.phone}</a> : '—'} color="var(--brand)" />
+                <Field label="Address" value={(d as any).shipperDetail?.address} />
+                <Field label="City" value={(d as any).shipperDetail?.city || d.origin} />
+                <Field label="State" value={(d as any).shipperDetail?.state} />
+                <Field label="Pincode" value={(d as any).shipperDetail?.pincode ?? (d as any).originPincode} />
+                <Field label="GSTIN" value={(d as any).shipperDetail?.gstin} />
+                <Field label="Email" value={(d as any).shipperDetail?.email} />
+                <Field label="Pickup Rider" value={d.pickupRider} color="var(--brand)" />
                 <Field label="Order Date (Manifested)" value={dateFmt(d.orderDate)} />
               </div>
             )}

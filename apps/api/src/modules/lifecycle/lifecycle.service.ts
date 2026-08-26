@@ -163,7 +163,17 @@ export class LifecycleService {
       deliveryRider: riderOf('OFD', 'DLD'),
       deliveryPod: s.podUrl ?? null,
       pickupPod: s.pickupPodUrl ?? null,
-      consignee: { name: s.consigneeName, phone: s.consigneePhone, address: s.consigneeAddress, city: s.consigneeCity },
+      consignee: {
+        name: s.consigneeName, phone: s.consigneePhone, contact: (s as any).consigneeContact ?? null,
+        address: s.consigneeAddress, city: s.consigneeCity, state: (s as any).consigneeState ?? null,
+        pincode: s.destPincode, gstin: s.consigneeGstin ?? null,
+      },
+      shipperDetail: {
+        name: s.shipperName ?? (s as any).client?.legalName ?? null, contact: (s as any).shipperContact ?? null,
+        address: [s.shipperAddress1, s.shipperAddress2].filter(Boolean).join(', ') || null,
+        city: s.shipperCity, state: s.shipperState, pincode: s.shipperPincode,
+        phone: s.shipperPhone, mobile: s.shipperMobile, gstin: s.shipperGstin ?? (s as any).consignorGstin ?? null, email: s.shipperEmail,
+      },
       pieces: s.pieces,
       scans: logs.map((l) => ({ at: l.scanAt, code: l.eventType, label: labelOf(l.eventType), location: l.serviceCenter ?? null, by: uname(l.scannedById), reason: ['UDL', 'RTO', 'CAN'].includes(l.eventType) ? l.remark : null, remark: l.remark })),
     };
