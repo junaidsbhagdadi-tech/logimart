@@ -492,6 +492,10 @@ export const api = {
   lifecycleList: (code?: string, limit = 100) => request<any[]>(`/api/v1/lifecycle/list?limit=${limit}${code ? `&code=${code}` : ''}`),
   lifecycleScan: (body: { awbs: string[]; code: string; remark?: string; podDataUrl?: string; bagCode?: string; location?: string }) =>
     request<{ code: string; updated: number; done: string[]; missing: string[]; locked?: string[] }>('/api/v1/lifecycle/scan', { method: 'POST', body: JSON.stringify(body) }),
+  setAppointment: (awb: string, body: { date?: string; note?: string }) =>
+    request<{ ok: boolean; awb: string; apptDate: string | null; remark: string | null }>(`/api/v1/lifecycle/appointment/${encodeURIComponent(awb)}`, { method: 'POST', body: JSON.stringify(body) }),
+  upcomingAppointments: () =>
+    request<{ awb: string; apptDate: string | null; customer: string | null; accountCode: string | null; consignee: string | null; destination: string | null; statusCode: string }[]>('/api/v1/lifecycle/appointments'),
   lifecycleDetail: (awb: string) =>
     request<{
       awb: string; forwardingAwb: string | null; payMode: string; shipper: string | null;

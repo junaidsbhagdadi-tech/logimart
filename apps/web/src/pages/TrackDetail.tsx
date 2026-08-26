@@ -76,6 +76,16 @@ export function TrackDetail() {
     } catch (e: any) { setError(e.message); } finally { setScanBusy(false); }
   };
 
+  // Appointment delivery date — updates the shipment + shows in Remarks.
+  const [appt, setAppt] = useState({ date: '', note: '' });
+  const [apptBusy, setApptBusy] = useState(false);
+  const saveAppt = async () => {
+    if (!d || !appt.date) return;
+    setApptBusy(true); setError(''); setMsg('');
+    try { await api.setAppointment(d.awb, { date: appt.date, note: appt.note || undefined }); setMsg(`✓ Appointment set for ${d.awb}.`); search(d.awb); }
+    catch (e: any) { setError(e.message); } finally { setApptBusy(false); }
+  };
+
   return (
     <>
       {!d ? (
@@ -126,6 +136,7 @@ export function TrackDetail() {
               <Field label="Remarks" value={d.remarks} color="var(--warn)" />
               <Field label="EDD" value={dateFmt(d.edd)} color="var(--brand)" />
               <Field label="Shipment Value" value={(d as any).shipmentValue != null ? `₹${Number((d as any).shipmentValue).toLocaleString('en-IN')}` : '—'} />
+              {(d as any).apptDate && <Field label="Appointment" value={dateFmt((d as any).apptDate)} color="var(--brand)" />}
               <Field label="Service Type" value={d.serviceType} color="var(--brand)" />
               <Field label="Trip Route" value={d.tripRoute} />
               <Field label="Pickup Rider" value={d.pickupRider} color="var(--brand)" />
@@ -153,6 +164,15 @@ export function TrackDetail() {
                 <div><label>Location <span className="muted">(optional)</span></label><input value={scan.location} onChange={(e) => setScan((s) => ({ ...s, location: e.target.value }))} placeholder="e.g. Bhiwandi DC" /></div>
                 <div><label>Remark <span className="muted">(optional)</span></label><input value={scan.remark} onChange={(e) => setScan((s) => ({ ...s, remark: e.target.value }))} placeholder="reason / note" /></div>
                 <div><button onClick={doScan} disabled={scanBusy}>{scanBusy ? 'Updating…' : '＋ Update scan'}</button></div>
+              </div>
+              <div style={{ borderTop: '1px dashed var(--line, #d7dadf)', marginTop: 14, paddingTop: 12 }}>
+                <h2 style={{ marginBottom: 4, fontSize: 15 }}>📅 Appointment delivery</h2>
+                <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Set the appointment date — it shows on the tracker Remarks and in the global appointment notification.{(d as any).apptDate ? ` Current: ${dateFmt((d as any).apptDate)}` : ''}</p>
+                <div className="grid cols-4" style={{ gap: 10, alignItems: 'flex-end' }}>
+                  <div><label>Appointment date</label><input type="date" value={appt.date} onChange={(e) => setAppt((a) => ({ ...a, date: e.target.value }))} /></div>
+                  <div><label>Note <span className="muted">(optional)</span></label><input value={appt.note} onChange={(e) => setAppt((a) => ({ ...a, note: e.target.value }))} placeholder="e.g. deliver after 2pm" /></div>
+                  <div><button onClick={saveAppt} disabled={apptBusy || !appt.date}>{apptBusy ? 'Saving…' : '📅 Set appointment'}</button></div>
+                </div>
               </div>
             </div>
           )}

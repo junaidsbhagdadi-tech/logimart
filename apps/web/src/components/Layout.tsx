@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
+import { api } from '../api';
 import { Logo } from './Logo';
 import { FeedbackWidget } from './FeedbackWidget';
 
@@ -35,6 +36,17 @@ export function Layout() {
     ] },
   ];
   const [awb, setAwb] = useState('');
+  // Global appointment-delivery notification (all pages, staff only).
+  const [appts, setAppts] = useState<any[]>([]);
+  const [apptOpen, setApptOpen] = useState(false);
+  useEffect(() => {
+    if (!user || user.role === 'CLIENT_ADMIN') return;
+    api.upcomingAppointments().then(setAppts).catch(() => {});
+  }, [user]);
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const isToday = (d?: string | null) => !!d && String(d).slice(0, 10) === todayStr;
+  const apptDay = (d?: string | null) => (d ? String(d).slice(0, 10).split('-').reverse().join('/') : '—');
+  const dueToday = appts.filter((a) => isToday(a.apptDate)).length;
 
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('lm.rail') === '1');
   const toggleRail = () => setCollapsed((c) => { const n = !c; localStorage.setItem('lm.rail', n ? '1' : '0'); return n; });
@@ -178,6 +190,32 @@ export function Layout() {
       <main className="main">
         <Outlet />
       </main>
+
+      {/* Global appointment-delivery notification — visible on every page. */}
+      {!isClient && appts.length > 0 && (
+        <div style={{ position: 'fixed', top: 14, right: 18, zIndex: 1200 }}>
+          <button onClick={() => setApptOpen((o) => !o)} title="Appointment deliveries"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 20, fontSize: 13, fontWeight: 700, boxShadow: '0 2px 8px rgba(0,0,0,.15)', background: dueToday ? 'var(--danger, #c0392b)' : 'var(--brand)', color: '#fff', border: 'none' }}>
+            📅 {appts.length} appt{appts.length > 1 ? 's' : ''}{dueToday ? ` · ${dueToday} today` : ''}
+          </button>
+          {apptOpen && (
+            <div style={{ position: 'absolute', right: 0, top: 44, width: 360, maxHeight: 420, overflowY: 'auto', background: 'var(--surface, #fff)', border: '1px solid var(--line, #d7dadf)', borderRadius: 12, boxShadow: '0 8px 28px rgba(0,0,0,.18)', padding: 10 }}>
+              <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <strong style={{ fontSize: 14 }}>📅 Appointment deliveries</strong>
+                <button className="secondary" style={{ padding: '2px 8px', fontSize: 12 }} onClick={() => setApptOpen(false)}>✕</button>
+              </div>
+              {appts.map((a) => (
+                <div key={a.awb} onClick={() => { setApptOpen(false); nav(`/tracker/${a.awb}`); }}
+                  style={{ padding: '8px 10px', borderRadius: 8, cursor: 'pointer', marginBottom: 4, background: isToday(a.apptDate) ? 'var(--surface-2, #f1f3f6)' : 'transparent', borderLeft: isToday(a.apptDate) ? '3px solid var(--danger, #c0392b)' : '3px solid transparent' }}>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>{apptDay(a.apptDate)}{isToday(a.apptDate) ? ' · TODAY' : ''} <span className="muted" style={{ fontWeight: 500 }}>· {a.awb}</span></div>
+                  <div className="muted" style={{ fontSize: 12 }}>{a.customer || a.consignee || '—'}{a.accountCode ? ` (${a.accountCode})` : ''} → {a.destination || '—'}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <FeedbackWidget />
     </div>
   );

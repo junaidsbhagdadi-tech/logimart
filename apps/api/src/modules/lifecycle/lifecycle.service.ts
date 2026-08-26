@@ -156,6 +156,7 @@ export class LifecycleService {
       remarks: s.exceptionFlag ?? null,
       edd: s.expectedDelivery ?? eddFallback(),
       shipmentValue: s.shipmentValue ?? s.declaredValue ?? null, // #9 visible on the tracker
+      apptDelivery: s.apptDelivery, apptDate: s.apptDate ?? null,
       serviceType: s.product ?? s.service ?? null,
       tripRoute: [s.originHub?.code, s.destHub?.code].filter(Boolean).join(' → ') || null,
       pickupRider: riderOf('PKD'),
@@ -177,6 +178,36 @@ export class LifecycleService {
     await this.prisma.shipment.update({ where: { id: s.id }, data: { statusCode: 'MAN', status: ShipmentStatus.CREATED, statusAt: new Date(), podUrl: null, exceptionFlag: null } });
     await this.prisma.scanLog.create({ data: { awb, eventType: 'MAN', remark: 'Reset' } });
     return { awb, reset: true };
+  }
+
+  /** Set / update the appointment delivery date. Reflected in the tracker's Remarks + Appointment field. */
+  async setAppointment(awbRaw: string, dto: { date?: string; note?: string }) {
+    const awb = String(awbRaw || '').trim().toUpperCase();
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true } });
+    if (!s) throw new BadRequestException(`AWB ${awb} not found.`);
+    const date = dto.date ? new Date(dto.date) : null;
+    const label = dto.date ? String(dto.date).slice(0, 10).split('-').reverse().join('/') : ''; // yyyy-mm-dd → dd/mm/yyyy
+    const remark = date ? `Appointment: ${label}${dto.note ? ' — ' + dto.note : ''}` : (dto.note || null);
+    await this.prisma.shipment.update({
+      where: { id: s.id },
+      data: { apptDelivery: date != null, apptDate: date, exceptionFlag: remark },
+    });
+    return { ok: true, awb, apptDate: date, remark };
+  }
+
+  /** Upcoming appointment deliveries (today onward) — customer + date + AWB, for the global notification. */
+  async upcomingAppointments() {
+    const from = new Date(); from.setHours(0, 0, 0, 0);
+    const rows = await this.prisma.shipment.findMany({
+      where: { apptDelivery: true, apptDate: { gte: from }, statusCode: { notIn: ['DLD', 'RTD', 'CAN'] } },
+      orderBy: { apptDate: 'asc' }, take: 200,
+      select: { awb: true, apptDate: true, consigneeName: true, consigneeCity: true, destZone: true, statusCode: true, client: { select: { legalName: true, accountCode: true } } },
+    });
+    return rows.map((r) => ({
+      awb: r.awb, apptDate: r.apptDate,
+      customer: r.client?.legalName ?? null, accountCode: r.client?.accountCode ?? null,
+      consignee: r.consigneeName ?? null, destination: r.consigneeCity ?? r.destZone ?? null, statusCode: r.statusCode,
+    }));
   }
 
   /** Counts by milestone code (for the mile dashboards). */

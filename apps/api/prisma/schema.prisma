@@ -487,6 +487,7 @@ model Shipment {
   isCommercial   Boolean  @default(false)
   isMedical      Boolean  @default(false)
   apptDelivery   Boolean  @default(false) // appointment delivery required
+  apptDate       DateTime? // scheduled appointment delivery date
   referenceNo    String?
 
   vehicleNo      String?

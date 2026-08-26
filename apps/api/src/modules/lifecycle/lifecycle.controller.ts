@@ -44,6 +44,18 @@ export class LifecycleController {
     return this.svc.scan(dto, req.user?.sub ? BigInt(req.user.sub) : undefined, req.user?.role);
   }
 
+  /** Set / update the appointment delivery date for an AWB. */
+  @Post('appointment/:awb')
+  @Roles(...OPS)
+  appointment(@Param('awb') awb: string, @Body() dto: { date?: string; note?: string }) {
+    return this.svc.setAppointment(awb, dto);
+  }
+
+  /** Upcoming appointment deliveries — feeds the global notification. */
+  @Get('appointments')
+  @Roles(...OPS)
+  appointments() { return this.svc.upcomingAppointments(); }
+
   @Post('bag')
   @Roles(...OPS)
   bag(@Body() dto: { bagCode: string; awbs: string[] }, @Req() req: any) {
