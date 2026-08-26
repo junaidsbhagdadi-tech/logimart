@@ -361,6 +361,7 @@ export const api = {
   opsBucket: (code: string) => request<any[]>(`/api/v1/lifecycle/ops-bucket/${code}`),
   salesByRep: (from?: string, to?: string) =>
     request<{ from: string; to: string; count: number; totals: any; rows: any[] }>(`/api/v1/billing/mis/sales-by-rep${from || to ? `?${from ? 'from=' + from : ''}${from && to ? '&' : ''}${to ? 'to=' + to : ''}` : ''}`),
+  clearShipments: () => request<{ ok: boolean; totalDeleted: number; cleared: Record<string, number>; kept: string[] }>('/api/v1/admin/clear-shipments', { method: 'POST' }),
   misSales: (from?: string, to?: string) =>
     request<{ from: string; to: string; count: number; totals: any; rows: { code: string; customer: string; shipments: number; pcs: number; actlKg: number; chrgKg: number; totalSales: number; fuel: number; tax: number; netSales: number; billed: number; unbilled: number; delivered: number; rto: number; undelivered: number; pending: number; cashReceived: number; outstanding: number }[] }>(
       `/api/v1/billing/mis/sales${from || to ? `?${from ? 'from=' + from : ''}${from && to ? '&' : ''}${to ? 'to=' + to : ''}` : ''}`),

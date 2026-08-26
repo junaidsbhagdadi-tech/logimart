@@ -50,6 +50,36 @@ export class AdminService {
   }
 
   /**
+   * Clear ONLY shipments + their derived transactional data (invoices, ledger, notes, claims, scans,
+   * PODs, manifests, pickups). KEEPS all configuration: customers, vendors, rate cards, per-customer
+   * charges/fuel/volumetric, service mappings, fuel mechanisms, masters, pincodes. FK-safe order.
+   */
+  async clearShipments() {
+    const p = this.prisma;
+    const r: Record<string, number> = {};
+    const del = async (k: string, fn: () => Promise<{ count: number }>) => { r[k] = (await fn()).count; };
+    await del('scanLogs', () => p.scanLog.deleteMany({}));
+    await del('scanEvents', () => p.scanEvent.deleteMany({}));
+    await del('pods', () => p.pod.deleteMany({}));
+    await del('invoiceLines', () => p.invoiceLineItem.deleteMany({}));
+    await del('ledger', () => p.ledgerEntry.deleteMany({}));
+    await del('debitCreditNotes', () => p.debitCreditNote.deleteMany({}));
+    await del('claims', () => p.claim.deleteMany({}));
+    await del('invoices', () => p.invoice.deleteMany({}));
+    await del('shipmentPieces', () => p.shipmentPiece.deleteMany({}));
+    await del('shipments', () => p.shipment.deleteMany({}));
+    await del('manifests', () => p.manifest.deleteMany({}));
+    await del('pickups', () => p.pickupRequest.deleteMany({}));
+    await del('awbCounter', () => p.counter.deleteMany({ where: { name: 'awb' } }));
+    await p.b2bClient.updateMany({ data: { outstandingBal: 0, isCreditHold: false } });
+    const total = Object.values(r).reduce((s, n) => s + n, 0);
+    return {
+      ok: true, totalDeleted: total, cleared: r,
+      kept: ['customers', 'vendors', 'rate cards', 'per-customer charges/fuel/volumetric', 'service mappings', 'fuel mechanisms', 'masters', 'pincodes'],
+    };
+  }
+
+  /**
    * Clear test/transactional data for a clean UAT slate. Keeps users, hubs, customers,
    * vendors, rate cards, and reference masters — wipes shipments + all their children,
    * invoices/ledger/notes/claims, the per-customer billing config, serviceability/service

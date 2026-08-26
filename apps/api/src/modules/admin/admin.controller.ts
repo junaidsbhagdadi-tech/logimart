@@ -9,6 +9,13 @@ import { AdminService } from './admin.service';
 export class AdminController {
   constructor(private readonly admin: AdminService) {}
 
+  /** Clear ONLY shipments + their invoices/scans (keeps all config). SYS_ADMIN only. */
+  @Post('clear-shipments')
+  @Roles(UserRole.SYS_ADMIN)
+  clearShipments() {
+    return this.admin.clearShipments();
+  }
+
   /** Wipe test/transactional data for a clean UAT slate. SYS_ADMIN only. */
   @Post('clear-test-data')
   @Roles(UserRole.SYS_ADMIN)

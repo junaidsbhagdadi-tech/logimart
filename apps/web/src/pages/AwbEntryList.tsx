@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
+import { useAuth } from '../auth';
 
 type Row = {
   awb: string; invoiced?: boolean; bookDate: string; shipperName: string; customerCode: string; customerName: string;
@@ -28,13 +29,25 @@ const COLS: { key: keyof Row; label: string; num?: boolean }[] = [
 const PAGE = 10;
 
 export function AwbEntryList() {
+  const { user } = useAuth();
+  const isSuper = user?.role === 'SYS_ADMIN';
   const [rows, setRows] = useState<Row[]>([]);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [page, setPage] = useState(0);
   const [error, setError] = useState('');
+  const [msg, setMsg] = useState('');
 
   const load = () => { api.awbList(300).then(setRows).catch((e) => setError(e.message)); };
   useEffect(load, []);
+
+  const clearAll = async () => {
+    if (!confirm('⚠ Delete ALL shipments and their invoices/scans from the LIVE database?\n\nThis KEEPS customers, vendors, rate cards, charges and masters — but every shipment + invoice is permanently removed and the AWB counter resets.\n\nContinue?')) return;
+    const typed = window.prompt('This cannot be undone. Type CLEAR to confirm:');
+    if (typed !== 'CLEAR') { setMsg('Cancelled — nothing was deleted.'); return; }
+    setError(''); setMsg('Clearing…');
+    try { const r = await api.clearShipments(); setMsg(`✓ Cleared ${r.totalDeleted} record(s): ${Object.entries(r.cleared).filter(([, n]) => n).map(([k, n]) => `${k} ${n}`).join(', ')}. Kept: ${r.kept.join(', ')}.`); load(); }
+    catch (e: any) { setError(e.message); }
+  };
 
   const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('en-GB') : '');
 
@@ -70,6 +83,7 @@ export function AwbEntryList() {
     <>
       <h1>📝 Shipment List</h1>
       {error && <div className="error">{error}</div>}
+      {msg && <div className="card" style={{ borderLeft: '4px solid var(--ok, #16a34a)', fontSize: 13 }}>{msg}</div>}
 
       <div className="card" style={{ padding: 16 }}>
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -79,6 +93,7 @@ export function AwbEntryList() {
             <button className="secondary" onClick={exportXls} disabled={!filtered.length} title="Download the filtered list to Excel">⬇ Excel</button>
           </div>
           <div className="row" style={{ gap: 8 }}>
+            {isSuper && <button className="secondary" style={{ color: 'var(--danger, #c0392b)' }} title="Delete ALL shipments + invoices (keeps config)" onClick={clearAll}>🧹 Clear test shipments</button>}
             <Link to="/bulk"><button className="secondary" title="Bulk import shipments from Excel">📥 Excel import</button></Link>
             <Link to="/create"><button>➕ New Shipment</button></Link>
           </div>
