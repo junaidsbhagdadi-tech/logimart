@@ -311,6 +311,35 @@ export class InvoiceService {
     return { from: gte, to: lte, count: rows.length, rows, totals };
   }
 
+  /**
+   * Sales dashboard by salesperson — their daily contribution: shipments booked and sales for THEIR
+   * customers, split billed vs unbilled (unbilled is live-rated). Grouped on the customer's salesPerson.
+   */
+  async salesByRep(from?: string, to?: string) {
+    const gte = from ? new Date(from) : new Date(new Date().setHours(0, 0, 0, 0));
+    const lte = to ? new Date(`${to}T23:59:59`) : new Date();
+    const ships = await this.prisma.shipment.findMany({
+      where: { createdAt: { gte, lte } }, take: 3000,
+      include: { pieces: { select: { status: true, deadKg: true, volKg: true, lengthCm: true, widthCm: true, heightCm: true } },
+        client: { select: { salesPerson: true, salesPersonMobile: true, salesPersonEmail: true } } },
+    });
+    const billed = new Map((await this.prisma.invoiceLineItem.findMany({ where: { shipment: { createdAt: { gte, lte } } }, select: { shipmentId: true, amount: true } })).map((l) => [l.shipmentId.toString(), Number(l.amount)]));
+    const n2 = (x: number) => +Number(x || 0).toFixed(2);
+    const M = new Map<string, any>();
+    for (const s of ships) {
+      const rep = (s.client?.salesPerson || '(unassigned)').trim() || '(unassigned)';
+      if (!M.has(rep)) M.set(rep, { salesPerson: rep, mobile: s.client?.salesPersonMobile ?? '', email: s.client?.salesPersonEmail ?? '', shipments: 0, billedCount: 0, unbilledCount: 0, billedSales: 0, unbilledSales: 0 });
+      const r = M.get(rep); r.shipments++;
+      const b = billed.get(s.id.toString());
+      if (b != null) { r.billedCount++; r.billedSales += b; }
+      else { r.unbilledCount++; const ch = await this.rates.chargesForShipment(s as any, s.pieces as any); r.unbilledSales += ch ? Number(ch.subtotal || 0) : 0; }
+    }
+    const rows = [...M.values()].map((r) => ({ ...r, billedSales: n2(r.billedSales), unbilledSales: n2(r.unbilledSales), totalSales: n2(r.billedSales + r.unbilledSales) })).sort((a, b) => b.totalSales - a.totalSales);
+    const totals: any = {};
+    for (const k of ['shipments', 'billedCount', 'unbilledCount', 'billedSales', 'unbilledSales', 'totalSales']) totals[k] = n2(rows.reduce((t, r) => t + r[k], 0));
+    return { from: gte, to: lte, count: rows.length, rows, totals };
+  }
+
   /** Customer ids with at least one shipment in the period, excluding cash/wallet (prepaid) accounts. */
   async eligibleClientIdsForPeriod(periodStart: string, periodEnd: string): Promise<number[]> {
     const grouped = await this.prisma.shipment.groupBy({

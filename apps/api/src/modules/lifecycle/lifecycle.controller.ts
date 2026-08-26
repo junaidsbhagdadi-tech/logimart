@@ -56,6 +56,20 @@ export class LifecycleController {
   @Roles(...OPS)
   appointments() { return this.svc.upcomingAppointments(); }
 
+  /** Customer-Service dashboard — pending/stuck shipments + NDR. */
+  @Get('cs-dashboard')
+  @Roles(...OPS)
+  csDashboard(@Query('from') from?: string, @Query('to') to?: string) { return this.svc.csDashboard(from, to); }
+
+  /** Operations dashboard — task buckets by stage. */
+  @Get('ops-dashboard')
+  @Roles(...OPS)
+  opsDashboard() { return this.svc.opsDashboard(); }
+
+  @Get('ops-bucket/:code')
+  @Roles(...OPS)
+  opsBucket(@Param('code') code: string) { return this.svc.opsBucket(String(code).toUpperCase()); }
+
   @Post('bag')
   @Roles(...OPS)
   bag(@Body() dto: { bagCode: string; awbs: string[] }, @Req() req: any) {

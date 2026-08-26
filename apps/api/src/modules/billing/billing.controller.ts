@@ -115,6 +115,13 @@ export class BillingController {
     return this.invoices.misSalesSummary(from, to);
   }
 
+  /** Sales dashboard by salesperson — daily contribution incl. unbilled. */
+  @Get('billing/mis/sales-by-rep')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  salesByRep(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.invoices.salesByRep(from, to);
+  }
+
   /** Bill-working export (per-AWB charge breakdown) for a client — matches the bill sheet. */
   @Get('billing/bill-worksheet')
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)

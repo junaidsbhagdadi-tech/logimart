@@ -61,6 +61,7 @@ export function Layout() {
   const groups: Group[] = isClient ? clientGroups : [
     { title: 'Overview', items: [
       { to: '/', icon: '📊', label: 'Dashboard', end: true },
+      { to: '/team-dashboards', icon: '📈', label: 'Team Dashboards' },
       { to: '/tracker', icon: '🧭', label: 'Track Shipment' },
       { to: '/pincode-search', icon: '📍', label: 'Pincode Search' },
     ] },

@@ -3,6 +3,7 @@ import { useAuth } from './auth';
 import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
+import { TeamDashboards } from './pages/TeamDashboards';
 import { CreateShipment } from './pages/CreateShipment';
 import { AwbEntryList } from './pages/AwbEntryList';
 import { ShipmentDetail } from './pages/ShipmentDetail';
@@ -72,6 +73,7 @@ export function App() {
       <Route path="/shipments/:awb/awb-print" element={<AwbPrint />} />
       <Route element={<Layout />}>
         <Route path="/" element={user?.role === 'CLIENT_ADMIN' ? <ClientPortal /> : <Dashboard />} />
+        <Route path="/team-dashboards" element={user?.role === 'CLIENT_ADMIN' ? <Navigate to="/" replace /> : <TeamDashboards />} />
         <Route path="/tracker" element={<TrackDetail />} />
         <Route path="/pincode-search" element={<PincodeSearch />} />
         <Route path="/tracker/:awb" element={<TrackDetail />} />

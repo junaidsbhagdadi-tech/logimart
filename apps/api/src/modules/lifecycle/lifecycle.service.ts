@@ -227,6 +227,63 @@ export class LifecycleService {
     }));
   }
 
+  /** Customer-Service dashboard: pending / stuck shipments with aging, NDR (undelivered) + overdue flags. */
+  async csDashboard(from?: string, to?: string) {
+    const gte = from ? new Date(from) : new Date(Date.now() - 30 * 86400000);
+    const lte = to ? new Date(`${to}T23:59:59`) : new Date();
+    const labelOf = (c: string) => LIFECYCLE.find((l) => l.code === c)?.label || c;
+    const ships = await this.prisma.shipment.findMany({
+      where: { createdAt: { gte, lte }, statusCode: { notIn: ['DLD', 'RTD', 'CAN'] } },
+      orderBy: { createdAt: 'asc' }, take: 1500,
+      select: { awb: true, statusCode: true, statusAt: true, createdAt: true, consigneeName: true, consigneePhone: true, consigneeCity: true, destZone: true, expectedDelivery: true, exceptionFlag: true, client: { select: { legalName: true, accountCode: true } } },
+    });
+    const now = Date.now();
+    const rows = ships.map((s) => {
+      const code = String(s.statusCode || 'MAN');
+      const edd = s.expectedDelivery ? new Date(s.expectedDelivery).getTime() : null;
+      return {
+        awb: s.awb, customer: s.client?.legalName ?? '', code: s.client?.accountCode ?? '',
+        consignee: s.consigneeName ?? '', phone: s.consigneePhone ?? '', destination: s.consigneeCity ?? s.destZone ?? '',
+        statusCode: code, status: labelOf(code),
+        ageDays: Math.floor((now - new Date(s.createdAt).getTime()) / 86400000),
+        edd: s.expectedDelivery ?? null, overdue: !!edd && now > edd,
+        ndr: code === 'UDL', remark: s.exceptionFlag ?? null,
+      };
+    });
+    return { count: rows.length, ndrCount: rows.filter((r) => r.ndr).length, overdueCount: rows.filter((r) => r.overdue).length, rows };
+  }
+
+  /** Operations dashboard: task buckets by milestone stage (with counts). */
+  async opsDashboard() {
+    const grouped = await this.prisma.shipment.groupBy({ by: ['statusCode'], _count: { _all: true } });
+    const c: Record<string, number> = {};
+    for (const g of grouped) c[String(g.statusCode || 'MAN')] = g._count._all;
+    return {
+      buckets: [
+        { key: 'MAN', label: 'Awaiting pickup', count: c.MAN || 0 },
+        { key: 'PKD', label: 'Picked (to origin hub)', count: c.PKD || 0 },
+        { key: 'ORD', label: 'At origin hub', count: c.ORD || 0 },
+        { key: 'DPD', label: 'In transit', count: c.DPD || 0 },
+        { key: 'DRD', label: 'At destination hub', count: c.DRD || 0 },
+        { key: 'OFD', label: 'Out for delivery', count: c.OFD || 0 },
+        { key: 'UDL', label: 'Undelivered (NDR)', count: c.UDL || 0 },
+        { key: 'RTO', label: 'RTO', count: (c.RTO || 0) + (c.RTD || 0) },
+      ],
+      byCode: c,
+    };
+  }
+
+  /** Shipments in one milestone bucket (drill-down for the ops dashboard). */
+  async opsBucket(code: string, limit = 300) {
+    const labelOf = (x: string) => LIFECYCLE.find((l) => l.code === x)?.label || x;
+    const ships = await this.prisma.shipment.findMany({
+      where: { statusCode: code === 'RTO' ? { in: ['RTO', 'RTD'] } : code },
+      orderBy: { statusAt: 'asc' }, take: limit,
+      select: { awb: true, statusCode: true, statusAt: true, consigneeCity: true, destZone: true, currentLocation: true, client: { select: { legalName: true } } },
+    });
+    return ships.map((s) => ({ awb: s.awb, customer: s.client?.legalName ?? '', destination: s.consigneeCity ?? s.destZone ?? '', at: s.statusAt, location: s.currentLocation ?? '', status: labelOf(String(s.statusCode || 'MAN')) }));
+  }
+
   /** Counts by milestone code (for the mile dashboards). */
   async summary() {
     const rows = await this.prisma.shipment.groupBy({ by: ['statusCode'], _count: { _all: true } });
