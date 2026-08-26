@@ -60,6 +60,13 @@ export class BillingController {
     return this.invoices.dispute(Number(id), dto.shipmentId, dto.reason);
   }
 
+  /** Clear a line's dispute and unlock it. */
+  @Post('billing/invoices/:id/undispute')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.CLIENT_ADMIN, UserRole.SYS_ADMIN)
+  undispute(@Param('id') id: string, @Body() dto: { shipmentId: number }) {
+    return this.invoices.undispute(Number(id), Number(dto?.shipmentId));
+  }
+
   @Post('billing/invoices/:id/pay')
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
   pay(@Param('id') id: string, @Body() dto: PayDto) {

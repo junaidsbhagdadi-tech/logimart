@@ -545,6 +545,21 @@ export class InvoiceService {
     };
   }
 
+  /** Clear a line's dispute and unlock it; if no disputed lines remain, the invoice returns to ISSUED. */
+  async undispute(invoiceId: number, shipmentId: number) {
+    const line = await this.prisma.invoiceLineItem.findFirst({ where: { invoiceId: BigInt(invoiceId), shipmentId: BigInt(shipmentId) } });
+    if (!line) throw new NotFoundException('Invoice line for that shipment not found');
+    await this.prisma.invoiceLineItem.update({ where: { id: line.id }, data: { isDisputed: false, disputeReason: null } });
+    const stillDisputed = await this.prisma.invoiceLineItem.count({ where: { invoiceId: BigInt(invoiceId), isDisputed: true } });
+    if (stillDisputed === 0) {
+      const inv = await this.prisma.invoice.findUnique({ where: { id: BigInt(invoiceId) }, select: { status: true } });
+      if (inv?.status === InvoiceStatus.DISPUTED) {
+        await this.prisma.invoice.update({ where: { id: BigInt(invoiceId) }, data: { status: InvoiceStatus.ISSUED } });
+      }
+    }
+    return { invoiceId, cleared: shipmentId, remainingDisputed: stillDisputed };
+  }
+
   /** Lock a single line under dispute; clean lines stay payable. */
   async dispute(invoiceId: number, shipmentId: number, reason: string) {
     const line = await this.prisma.invoiceLineItem.findFirst({

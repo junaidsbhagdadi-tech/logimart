@@ -369,6 +369,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ shipmentId, reason }),
     }),
+  undisputeLine: (invoiceId: string, shipmentId: number) =>
+    request('/api/v1/billing/invoices/' + invoiceId + '/undispute', {
+      method: 'POST', body: JSON.stringify({ shipmentId }),
+    }),
   payInvoice: (invoiceId: string, body: { amount: number; tds?: number; other?: number; otherNote?: string }) =>
     request<{ settled: number; newBalance: number; fullyPaid: boolean }>(
       '/api/v1/billing/invoices/' + invoiceId + '/pay',

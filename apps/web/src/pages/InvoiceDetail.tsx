@@ -27,6 +27,11 @@ export function InvoiceDetail() {
     }
   };
 
+  const undispute = async (shipmentId: string) => {
+    if (!confirm('Clear the dispute on this line and unlock it?')) return;
+    try { await api.undisputeLine(id!, Number(shipmentId)); setError(''); load(); } catch (e: any) { setError(e.message); }
+  };
+
   const einvoice = async () => {
     try {
       await api.generateEInvoice(id!);
@@ -143,7 +148,9 @@ export function InvoiceDetail() {
           <tbody>
             {inv.lines.map((l) => (
               <tr key={l.id}>
-                <td>#{l.shipmentId}</td>
+                <td>{(l as any).shipment?.awb
+                  ? <a href={`/shipments/${(l as any).shipment.awb}`} target="_blank" rel="noreferrer"><strong>{(l as any).shipment.awb}</strong></a>
+                  : `#${l.shipmentId}`}</td>
                 <td>{l.chargeableKg}</td>
                 <td>₹{l.amount}</td>
                 <td>
@@ -152,16 +159,18 @@ export function InvoiceDetail() {
                   ) : (
                     <span className="badge DELIVERED">OPEN</span>
                   )}
-                  {l.disputeReason && !l.isDisputed && (
+                  {l.disputeReason && (
                     <div className="muted" style={{ fontSize: 11 }}>{l.disputeReason}</div>
                   )}
                 </td>
-                <td>
+                <td style={{ whiteSpace: 'nowrap' }}>
                   {isFinance && inv.status === 'DRAFT' ? (
                     <button className="secondary" style={{ color: 'var(--danger, #c0392b)' }} title="Remove this AWB from the invoice" onClick={() => removeAwb(l.shipmentId)}>✕ Remove</button>
-                  ) : canDispute && !l.isDisputed && (
+                  ) : l.isDisputed ? (
+                    canDispute && <button className="secondary" onClick={() => undispute(l.shipmentId)} title="Clear the dispute and unlock this line">↩ Clear dispute</button>
+                  ) : canDispute ? (
                     <button className="secondary" onClick={() => dispute(l.shipmentId)}>Dispute</button>
-                  )}
+                  ) : null}
                 </td>
               </tr>
             ))}
