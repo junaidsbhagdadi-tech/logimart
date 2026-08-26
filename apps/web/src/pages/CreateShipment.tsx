@@ -251,11 +251,21 @@ export function CreateShipment() {
   };
   const chargesTotal = charges.reduce((s, c) => s + c.amount, 0);
 
+  // Auto-derive the serving hub from a pincode's zone/region (hubs carry a zone; pincodes carry region).
+  const hubForRegion = (region?: string | null): number | '' => {
+    if (!region) return '';
+    const r = String(region).toUpperCase();
+    const h = hubs.find((hb: any) => String(hb.zone || '').toUpperCase() === r || String(hb.name || '').toUpperCase().includes(r) || String(hb.code || '').toUpperCase() === r);
+    return h ? Number(h.id) : '';
+  };
   const lookOrigin = async (p: string) => {
     setOriginPin(p);
     if (/^\d{6}$/.test(p)) {
       const info = await api.lookupPincode(p).catch(() => null);
       setOriginInfo(info);
+      // Auto-fetch the origin hub from the pincode's region (operator can still override / go Direct).
+      const oh = hubForRegion(info?.region);
+      if (oh) { setOriginHubId(oh); setDirect(false); }
       // Staff: reflect the entered origin pincode in the pickup (shipper) detail so the AWB's origin
       // isn't stuck on the customer's registered city — fixes "origin shows customer address even with
       // a different origin pincode". Address lines are left intact for the operator to adjust.
@@ -273,6 +283,9 @@ export function CreateShipment() {
     if (/^\d{6}$/.test(p)) {
       const info = await api.lookupPincode(p).catch(() => null);
       setDestInfo(info);
+      // Auto-fetch the destination hub from the pincode's region (operator can still override / go Direct).
+      const dh = hubForRegion(info?.region);
+      if (dh) { setDestHubId(dh); setDirect(false); }
       // auto-fetch city + state from the pincode master (expand city code → full name)
       if (info) setC((prev) => ({ ...prev, consigneeCity: info.city ? expandCity(info.city) : prev.consigneeCity, consigneeState: info.state ?? prev.consigneeState }));
       // which carriers serve this pincode? (shown as chips + ETA; vendor stays SELF unless staff pick one)
