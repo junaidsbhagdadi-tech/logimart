@@ -25,6 +25,7 @@ export interface ChargeBreakup {
   environment?: number;
   osp?: number; // OSW oversize/overweight (kept as `osp` for back-compat)
   ras?: number; // Remote Area Surcharge
+  collectOnDelivery?: number; // FOD: freight (+fuel) collected from the consignee, not billed to the shipper
   subtotal: number; // pre-GST total of all charge heads
   lines: { code?: string; head: string; amount: number }[];
   overridden?: boolean; // true when a manual per-shipment charge override was applied
@@ -736,10 +737,21 @@ export class RateService {
     if (unloading > 0) lines.push({ code: 'UNLOADING', head: 'Unloading', amount: unloading });
     if (docket > 0) lines.push({ code: 'DOCKET', head: 'Docket', amount: docket });
     for (const cl of customLines) lines.push({ code: `CUSTOM:${cl.head.toUpperCase()}`, head: cl.head, amount: cl.amount });
-    const subtotal = r2(freight + fuel + fov + oda + awb + emergency + environment + handling + osw + ras + topay + dod + appt + loading + unloading + docket + customTotal);
+
+    // FOD (Freight On Delivery): the FREIGHT (+ its fuel) is collected from the CONSIGNEE at delivery,
+    // NOT billed to the shipper. The shipper is billed only the accessorials (incl. the master FOD charge).
+    const isFod = prod === 'FOD' || /FREIGHTONDELIVERY/.test(prod.replace(/[^A-Z]/g, ''));
+    let collectOnDelivery = 0;
+    let billFreight = freight, billFuel = fuel;
+    if (isFod) {
+      collectOnDelivery = r2(freight + fuel);
+      billFreight = 0; billFuel = 0;
+      for (let i = lines.length - 1; i >= 0; i--) if (['FREIGHT', 'FUEL'].includes(String(lines[i].code))) lines.splice(i, 1);
+    }
+    const subtotal = r2(billFreight + billFuel + fov + oda + awb + emergency + environment + handling + osw + ras + topay + dod + appt + loading + unloading + docket + customTotal);
     return {
-      chargeableKg, freight, fuel, fov, oda, docket, handling, topay, dod, appt, loading, unloading,
-      awb, emergency, environment, osp: osw, ras,
+      chargeableKg, freight: billFreight, fuel: billFuel, fov, oda, docket, handling, topay, dod, appt, loading, unloading,
+      awb, emergency, environment, osp: osw, ras, collectOnDelivery,
       subtotal, lines, basis: `card ${card.network}/${card.product} — ${priceBasis}`,
     };
   }
