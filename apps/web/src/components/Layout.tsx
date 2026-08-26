@@ -96,6 +96,7 @@ export function Layout() {
     { title: 'Billing & CRM', items: [
       { to: '/invoices', icon: '🧾', label: 'Invoices' },
       { to: '/bill-worksheet', icon: '📋', label: 'Bill Worksheet', show: isAdminFin },
+      { to: '/sales-mis', icon: '📈', label: 'Sales MIS', show: isAdminFin },
       { to: '/receivables', icon: '📒', label: 'Receivables', show: isAdminFin },
       { to: '/notes', icon: '±', label: 'Debit / Credit Notes', show: isAdminFin },
       { to: '/claims', icon: '🛡', label: 'Claims', show: isAdminFin },

@@ -8,6 +8,7 @@ import { AwbEntryList } from './pages/AwbEntryList';
 import { ShipmentDetail } from './pages/ShipmentDetail';
 import { Labels } from './pages/Labels';
 import { Invoices } from './pages/Invoices';
+import { SalesMis } from './pages/SalesMis';
 import { InvoiceDetail } from './pages/InvoiceDetail';
 import { Track } from './pages/Track';
 import { TrackDetail } from './pages/TrackDetail';
@@ -81,6 +82,7 @@ export function App() {
         <Route path="/shipments/:awb" element={<ShipmentDetail />} />
         <Route path="/shipments/:awb/labels" element={<Labels />} />
         <Route path="/invoices" element={<Invoices />} />
+        <Route path="/sales-mis" element={isAdminFin ? <SalesMis /> : <Navigate to="/" replace />} />
         <Route path="/bill-worksheet" element={isAdminFin ? <BillWorksheet /> : <Navigate to="/" replace />} />
         <Route path="/invoices/:id" element={<InvoiceDetail />} />
         <Route path="/pickups" element={<Pickups />} />

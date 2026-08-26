@@ -108,6 +108,13 @@ export class BillingController {
     return this.invoices.generateEInvoice(Number(id));
   }
 
+  /** Sales MIS — per-customer summary (shipments, weights, sales, billed/unbilled, status, cash). */
+  @Get('billing/mis/sales')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  misSales(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.invoices.misSalesSummary(from, to);
+  }
+
   /** Bill-working export (per-AWB charge breakdown) for a client — matches the bill sheet. */
   @Get('billing/bill-worksheet')
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)

@@ -264,6 +264,53 @@ export class InvoiceService {
     return { ok: true, invoiceId, invoiceNo: inv.invoiceNo, message: `Invoice ${inv.invoiceNo} deleted.` };
   }
 
+  /**
+   * Sales MIS — per-customer summary over a date range: shipments, pieces, weights, status split
+   * (delivered/RTO/undelivered/pending), billed vs unbilled, billed sales/fuel/tax, cash received &
+   * outstanding. Sales come from invoiced lines (fast, no live re-rating); outstanding is the live balance.
+   */
+  async misSalesSummary(from?: string, to?: string) {
+    const gte = from ? new Date(from) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const lte = to ? new Date(`${to}T23:59:59`) : new Date();
+    const [ships, lineItems, payAgg] = await Promise.all([
+      this.prisma.shipment.findMany({
+        where: { createdAt: { gte, lte } },
+        select: { id: true, clientId: true, pieceCount: true, totalDeadKg: true, totalVolKg: true, chargeWeight: true, statusCode: true,
+          client: { select: { legalName: true, accountCode: true, outstandingBal: true } } },
+      }),
+      this.prisma.invoiceLineItem.findMany({
+        where: { shipment: { createdAt: { gte, lte } } },
+        select: { shipmentId: true, amount: true, fuel: true, shipment: { select: { clientId: true } } },
+      }),
+      this.prisma.ledgerEntry.groupBy({ by: ['clientId'], where: { createdAt: { gte, lte }, amount: { lt: 0 } }, _sum: { amount: true } }),
+    ]);
+    const cashBy = new Map(payAgg.map((p) => [String(p.clientId), -Number(p._sum.amount || 0)]));
+    const billedIds = new Set(lineItems.map((l) => l.shipmentId.toString()));
+    const M = new Map<string, any>();
+    const n2 = (x: number) => +Number(x || 0).toFixed(2);
+    for (const s of ships) {
+      const k = String(s.clientId);
+      if (!M.has(k)) M.set(k, { code: s.client?.accountCode ?? '', customer: s.client?.legalName ?? '', shipments: 0, pcs: 0, actlKg: 0, chrgKg: 0, totalSales: 0, fuel: 0, tax: 0, netSales: 0, billed: 0, unbilled: 0, delivered: 0, rto: 0, undelivered: 0, pending: 0, cashReceived: cashBy.get(k) || 0, outstanding: Number(s.client?.outstandingBal || 0) });
+      const r = M.get(k);
+      r.shipments++; r.pcs += s.pieceCount || 0;
+      r.actlKg += Number(s.totalDeadKg || 0);
+      r.chrgKg += s.chargeWeight != null ? Number(s.chargeWeight) : Math.max(Number(s.totalDeadKg || 0), Number(s.totalVolKg || 0));
+      const sc = String(s.statusCode || 'MAN');
+      if (sc === 'DLD') r.delivered++; else if (['RTO', 'RTD'].includes(sc)) r.rto++; else if (sc === 'UDL') r.undelivered++; else r.pending++;
+      if (billedIds.has(s.id.toString())) r.billed++; else r.unbilled++;
+    }
+    for (const l of lineItems) {
+      const cid = l.shipment?.clientId; if (cid == null) continue;
+      const r = M.get(String(cid)); if (!r) continue;
+      const amt = Number(l.amount || 0); r.totalSales += amt; r.fuel += Number(l.fuel || 0); r.tax += amt * 0.18;
+    }
+    const rows = [...M.values()].map((r) => ({ ...r, actlKg: n2(r.actlKg), chrgKg: n2(r.chrgKg), totalSales: n2(r.totalSales), fuel: n2(r.fuel), tax: n2(r.tax), netSales: n2(r.totalSales), cashReceived: n2(r.cashReceived), outstanding: n2(r.outstanding) }))
+      .sort((a, b) => b.totalSales - a.totalSales);
+    const totals: any = {};
+    for (const k of ['shipments', 'pcs', 'actlKg', 'chrgKg', 'totalSales', 'fuel', 'tax', 'netSales', 'billed', 'unbilled', 'delivered', 'rto', 'undelivered', 'pending', 'cashReceived', 'outstanding']) totals[k] = n2(rows.reduce((t, r) => t + (r as any)[k], 0));
+    return { from: gte, to: lte, count: rows.length, rows, totals };
+  }
+
   /** Customer ids with at least one shipment in the period, excluding cash/wallet (prepaid) accounts. */
   async eligibleClientIdsForPeriod(periodStart: string, periodEnd: string): Promise<number[]> {
     const grouped = await this.prisma.shipment.groupBy({

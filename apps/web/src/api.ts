@@ -354,6 +354,9 @@ export const api = {
     request<{ awb: string; status: string }>(`/api/v1/shipments/${awb}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
   listInvoices: () => request<Invoice[]>('/api/v1/billing/invoices'),
   getInvoice: (id: string) => request<Invoice>(`/api/v1/billing/invoices/${id}`),
+  misSales: (from?: string, to?: string) =>
+    request<{ from: string; to: string; count: number; totals: any; rows: { code: string; customer: string; shipments: number; pcs: number; actlKg: number; chrgKg: number; totalSales: number; fuel: number; tax: number; netSales: number; billed: number; unbilled: number; delivered: number; rto: number; undelivered: number; pending: number; cashReceived: number; outstanding: number }[] }>(
+      `/api/v1/billing/mis/sales${from || to ? `?${from ? 'from=' + from : ''}${from && to ? '&' : ''}${to ? 'to=' + to : ''}` : ''}`),
   generateInvoice: (clientId: number, periodStart: string, periodEnd: string) =>
     request<{ invoice: Invoice; creditHold: boolean; newBalance: number; creditLimit: string }>(
       '/api/v1/billing/invoices/generate',
