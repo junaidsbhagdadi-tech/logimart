@@ -750,7 +750,74 @@ export class RateService {
    */
   async chargesForShipment(shipment: any, pieces: WeightLike[]): Promise<ChargeBreakup | null> {
     const breakup = await this.resolveCharges(shipment, pieces);
-    return this.applyOverrides(shipment, breakup);
+    const withCust = await this.applyCustomerOtherCharges(shipment, breakup);
+    return this.applyOverrides(shipment, withCust);
+  }
+
+  /** Map a per-customer "Other Charge" description to the built-in charge-line code. */
+  private descToCode(desc: string): string {
+    const d = String(desc || '').toUpperCase();
+    if (d.includes('FREIGHT ON VALUE') || d === 'FOV') return 'FOV';
+    if (d.includes('AIRWAYBILL') || d === 'AWB') return 'AWB';
+    if (d.includes('OVER SIZE') || d.includes('OVERSIZE') || d === 'OSP' || d === 'OSW') return 'OSW';
+    if (d.includes('DOCKET')) return 'DOCKET';
+    if (d.includes('APPOINT')) return 'APPT';
+    if (d.includes('TOPAY') || d.includes('TO-PAY') || d.includes('TO PAY') || d.includes('REVERSE')) return 'TOPAY';
+    if (d.includes('EXTRA DELIVERY') || d.includes('ODA') || d.includes('EDL')) return 'ODA';
+    if (d.includes('RAS') || d.includes('REMOTE')) return 'RAS';
+    if (d.includes('HANDLING') || d.includes('VCHC') || d.includes('VALUABLE')) return 'HANDLING';
+    if (d.includes('LOADING') && !d.includes('UN')) return 'LOADING';
+    if (d.includes('UNLOADING')) return 'UNLOADING';
+    if (d.includes('EMERGENCY')) return 'EMERGENCY';
+    if (d.includes('ENVIRON') || d.includes('GREEN')) return 'ENVIRONMENT';
+    if (d.includes('CHEQUE') || d.includes('DOD') || d.includes('DEMAND')) return 'DOD';
+    return 'CUSTOM:' + d;
+  }
+
+  /**
+   * Per-customer, vendor-scoped "Other Charges" (Customer → Other Charges tab). A row matching the
+   * shipment (vendor / product / destination / service, active by date) OVERRIDES the rate-card charge
+   * for that head, or ADDS it when the card doesn't have it. `value` is treated as a flat ₹ amount
+   * (FOV is % of shipment value), with `minimumValue` as a floor. Keeps typed fields + subtotal in sync.
+   */
+  private async applyCustomerOtherCharges(shipment: any, breakup: ChargeBreakup | null): Promise<ChargeBreakup | null> {
+    if (!breakup || shipment.clientId == null) return breakup;
+    const rows = await this.prisma.customerOtherCharge.findMany({ where: { clientId: shipment.clientId } });
+    if (!rows.length) return breakup;
+    const now = new Date();
+    const norm = (s: any) => String(s ?? '').replace(/[^a-z0-9]/gi, '').toUpperCase();
+    const sv = norm(shipment.vendor);
+    const matches = rows.filter((r) => {
+      if (r.fromDate && new Date(r.fromDate) > now) return false;
+      if (r.toDate && new Date(r.toDate) < now) return false;
+      const rv = norm(r.vendor);
+      const okV = !rv || rv === sv || (!!sv && sv.includes(rv)) || (rv === 'SELF' && (!sv || sv === 'SELF'));
+      const okP = !r.product || norm(r.product) === norm(shipment.product);
+      const okD = !r.destination || norm(r.destination) === norm(shipment.destZone) || norm(r.destination) === norm(shipment.consigneeCity);
+      const okS = !r.service || norm(r.service) === norm(shipment.serviceMode) || norm(r.service) === norm((shipment as any).service);
+      return okV && okP && okD && okS;
+    });
+    if (!matches.length) return breakup;
+    const invVal = Number(shipment.shipmentValue ?? shipment.declaredValue ?? 0);
+    const lines = breakup.lines as any[];
+    for (const r of matches) {
+      const code = this.descToCode(r.chargeDesc);
+      const amt = code === 'FOV'
+        ? r2(Math.max((invVal * Number(r.value || 0)) / 100, Number(r.minimumValue || 0)))
+        : r2(Math.max(Number(r.value || 0), Number(r.minimumValue || 0)));
+      const ex = lines.find((l) => String(l.code) === code);
+      if (ex) ex.amount = amt;
+      else if (amt > 0) lines.push({ code, head: r.chargeDesc, amount: amt });
+    }
+    breakup.subtotal = r2(lines.reduce((t, l) => t + Number(l.amount || 0), 0));
+    const byCode = (c: string) => { const l = lines.find((x) => String(x.code) === c); return l ? Number(l.amount) : undefined; };
+    const setF = (k: string, c: string) => { const v = byCode(c); if (v !== undefined) (breakup as any)[k] = v; };
+    setF('freight', 'FREIGHT'); setF('fuel', 'FUEL'); setF('fov', 'FOV'); setF('oda', 'ODA'); setF('awb', 'AWB');
+    setF('emergency', 'EMERGENCY'); setF('environment', 'ENVIRONMENT'); setF('handling', 'HANDLING'); setF('osp', 'OSW');
+    setF('ras', 'RAS'); setF('topay', 'TOPAY'); setF('dod', 'DOD'); setF('appt', 'APPT'); setF('loading', 'LOADING');
+    setF('unloading', 'UNLOADING'); setF('docket', 'DOCKET');
+    (breakup as any).overridden = true;
+    return breakup;
   }
 
   /** Manual per-shipment charge overrides: shipment.chargeOverrides = { CODE|head: amount }. A matching

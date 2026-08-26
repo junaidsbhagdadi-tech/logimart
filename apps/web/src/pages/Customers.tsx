@@ -22,9 +22,10 @@ export function Customers() {
   const [tab, setTab] = useState<Tab>('Personal Information');
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<Client | null>(null);
-  const [hasCards, setHasCards] = useState(false); // customer has ≥1 rate card → hide legacy slab tabs
-  // Legacy Fuel/Other-Charges/Volumetric tabs are shown only for un-migrated slab customers (existing, no rate card).
-  const showLegacy = !!editing && !hasCards;
+  const [hasCards, setHasCards] = useState(false); // customer has ≥1 rate card (kept for reference)
+  // Fuel Surcharges / Other Charges / Volumetric now show for ALL customers — vendor-scoped rows override
+  // the rate-card charge for that vendor (or add when the card lacks it).
+  const showLegacy = !!editing;
   const visibleTabs = TABS.filter((t) => t === 'Personal Information' || t === 'Customer Address' || showLegacy);
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
