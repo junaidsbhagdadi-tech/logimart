@@ -60,6 +60,21 @@ export class RateCardsController {
     return this.rateCards.copyChargesToSiblings(Number(id));
   }
 
+  /** Copy a customer's rate cards (freight + accessorials, × optional % increase) to another customer. */
+  @Post('copy')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  copy(@Body() dto: { sourceClientId: number; targetClientId: number; increasePct?: number; round?: boolean }) {
+    return this.rateCards.copyRateCards(Number(dto.sourceClientId), Number(dto.targetClientId), Number(dto.increasePct) || 0, !!dto.round);
+  }
+
+  /** Bulk rate increase by % — all customers or a selected set; optional round-off. */
+  @Post('increase')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  increase(@Body() dto: { scope: 'ALL' | 'SELECT'; clientIds?: number[]; increasePct: number; round?: boolean }) {
+    const ids = dto.scope === 'ALL' ? null : (dto.clientIds ?? []).map(Number);
+    return this.rateCards.increaseRateCards(ids, Number(dto.increasePct), !!dto.round);
+  }
+
   // ---- EDL (ODA) matrix, per vendor/network ----
   @Get('edl')
   @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)

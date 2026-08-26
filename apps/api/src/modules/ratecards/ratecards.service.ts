@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateRateCardDto } from './dto/ratecard.dto';
@@ -179,6 +179,58 @@ export class RateCardsService {
 
   removeCard(id: number) {
     return this.prisma.customerRateCard.delete({ where: { id: BigInt(id) } });
+  }
+
+  /**
+   * Bulk rate increase — multiply every slab (freight) rate by (1 + pct/100) for the given customers
+   * (or ALL customers when clientIds is null). Optional round-off to the nearest whole rupee.
+   * Only touches customer (sell-side) cards, never vendor cost cards.
+   */
+  async increaseRateCards(clientIds: number[] | null, pct: number, round: boolean) {
+    const factor = 1 + (Number(pct) || 0) / 100;
+    if (!(factor > 0) || Number(pct) === 0) throw new BadRequestException('Enter a non-zero percentage.');
+    const where: any = { isActive: true };
+    if (clientIds && clientIds.length) where.clientId = { in: clientIds.map((x) => BigInt(x)) };
+    else where.clientId = { not: null }; // ALL customers (excludes vendor cost cards)
+    const cards = await this.prisma.customerRateCard.findMany({ where, select: { id: true } });
+    const ids = cards.map((c) => c.id);
+    if (!ids.length) return { ok: true, cardsAdjusted: 0, factor };
+    await this.prisma.customerRateCardSlab.updateMany({ where: { rateCardId: { in: ids } }, data: { rate: { multiply: factor } } });
+    if (round) {
+      const idList = ids.map((i) => i.toString()).join(','); // internal numeric ids — safe to inline
+      await this.prisma.$executeRawUnsafe(`UPDATE customer_rate_card_slabs SET rate = ROUND(rate) WHERE "rateCardId" IN (${idList})`);
+    }
+    return { ok: true, cardsAdjusted: ids.length, factor };
+  }
+
+  /**
+   * Copy a customer's rate cards to another customer — freight slabs (× optional % increase) AND all
+   * accessorial charges. Retires any existing target card for the same network+product first.
+   */
+  async copyRateCards(sourceClientId: number, targetClientId: number, pct: number, round: boolean) {
+    if (Number(sourceClientId) === Number(targetClientId)) throw new BadRequestException('Source and target customers must be different.');
+    const factor = 1 + (Number(pct) || 0) / 100;
+    const adj = (n: any) => { const v = Number(n || 0) * factor; return round ? Math.round(v) : +v.toFixed(2); };
+    const src = await this.prisma.customerRateCard.findMany({ where: { clientId: BigInt(sourceClientId), isActive: true }, include: { slabs: true } });
+    if (!src.length) throw new BadRequestException('Source customer has no active rate cards to copy.');
+    const now = new Date();
+    let copied = 0;
+    for (const c of src) {
+      await this.prisma.customerRateCard.updateMany({
+        where: { clientId: BigInt(targetClientId), network: c.network, product: c.product, isActive: true },
+        data: { isActive: false },
+      });
+      const { id, clientId, ownerVendorId, createdAt, slabs, ...header } = c as any;
+      await this.prisma.customerRateCard.create({
+        data: {
+          ...header, // network/product/mode/charges + all accessorial columns (copied verbatim)
+          clientId: BigInt(targetClientId), ownerVendorId: null, validFrom: now,
+          slabs: { create: (slabs as any[]).map((s) => ({ originZone: s.originZone, zone: s.zone, rateType: s.rateType, weight: s.weight, rate: new Prisma.Decimal(adj(s.rate)), slabOrder: s.slabOrder })) },
+        },
+      });
+      copied++;
+    }
+    return { ok: true, copied, factor };
   }
 
   /**

@@ -32,6 +32,11 @@ export function RateCardsDialog({ client, vendor, onClose }: { client?: Client; 
   const [editing, setEditing] = useState<any | null>(null); // card object, or { _new: true }
   const [uploading, setUploading] = useState(false);
   const [err, setErr] = useState('');
+  // Copy-from + rate-increase (customer cards only)
+  const [clientsList, setClientsList] = useState<any[]>([]);
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [copy, setCopy] = useState({ src: '', pct: '', round: false });
+  const [busy2, setBusy2] = useState(false);
 
   const load = () => api.listCustomerCards(owner.kind === 'client' ? owner.id : undefined, owner.kind === 'vendor' ? owner.id : undefined).then(setCards).catch((e) => setErr(e.message));
   useEffect(() => {
@@ -41,8 +46,29 @@ export function RateCardsDialog({ client, vendor, onClose }: { client?: Client; 
     api.listVendors().then((v) => setVendors(v.filter((x) => x.isActive !== false))).catch(() => {});
     api.listMaster('FUEL_MECHANISM').then(setMechs).catch(() => {});
     api.listMaster('CHARGE').then(setChargeMaster).catch(() => {});
+    if (owner.kind === 'client') api.listClients().then(setClientsList).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [owner.id, owner.kind]);
+
+  // #copy: pull another customer's cards into this one (freight + accessorials), optional % increase.
+  const doCopy = async () => {
+    if (!copy.src) { setErr('Pick a source customer.'); return; }
+    setBusy2(true); setErr('');
+    try {
+      const r = await api.copyRateCards({ sourceClientId: copy.src, targetClientId: owner.id, increasePct: Number(copy.pct) || 0, round: copy.round });
+      setCopyOpen(false); setCopy({ src: '', pct: '', round: false }); load();
+      alert(`Copied ${r.copied} card(s)${Number(copy.pct) ? ` with +${copy.pct}%` : ''}.`);
+    } catch (e: any) { setErr(e.message); } finally { setBusy2(false); }
+  };
+  // #increase: bump THIS customer's freight rates by a %.
+  const doIncrease = async () => {
+    const pct = window.prompt(`Increase ALL of ${owner.name}'s freight rates by what %? (e.g. 5)`);
+    if (pct == null || pct.trim() === '') return;
+    const round = confirm('Round the new rates to the nearest whole rupee?');
+    setBusy2(true); setErr('');
+    try { const r = await api.increaseRateCards({ scope: 'SELECT', clientIds: [owner.id], increasePct: Number(pct), round }); load(); alert(`Increased rates on ${r.cardsAdjusted} card(s) by ${pct}%.`); }
+    catch (e: any) { setErr(e.message); } finally { setBusy2(false); }
+  };
 
   const del = async (id: string) => {
     if (!confirm('Delete this rate card?')) return;
@@ -90,9 +116,29 @@ export function RateCardsDialog({ client, vendor, onClose }: { client?: Client; 
               <button className="secondary" onClick={async () => { (await import('../lib/rateSheet')).downloadCourierTemplate(); }}>⬇ DP/Courier template</button>
               <button className="secondary" onClick={async () => { (await import('../lib/rateSheet')).downloadCargoTemplate(); }}>⬇ Cargo template</button>
               <button className="secondary" disabled={!cards.length} title="Export these rate cards to Excel" onClick={async () => { (await import('../lib/rateSheet')).exportRateCardsXlsx(owner.name, cards); }}>⬇ Export XLS</button>
+              {owner.kind === 'client' && <button className="secondary" onClick={() => setCopyOpen((o) => !o)} title="Copy another customer's rate cards into this one">📋 Copy from…</button>}
+              {owner.kind === 'client' && <button className="secondary" disabled={!cards.length || busy2} onClick={doIncrease} title="Increase this customer's freight rates by a %">↑ Increase %</button>}
               <button className="secondary" onClick={() => setUploading(true)}>⬆ Upload rates</button>
               <button onClick={() => setEditing({ _new: true })}>＋ Add Rate Card</button>
             </div>
+            {copyOpen && owner.kind === 'client' && (
+              <div className="card" style={{ background: 'var(--surface-2, #f1f3f6)', padding: 12, marginBottom: 12 }}>
+                <div className="row" style={{ gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                  <div style={{ flex: 2, minWidth: 220 }}>
+                    <label>Copy rates FROM customer</label>
+                    <select value={copy.src} onChange={(e) => setCopy((c) => ({ ...c, src: e.target.value }))}>
+                      <option value="">— select source customer —</option>
+                      {clientsList.filter((c) => String(c.id) !== String(owner.id)).map((c) => <option key={c.id} value={c.id}>{c.accountCode} — {c.legalName}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ width: 130 }}><label>% increase <span className="muted">(opt)</span></label><input type="number" value={copy.pct} onChange={(e) => setCopy((c) => ({ ...c, pct: e.target.value }))} placeholder="0" /></div>
+                  <label className="row" style={{ gap: 6, fontSize: 13, fontWeight: 600 }}><input type="checkbox" style={{ width: 'auto' }} checked={copy.round} onChange={(e) => setCopy((c) => ({ ...c, round: e.target.checked }))} /> Round off</label>
+                  <button disabled={busy2 || !copy.src} onClick={doCopy}>{busy2 ? 'Copying…' : `Copy into ${owner.name}`}</button>
+                  <button className="secondary" onClick={() => setCopyOpen(false)}>Cancel</button>
+                </div>
+                <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>Copies the source customer's freight slabs <strong>and accessorial charges</strong> into {owner.name} (replaces same network+product cards). % increase applies to freight.</p>
+              </div>
+            )}
             {!cards.length && <p className="muted">No rate cards yet. Click “Add Rate Card” to create one per network (SELF / vendor) &amp; product.</p>}
             {grouped.map(([network, list]) => (
               <div key={network} style={{ marginBottom: 18 }}>

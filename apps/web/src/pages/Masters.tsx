@@ -107,7 +107,7 @@ const MASTERS: MasterDef[] = [
 
 export function Masters() {
   const [typeKey, setTypeKey] = useState(MASTERS[0].key);
-  const [panel, setPanel] = useState<'master' | 'green' | 'surcharges'>('master');
+  const [panel, setPanel] = useState<'master' | 'green' | 'surcharges' | 'rateinc'>('master');
   const def = MASTERS.find((m) => m.key === typeKey)!;
   const [rows, setRows] = useState<any[]>([]);
   const [form, setForm] = useState<Record<string, any>>({});
@@ -225,11 +225,13 @@ export function Masters() {
           ))}
           <button className={panel === 'green' ? '' : 'secondary'} style={{ padding: '8px 14px' }} onClick={() => setPanel('green')}>🌱 Green Tax</button>
           <button className={panel === 'surcharges' ? '' : 'secondary'} style={{ padding: '8px 14px' }} onClick={() => setPanel('surcharges')}>📦 OSW / RAS</button>
+          <button className={panel === 'rateinc' ? '' : 'secondary'} style={{ padding: '8px 14px' }} onClick={() => setPanel('rateinc')}>📈 Rate Increase</button>
         </div>
       </div>
 
       {panel === 'green' && <GreenTax />}
       {panel === 'surcharges' && <Surcharges />}
+      {panel === 'rateinc' && <RateIncrease />}
       {panel === 'master' && (<>
 
       {error && <div className="error">{error}</div>}
@@ -397,4 +399,57 @@ function parseCsv(text: string): Record<string, string>[] {
     header.forEach((h, i) => { row[h] = (cells[i] ?? '').trim(); });
     return row;
   });
+}
+
+/** Bulk rate increase — apply a % to every customer's freight rates, or a selected set. */
+function RateIncrease() {
+  const [clients, setClients] = useState<any[]>([]);
+  const [scope, setScope] = useState<'ALL' | 'SELECT'>('ALL');
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [pct, setPct] = useState('');
+  const [round, setRound] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
+  useEffect(() => { api.listClients().then(setClients).catch(() => {}); }, []);
+  const toggle = (id: string) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const apply = async () => {
+    setErr(''); setMsg('');
+    if (!Number(pct)) { setErr('Enter a non-zero %.'); return; }
+    if (scope === 'SELECT' && sel.size === 0) { setErr('Select at least one customer.'); return; }
+    if (!confirm(`Increase freight rates by ${pct}% for ${scope === 'ALL' ? 'ALL customers' : sel.size + ' customer(s)'}${round ? ', rounded to whole ₹' : ''}? This updates existing rate cards.`)) return;
+    setBusy(true);
+    try {
+      const r = await api.increaseRateCards({ scope, clientIds: scope === 'SELECT' ? [...sel] : undefined, increasePct: Number(pct), round });
+      setMsg(`✓ Increased rates on ${r.cardsAdjusted} rate card(s) by ${pct}%.`); setPct('');
+    } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  };
+  return (
+    <div className="card">
+      <h2 style={{ marginBottom: 4 }}>📈 Rate Increase</h2>
+      <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>Bump customer freight rates by a percentage — for everyone or a chosen set. (Vendor cost cards are never touched.)</p>
+      {err && <div className="error">{err}</div>}
+      {msg && <div className="card" style={{ borderLeft: '4px solid var(--ok)', marginBottom: 10 }}>{msg}</div>}
+      <div className="row" style={{ gap: 6, marginBottom: 12 }}>
+        {(['ALL', 'SELECT'] as const).map((s) => (
+          <button key={s} className={scope === s ? '' : 'secondary'} onClick={() => setScope(s)} style={{ padding: '7px 14px' }}>{s === 'ALL' ? '🏢 All customers' : '👥 Select customers'}</button>
+        ))}
+      </div>
+      {scope === 'SELECT' && (
+        <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid var(--line, #d7dadf)', borderRadius: 8, padding: 8, marginBottom: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 4 }}>
+          {clients.map((c) => (
+            <label key={c.id} className="row" style={{ gap: 6, fontSize: 13, cursor: 'pointer' }}>
+              <input type="checkbox" style={{ width: 'auto' }} checked={sel.has(String(c.id))} onChange={() => toggle(String(c.id))} />
+              <span>{c.accountCode} — {c.legalName}</span>
+            </label>
+          ))}
+        </div>
+      )}
+      <div className="row" style={{ gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <div style={{ width: 160 }}><label>Increase by %</label><input type="number" value={pct} onChange={(e) => setPct(e.target.value)} placeholder="e.g. 5" /></div>
+        <label className="row" style={{ gap: 6, fontSize: 13, fontWeight: 600 }}><input type="checkbox" style={{ width: 'auto' }} checked={round} onChange={(e) => setRound(e.target.checked)} /> Round off to whole ₹</label>
+        <button disabled={busy} onClick={apply}>{busy ? 'Applying…' : `📈 Apply increase`}</button>
+      </div>
+    </div>
+  );
 }
