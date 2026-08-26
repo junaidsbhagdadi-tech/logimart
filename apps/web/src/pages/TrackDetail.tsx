@@ -53,6 +53,8 @@ export function TrackDetail() {
 
   const dateFmt = (s?: string | null) => (s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
   const dtFmt = (s: string) => new Date(s).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+  // Appointment date+time in 24hr dd/mm/yyyy HH:mm (formatted from stored UTC components → matches what was typed).
+  const apptFmt = (s?: string | null) => { if (!s) return '—'; const dt = new Date(s); const p = (n: number) => String(n).padStart(2, '0'); return `${p(dt.getUTCDate())}/${p(dt.getUTCMonth() + 1)}/${dt.getUTCFullYear()} ${p(dt.getUTCHours())}:${p(dt.getUTCMinutes())}`; };
 
   const stageIdx = d ? STAGES.findIndex((st) => st.codes.includes(d.currentCode)) : -1;
 
@@ -136,7 +138,7 @@ export function TrackDetail() {
               <Field label="Remarks" value={d.remarks} color="var(--warn)" />
               <Field label="EDD" value={dateFmt(d.edd)} color="var(--brand)" />
               <Field label="Shipment Value" value={(d as any).shipmentValue != null ? `₹${Number((d as any).shipmentValue).toLocaleString('en-IN')}` : '—'} />
-              {(d as any).apptDate && <Field label="Appointment" value={dateFmt((d as any).apptDate)} color="var(--brand)" />}
+              {(d as any).apptDate && <Field label="Appointment" value={apptFmt((d as any).apptDate)} color="var(--brand)" />}
               <Field label="Service Type" value={d.serviceType} color="var(--brand)" />
               <Field label="Trip Route" value={d.tripRoute} />
               <Field label="Pickup Rider" value={d.pickupRider} color="var(--brand)" />
@@ -167,9 +169,9 @@ export function TrackDetail() {
               </div>
               <div style={{ borderTop: '1px dashed var(--line, #d7dadf)', marginTop: 14, paddingTop: 12 }}>
                 <h2 style={{ marginBottom: 4, fontSize: 15 }}>📅 Appointment delivery</h2>
-                <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Set the appointment date — it shows on the tracker Remarks and in the global appointment notification.{(d as any).apptDate ? ` Current: ${dateFmt((d as any).apptDate)}` : ''}</p>
+                <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Set the appointment date — it shows on the tracker Remarks and in the global appointment notification.{(d as any).apptDate ? ` Current: ${apptFmt((d as any).apptDate)}` : ''}</p>
                 <div className="grid cols-4" style={{ gap: 10, alignItems: 'flex-end' }}>
-                  <div><label>Appointment date</label><input type="date" value={appt.date} onChange={(e) => setAppt((a) => ({ ...a, date: e.target.value }))} /></div>
+                  <div><label>Appointment date &amp; time <span className="muted">(24hr)</span></label><input type="datetime-local" value={appt.date} onChange={(e) => setAppt((a) => ({ ...a, date: e.target.value }))} /></div>
                   <div><label>Note <span className="muted">(optional)</span></label><input value={appt.note} onChange={(e) => setAppt((a) => ({ ...a, note: e.target.value }))} placeholder="e.g. deliver after 2pm" /></div>
                   <div><button onClick={saveAppt} disabled={apptBusy || !appt.date}>{apptBusy ? 'Saving…' : '📅 Set appointment'}</button></div>
                 </div>

@@ -93,7 +93,9 @@ model B2bClient {
   invoiceFormat   String?
   email2          String?   // secondary billing email (billing-app parity)
   iecCode         String?
-  salesPerson     String?
+  salesPerson       String?
+  salesPersonMobile String?   // for MIS report SMS/notifications (SMTP wiring later)
+  salesPersonEmail  String?   // for MIS report emails
   accountType     String?   @default("CREDIT") // CREDIT | WALLET
   billingCycle    String?   @default("MONTHLY") // MONTHLY | FORTNIGHTLY
   allowSameGstin  Boolean   @default(false) // permit another customer with the same GSTIN

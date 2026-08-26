@@ -45,7 +45,7 @@ export function Layout() {
   }, [user]);
   const todayStr = new Date().toISOString().slice(0, 10);
   const isToday = (d?: string | null) => !!d && String(d).slice(0, 10) === todayStr;
-  const apptDay = (d?: string | null) => (d ? String(d).slice(0, 10).split('-').reverse().join('/') : '—');
+  const apptDay = (d?: string | null) => { if (!d) return '—'; const dt = new Date(d); const p = (n: number) => String(n).padStart(2, '0'); return `${p(dt.getUTCDate())}/${p(dt.getUTCMonth() + 1)}/${dt.getUTCFullYear()} ${p(dt.getUTCHours())}:${p(dt.getUTCMinutes())}`; };
   const dueToday = appts.filter((a) => isToday(a.apptDate)).length;
 
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('lm.rail') === '1');

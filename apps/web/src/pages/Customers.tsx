@@ -8,7 +8,7 @@ import { RateCardsDialog } from '../components/RateCardsDialog';
 const blank = {
   legalName: '', customerType: 'Domestic', accountCode: '', contactPhone: '',
   contactEmail: '', email2: '', gstin: '', pan: '', tanNo: '', iecCode: '',
-  addressLine: '', pincode: '', city: '', state: '', salesPerson: '',
+  addressLine: '', pincode: '', city: '', state: '', salesPerson: '', salesPersonMobile: '', salesPersonEmail: '',
   accountType: 'CREDIT', billingCycle: 'MONTHLY', allowSameGstin: false,
   creditLimit: '', creditDays: '30', isCash: false, parentAccountId: '',
 };
@@ -112,7 +112,8 @@ export function Customers() {
       contactPhone: (c as any).contactPhone ?? '', contactEmail: (c as any).contactEmail ?? '', email2: (c as any).email2 ?? '',
       gstin: (c as any).gstin ?? '', pan: (c as any).pan ?? '', tanNo: (c as any).tanNo ?? '', iecCode: (c as any).iecCode ?? '',
       addressLine: (c as any).addressLine ?? '', pincode: (c as any).pincode ?? '', city: (c as any).city ?? '', state: (c as any).state ?? '',
-      salesPerson: (c as any).salesPerson ?? '', accountType: (c as any).accountType ?? 'CREDIT', billingCycle: (c as any).billingCycle ?? 'MONTHLY',
+      salesPerson: (c as any).salesPerson ?? '', salesPersonMobile: (c as any).salesPersonMobile ?? '', salesPersonEmail: (c as any).salesPersonEmail ?? '',
+      accountType: (c as any).accountType ?? 'CREDIT', billingCycle: (c as any).billingCycle ?? 'MONTHLY',
       allowSameGstin: !!(c as any).allowSameGstin, creditLimit: String((c as any).creditLimit ?? ''), creditDays: String((c as any).creditDays ?? '30'), isCash: !!(c as any).isCash,
       parentAccountId: (c as any).parentAccountId != null ? String((c as any).parentAccountId) : '',
     });
@@ -137,6 +138,8 @@ export function Customers() {
       city: form.city || undefined,
       state: form.state || undefined,
       salesPerson: form.salesPerson || undefined,
+      salesPersonMobile: form.salesPersonMobile || undefined,
+      salesPersonEmail: form.salesPersonEmail || undefined,
       accountType: form.accountType || undefined,
       billingCycle: form.billingCycle || undefined,
       allowSameGstin: form.allowSameGstin,
@@ -208,6 +211,10 @@ export function Customers() {
             </div>
 
             <div style={{ marginTop: 14 }}><label>Sales Person <span className="muted">(optional)</span></label><input value={form.salesPerson} onChange={(e) => set('salesPerson', e.target.value)} placeholder="e.g. Rahul Sharma" /></div>
+            <div className="grid cols-2" style={{ gap: 12, marginTop: 12 }}>
+              <div><label>Sales Person Mobile <span className="muted">(for MIS reports)</span></label><input value={form.salesPersonMobile} onChange={(e) => set('salesPersonMobile', e.target.value)} placeholder="e.g. 9876543210" /></div>
+              <div><label>Sales Person Email <span className="muted">(for MIS reports)</span></label><input type="email" value={form.salesPersonEmail} onChange={(e) => set('salesPersonEmail', e.target.value)} placeholder="e.g. rahul@company.com" /></div>
+            </div>
 
             <div style={{ marginTop: 16 }}>
               <label>Account Type</label>

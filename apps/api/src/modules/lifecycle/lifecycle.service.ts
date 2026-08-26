@@ -196,7 +196,8 @@ export class LifecycleService {
     const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true } });
     if (!s) throw new BadRequestException(`AWB ${awb} not found.`);
     const date = dto.date ? new Date(dto.date) : null;
-    const label = dto.date ? String(dto.date).slice(0, 10).split('-').reverse().join('/') : ''; // yyyy-mm-dd → dd/mm/yyyy
+    // yyyy-mm-ddThh:mm → dd/mm/yyyy HH:mm (24hr)
+    const label = dto.date ? (() => { const [dp, tp] = String(dto.date).split('T'); const dmy = dp.split('-').reverse().join('/'); return tp ? `${dmy} ${tp.slice(0, 5)}` : dmy; })() : '';
     const remark = date ? `Appointment: ${label}${dto.note ? ' — ' + dto.note : ''}` : (dto.note || null);
     await this.prisma.shipment.update({
       where: { id: s.id },

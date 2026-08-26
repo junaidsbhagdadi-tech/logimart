@@ -32,6 +32,8 @@ export class CreateClientDto {
   @IsOptional() @IsEmail() email2?: string;
   @IsOptional() @IsString() iecCode?: string;
   @IsOptional() @IsString() salesPerson?: string;
+  @IsOptional() @IsString() salesPersonMobile?: string;
+  @IsOptional() @IsString() salesPersonEmail?: string;
   @IsOptional() @IsString() accountType?: string; // CREDIT | WALLET
   @IsOptional() @IsString() billingCycle?: string; // MONTHLY | FORTNIGHTLY
   @IsOptional() @IsBoolean() allowSameGstin?: boolean;

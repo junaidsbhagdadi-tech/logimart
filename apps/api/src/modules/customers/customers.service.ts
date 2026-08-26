@@ -66,6 +66,8 @@ export class CustomersService {
           email2: dto.email2,
           iecCode: dto.iecCode,
           salesPerson: dto.salesPerson,
+          salesPersonMobile: dto.salesPersonMobile,
+          salesPersonEmail: dto.salesPersonEmail,
           accountType: dto.accountType ?? undefined,
           billingCycle: dto.billingCycle ?? undefined,
           allowSameGstin: dto.allowSameGstin ?? false,
