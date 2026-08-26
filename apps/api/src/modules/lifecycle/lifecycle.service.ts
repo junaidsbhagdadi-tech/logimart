@@ -155,6 +155,7 @@ export class LifecycleService {
       currentLabel: labelOf(String(s.statusCode ?? 'MAN')),
       remarks: s.exceptionFlag ?? null,
       edd: s.expectedDelivery ?? eddFallback(),
+      shipmentValue: s.shipmentValue ?? s.declaredValue ?? null, // #9 visible on the tracker
       serviceType: s.product ?? s.service ?? null,
       tripRoute: [s.originHub?.code, s.destHub?.code].filter(Boolean).join(' → ') || null,
       pickupRider: riderOf('PKD'),

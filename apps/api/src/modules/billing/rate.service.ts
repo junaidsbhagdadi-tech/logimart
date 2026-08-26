@@ -233,8 +233,10 @@ export class RateService {
    * volumetric = Σ_boxes (L×W×H / divisor) × CFT-factor; else Σ stored volKg (÷5000).
    */
   async chargeableKgFor(shipment: any, pieces: any[]): Promise<number> {
+    const noRoundP = ['DP', 'TDD', 'NDD', 'ECOM', 'ECOMM'].includes(String(shipment.product ?? '').toUpperCase());
+    const roundUp = (n: number) => (!noRoundP && n > 0 ? Math.ceil(n) : +n.toFixed(3));
     if (shipment.chargeWeight != null && Number(shipment.chargeWeight) > 0) {
-      return +Number(shipment.chargeWeight).toFixed(3);
+      return roundUp(Number(shipment.chargeWeight)); // round the override too (#4)
     }
     const dead = pieces.reduce((s, p) => s + Number(p.deadKg), 0);
     let vol = pieces.reduce((s, p) => s + Number(p.volKg || 0), 0);
@@ -249,7 +251,8 @@ export class RateService {
         }, 0).toFixed(3);
       }
     }
-    return +Math.max(dead, vol).toFixed(3);
+    // Round UP to the next kg for all products except DP / e-commerce (#4).
+    return roundUp(Math.max(dead, vol));
   }
 
   /** Price a shipment from the Xpresion slab tariff; null if no slab matches (caller falls back). */
@@ -394,13 +397,14 @@ export class RateService {
     // surface (previously air/express other than Apex ignored the card divisor and used the booking-time
     // default divisor). Surface additionally scales by the card's CFT factor when set; air uses the plain divisor.
     const divisor = Number(card.volumetricDivisor ?? 0), cft = Number(card.cft ?? 0);
-    const surfaceVol = this.isSurface(shipment.serviceMode);
     if (divisor > 0) {
+      // CFT factor is only ever set on surface cards, so apply it whenever it's present — do NOT gate it
+      // on the shipment's serviceMode string (TRAIN/ECOM/custom modes were silently dropping CFT). #5
       vol = +pieces.reduce((s, p) => {
         const l = Number(p.lengthCm || 0), w = Number(p.widthCm || 0), h = Number(p.heightCm || 0);
         if (!(l && w && h)) return s;
         const base = (l * w * h) / divisor;
-        return s + (surfaceVol && cft > 0 ? base * cft : base);
+        return s + (cft > 0 ? base * cft : base);
       }, 0).toFixed(3);
     }
     let cw = Math.max(dead, vol, Number(card.minChargeableKg ?? 0));
@@ -676,7 +680,10 @@ export class RateService {
     }
 
     // Custom charges: any CHARGE-master code configured on the card beyond the built-in heads.
-    const BUILT_IN = new Set(['FOV', 'ODA', 'TOPAY', 'DOD', 'APPT', 'LOADING', 'UNLOADING', 'DOCKET', 'AWB', 'EMERGENCY', 'ENVIRONMENT', 'ENVIRONMENTAL', 'OSP', 'FSC', 'FUEL', 'FREIGHT']);
+    // Heads with dedicated computation above — the generic custom-charge loop below must SKIP these,
+    // otherwise it re-adds them (globally, ungated). RAS especially: it's area-gated above, so leaving
+    // it out here made a RAS charge-master line apply to every shipment AND double up in remote states.
+    const BUILT_IN = new Set(['FOV', 'ODA', 'TOPAY', 'DOD', 'APPT', 'LOADING', 'UNLOADING', 'DOCKET', 'AWB', 'EMERGENCY', 'ENVIRONMENT', 'ENVIRONMENTAL', 'OSP', 'OSW', 'RAS', 'HANDLING', 'FSC', 'FUEL', 'FREIGHT']);
     const mccCities = await this.mccSetting();
     const customLines: { head: string; amount: number }[] = [];
     let customTotal = 0;

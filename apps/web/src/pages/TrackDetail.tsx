@@ -105,6 +105,7 @@ export function TrackDetail() {
               <Field label="Current Status" value={`${d.currentLabel} — ${d.currentCode}`} color="var(--ok, #16a34a)" />
               <Field label="Remarks" value={d.remarks} color="var(--warn)" />
               <Field label="EDD" value={dateFmt(d.edd)} color="var(--brand)" />
+              <Field label="Shipment Value" value={(d as any).shipmentValue != null ? `₹${Number((d as any).shipmentValue).toLocaleString('en-IN')}` : '—'} />
               <Field label="Service Type" value={d.serviceType} color="var(--brand)" />
               <Field label="Trip Route" value={d.tripRoute} />
               <Field label="Pickup Rider" value={d.pickupRider} color="var(--brand)" />
