@@ -127,11 +127,12 @@ export class RateCardsService {
       }));
   }
 
-  /** Create a card header + its slab grid in one shot. */
+  /** Create a card header + its slab grid in one shot. Owned by a customer (clientId) OR a vendor (ownerVendorId). */
   createCard(d: any) {
     return this.prisma.customerRateCard.create({
       data: {
-        clientId: BigInt(d.clientId),
+        clientId: d.clientId != null && d.clientId !== '' ? BigInt(d.clientId) : null,
+        ownerVendorId: d.ownerVendorId != null && d.ownerVendorId !== '' ? BigInt(d.ownerVendorId) : null,
         ...this.cardHeader(d),
         slabs: { create: this.slabRows(d.slabs) },
       },
@@ -139,11 +140,14 @@ export class RateCardsService {
     });
   }
 
-  /** All cards for a customer (or every card) with their slabs — feeds the eye-popout. */
-  listCards(clientId?: number) {
+  /** All cards for a customer OR a vendor (or every card) with their slabs — feeds the eye-popout. */
+  listCards(clientId?: number, vendorId?: number) {
+    const where = clientId != null ? { clientId: BigInt(clientId) }
+      : vendorId != null ? { ownerVendorId: BigInt(vendorId) }
+      : undefined;
     return this.prisma.customerRateCard.findMany({
-      where: clientId != null ? { clientId: BigInt(clientId) } : undefined,
-      orderBy: [{ clientId: 'asc' }, { network: 'asc' }, { product: 'asc' }],
+      where,
+      orderBy: [{ network: 'asc' }, { product: 'asc' }],
       include: { slabs: { orderBy: [{ rateType: 'asc' }, { weight: 'asc' }] } },
       take: 2000,
     });
@@ -185,8 +189,9 @@ export class RateCardsService {
   async copyChargesToSiblings(id: number) {
     const src = await this.prisma.customerRateCard.findUnique({ where: { id: BigInt(id) } });
     if (!src) throw new NotFoundException('Rate card not found');
+    const owner = src.clientId != null ? { clientId: src.clientId } : { ownerVendorId: src.ownerVendorId };
     const siblings = await this.prisma.customerRateCard.findMany({
-      where: { clientId: src.clientId, product: src.product, id: { not: src.id } },
+      where: { ...owner, product: src.product, id: { not: src.id } },
       select: { id: true, network: true },
     });
     const data: Prisma.CustomerRateCardUpdateInput = {

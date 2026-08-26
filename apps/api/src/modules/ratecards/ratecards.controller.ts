@@ -25,8 +25,8 @@ export class RateCardsController {
   // ---- Revamped customer rate cards (eye → popout) ----
   @Get('cards')
   @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
-  listCards(@Query('clientId') clientId?: string) {
-    return this.rateCards.listCards(clientId ? Number(clientId) : undefined);
+  listCards(@Query('clientId') clientId?: string, @Query('vendorId') vendorId?: string) {
+    return this.rateCards.listCards(clientId ? Number(clientId) : undefined, vendorId ? Number(vendorId) : undefined);
   }
 
   @Get('cards/:id')

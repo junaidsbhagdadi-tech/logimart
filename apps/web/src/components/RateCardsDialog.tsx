@@ -18,7 +18,11 @@ type Client = { id: string | number; legalName: string; accountCode?: string };
 
 /** Popout: all of a customer's rate cards (grouped by network), each with a charges
  *  strip + zone×slab matrix. Add / edit / delete inline. */
-export function RateCardsDialog({ client, onClose }: { client: Client; onClose: () => void }) {
+export function RateCardsDialog({ client, vendor, onClose }: { client?: Client; vendor?: any; onClose: () => void }) {
+  // A rate card set is owned by a customer (sell-side) OR a vendor (cost-side). Same UI either way.
+  const owner = vendor
+    ? { kind: 'vendor' as const, id: String(vendor.id), name: vendor.name || vendor.vendorCode || 'Vendor' }
+    : { kind: 'client' as const, id: String(client!.id), name: client!.legalName };
   const [cards, setCards] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [zones, setZones] = useState<string[]>([]);
@@ -29,7 +33,7 @@ export function RateCardsDialog({ client, onClose }: { client: Client; onClose: 
   const [uploading, setUploading] = useState(false);
   const [err, setErr] = useState('');
 
-  const load = () => api.listCustomerCards(client.id).then(setCards).catch((e) => setErr(e.message));
+  const load = () => api.listCustomerCards(owner.kind === 'client' ? owner.id : undefined, owner.kind === 'vendor' ? owner.id : undefined).then(setCards).catch((e) => setErr(e.message));
   useEffect(() => {
     load();
     api.listMaster('PRODUCT').then(setProducts).catch(() => {});
@@ -37,7 +41,8 @@ export function RateCardsDialog({ client, onClose }: { client: Client; onClose: 
     api.listVendors().then((v) => setVendors(v.filter((x) => x.isActive !== false))).catch(() => {});
     api.listMaster('FUEL_MECHANISM').then(setMechs).catch(() => {});
     api.listMaster('CHARGE').then(setChargeMaster).catch(() => {});
-  }, [client.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [owner.id, owner.kind]);
 
   const del = async (id: string) => {
     if (!confirm('Delete this rate card?')) return;
@@ -65,26 +70,26 @@ export function RateCardsDialog({ client, onClose }: { client: Client; onClose: 
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-card" style={{ width: 1040, maxWidth: '100%', maxHeight: '92vh', overflow: 'auto', padding: 22 }} onClick={(e) => e.stopPropagation()}>
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <h2 style={{ margin: 0 }}>💳 Rate Cards — {client.legalName}</h2>
+          <h2 style={{ margin: 0 }}>💳 Rate Cards — {owner.name}{owner.kind === 'vendor' ? <span className="badge CREATED" style={{ marginLeft: 8, fontSize: 11 }}>VENDOR COST</span> : ''}</h2>
           <button className="secondary" onClick={onClose} style={{ padding: '4px 12px' }}>✕ Close</button>
         </div>
         {err && <div className="error">{err}</div>}
 
         {editing ? (
           <RateCardEditor
-            client={client} card={editing._new ? null : editing}
+            owner={owner} card={editing._new ? null : editing}
             products={products} zones={zones.length ? zones : ['N', 'E', 'W', 'S', 'NE1']} vendors={vendors} mechs={mechs} chargeMaster={chargeMaster}
             onCancel={() => setEditing(null)}
             onSaved={() => { setEditing(null); load(); }}
           />
         ) : uploading ? (
-          <RateUpload client={client} products={products} vendors={vendors} onCancel={() => setUploading(false)} onSaved={() => { setUploading(false); load(); }} />
+          <RateUpload owner={owner} products={products} vendors={vendors} onCancel={() => setUploading(false)} onSaved={() => { setUploading(false); load(); }} />
         ) : (
           <>
             <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginBottom: 12 }}>
               <button className="secondary" onClick={async () => { (await import('../lib/rateSheet')).downloadCourierTemplate(); }}>⬇ DP/Courier template</button>
               <button className="secondary" onClick={async () => { (await import('../lib/rateSheet')).downloadCargoTemplate(); }}>⬇ Cargo template</button>
-              <button className="secondary" disabled={!cards.length} title="Export this customer's rate cards to Excel" onClick={async () => { (await import('../lib/rateSheet')).exportRateCardsXlsx(client.legalName, cards); }}>⬇ Export XLS</button>
+              <button className="secondary" disabled={!cards.length} title="Export these rate cards to Excel" onClick={async () => { (await import('../lib/rateSheet')).exportRateCardsXlsx(owner.name, cards); }}>⬇ Export XLS</button>
               <button className="secondary" onClick={() => setUploading(true)}>⬆ Upload rates</button>
               <button onClick={() => setEditing({ _new: true })}>＋ Add Rate Card</button>
             </div>
@@ -183,9 +188,12 @@ function CardView({ card, zones, onEdit, onDelete, onCopyCharges }: { card: any;
   );
 }
 
+type Owner = { kind: 'client' | 'vendor'; id: string; name: string };
+const ownerKey = (o: Owner) => (o.kind === 'vendor' ? { ownerVendorId: o.id } : { clientId: o.id });
+
 /** Upload a filled rate matrix → create a card. Pick target (network + product), drop the file. */
-function RateUpload({ client, products, vendors, onCancel, onSaved }: {
-  client: Client; products: any[]; vendors: any[]; onCancel: () => void; onSaved: () => void;
+function RateUpload({ owner, products, vendors, onCancel, onSaved }: {
+  owner: Owner; products: any[]; vendors: any[]; onCancel: () => void; onSaved: () => void;
 }) {
   const family = (code: string) => (['DP', 'TDD', 'NDD'].includes(String(code).toUpperCase()) ? 'COURIER' : 'CARGO');
   const productMode = (code: string) => {
@@ -238,7 +246,7 @@ function RateUpload({ client, products, vendors, onCancel, onSaved }: {
     setErr('');
     setBusy(true);
     try {
-      const acc = { clientId: client.id, fuelPct: fuelPct || 0, fovPct: fovPct || 0, fovMin: fovMin || 0, minChargeableKg: minChargeableKg || 0, minFreight: minFreight || 0 };
+      const acc = { ...ownerKey(owner), fuelPct: fuelPct || 0, fovPct: fovPct || 0, fovMin: fovMin || 0, minChargeableKg: minChargeableKg || 0, minFreight: minFreight || 0 };
       if (fam === 'CARGO') {
         if (!blocks.length) { setErr('No rate blocks parsed — upload a filled cargo matrix.'); return; }
         // One card per (vendor, product) block — the product comes from the file's Product column.
@@ -341,8 +349,8 @@ function RateUpload({ client, products, vendors, onCancel, onSaved }: {
 }
 
 /** Create / edit a rate card (header + zone×slab grid). */
-function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeMaster, onCancel, onSaved }: {
-  client: Client; card: any | null; products: any[]; zones: string[]; vendors: any[]; mechs: any[]; chargeMaster: any[]; onCancel: () => void; onSaved: () => void;
+function RateCardEditor({ owner, card, products, zones, vendors, mechs, chargeMaster, onCancel, onSaved }: {
+  owner: Owner; card: any | null; products: any[]; zones: string[]; vendors: any[]; mechs: any[]; chargeMaster: any[]; onCancel: () => void; onSaved: () => void;
 }) {
   // Accessorial charges are master-driven. Codes handled elsewhere are excluded here.
   const EXCLUDE = new Set(['FSC', 'FUEL', 'FREIGHT']);
@@ -442,7 +450,7 @@ function RateCardEditor({ client, card, products, zones, vendors, mechs, chargeM
     if (!h.product) { setErr('Pick a product.'); return; }
     const slabs: any[] = [];
     for (const r of rows) for (const z of zoneCols) { const v = r.rates[z]; if (v !== undefined && v !== '' && Number(v) > 0) slabs.push({ zone: z, rateType: r.rateType, weight: Number(r.weight || 0), rate: Number(v) }); }
-    const body = { clientId: client.id, ...h, mode: productMode(h.product) || h.mode, vendor: h.network === 'SELF' ? null : (h.vendor || h.network), slabs, charges: chg };
+    const body = { ...ownerKey(owner), ...h, mode: productMode(h.product) || h.mode, vendor: h.network === 'SELF' ? null : (h.vendor || h.network), slabs, charges: chg };
     setBusy(true);
     try {
       if (card) await api.updateCustomerCard(card.id, body); else await api.createCustomerCard(body);

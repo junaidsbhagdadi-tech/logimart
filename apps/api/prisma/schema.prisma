@@ -266,8 +266,11 @@ model ClientRateSlab {
 /// naturally carry different FSC/FOV/ODA/etc. Masters drive every dropdown.
 model CustomerRateCard {
   id                BigInt    @id @default(autoincrement())
-  clientId          BigInt
-  client            B2bClient @relation(fields: [clientId], references: [id])
+  // A rate card is owned by EITHER a customer (sell-side, clientId) OR a vendor (cost-side, ownerVendorId).
+  clientId          BigInt?
+  client            B2bClient? @relation(fields: [clientId], references: [id])
+  ownerVendorId     BigInt?
+  ownerVendor       Vendor?    @relation("VendorRateCards", fields: [ownerVendorId], references: [id])
   network           String    @default("SELF")   // SELF | vendorCode (e.g. BLUEDART)
   vendor            String?                        // vendor display name/code when network != SELF
   product           String                         // PRODUCT master code (DP | APEX | SURFACE ...)
@@ -955,6 +958,7 @@ model Vendor {
   createdAt    DateTime @default(now())
 
   payments VendorPayment[]
+  rateCards CustomerRateCard[] @relation("VendorRateCards")
 
   @@map("vendors")
 }
