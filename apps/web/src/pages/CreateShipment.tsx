@@ -386,9 +386,10 @@ export function CreateShipment() {
   };
 
   const pinHint = (info: PinInfo | null) =>
-    info?.region ? (
+    info && (info.city || info.region) ? (
       <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-        {info.city ? `${info.city}, ${info.state} · ` : ''}<strong>{info.region}</strong>
+        {info.city ? <strong>{info.city}{info.state ? `, ${info.state}` : ''}</strong> : null}
+        {info.region ? `${info.city ? ' · ' : ''}${info.region}` : ''}
         {info.tier ? ` · Tier ${info.tier}` : ''}{info.isOda ? ' · ODA' : ''}
       </div>
     ) : null;
@@ -555,6 +556,16 @@ export function CreateShipment() {
             {destWarn && <div style={{ fontSize: 11.5, marginTop: 4, padding: '6px 8px', borderRadius: 8, background: '#fdecea', border: '1px solid #e0736a', color: '#a4291e' }}>⚠ {destWarn}</div>}
           </div>
         </div>
+        {/* Clear origin → destination summary so the route is unambiguous at a glance. */}
+        {(originInfo?.city || destInfo?.city || originPin || destPin || shp.originLocation || c.consigneeCity) && (
+          <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: 'var(--surface-2, #f1f3f6)', fontSize: 13.5, fontWeight: 700 }}>
+            📍 <span style={{ color: 'var(--brand)' }}>{originInfo?.city || shp.originLocation || originPin || '—'}</span>
+            {originInfo?.region ? <span className="muted" style={{ fontWeight: 400 }}> ({originInfo.region})</span> : null}
+            <span style={{ margin: '0 8px', color: 'var(--muted)' }}>→</span>
+            <span style={{ color: 'var(--green-2, #3f8a28)' }}>{destInfo?.city || c.consigneeCity || destPin || '—'}</span>
+            {destInfo?.region ? <span className="muted" style={{ fontWeight: 400 }}> ({destInfo.region})</span> : null}
+          </div>
+        )}
         {/* Staff see the carrier products (they pick the vendor); clients see only the ETA. */}
         {!isClient && carrierOptions.length > 0 && (
           <div style={{ marginTop: 10, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--surface-2)' }}>
