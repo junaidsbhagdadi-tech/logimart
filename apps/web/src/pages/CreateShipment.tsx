@@ -884,12 +884,13 @@ export function CreateShipment() {
           ) : (
             <div className="grid cols-3">
               <div>
-                <label>Booking vendor</label>
-                <input value={svc.vendor || 'SELF'} readOnly title="Set under the AWB tab → Services" style={{ background: 'var(--surface-2, #f1f3f6)' }} />
+                <label>Vendor <span className="muted">(SELF or code, e.g. BDR)</span></label>
+                <input list="lm-fwd-vendors" value={svc.vendor} onChange={(e) => { setVendorTouched(true); setSvc({ ...svc, vendor: e.target.value.toUpperCase() }); }} placeholder="SELF or vendor code" />
+                <datalist id="lm-fwd-vendors">{vendors.map((v) => <option key={v.id} value={(v.vendorCode || v.name).toUpperCase()}>{v.vendorCode} — {v.name}</option>)}</datalist>
               </div>
               <div>
                 <label>Service</label>
-                <input value={svc.service || 'SELF'} readOnly title="Set under the AWB tab → Services" style={{ background: 'var(--surface-2, #f1f3f6)' }} />
+                <input value={svc.service} onChange={(e) => setSvc({ ...svc, service: e.target.value })} placeholder="SELF / DHL / …" />
               </div>
               <div>
                 <label>Forwarding AWB <span className="muted">(vendor's carrier AWB)</span></label>

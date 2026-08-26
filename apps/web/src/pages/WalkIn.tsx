@@ -86,14 +86,15 @@ export function WalkIn() {
     setBusy(true);
     try {
       const clientId = pay === 'WALLET' ? Number(walletClientId) : Number((await api.ensureWalkin()).id);
-      const originHub = hubs.find((h) => String(h.id) === form.originHubId);
       const pieces = boxes.filter((b) => Number(b.deadKg) > 0).map((b) => ({
         deadKg: Number(b.deadKg),
         ...(b.l && b.w && b.h ? { lengthCm: Number(b.l), widthCm: Number(b.w), heightCm: Number(b.h) } : {}),
       }));
+      // Direct booking — zones auto-derive server-side from the origin/dest pincodes (no hub routing).
       const created: any = await api.createShipment({
-        clientId, serviceMode: serviceModeFor(form.product), originHubId: Number(form.originHubId), destHubId: Number(form.destHubId),
-        originZone: originHub?.zone || 'NORTH', destZone: 'AUTO', product: form.product, destPincode: form.consigneePincode || undefined,
+        clientId, serviceMode: serviceModeFor(form.product),
+        originZone: 'AUTO', destZone: 'AUTO', product: form.product,
+        originPincode: form.senderPincode || undefined, destPincode: form.consigneePincode || undefined,
         manualAwb: form.manualAwb.trim() || undefined,
         // shipper
         shipperName: form.senderName || undefined, shipperPhone: form.senderPhone || undefined, shipperMobile: form.senderMobile || form.senderPhone || undefined,
@@ -176,7 +177,7 @@ export function WalkIn() {
           {fld('Name', 'senderName', 'sender name')}{fld('Phone', 'senderPhone')}{fld('Mobile', 'senderMobile')}
           {fld('GSTIN', 'senderGstin', '29ABCDE1234F1Z5')}
           <div style={{ gridColumn: 'span 2' }}><label>Address</label><input value={form.senderAddr1} onChange={(e) => set('senderAddr1', e.target.value)} placeholder="address line 1" /></div>
-          <div><label>Pincode</label><input value={form.senderPincode} onChange={(e) => set('senderPincode', e.target.value)} onBlur={(e) => fillPin(e.target.value, 'sender')} /></div>
+          <div><label>Pincode <span className="muted">(auto city/state)</span></label><input value={form.senderPincode} maxLength={6} onChange={(e) => { set('senderPincode', e.target.value); if (/^\d{6}$/.test(e.target.value)) fillPin(e.target.value, 'sender'); }} onBlur={(e) => fillPin(e.target.value, 'sender')} /></div>
           {fld('City', 'senderCity')}{fld('State', 'senderState')}
         </div>
       </div>
@@ -187,7 +188,7 @@ export function WalkIn() {
         <div className="grid cols-3">
           {fld('Name', 'consigneeName')}{fld('Phone', 'consigneePhone')}{fld('GSTIN', 'consigneeGstin', 'opt.')}
           <div style={{ gridColumn: 'span 2' }}><label>Address</label><input value={form.consigneeAddr} onChange={(e) => set('consigneeAddr', e.target.value)} placeholder="delivery address" /></div>
-          <div><label>Dest pincode <span className="muted">(resolves zone)</span></label><input value={form.consigneePincode} onChange={(e) => set('consigneePincode', e.target.value)} onBlur={(e) => fillPin(e.target.value, 'consignee')} /></div>
+          <div><label>Dest pincode <span className="muted">(auto city/state + zone)</span></label><input value={form.consigneePincode} maxLength={6} onChange={(e) => { set('consigneePincode', e.target.value); if (/^\d{6}$/.test(e.target.value)) fillPin(e.target.value, 'consignee'); }} onBlur={(e) => fillPin(e.target.value, 'consignee')} /></div>
           {fld('City', 'consigneeCity')}{fld('State', 'consigneeState')}
         </div>
       </div>
@@ -199,8 +200,6 @@ export function WalkIn() {
           <div><label>Product *</label>
             <select value={form.product} onChange={(e) => set('product', e.target.value)}><option value="">Select</option>{products.map((p) => <option key={p.code} value={p.code}>{p.code} — {p.name}</option>)}</select>
           </div>
-          <div><label>Origin hub</label><select value={form.originHubId} onChange={(e) => set('originHubId', e.target.value)}>{hubs.map((h) => <option key={h.id} value={h.id}>{h.code}</option>)}</select></div>
-          <div><label>Dest hub</label><select value={form.destHubId} onChange={(e) => set('destHubId', e.target.value)}>{hubs.map((h) => <option key={h.id} value={h.id}>{h.code}</option>)}</select></div>
           <div><label>Manual AWB <span className="muted">(pre-printed / hand-written)</span></label><input value={form.manualAwb} onChange={(e) => set('manualAwb', e.target.value)} placeholder="blank = auto-generate" /></div>
           {fld('Invoice / shipment value ₹', 'shipmentValue', undefined, 'number')}{fld('Declared value ₹', 'declaredValue', undefined, 'number')}
           <div style={{ gridColumn: 'span 1' }}><label>Goods description</label><input value={form.goodsDesc} onChange={(e) => set('goodsDesc', e.target.value)} /></div>
