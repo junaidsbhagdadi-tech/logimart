@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ShipmentStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { RateService } from '../billing/rate.service';
 
 // Milestone lifecycle. Each scan advances the shipment's statusCode and mirrors the coarse
 // ShipmentStatus enum (which existing screens/reports read).
@@ -40,7 +41,7 @@ const TO_ENUM: Record<string, ShipmentStatus> = {
 
 @Injectable()
 export class LifecycleService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly rates: RateService) {}
 
   /** Record a milestone scan for one or more AWBs. DLD requires a POD image. Terminal states
    *  (DLD/RTD/CAN) are locked once set — only a super admin can move a shipment off them. */
@@ -163,6 +164,8 @@ export class LifecycleService {
       edd: s.expectedDelivery ?? eddFallback(),
       shipmentValue: s.shipmentValue ?? s.declaredValue ?? null, // #9 visible on the tracker
       apptDelivery: s.apptDelivery, apptDate: s.apptDate ?? null,
+      collectOnDelivery: await this.rates.chargesForShipment(s as any, s.pieces as any).then((c) => Number((c as any)?.collectOnDelivery || 0)).catch(() => 0), // FOD: freight to collect from consignee
+      dodAmount: s.isDod ? Number(s.dodAmount || 0) : 0,
       serviceType: s.product ?? s.service ?? null,
       tripRoute: [s.originHub?.code, s.destHub?.code].filter(Boolean).join(' → ') || null,
       pickupRider: riderOf('PKD'),

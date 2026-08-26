@@ -153,6 +153,8 @@ export function TrackDetail() {
               <Field label="EDD" value={dateFmt(d.edd)} color="var(--brand)" />
               <Field label="Shipment Value" value={(d as any).shipmentValue != null ? `₹${Number((d as any).shipmentValue).toLocaleString('en-IN')}` : '—'} />
               {(d as any).apptDate && <Field label="Appointment" value={apptFmt((d as any).apptDate)} color="var(--brand)" />}
+              {Number((d as any).collectOnDelivery) > 0 && <Field label="💰 Collect on Delivery (FOD)" value={`₹${Number((d as any).collectOnDelivery).toLocaleString('en-IN')}`} color="var(--danger, #c0392b)" />}
+              {Number((d as any).dodAmount) > 0 && <Field label="Collect DOD" value={`₹${Number((d as any).dodAmount).toLocaleString('en-IN')}`} color="var(--danger, #c0392b)" />}
               <Field label="Service Type" value={d.serviceType} color="var(--brand)" />
               <Field label="Trip Route" value={d.tripRoute} />
               <Field label="Pickup Rider" value={d.pickupRider} color="var(--brand)" />

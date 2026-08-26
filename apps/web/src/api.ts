@@ -163,6 +163,7 @@ export interface RateQuote {
   lines: { code?: string; head: string; amount: number }[];
   gst: number;
   grandTotal: number;
+  collectOnDelivery?: number;
   overridden?: boolean;
 }
 export interface Client {

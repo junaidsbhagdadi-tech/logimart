@@ -37,6 +37,11 @@ export function AwbPrint() {
           <button className="secondary" onClick={() => window.history.back()}>Back</button>
         </div>
       </div>
+      {Number(q?.collectOnDelivery) > 0 && (
+        <div style={{ maxWidth: 900, margin: '0 auto 10px', border: '2px solid #c0392b', borderRadius: 8, background: '#fdecea', color: '#a4291e', fontWeight: 800, textAlign: 'center', padding: '8px 12px', fontSize: 15 }}>
+          💰 FREIGHT ON DELIVERY — COLLECT ₹{Number(q.collectOnDelivery).toLocaleString('en-IN', { minimumFractionDigits: 2 })} FROM CONSIGNEE
+        </div>
+      )}
       {fmt === 'DP' ? <ExcelExNote s={s} q={q} /> : <CargoNote s={s} q={q} surface={fmt === 'SURFACE'} />}
     </div>
   );
