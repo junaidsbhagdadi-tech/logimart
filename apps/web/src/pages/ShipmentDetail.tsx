@@ -58,6 +58,7 @@ export function ShipmentDetail() {
       destPincode: (s as any).destPincode ?? '', consigneeGstin: (s as any).consigneeGstin ?? '',
       goodsDesc: (s as any).goodsDesc ?? '', referenceNo: (s as any).referenceNo ?? '',
       shipmentValue: (s as any).shipmentValue != null ? String((s as any).shipmentValue) : '',
+      chargeWeight: (s as any).chargeWeight != null ? String((s as any).chargeWeight) : '',
     });
     setEditOpen(true); setError(''); setMsg('');
   };
@@ -68,6 +69,8 @@ export function ShipmentDetail() {
     try {
       const patch: Record<string, any> = { ...ef };
       patch.shipmentValue = ef.shipmentValue === '' ? null : Number(ef.shipmentValue);
+      // blank charge weight → null → engine recomputes from the card (divisor/CFT + round-up)
+      patch.chargeWeight = ef.chargeWeight === '' ? null : Number(ef.chargeWeight);
       const r = await api.editShipment(awb, patch);
       setMsg(`✓ ${r.message}${r.rezoned ? ' Zone/EDD re-derived.' : ''}`);
       setEditOpen(false); load();
@@ -263,11 +266,15 @@ export function ShipmentDetail() {
           {(s as any).client && (
             <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--brand)' }}>
               {(s as any).client.legalName}
-              {(s as any).client.accountCode && <span className="muted" style={{ fontWeight: 500, fontSize: 13 }}> · {(s as any).client.accountCode}</span>}
+              {(s as any).client.accountCode && <span className="muted" style={{ fontWeight: 500, fontSize: 13 }}> · A/c {(s as any).client.accountCode}</span>}
             </div>
+          )}
+          {(s as any).shipperName && String((s as any).shipperName).trim().toUpperCase() !== String((s as any).client?.legalName ?? '').trim().toUpperCase() && (
+            <div className="muted" style={{ fontSize: 13, fontWeight: 600 }}>📤 Shipper: {(s as any).shipperName}</div>
           )}
         </div>
         <div className="row">
+          <button className="secondary" onClick={() => window.history.back()}>← Back</button>
           <button className="secondary" onClick={load}>↻ Refresh</button>
           <button className="secondary" onClick={getQuote}>₹ Rate quote</button>
           <button className="secondary" onClick={generateEway}>🛣 E-way bill</button>
@@ -335,6 +342,10 @@ export function ShipmentDetail() {
               </select>
             </div>
             <div><label>Shipment value ₹</label><input type="number" value={ef.shipmentValue} onChange={(e) => setEfield('shipmentValue', e.target.value)} /></div>
+            <div>
+              <label>Chargeable weight (kg) <span className="muted">— blank = auto from rate card (divisor/CFT)</span></label>
+              <input type="number" value={ef.chargeWeight} onChange={(e) => setEfield('chargeWeight', e.target.value)} placeholder="blank = auto-recompute" />
+            </div>
             <div><label>Reference No.</label><input value={ef.referenceNo} onChange={(e) => setEfield('referenceNo', e.target.value)} /></div>
             <div style={{ gridColumn: 'span 2' }}><label>Goods description</label><input value={ef.goodsDesc} onChange={(e) => setEfield('goodsDesc', e.target.value)} /></div>
           </div>
@@ -367,7 +378,7 @@ export function ShipmentDetail() {
       {quote && (
         <div className="card" style={{ borderLeft: '4px solid var(--brand)' }}>
           <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-            <strong>Rate quote</strong> — {quote.chargeableKg} kg chargeable{quote.isOda ? ' · ODA' : ''}
+            <strong>Rate quote</strong> — {quote.chargeableKg} kg chargeable{(() => { const f = quote.lines.find((l) => (l.code || '') === 'FREIGHT'); return f && quote.chargeableKg ? ` · ₹${(f.amount / quote.chargeableKg).toFixed(2)}/kg → ₹${f.amount.toFixed(2)} freight` : ''; })()}{quote.isOda ? ' · ODA' : ''}
             {(quote as any).overridden && <span className="badge PARTIAL" title="Manual charge override active">✎ Overridden</span>}
             {canEditCharges && !(s as any).invoiced && (
               <div className="row" style={{ gap: 8 }}>

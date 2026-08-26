@@ -191,6 +191,8 @@ export class RateCardsService {
     });
     const data: Prisma.CustomerRateCardUpdateInput = {
       charges: (src.charges as any) ?? {},
+      // volumetric rule travels with the charges so every vendor computes weight the same way
+      volumetricDivisor: src.volumetricDivisor, cft: src.cft, minChargeableKg: src.minChargeableKg,
       fovPct: src.fovPct, fovMin: src.fovMin,
       odaFlat: src.odaFlat, odaPerKg: src.odaPerKg, odaMin: src.odaMin,
       topayCharge: src.topayCharge, apptCharge: src.apptCharge,
