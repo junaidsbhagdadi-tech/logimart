@@ -66,15 +66,16 @@ export function TrackDetail() {
 
   // Manual scan update — record a milestone straight from the tracker (replaces the sidebar "Update Scans").
   const canScan = !!user && user.role !== 'CLIENT_ADMIN';
-  const [scan, setScan] = useState({ code: 'PKD', location: '', remark: '' });
+  const [scan, setScan] = useState({ code: 'PKD', location: '', remark: '', at: '' });
   const [scanBusy, setScanBusy] = useState(false);
   const doScan = async () => {
     if (!d || !scan.code) return;
     setScanBusy(true); setError(''); setMsg('');
     try {
-      const r = await api.lifecycleScan({ awbs: [d.awb], code: scan.code, location: scan.location || undefined, remark: scan.remark || undefined });
-      if (r.locked?.length) setError(`🔒 ${scan.code} is out of sequence / terminal — super-admin only.`);
-      else { setMsg(`✓ ${d.awb} updated to ${scan.code}.`); setScan((s) => ({ ...s, remark: '' })); search(d.awb); }
+      const r = await api.lifecycleScan({ awbs: [d.awb], code: scan.code, location: scan.location || undefined, remark: scan.remark || undefined, scanAt: scan.at || undefined });
+      if (r.duplicate?.length) setError(`⚠ ${scan.code} is already recorded on ${d.awb} — a scan can't be repeated.`);
+      else if (r.locked?.length) setError(`🔒 ${scan.code} is out of sequence / terminal — super-admin only.`);
+      else { setMsg(`✓ ${d.awb} updated to ${scan.code}.`); setScan((s) => ({ ...s, remark: '', at: '' })); search(d.awb); }
     } catch (e: any) { setError(e.message); } finally { setScanBusy(false); }
   };
 
@@ -176,6 +177,7 @@ export function TrackDetail() {
                     {SCAN_CODES.map(([c, l]) => <option key={c} value={c}>{c} — {l}</option>)}
                   </select>
                 </div>
+                <div><label>Scan date &amp; time <span className="muted">(24hr · blank = now)</span></label><input type="datetime-local" value={scan.at} onChange={(e) => setScan((s) => ({ ...s, at: e.target.value }))} /></div>
                 <div><label>Location <span className="muted">(optional)</span></label><input value={scan.location} onChange={(e) => setScan((s) => ({ ...s, location: e.target.value }))} placeholder="e.g. Bhiwandi DC" /></div>
                 <div><label>Remark <span className="muted">(optional)</span></label><input value={scan.remark} onChange={(e) => setScan((s) => ({ ...s, remark: e.target.value }))} placeholder="reason / note" /></div>
                 <div><button onClick={doScan} disabled={scanBusy}>{scanBusy ? 'Updating…' : '＋ Update scan'}</button></div>

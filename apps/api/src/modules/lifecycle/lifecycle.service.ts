@@ -44,25 +44,30 @@ export class LifecycleService {
 
   /** Record a milestone scan for one or more AWBs. DLD requires a POD image. Terminal states
    *  (DLD/RTD/CAN) are locked once set — only a super admin can move a shipment off them. */
-  async scan(dto: { awbs: string[]; code: string; hubId?: number; location?: string; remark?: string; podDataUrl?: string; bagCode?: string }, userId?: bigint, role?: string) {
+  async scan(dto: { awbs: string[]; code: string; hubId?: number; location?: string; remark?: string; podDataUrl?: string; bagCode?: string; scanAt?: string }, userId?: bigint, role?: string) {
     const code = String(dto.code || '').trim().toUpperCase();
     if (!CODES.has(code)) throw new BadRequestException(`Unknown status code ${code}.`);
     const awbs = (dto.awbs || []).map((a) => String(a).trim().toUpperCase()).filter(Boolean);
     if (!awbs.length) throw new BadRequestException('No AWB scanned.');
     if (code === 'DLD' && !dto.podDataUrl) throw new BadRequestException('POD image is mandatory to mark Delivered.');
     const isSuper = String(role || '').toUpperCase() === 'SYS_ADMIN';
+    // Scan timestamp — the operator can back/forward-date the scan (else now).
+    const at = dto.scanAt ? new Date(dto.scanAt) : new Date();
 
     // Auto bag-code helper: at PICKUP (PKD) group shipments heading to the same destination hub/zone
     // on the same day — e.g. "BOM-230826". Set only if the shipment isn't already bagged.
     const ymd = (() => { const d = new Date(); return `${String(d.getDate()).padStart(2, '0')}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getFullYear()).slice(2)}`; })();
 
-    const done: string[] = []; const missing: string[] = []; const locked: string[] = [];
+    const done: string[] = []; const missing: string[] = []; const locked: string[] = []; const duplicate: string[] = [];
     for (const awb of awbs) {
       const s = await this.prisma.shipment.findUnique({
         where: { awb },
         select: { id: true, statusCode: true, bagCode: true, destZone: true, consigneeCity: true, destHub: { select: { code: true } } },
       });
       if (!s) { missing.push(awb); continue; }
+      // Never record the same milestone twice for an AWB.
+      const already = await this.prisma.scanLog.findFirst({ where: { awb, eventType: code }, select: { id: true } });
+      if (already) { duplicate.push(awb); continue; }
       const current = String(s.statusCode || 'MAN').toUpperCase();
       // Enforce the sequence for everyone but super admins. Re-scanning the same status is a no-op-ish
       // allowed idempotent scan; any other move must be a permitted next step.
@@ -76,7 +81,7 @@ export class LifecycleService {
       await this.prisma.shipment.update({
         where: { id: s.id },
         data: {
-          statusCode: code, statusAt: new Date(), status: TO_ENUM[code],
+          statusCode: code, statusAt: at, status: TO_ENUM[code],
           ...(code === 'DLD' && dto.podDataUrl ? { podUrl: dto.podDataUrl } : {}),
           ...(code === 'PKD' && dto.podDataUrl ? { pickupPodUrl: dto.podDataUrl } : {}),
           ...(dto.location ? { currentLocation: dto.location } : {}),
@@ -84,10 +89,10 @@ export class LifecycleService {
           ...(['UDL', 'RTO', 'CAN'].includes(code) ? { exceptionFlag: dto.remark || code } : {}),
         },
       });
-      await this.prisma.scanLog.create({ data: { awb, eventType: code, remark: dto.remark || null, serviceCenter: dto.location || null, scannedById: userId ?? null } });
+      await this.prisma.scanLog.create({ data: { awb, eventType: code, scanAt: at, remark: dto.remark || null, serviceCenter: dto.location || null, scannedById: userId ?? null } });
       done.push(awb);
     }
-    return { code, updated: done.length, done, missing, locked };
+    return { code, updated: done.length, done, missing, locked, duplicate };
   }
 
   /** Full scan timeline for one AWB (append-only history), oldest → newest, with labels.
