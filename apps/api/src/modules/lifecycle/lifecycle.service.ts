@@ -141,6 +141,7 @@ export class LifecycleService {
     return {
       awb: s.awb,
       forwardingAwb: s.forwardingAwb ?? null,
+      vendor: s.vendor ?? null,
       payMode,
       customerName: (s as any).client?.legalName ?? null,
       accountCode: (s as any).client?.accountCode ?? null,

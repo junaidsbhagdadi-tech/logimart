@@ -30,7 +30,7 @@ export function Customers() {
   const [msg, setMsg] = useState('');
 
   // bulk import
-  const BULK_COLS = 'accountCode,legalName,gstin,pan,addressLine,city,state,pincode,contactPerson,contactPhone,contactEmail,billingState,customerType,registerType,creditLimit,creditDays,isCash';
+  const BULK_COLS = 'accountCode,legalName,gstin,pan,addressLine,city,state,pincode,contactPerson,contactPhone,contactEmail,billingState,customerType,registerType,salesPerson,salesPersonMobile,salesPersonEmail,creditLimit,creditDays,isCash';
   const [bulkText, setBulkText] = useState('');
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkResult, setBulkResult] = useState<{ total: number; created: number; results: { name: string; code?: string; ok: boolean; error?: string }[] } | null>(null);
@@ -75,7 +75,7 @@ export function Customers() {
   };
 
   const bulkTemplate = () => {
-    const csv = BULK_COLS + '\nACME001,Acme Traders Pvt Ltd,29ABCDE1234F1Z5,ABCDE1234F,12 MG Road,Bengaluru,Karnataka,560001,Ravi,9900112233,ravi@acme.test,Karnataka,Customer,Registered,500000,30,false\n';
+    const csv = BULK_COLS + '\nACME001,Acme Traders Pvt Ltd,29ABCDE1234F1Z5,ABCDE1234F,12 MG Road,Bengaluru,Karnataka,560001,Ravi,9900112233,ravi@acme.test,Karnataka,Customer,Registered,Rahul Sharma,9876543210,rahul@excelex.com,500000,30,false\n';
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     const a = document.createElement('a'); a.href = url; a.download = 'logimart-customers-template.csv'; a.click(); URL.revokeObjectURL(url);
   };

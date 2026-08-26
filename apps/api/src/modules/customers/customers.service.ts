@@ -105,6 +105,9 @@ export class CustomersService {
           tel1: r.tel1 || undefined, billingState: r.billingState || undefined,
           serviceCentre: r.serviceCentre || undefined, origin: r.origin || undefined,
           customerType: r.customerType || undefined, registerType: r.registerType || undefined,
+          salesPerson: r.salesPerson || undefined,
+          salesPersonMobile: r.salesPersonMobile || undefined,
+          salesPersonEmail: r.salesPersonEmail || undefined,
           creditLimit: num(r.creditLimit), creditDays: num(r.creditDays),
           isCash: bool(r.isCash),
         } as any);

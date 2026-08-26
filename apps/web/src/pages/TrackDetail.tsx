@@ -78,6 +78,19 @@ export function TrackDetail() {
     } catch (e: any) { setError(e.message); } finally { setScanBusy(false); }
   };
 
+  // Forwarding (vendor hand-off) — CS updates the carrier vendor + forwarding AWB from the tracker.
+  const [vendors, setVendors] = useState<any[]>([]);
+  useEffect(() => { if (canScan) api.listVendors().then((v) => setVendors(v.filter((x: any) => x.isActive !== false))).catch(() => {}); }, [canScan]);
+  const [fwd, setFwd] = useState({ vendor: '', forwardingAwb: '' });
+  useEffect(() => { if (d) setFwd({ vendor: (d as any).vendor ?? '', forwardingAwb: d.forwardingAwb ?? '' }); }, [d]);
+  const [fwdBusy, setFwdBusy] = useState(false);
+  const saveFwd = async () => {
+    if (!d) return;
+    setFwdBusy(true); setError(''); setMsg('');
+    try { const r = await api.setForwarding(d.awb, { vendor: fwd.vendor || undefined, forwardingAwb: fwd.forwardingAwb || undefined }); setMsg(r.message); search(d.awb); }
+    catch (e: any) { setError(e.message); } finally { setFwdBusy(false); }
+  };
+
   // Appointment delivery date — updates the shipment + shows in Remarks.
   const [appt, setAppt] = useState({ date: '', note: '' });
   const [apptBusy, setApptBusy] = useState(false);
@@ -174,6 +187,21 @@ export function TrackDetail() {
                   <div><label>Appointment date &amp; time <span className="muted">(24hr)</span></label><input type="datetime-local" value={appt.date} onChange={(e) => setAppt((a) => ({ ...a, date: e.target.value }))} /></div>
                   <div><label>Note <span className="muted">(optional)</span></label><input value={appt.note} onChange={(e) => setAppt((a) => ({ ...a, note: e.target.value }))} placeholder="e.g. deliver after 2pm" /></div>
                   <div><button onClick={saveAppt} disabled={apptBusy || !appt.date}>{apptBusy ? 'Saving…' : '📅 Set appointment'}</button></div>
+                </div>
+              </div>
+              <div style={{ borderTop: '1px dashed var(--line, #d7dadf)', marginTop: 14, paddingTop: 12 }}>
+                <h2 style={{ marginBottom: 4, fontSize: 15 }}>🔀 Forwarding (vendor hand-off)</h2>
+                <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Record which vendor carried this AWB and the forwarding (carrier) AWB number.{(d as any).vendor ? ` Current vendor: ${(d as any).vendor}.` : ''}</p>
+                <div className="grid cols-4" style={{ gap: 10, alignItems: 'flex-end' }}>
+                  <div>
+                    <label>Forwarded vendor</label>
+                    <select value={fwd.vendor} onChange={(e) => setFwd((f) => ({ ...f, vendor: e.target.value }))}>
+                      <option value="">— select vendor —</option>
+                      {vendors.map((v) => <option key={v.id} value={v.vendorCode || v.name}>{v.vendorCode} — {v.name}</option>)}
+                    </select>
+                  </div>
+                  <div><label>Forwarding number <span className="muted">(carrier AWB)</span></label><input value={fwd.forwardingAwb} onChange={(e) => setFwd((f) => ({ ...f, forwardingAwb: e.target.value }))} placeholder="e.g. 58001396353" /></div>
+                  <div><button onClick={saveFwd} disabled={fwdBusy || (!fwd.vendor && !fwd.forwardingAwb)}>{fwdBusy ? 'Saving…' : '🔀 Save forwarding'}</button></div>
                 </div>
               </div>
             </div>
