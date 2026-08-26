@@ -15,6 +15,12 @@ const STAGES = [
   { label: 'Delivered', icon: '🏠', codes: ['DLD', 'RTD'] },
 ];
 const TABS = ['Scans', 'Package Detail', 'Consignee Detail', 'Pickup Detail', 'Return Detail'] as const;
+// Milestone codes a manual scan can set (MAN is the booking start).
+const SCAN_CODES: [string, string][] = [
+  ['PKD', 'Picked'], ['ORD', 'Origin hub received'], ['DPD', 'Departed origin'],
+  ['DRD', 'Destination received'], ['OFD', 'Out for delivery'], ['DLD', 'Delivered'],
+  ['UDL', 'Undelivered'], ['RTO', 'Return to Origin'], ['RTD', 'Return Delivered'], ['CAN', 'Cancelled'],
+];
 
 function Field({ label, value, color }: { label: string; value?: React.ReactNode; color?: string }) {
   return (
@@ -54,6 +60,20 @@ export function TrackDetail() {
     if (!d || !confirm(`Purge all scans for ${d.awb} and reset to MAN?`)) return;
     try { await api.lifecycleReset(d.awb); setMsg('✓ Tracking reset to MAN.'); search(d.awb); }
     catch (e: any) { setError(e.message); }
+  };
+
+  // Manual scan update — record a milestone straight from the tracker (replaces the sidebar "Update Scans").
+  const canScan = !!user && user.role !== 'CLIENT_ADMIN';
+  const [scan, setScan] = useState({ code: 'PKD', location: '', remark: '' });
+  const [scanBusy, setScanBusy] = useState(false);
+  const doScan = async () => {
+    if (!d || !scan.code) return;
+    setScanBusy(true); setError(''); setMsg('');
+    try {
+      const r = await api.lifecycleScan({ awbs: [d.awb], code: scan.code, location: scan.location || undefined, remark: scan.remark || undefined });
+      if (r.locked?.length) setError(`🔒 ${scan.code} is out of sequence / terminal — super-admin only.`);
+      else { setMsg(`✓ ${d.awb} updated to ${scan.code}.`); setScan((s) => ({ ...s, remark: '' })); search(d.awb); }
+    } catch (e: any) { setError(e.message); } finally { setScanBusy(false); }
   };
 
   return (
@@ -118,6 +138,24 @@ export function TrackDetail() {
               {d.consignee.phone && <a href={`tel:${d.consignee.phone}`}><button>📞 Call Consignee</button></a>}
             </div>
           </div>
+
+          {canScan && (
+            <div className="card" style={{ borderLeft: '4px solid var(--brand)' }}>
+              <h2 style={{ marginBottom: 4 }}>✍ Update scan (manual)</h2>
+              <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Record a milestone for <strong>{d.awb}</strong> directly here. Out-of-sequence / terminal codes are super-admin only.</p>
+              <div className="grid cols-4" style={{ gap: 10, alignItems: 'flex-end' }}>
+                <div>
+                  <label>Status</label>
+                  <select value={scan.code} onChange={(e) => setScan((s) => ({ ...s, code: e.target.value }))}>
+                    {SCAN_CODES.map(([c, l]) => <option key={c} value={c}>{c} — {l}</option>)}
+                  </select>
+                </div>
+                <div><label>Location <span className="muted">(optional)</span></label><input value={scan.location} onChange={(e) => setScan((s) => ({ ...s, location: e.target.value }))} placeholder="e.g. Bhiwandi DC" /></div>
+                <div><label>Remark <span className="muted">(optional)</span></label><input value={scan.remark} onChange={(e) => setScan((s) => ({ ...s, remark: e.target.value }))} placeholder="reason / note" /></div>
+                <div><button onClick={doScan} disabled={scanBusy}>{scanBusy ? 'Updating…' : '＋ Update scan'}</button></div>
+              </div>
+            </div>
+          )}
 
           <div className="card">
             <h2 style={{ marginBottom: 18 }}>Milestone Covered</h2>

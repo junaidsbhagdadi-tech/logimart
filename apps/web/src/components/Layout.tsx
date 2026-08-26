@@ -80,7 +80,6 @@ export function Layout() {
       { to: '/lm/delivery-outscan', icon: '🛵', label: 'Delivery Outscan' },
       { to: '/lm/update-delivery', icon: '✅', label: 'Update Delivery' },
       { to: '/lm/bulk-delivery-update', icon: '📥', label: 'Bulk Delivery Update' },
-      { to: '/lm/manual-scan', icon: '✍', label: 'Update Scans (manual)' },
     ] },
     { title: 'Billing & CRM', items: [
       { to: '/invoices', icon: '🧾', label: 'Invoices' },
