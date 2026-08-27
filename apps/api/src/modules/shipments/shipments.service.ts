@@ -104,12 +104,14 @@ export class ShipmentsService {
   }
 
   async create(dto: CreateShipmentDto) {
+    // Resolve the customer by internal id OR account code — bulk imports usually carry the account code.
+    const cid = String((dto as any).clientId ?? '').trim();
+    const sel = { id: true, isActive: true, isCreditHold: true, legalName: true, outstandingBal: true, creditLimit: true };
+    let client = /^\d+$/.test(cid) ? await this.prisma.b2bClient.findUnique({ where: { id: BigInt(cid) }, select: sel }) : null;
+    if (!client && cid) client = await this.prisma.b2bClient.findFirst({ where: { accountCode: cid }, select: sel });
+    if (!client) throw new NotFoundException(`Client not found (id / account code "${cid}") — add the customer (with that account code) first.`);
+    (dto as any).clientId = Number(client.id); // downstream uses the internal id
     // ---- Credit control gate: block booking for inactive / over-limit accounts ----
-    const client = await this.prisma.b2bClient.findUnique({
-      where: { id: BigInt(dto.clientId) },
-      select: { isActive: true, isCreditHold: true, legalName: true, outstandingBal: true, creditLimit: true },
-    });
-    if (!client) throw new NotFoundException('Client not found');
     if (client.isActive === false) {
       throw new ForbiddenException(`${client.legalName} is deactivated — cannot book new shipments.`);
     }
