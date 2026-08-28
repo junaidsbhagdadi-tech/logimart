@@ -8,7 +8,7 @@ import { mapMode } from '../productMode';
  * MPS: one row per BOX; rows sharing the same `ref` are grouped into a single AWB
  * (each row contributes one piece with its own dimensions). Shipment-level fields are
  * taken from the first row of each ref group. A blank ref = a single-box shipment. */
-const COLS_STAFF = ['ref', 'awb', 'clientId', 'product', 'vendor', 'originPincode', 'destPincode', 'consigneeName', 'consigneePhone', 'consigneeAddress', 'declaredValue', 'deadKg', 'lengthCm', 'widthCm', 'heightCm', 'paymentTerm', 'freightToCollect', 'agreedFreight', 'referenceNo', 'goodsDesc'];
+const COLS_STAFF = ['ref', 'awb', 'clientId', 'product', 'vendor', 'forwardingAwb', 'originPincode', 'destPincode', 'consigneeName', 'consigneePhone', 'consigneeAddress', 'declaredValue', 'deadKg', 'lengthCm', 'widthCm', 'heightCm', 'paymentTerm', 'freightToCollect', 'agreedFreight', 'referenceNo', 'goodsDesc'];
 const COLS_CLIENT = COLS_STAFF.filter((c) => c !== 'clientId');
 
 export function BulkBooking() {
@@ -52,14 +52,14 @@ export function BulkBooking() {
     // A1 = a manually-booked shipment (pre-assigned AWB BD10000001); A2 = blank awb -> auto-generated.
     const sample = ownClientId
       ? [
-          `A1,BD10000001,${p},BDR,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,5,30,20,15,PREPAID,,,REF-A1,Apparel`,
-          `A1,BD10000001,${p},BDR,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,8,40,30,20,,,,,`,
-          `A2,,${p},DLY,560001,400001,Beta Corp,9812345670,5 Fort Mumbai,12000,3,25,20,10,TO_PAY,1500,,REF-A2,Electronics`,
+          `A1,BD10000001,${p},BDR,7712345678,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,5,30,20,15,PREPAID,,,REF-A1,Apparel`,
+          `A1,BD10000001,${p},BDR,7712345678,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,8,40,30,20,,,,,`,
+          `A2,,${p},DLY,,560001,400001,Beta Corp,9812345670,5 Fort Mumbai,12000,3,25,20,10,TO_PAY,1500,,REF-A2,Electronics`,
         ].join('\n')
       : [
-          `A1,BD10000001,1,${p},BDR,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,5,30,20,15,PREPAID,,,REF-A1,Apparel`,
-          `A1,BD10000001,1,${p},BDR,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,8,40,30,20,,,,,`,
-          `A2,,1,${p},DLY,560001,400001,Beta Corp,9812345670,5 Fort Mumbai,12000,3,25,20,10,TO_PAY,1500,,REF-A2,Electronics`,
+          `A1,BD10000001,1,${p},BDR,7712345678,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,5,30,20,15,PREPAID,,,REF-A1,Apparel`,
+          `A1,BD10000001,1,${p},BDR,7712345678,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,8,40,30,20,,,,,`,
+          `A2,,1,${p},DLY,,560001,400001,Beta Corp,9812345670,5 Fort Mumbai,12000,3,25,20,10,TO_PAY,1500,,REF-A2,Electronics`,
         ].join('\n');
     const csv = cols.join(',') + '\n' + sample + '\n';
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -83,6 +83,7 @@ export function BulkBooking() {
         product: prodCode || undefined,
         serviceMode,
         vendor: (first.vendor || '').trim() || undefined, // drives the vendor rate card
+        forwardingAwb: (first.forwardingAwb || '').trim() || undefined, // carrier's forwarding AWB / tracking no.
         originHubId: hubIds[0], destHubId: hubIds[1],
         originZone: 'SOUTH', destZone: 'SOUTH',
         originPincode: first.originPincode || undefined,
@@ -127,7 +128,8 @@ export function BulkBooking() {
           E-way bills auto-generate when invoice value ≥ ₹50,000.
         </p>
         <p className="muted" style={{ marginTop: 6, fontSize: 12.5 }}>
-          <strong><code>vendor</code></strong> (e.g. BDR, DLY) picks the <strong>vendor rate card</strong> so pricing matches the assigned carrier — blank = SELF. Optional:
+          <strong><code>vendor</code></strong> (e.g. BDR, DLY) picks the <strong>vendor rate card</strong> so pricing matches the assigned carrier — blank = SELF.
+          <code> forwardingAwb</code> = the carrier's forwarding / tracking number handed off to that vendor (blank if not yet forwarded). Optional:
           <code> paymentTerm</code> (PREPAID / TO_PAY) + <code>freightToCollect</code> (₹ from consignee on To-Pay),
           <code> agreedFreight</code> (₹ one-off / "As Agreed" override — blank = rate card),
           <code> referenceNo</code> (your invoice / booking ref), <code> goodsDesc</code>.
