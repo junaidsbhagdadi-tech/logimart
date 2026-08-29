@@ -50,7 +50,7 @@ export class UsersService {
         select: { id: true, fullName: true, email: true, role: true, isActive: true },
       });
       // Send login credentials to the registered email (queued until an email provider is configured).
-      const url = process.env.APP_URL ?? 'https://logimart-erp.onrender.com';
+      const url = process.env.APP_URL ?? 'https://erp.logimart.co.in';
       await this.notifications.notify({
         channel: 'email', recipient: u.email, kind: 'account',
         message: `Welcome to LogiMart, ${u.fullName}. Your account is ready.\nLogin: ${url}\nEmail: ${u.email}\nTemporary password: ${password}\nPlease sign in and change your password.`,
@@ -95,7 +95,7 @@ export class UsersService {
     if (!u) throw new NotFoundException('User not found');
     const password = this.genPassword();
     await this.prisma.user.update({ where: { id: BigInt(id) }, data: { passwordHash: await bcrypt.hash(password, 10) } });
-    const loginUrl = process.env.APP_URL ?? 'https://logimart-erp.onrender.com';
+    const loginUrl = process.env.APP_URL ?? 'https://erp.logimart.co.in';
     await this.notifications.notify({
       channel: 'email', recipient: u.email, kind: 'account',
       message: `Your LogiMart password was reset, ${u.fullName}.\nLogin: ${loginUrl}\nEmail: ${u.email}\nTemporary password: ${password}\nPlease sign in and change your password.`,

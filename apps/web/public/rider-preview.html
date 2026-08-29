@@ -57,7 +57,7 @@
     <div class="card">
       <div class="cfg">
         <label style="margin-top:0;">API base (advanced)</label>
-        <input id="apiBase" value="https://logimart-erp.onrender.com">
+        <input id="apiBase" value="https://erp.logimart.co.in">
       </div>
     </div>
     <div class="note">This is a browser preview of the rider app for checking login &amp; today's tasks. Camera scanning &amp; GPS POD are phone-only (the Flutter app).</div>
@@ -81,7 +81,7 @@
 
 <script>
   // Default to the domain this page is served from (same origin); override in the box if needed.
-  var API = (location.protocol === 'http:' || location.protocol === 'https:') ? location.origin : 'https://logimart-erp.onrender.com';
+  var API = (location.protocol === 'http:' || location.protocol === 'https:') ? location.origin : 'https://erp.logimart.co.in';
   var token = null;
   var $ = function(id){ return document.getElementById(id); };
   function showErr(el, msg){ el.innerHTML = msg ? '<div class="err">'+msg+'</div>' : ''; }
