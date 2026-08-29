@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
-import { Roles } from '../../common/rbac/roles.decorator';
+import { Roles, SuperAdminOnly } from '../../common/rbac/roles.decorator';
 import { ShipmentsService } from './shipments.service';
 import { LabelsService } from '../labels/labels.service';
 import { CreateShipmentDto } from './dto/create-shipment.dto';
@@ -39,6 +39,7 @@ export class ShipmentsController {
   /** Super-admin: delete selected AWBs (and their children). Used by the AWB list select/delete. */
   @Post('bulk-delete')
   @Roles(UserRole.SYS_ADMIN)
+  @SuperAdminOnly()
   bulkDelete(@Body() dto: { awbs: string[] }) {
     return this.shipments.bulkDelete(dto?.awbs || []);
   }

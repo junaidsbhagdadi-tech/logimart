@@ -11,10 +11,12 @@ type Group = { title: string; items: Item[] };
 export function Layout() {
   const { user, logout } = useAuth();
   const role = user?.role || '';
-  const isAdminFin = role === 'FINANCE_EXEC' || role === 'SYS_ADMIN';
-  const isOps = ['HUB_MANAGER', 'DRIVER', 'SYS_ADMIN'].includes(role);
-  const canMaster = role === 'HUB_MANAGER' || role === 'SYS_ADMIN';
-  const isSysAdmin = role === 'SYS_ADMIN';
+  const isAdmin = role === 'ADMIN' || role === 'SYS_ADMIN';            // full access bar user-mgmt/wipe
+  const isAdminFin = role === 'FINANCE_EXEC' || isAdmin;
+  const isOps = ['HUB_MANAGER', 'DRIVER'].includes(role) || isAdmin;
+  const canMaster = role === 'HUB_MANAGER' || isAdmin;
+  const isSysAdmin = role === 'SYS_ADMIN';                            // super-admin only (Users/Audit)
+  const isSales = role === 'SALES';
   const isClient = role === 'CLIENT_ADMIN';
   const nav = useNavigate();
 
@@ -97,16 +99,16 @@ export function Layout() {
     { title: 'Billing & CRM', items: [
       { to: '/invoices', icon: '🧾', label: 'Invoices' },
       { to: '/bill-worksheet', icon: '📋', label: 'Bill Worksheet', show: isAdminFin },
-      { to: '/sales-mis', icon: '📈', label: 'Sales MIS', show: isAdminFin },
+      { to: '/sales-mis', icon: '📈', label: 'Sales MIS', show: isAdminFin || isSales },
       { to: '/receivables', icon: '📒', label: 'Receivables', show: isAdminFin },
       { to: '/notes', icon: '±', label: 'Debit / Credit Notes', show: isAdminFin },
       { to: '/claims', icon: '🛡', label: 'Claims', show: isAdminFin },
-      { to: '/customers', icon: '👥', label: 'Customers', show: isAdminFin },
+      { to: '/customers', icon: '👥', label: 'Customers', show: isAdminFin || isSales },
       { to: '/vendors', icon: '🏢', label: 'Vendors', show: isAdminFin },
       { to: '/vehicles', icon: '🚚', label: 'Vehicles', show: isAdminFin },
       { to: '/vendor-bills', icon: '🚚', label: 'Vendor Bills & P&L', show: isAdminFin },
       { to: '/documents', icon: '📁', label: 'Documents', show: isAdminFin },
-      { to: '/sales', icon: '📈', label: 'Sales', show: isAdminFin },
+      { to: '/sales', icon: '📈', label: 'Sales', show: isAdminFin || isSales },
     ] },
     { title: 'Masters & Setup', items: [
       { to: '/ftl-rates', icon: '🚛', label: 'FTL Rates', show: isAdminFin },

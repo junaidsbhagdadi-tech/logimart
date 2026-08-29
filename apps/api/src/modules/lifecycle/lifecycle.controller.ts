@@ -58,12 +58,12 @@ export class LifecycleController {
 
   /** Customer-Service dashboard — pending/stuck shipments + NDR. */
   @Get('cs-dashboard')
-  @Roles(...OPS)
+  @Roles(...OPS, UserRole.SALES)
   csDashboard(@Query('from') from?: string, @Query('to') to?: string) { return this.svc.csDashboard(from, to); }
 
   /** Operations dashboard — task buckets by stage. */
   @Get('ops-dashboard')
-  @Roles(...OPS)
+  @Roles(...OPS, UserRole.SALES)
   opsDashboard() { return this.svc.opsDashboard(); }
 
   @Get('ops-bucket/:code')

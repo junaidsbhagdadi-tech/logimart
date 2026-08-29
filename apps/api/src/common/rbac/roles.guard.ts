@@ -8,7 +8,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { UserRole } from '@prisma/client';
-import { ROLES_KEY } from './roles.decorator';
+import { ROLES_KEY, SUPER_ADMIN_ONLY_KEY } from './roles.decorator';
 
 /**
  * Verifies the Bearer JWT, attaches the payload to req.user, and enforces any
@@ -33,13 +33,28 @@ export class RolesGuard implements CanActivate {
       throw new UnauthorizedException('Invalid token');
     }
 
+    const role: UserRole = req.user.role;
+
+    // Routes flagged super-admin-only stay locked to SYS_ADMIN (even for ADMIN).
+    const superOnly = this.reflector.getAllAndOverride<boolean>(SUPER_ADMIN_ONLY_KEY, [
+      ctx.getHandler(),
+      ctx.getClass(),
+    ]);
+    if (superOnly) {
+      if (role !== UserRole.SYS_ADMIN) throw new ForbiddenException('Super admin only');
+      return true;
+    }
+
+    // ADMIN inherits all non-super-only access (everything ops/billing/masters).
+    if (role === UserRole.ADMIN) return true;
+
     const required = this.reflector.getAllAndOverride<UserRole[]>(ROLES_KEY, [
       ctx.getHandler(),
       ctx.getClass(),
     ]);
     if (!required || required.length === 0) return true;
 
-    if (!required.includes(req.user.role)) {
+    if (!required.includes(role)) {
       throw new ForbiddenException(`Requires role: ${required.join(' | ')}`);
     }
     return true;

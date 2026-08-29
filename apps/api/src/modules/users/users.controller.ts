@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } fro
 import { IsArray, IsBoolean, IsEmail, IsEnum, IsInt, IsOptional, IsString, MinLength } from 'class-validator';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
-import { Roles } from '../../common/rbac/roles.decorator';
+import { Roles, SuperAdminOnly } from '../../common/rbac/roles.decorator';
 import { UsersService } from './users.service';
 
 class CreateUserDto {
@@ -23,6 +23,7 @@ class UpdateUserDto {
 @Controller('api/v1/users')
 @UseGuards(RolesGuard)
 @Roles(UserRole.SYS_ADMIN)
+@SuperAdminOnly()
 export class UsersController {
   constructor(private readonly users: UsersService) {}
 

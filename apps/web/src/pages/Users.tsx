@@ -3,7 +3,13 @@ import { api } from '../api';
 import { Modal } from '../components/Modal';
 import { FEATURE_CATALOG } from '../features';
 
-const ROLES = ['WAREHOUSE_HANDLER', 'DRIVER', 'HUB_MANAGER', 'FINANCE_EXEC', 'CLIENT_ADMIN', 'SYS_ADMIN'];
+const ROLES = ['SYS_ADMIN', 'ADMIN', 'FINANCE_EXEC', 'SALES', 'HUB_MANAGER', 'WAREHOUSE_HANDLER', 'DRIVER', 'CLIENT_ADMIN'];
+// Friendly labels shown in the dropdowns (enum value stays the same on the wire).
+const ROLE_LABELS: Record<string, string> = {
+  SYS_ADMIN: 'Super Admin', ADMIN: 'Admin', FINANCE_EXEC: 'Finance', SALES: 'Sales',
+  HUB_MANAGER: 'Ops (Hub Manager)', WAREHOUSE_HANDLER: 'Warehouse', DRIVER: 'Driver', CLIENT_ADMIN: 'Customer',
+};
+const roleLabel = (r: string) => ROLE_LABELS[r] ?? r;
 const blank = { fullName: '', email: '', password: '', role: 'WAREHOUSE_HANDLER', hubId: '', clientId: '' };
 
 export function Users() {
@@ -113,7 +119,7 @@ export function Users() {
           <div>
             <label>Role</label>
             <select value={form.role} onChange={(e) => set('role', e.target.value)}>
-              {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+              {ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
             </select>
           </div>
           <div><label>Home hub (ops — scopes their scans)</label>
@@ -137,7 +143,7 @@ export function Users() {
                 <td>{u.email}</td>
                 <td>
                   <select value={u.role} onChange={(e) => changeRole(u, e.target.value)} style={{ width: 'auto' }}>
-                    {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+                    {ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
                   </select>
                 </td>
                 <td><span className={`badge ${u.isActive ? 'DELIVERED' : 'CANCELLED'}`}>{u.isActive ? 'ACTIVE' : 'DISABLED'}</span></td>

@@ -110,14 +110,14 @@ export class BillingController {
 
   /** Sales MIS — per-customer summary (shipments, weights, sales, billed/unbilled, status, cash). */
   @Get('billing/mis/sales')
-  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SALES, UserRole.SYS_ADMIN)
   misSales(@Query('from') from?: string, @Query('to') to?: string) {
     return this.invoices.misSalesSummary(from, to);
   }
 
   /** Sales dashboard by salesperson — daily contribution incl. unbilled. */
   @Get('billing/mis/sales-by-rep')
-  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SALES, UserRole.SYS_ADMIN)
   salesByRep(@Query('from') from?: string, @Query('to') to?: string) {
     return this.invoices.salesByRep(from, to);
   }

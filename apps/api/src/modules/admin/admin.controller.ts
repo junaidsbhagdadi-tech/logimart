@@ -1,11 +1,12 @@
 import { Controller, Param, Post, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
-import { Roles } from '../../common/rbac/roles.decorator';
+import { Roles, SuperAdminOnly } from '../../common/rbac/roles.decorator';
 import { AdminService } from './admin.service';
 
 @Controller('api/v1/admin')
 @UseGuards(RolesGuard)
+@SuperAdminOnly()
 export class AdminController {
   constructor(private readonly admin: AdminService) {}
 

@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
-import { Roles } from '../../common/rbac/roles.decorator';
+import { Roles, SuperAdminOnly } from '../../common/rbac/roles.decorator';
 import { CustomersService } from './customers.service';
 import { CreateClientDto, UpdateClientDto } from './dto/customer.dto';
 
@@ -17,7 +17,7 @@ export class CustomersController {
   }
 
   @Get()
-  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SALES, UserRole.SYS_ADMIN)
   list() {
     return this.customers.list();
   }
@@ -32,6 +32,7 @@ export class CustomersController {
   /** Super-admin: delete selected customers and ALL their data. */
   @Post('bulk-delete')
   @Roles(UserRole.SYS_ADMIN)
+  @SuperAdminOnly()
   bulkDelete(@Body() dto: { ids: number[] }) {
     return this.customers.bulkDelete(dto?.ids ?? []);
   }
@@ -91,7 +92,7 @@ export class CustomersController {
   walletTopup(@Param('id') id: string, @Body() d: { amount: number; note?: string }) { return this.customers.walletTopup(Number(id), Number(d.amount), d.note); }
 
   @Get(':id')
-  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SALES, UserRole.SYS_ADMIN)
   get(@Param('id') id: string) {
     return this.customers.get(Number(id));
   }
