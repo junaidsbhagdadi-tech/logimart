@@ -160,9 +160,11 @@ export function Layout() {
         <nav>
           {groups.map((g) => {
             // Super admins see everything role-allows. Others: if the super admin assigned explicit
-            // feature grants, show only those; otherwise fall back to role defaults.
+            // feature grants, show EXACTLY those (an allow-list that overrides role defaults, so any
+            // feature can be handed to any user — server-side RBAC remains the real security boundary);
+            // otherwise fall back to the role's default visibility.
             const grants = (user?.role === 'SYS_ADMIN' || isClient) ? null : (user?.featureGrants ?? null);
-            const items = g.items.filter((it) => it.show !== false && (!grants || grants.includes(it.to)));
+            const items = g.items.filter((it) => (grants ? grants.includes(it.to) : it.show !== false));
             if (items.length === 0) return null;
             const isClosed = !!closed[g.title];
             return (

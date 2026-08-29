@@ -6,7 +6,9 @@ export type FeatureSection = { section: string; features: Feature[] };
 export const FEATURE_CATALOG: FeatureSection[] = [
   { section: 'Overview', features: [
     { to: '/', label: 'Dashboard' },
+    { to: '/team-dashboards', label: 'Team Dashboards' },
     { to: '/tracker', label: 'Track Shipment' },
+    { to: '/pincode-search', label: 'Pincode Search' },
   ] },
   { section: 'Operations', features: [
     { to: '/create', label: 'New Shipment' },
@@ -41,6 +43,7 @@ export const FEATURE_CATALOG: FeatureSection[] = [
   { section: 'Billing & CRM', features: [
     { to: '/invoices', label: 'Invoices' },
     { to: '/bill-worksheet', label: 'Bill Worksheet' },
+    { to: '/sales-mis', label: 'Sales MIS' },
     { to: '/receivables', label: 'Receivables' },
     { to: '/notes', label: 'Debit / Credit Notes' },
     { to: '/claims', label: 'Claims' },
@@ -61,7 +64,9 @@ export const FEATURE_CATALOG: FeatureSection[] = [
   ] },
   { section: 'Insights & Admin', features: [
     { to: '/reports', label: 'Reports' },
+    { to: '/riders', label: 'Riders & Drivers' },
     { to: '/audit', label: 'Audit Log' },
+    { to: '/feedback', label: 'Feedback' },
   ] },
 ];
 
