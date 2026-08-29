@@ -80,6 +80,55 @@ export class AdminService {
   }
 
   /**
+   * "Start from scratch" reset: wipes ALL shipments + invoices/ledger + ALL CUSTOMERS and
+   * their per-customer rate config (rate cards, slabs, fuel, charges, volumetric, addresses).
+   * KEEPS: login users (their clientId link is nulled), hubs, VENDORS + vendor rate cards,
+   * masters, pincodes, serviceability, fuel prices. FK-safe order (children → parents).
+   */
+  async resetCustomersAndShipments() {
+    const p = this.prisma;
+    const r: Record<string, number> = {};
+    const del = async (k: string, fn: () => Promise<{ count: number }>) => { r[k] = (await fn()).count; };
+
+    // 1) transactional data (same proven order as clearShipments)
+    await del('scanLogs', () => p.scanLog.deleteMany({}));
+    await del('scanEvents', () => p.scanEvent.deleteMany({}));
+    await del('pods', () => p.pod.deleteMany({}));
+    await del('invoiceLines', () => p.invoiceLineItem.deleteMany({}));
+    await del('ledger', () => p.ledgerEntry.deleteMany({}));
+    await del('debitCreditNotes', () => p.debitCreditNote.deleteMany({}));
+    await del('claims', () => p.claim.deleteMany({}));
+    await del('invoices', () => p.invoice.deleteMany({}));
+    await del('shipmentPieces', () => p.shipmentPiece.deleteMany({}));
+    await del('shipments', () => p.shipment.deleteMany({}));
+    await del('manifests', () => p.manifest.deleteMany({}));
+    await del('pickups', () => p.pickupRequest.deleteMany({}));
+
+    // 2) per-customer config (keep vendor-owned rate cards + generic/null-client rows)
+    await del('customerAddresses', () => p.customerAddress.deleteMany({}));
+    await del('customerFuel', () => p.customerFuelSurcharge.deleteMany({}));
+    await del('customerCharges', () => p.customerOtherCharge.deleteMany({}));
+    await del('customerVolumetric', () => p.customerVolumetric.deleteMany({}));
+    await del('customerRateSlabs', () => p.clientRateSlab.deleteMany({ where: { clientId: { not: null } } }));
+    await del('customerRateCards', () => p.customerRateCard.deleteMany({ where: { clientId: { not: null } } })); // vendor cards (ownerVendorId) survive; slabs cascade
+    await del('legacyRateCards', () => p.rateCard.deleteMany({})); // RateCard.clientId is required → all are customer-owned
+    await del('customerFtlRates', () => p.ftlRate.deleteMany({ where: { clientId: { not: null } } }));
+
+    // 3) detach any portal/client users, then remove the customers themselves
+    await p.user.updateMany({ where: { clientId: { not: null } }, data: { clientId: null } });
+    await del('customers', () => p.b2bClient.deleteMany({}));
+
+    // 4) reset the AWB counter (re-seeds on next booking)
+    await del('awbCounter', () => p.counter.deleteMany({ where: { name: 'awb' } }));
+
+    const total = Object.values(r).reduce((s, n) => s + n, 0);
+    return {
+      ok: true, totalDeleted: total, cleared: r,
+      kept: ['login users', 'hubs', 'vendors + vendor rate cards', 'masters', 'pincodes', 'serviceability', 'fuel prices'],
+    };
+  }
+
+  /**
    * Clear test/transactional data for a clean UAT slate. Keeps users, hubs, customers,
    * vendors, rate cards, and reference masters — wipes shipments + all their children,
    * invoices/ledger/notes/claims, the per-customer billing config, serviceability/service

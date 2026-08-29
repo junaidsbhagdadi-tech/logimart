@@ -284,6 +284,33 @@ export class ShipmentsService {
     return { total: rows.length, created: results.filter((r) => r.ok).length, results };
   }
 
+  /**
+   * Super-admin: permanently delete the given AWBs and all their child records (pieces, scans,
+   * PODs, invoice lines, notes, claims). FK-safe. Invoices themselves are kept (only the lines
+   * for these shipments are removed). Used by the "select + delete" controls on the AWB list.
+   */
+  async bulkDelete(awbs: string[]) {
+    const list = (awbs || []).map((a) => String(a).trim().toUpperCase()).filter(Boolean);
+    if (!list.length) return { ok: true, deleted: 0, detail: {} };
+    const shipments = await this.prisma.shipment.findMany({ where: { awb: { in: list } }, select: { id: true, awb: true } });
+    const sIds = shipments.map((s) => s.id);
+    const awbList = shipments.map((s) => s.awb);
+    if (!sIds.length) return { ok: true, deleted: 0, detail: {} };
+    const pieces = await this.prisma.shipmentPiece.findMany({ where: { shipmentId: { in: sIds } }, select: { id: true } });
+    const pieceIds = pieces.map((x) => x.id);
+    const r: Record<string, number> = {};
+    const del = async (k: string, fn: () => Promise<{ count: number }>) => { r[k] = (await fn()).count; };
+    await del('scanEvents', () => this.prisma.scanEvent.deleteMany({ where: { pieceId: { in: pieceIds } } }));
+    await del('scanLogs', () => this.prisma.scanLog.deleteMany({ where: { awb: { in: awbList } } }));
+    await del('pods', () => this.prisma.pod.deleteMany({ where: { shipmentId: { in: sIds } } }));
+    await del('invoiceLines', () => this.prisma.invoiceLineItem.deleteMany({ where: { shipmentId: { in: sIds } } }));
+    await del('debitCreditNotes', () => this.prisma.debitCreditNote.deleteMany({ where: { shipmentId: { in: sIds } } }));
+    await del('claims', () => this.prisma.claim.deleteMany({ where: { shipmentId: { in: sIds } } }));
+    await del('shipmentPieces', () => this.prisma.shipmentPiece.deleteMany({ where: { shipmentId: { in: sIds } } }));
+    await del('shipments', () => this.prisma.shipment.deleteMany({ where: { id: { in: sIds } } }));
+    return { ok: true, deleted: shipments.length, detail: r };
+  }
+
   /** Wrong-entry transfer: reassign a mis-booked AWB to the correct customer. Blocked once the
    *  shipment has been invoiced (cancel/rebill the invoice first). Super-admin action. */
   async transfer(awb: string, clientId: number) {

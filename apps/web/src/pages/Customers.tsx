@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, Client } from '../api';
+import { useAuth } from '../auth';
 import { CustomerSubTab } from '../components/CustomerSubTab';
 import { Modal } from '../components/Modal';
 import { RateCardsDialog } from '../components/RateCardsDialog';
@@ -17,6 +18,8 @@ const TABS = ['Personal Information', 'Fuel Surcharges', 'Other Charges', 'Custo
 type Tab = (typeof TABS)[number];
 
 export function Customers() {
+  const { user } = useAuth();
+  const isSuper = user?.role === 'SYS_ADMIN';
   const [clients, setClients] = useState<Client[]>([]);
   const [form, setForm] = useState({ ...blank });
   const [tab, setTab] = useState<Tab>('Personal Information');
@@ -55,24 +58,43 @@ export function Customers() {
   const toggleSelAll = () => setSel(allSelected ? new Set() : new Set(filtered.map((c) => String(c.id))));
 
   const removeOne = async (c: Client) => {
-    if (!confirm(`Delete customer ${c.legalName}? This cannot be undone.`)) return;
+    const warn = isSuper
+      ? `Delete customer ${c.legalName} AND all their shipments, invoices & rate cards? This cannot be undone.`
+      : `Delete customer ${c.legalName}? This cannot be undone.`;
+    if (!confirm(warn)) return;
     setError(''); setMsg('');
-    try { await api.deleteClient(c.id); setMsg(`Deleted ${c.legalName}.`); load(); }
+    try { if (isSuper) await api.bulkDeleteCustomers([c.id]); else await api.deleteClient(c.id); setMsg(`Deleted ${c.legalName}.`); load(); }
     catch (e: any) { setError(e.message); }
   };
 
   const bulkDelete = async () => {
     if (sel.size === 0) return;
-    if (!confirm(`Delete ${sel.size} customer${sel.size > 1 ? 's' : ''}? This cannot be undone. Customers with shipments/invoices are kept (deactivate those instead).`)) return;
+    const ids = Array.from(sel);
+    const warn = isSuper
+      ? `Delete ${ids.length} customer${ids.length > 1 ? 's' : ''} AND all their shipments, invoices & rate cards? This cannot be undone.`
+      : `Delete ${ids.length} customer${ids.length > 1 ? 's' : ''}? Customers with shipments/invoices are kept (deactivate those instead).`;
+    if (!confirm(warn)) return;
     setError(''); setMsg('');
-    let ok = 0; const failed: string[] = [];
-    for (const id of sel) {
-      const c = clients.find((x) => String(x.id) === id);
-      try { await api.deleteClient(id); ok++; }
-      catch (e: any) { failed.push(c?.legalName ?? id); }
-    }
-    setMsg(`Deleted ${ok} customer${ok !== 1 ? 's' : ''}.${failed.length ? ` Kept ${failed.length} with history: ${failed.slice(0, 3).join(', ')}${failed.length > 3 ? '…' : ''}` : ''}`);
-    load();
+    try {
+      if (isSuper) {
+        const r = await api.bulkDeleteCustomers(ids);
+        setMsg(`Deleted ${r.deleted} customer${r.deleted !== 1 ? 's' : ''} and all their data.`);
+      } else {
+        let ok = 0; const failed: string[] = [];
+        for (const id of ids) { const c = clients.find((x) => String(x.id) === id); try { await api.deleteClient(id); ok++; } catch { failed.push(c?.legalName ?? id); } }
+        setMsg(`Deleted ${ok} customer${ok !== 1 ? 's' : ''}.${failed.length ? ` Kept ${failed.length} with history.` : ''}`);
+      }
+      load();
+    } catch (e: any) { setError(e.message); }
+  };
+
+  // Super-admin "start from scratch": wipe ALL customers + shipments (keeps vendors/pincodes/masters/users).
+  const wipeAll = async () => {
+    if (!confirm('⚠ WIPE ALL customers, shipments and invoices from the LIVE database?\n\nKeeps: vendors, pincodes, masters and login users. Everything else (all customers + all AWBs + rate cards) is permanently deleted.\n\nContinue?')) return;
+    if (window.prompt('This cannot be undone. Type WIPE to confirm:') !== 'WIPE') { setMsg('Cancelled — nothing was deleted.'); return; }
+    setError(''); setMsg('Wiping…');
+    try { const r = await api.resetCustomersShipments(); setMsg(`✓ Wiped ${r.totalDeleted} record(s). Kept: ${r.kept.join(', ')}.`); load(); }
+    catch (e: any) { setError(e.message); }
   };
 
   const bulkTemplate = () => {
@@ -168,7 +190,8 @@ export function Customers() {
       {error && <div className="error">{error}</div>}
       {msg && <div className="card" style={{ borderLeft: '4px solid var(--ok)' }}>{msg}</div>}
 
-      <div className="row" style={{ justifyContent: 'flex-end', marginBottom: 4 }}>
+      <div className="row" style={{ justifyContent: 'flex-end', marginBottom: 4, gap: 8 }}>
+        {isSuper && <button className="secondary" style={{ color: 'var(--bad, #c0392b)' }} title="Delete ALL customers + shipments (keeps vendors/pincodes/masters)" onClick={wipeAll}>🧹 Wipe all (start fresh)</button>}
         <button onClick={() => { setEditing(null); setForm({ ...blank }); setTab('Personal Information'); setShowAdd(true); }}>＋ Add Customer</button>
       </div>
 

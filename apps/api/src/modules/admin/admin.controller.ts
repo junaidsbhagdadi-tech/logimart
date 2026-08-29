@@ -23,6 +23,14 @@ export class AdminController {
     return this.admin.clearTestData();
   }
 
+  /** "Start from scratch": delete ALL shipments + ALL customers + their rate config.
+   *  Keeps users, vendors, masters, pincodes. SYS_ADMIN only. */
+  @Post('reset-customers-shipments')
+  @Roles(UserRole.SYS_ADMIN)
+  resetCustomersAndShipments() {
+    return this.admin.resetCustomersAndShipments();
+  }
+
   /** Purge ONE customer's transactional + rate data (keeps the customer). SYS_ADMIN only. */
   @Post('clear-client/:clientId')
   @Roles(UserRole.SYS_ADMIN)

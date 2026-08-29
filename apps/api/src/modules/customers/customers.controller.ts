@@ -29,6 +29,13 @@ export class CustomersController {
     return this.customers.bulkCreate(dto.rows ?? []);
   }
 
+  /** Super-admin: delete selected customers and ALL their data. */
+  @Post('bulk-delete')
+  @Roles(UserRole.SYS_ADMIN)
+  bulkDelete(@Body() dto: { ids: number[] }) {
+    return this.customers.bulkDelete(dto?.ids ?? []);
+  }
+
   // ---- sub-tabs (declared before ':id' catch-all is fine — these have extra segments) ----
   @Get(':id/fuel-surcharges')
   @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)

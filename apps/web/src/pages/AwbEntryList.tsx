@@ -36,8 +36,9 @@ export function AwbEntryList() {
   const [page, setPage] = useState(0);
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
+  const [sel, setSel] = useState<Set<string>>(new Set());
 
-  const load = () => { api.awbList(300).then(setRows).catch((e) => setError(e.message)); };
+  const load = () => { api.awbList(300).then(setRows).catch((e) => setError(e.message)); setSel(new Set()); };
   useEffect(load, []);
 
   const clearAll = async () => {
@@ -68,6 +69,19 @@ export function AwbEntryList() {
 
   const setFilter = (k: string, v: string) => { setFilters((f) => ({ ...f, [k]: v })); setPage(0); };
 
+  // Super-admin select + delete (across the whole filtered set, not just the visible page).
+  const toggleSel = (awb: string) => setSel((s) => { const n = new Set(s); n.has(awb) ? n.delete(awb) : n.add(awb); return n; });
+  const allSelected = filtered.length > 0 && filtered.every((r) => sel.has(r.awb));
+  const toggleSelAll = () => setSel(allSelected ? new Set() : new Set(filtered.map((r) => r.awb)));
+  const deleteSelected = async () => {
+    if (sel.size === 0) return;
+    const awbs = Array.from(sel);
+    if (!confirm(`Permanently delete ${awbs.length} shipment${awbs.length > 1 ? 's' : ''} and all their scans / PODs / invoice lines? This cannot be undone.`)) return;
+    setError(''); setMsg('Deleting…');
+    try { const r = await api.bulkDeleteShipments(awbs); setMsg(`✓ Deleted ${r.deleted} shipment(s).`); load(); }
+    catch (e: any) { setError(e.message); }
+  };
+
   // Excel export of the CURRENTLY FILTERED rows (not just the visible page).
   const exportXls = async () => {
     const XLSX = await import('xlsx');
@@ -93,6 +107,7 @@ export function AwbEntryList() {
             <button className="secondary" onClick={exportXls} disabled={!filtered.length} title="Download the filtered list to Excel">⬇ Excel</button>
           </div>
           <div className="row" style={{ gap: 8 }}>
+            {isSuper && sel.size > 0 && <button style={{ background: 'var(--bad, #c0392b)', color: '#fff' }} title="Delete the selected shipments" onClick={deleteSelected}>🗑 Delete {sel.size} selected</button>}
             {isSuper && <button className="secondary" style={{ color: 'var(--danger, #c0392b)' }} title="Delete ALL shipments + invoices (keeps config)" onClick={clearAll}>🧹 Clear test shipments</button>}
             <Link to="/bulk"><button className="secondary" title="Bulk import shipments from Excel">📥 Excel import</button></Link>
             <Link to="/create"><button>➕ New Shipment</button></Link>
@@ -102,8 +117,12 @@ export function AwbEntryList() {
         <div style={{ overflowX: 'auto' }}>
           <table>
             <thead>
-              <tr>{COLS.map((c) => <th key={c.key}>{c.label}</th>)}<th>Action</th></tr>
               <tr>
+                {isSuper && <th style={{ width: 32 }}><input type="checkbox" checked={allSelected} onChange={toggleSelAll} style={{ width: 'auto' }} title="Select all (filtered)" /></th>}
+                {COLS.map((c) => <th key={c.key}>{c.label}</th>)}<th>Action</th>
+              </tr>
+              <tr>
+                {isSuper && <th></th>}
                 {COLS.map((c) => (
                   <th key={c.key} style={{ padding: 4 }}>
                     <input value={filters[c.key] || ''} onChange={(e) => setFilter(c.key, e.target.value)} placeholder={c.label}
@@ -115,7 +134,8 @@ export function AwbEntryList() {
             </thead>
             <tbody>
               {slice.map((r) => (
-                <tr key={r.awb}>
+                <tr key={r.awb} style={sel.has(r.awb) ? { background: 'var(--bg-soft, #f2f4f7)' } : undefined}>
+                  {isSuper && <td><input type="checkbox" checked={sel.has(r.awb)} onChange={() => toggleSel(r.awb)} style={{ width: 'auto' }} /></td>}
                   <td><Link to={`/shipments/${r.awb}`}><strong>{r.awb}</strong></Link>{r.invoiced && <span title="Invoiced — locked for editing" style={{ marginLeft: 6 }}>🔒</span>}</td>
                   <td>{fmtDate(r.bookDate)}</td>
                   <td>{r.shipperName}</td>
@@ -133,7 +153,7 @@ export function AwbEntryList() {
                   <td><Link to={`/shipments/${r.awb}`} className="muted" style={{ fontSize: 12 }}>open →</Link></td>
                 </tr>
               ))}
-              {slice.length === 0 && <tr><td colSpan={COLS.length + 1} className="muted">No entries match.</td></tr>}
+              {slice.length === 0 && <tr><td colSpan={COLS.length + (isSuper ? 2 : 1)} className="muted">No entries match.</td></tr>}
             </tbody>
           </table>
         </div>

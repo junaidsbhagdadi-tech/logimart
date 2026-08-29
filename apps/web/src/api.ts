@@ -362,6 +362,9 @@ export const api = {
   salesByRep: (from?: string, to?: string) =>
     request<{ from: string; to: string; count: number; totals: any; rows: any[] }>(`/api/v1/billing/mis/sales-by-rep${from || to ? `?${from ? 'from=' + from : ''}${from && to ? '&' : ''}${to ? 'to=' + to : ''}` : ''}`),
   clearShipments: () => request<{ ok: boolean; totalDeleted: number; cleared: Record<string, number>; kept: string[] }>('/api/v1/admin/clear-shipments', { method: 'POST' }),
+  resetCustomersShipments: () => request<{ ok: boolean; totalDeleted: number; cleared: Record<string, number>; kept: string[] }>('/api/v1/admin/reset-customers-shipments', { method: 'POST' }),
+  bulkDeleteShipments: (awbs: string[]) => request<{ ok: boolean; deleted: number; detail: Record<string, number> }>('/api/v1/shipments/bulk-delete', { method: 'POST', body: JSON.stringify({ awbs }) }),
+  bulkDeleteCustomers: (ids: (string | number)[]) => request<{ ok: boolean; deleted: number; detail: Record<string, number> }>('/api/v1/clients/bulk-delete', { method: 'POST', body: JSON.stringify({ ids: ids.map(Number) }) }),
   misSales: (from?: string, to?: string) =>
     request<{ from: string; to: string; count: number; totals: any; rows: { code: string; customer: string; shipments: number; pcs: number; actlKg: number; chrgKg: number; totalSales: number; fuel: number; tax: number; netSales: number; billed: number; unbilled: number; delivered: number; rto: number; undelivered: number; pending: number; cashReceived: number; outstanding: number }[] }>(
       `/api/v1/billing/mis/sales${from || to ? `?${from ? 'from=' + from : ''}${from && to ? '&' : ''}${to ? 'to=' + to : ''}` : ''}`),

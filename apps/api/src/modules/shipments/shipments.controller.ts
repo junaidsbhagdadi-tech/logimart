@@ -36,6 +36,13 @@ export class ShipmentsController {
     return this.shipments.bulkCreate(rows);
   }
 
+  /** Super-admin: delete selected AWBs (and their children). Used by the AWB list select/delete. */
+  @Post('bulk-delete')
+  @Roles(UserRole.SYS_ADMIN)
+  bulkDelete(@Body() dto: { awbs: string[] }) {
+    return this.shipments.bulkDelete(dto?.awbs || []);
+  }
+
   /** List recent shipments. Client admins see only their own; staff see all. */
   @Get()
   list(@Req() req: any, @Query('limit') limit?: string) {

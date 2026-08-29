@@ -123,6 +123,53 @@ export class CustomersService {
     return this.prisma.b2bClient.findMany({ orderBy: { legalName: 'asc' } });
   }
 
+  /**
+   * Super-admin: permanently delete the given customers and ALL their data — shipments + children,
+   * invoices/ledger/notes/claims, rate cards/slabs, per-customer charges/fuel/volumetric, addresses,
+   * pickups. Vendor-owned rate cards are untouched. Login users linked to a deleted customer are
+   * detached (clientId nulled), not removed. FK-safe order. Used by the Customers select/delete.
+   */
+  async bulkDelete(ids: number[]) {
+    const cids = (ids || []).map((x) => BigInt(x));
+    if (!cids.length) return { ok: true, deleted: 0, detail: {} };
+    const r: Record<string, number> = {};
+    const del = async (k: string, fn: () => Promise<{ count: number }>) => { r[k] = (await fn()).count; };
+
+    const shipments = await this.prisma.shipment.findMany({ where: { clientId: { in: cids } }, select: { id: true, awb: true } });
+    const sIds = shipments.map((s) => s.id);
+    const awbs = shipments.map((s) => s.awb);
+    const pieces = await this.prisma.shipmentPiece.findMany({ where: { shipmentId: { in: sIds } }, select: { id: true } });
+    const pieceIds = pieces.map((x) => x.id);
+    const invoices = await this.prisma.invoice.findMany({ where: { clientId: { in: cids } }, select: { id: true } });
+    const invIds = invoices.map((i) => i.id);
+
+    await del('scanEvents', () => this.prisma.scanEvent.deleteMany({ where: { pieceId: { in: pieceIds } } }));
+    await del('scanLogs', () => this.prisma.scanLog.deleteMany({ where: { awb: { in: awbs } } }));
+    await del('pods', () => this.prisma.pod.deleteMany({ where: { shipmentId: { in: sIds } } }));
+    await del('invoiceLines', () => this.prisma.invoiceLineItem.deleteMany({ where: { OR: [{ shipmentId: { in: sIds } }, { invoiceId: { in: invIds } }] } }));
+    await del('ledger', () => this.prisma.ledgerEntry.deleteMany({ where: { clientId: { in: cids } } }));
+    await del('debitCreditNotes', () => this.prisma.debitCreditNote.deleteMany({ where: { clientId: { in: cids } } }));
+    await del('claims', () => this.prisma.claim.deleteMany({ where: { clientId: { in: cids } } }));
+    await del('invoices', () => this.prisma.invoice.deleteMany({ where: { clientId: { in: cids } } }));
+    await del('shipmentPieces', () => this.prisma.shipmentPiece.deleteMany({ where: { shipmentId: { in: sIds } } }));
+    await del('shipments', () => this.prisma.shipment.deleteMany({ where: { clientId: { in: cids } } }));
+    await del('pickups', () => this.prisma.pickupRequest.deleteMany({ where: { clientId: { in: cids } } }));
+    await del('customerAddresses', () => this.prisma.customerAddress.deleteMany({ where: { clientId: { in: cids } } }));
+    await del('customerFuel', () => this.prisma.customerFuelSurcharge.deleteMany({ where: { clientId: { in: cids } } }));
+    await del('customerCharges', () => this.prisma.customerOtherCharge.deleteMany({ where: { clientId: { in: cids } } }));
+    await del('customerVolumetric', () => this.prisma.customerVolumetric.deleteMany({ where: { clientId: { in: cids } } }));
+    await del('rateSlabs', () => this.prisma.clientRateSlab.deleteMany({ where: { clientId: { in: cids } } }));
+    await del('customerRateCards', () => this.prisma.customerRateCard.deleteMany({ where: { clientId: { in: cids } } })); // vendor cards untouched
+    await del('legacyRateCards', () => this.prisma.rateCard.deleteMany({ where: { clientId: { in: cids } } }));
+    await del('ftlRates', () => this.prisma.ftlRate.deleteMany({ where: { clientId: { in: cids } } }));
+
+    // detach child-account links + any portal users, then remove the customers
+    await this.prisma.b2bClient.updateMany({ where: { parentAccountId: { in: cids } }, data: { parentAccountId: null } });
+    await this.prisma.user.updateMany({ where: { clientId: { in: cids } }, data: { clientId: null } });
+    await del('customers', () => this.prisma.b2bClient.deleteMany({ where: { id: { in: cids } } }));
+    return { ok: true, deleted: r['customers'] || 0, detail: r };
+  }
+
   async get(id: number) {
     const c = await this.prisma.b2bClient.findUnique({ where: { id: BigInt(id) } });
     if (!c) throw new NotFoundException('Client not found');
