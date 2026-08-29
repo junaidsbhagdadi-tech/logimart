@@ -2,6 +2,7 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { PieceStatus, Prisma, ShipmentStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { StorageService } from '../storage/storage.service';
 import { CreatePodDto } from './dto/create-pod.dto';
 
 @Injectable()
@@ -9,6 +10,7 @@ export class PodsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly storage: StorageService,
   ) {}
 
   /**
@@ -45,14 +47,19 @@ export class PodsService {
       });
     }
 
+    // Offload signature / stamp images to Spaces (keys), inline fallback when unconfigured.
+    const [signatureUrl, stampPhotoUrl] = await Promise.all([
+      this.storage.store(dto.signatureUrl, 'sig'),
+      this.storage.store(dto.stampPhotoUrl, 'stamp'),
+    ]);
     const pod = await this.prisma.pod.create({
       data: {
         shipmentId: shipment.id,
         deliveredById,
         gpsLat: new Prisma.Decimal(dto.gpsLat),
         gpsLng: new Prisma.Decimal(dto.gpsLng),
-        signatureUrl: dto.signatureUrl,
-        stampPhotoUrl: dto.stampPhotoUrl,
+        signatureUrl,
+        stampPhotoUrl,
         piecesDelivered: dto.piecesDelivered,
         isShort,
         deliveredAt: new Date(),

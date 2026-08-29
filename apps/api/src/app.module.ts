@@ -4,6 +4,7 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { PrismaModule } from './prisma/prisma.module';
+import { StorageModule } from './modules/storage/storage.module';
 import { AppController } from './app.controller';
 import { AuthModule } from './modules/auth/auth.module';
 import { ShipmentsModule } from './modules/shipments/shipments.module';
@@ -65,6 +66,7 @@ const webDist = join(__dirname, '..', '..', 'web', 'dist');
         ]
       : []),
     PrismaModule,
+    StorageModule,
     AuthModule,
     ShipmentsModule,
     LabelsModule,

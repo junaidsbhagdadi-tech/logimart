@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { ShipmentStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RateService } from '../billing/rate.service';
+import { StorageService } from '../storage/storage.service';
 
 // Milestone lifecycle. Each scan advances the shipment's statusCode and mirrors the coarse
 // ShipmentStatus enum (which existing screens/reports read).
@@ -41,7 +42,7 @@ const TO_ENUM: Record<string, ShipmentStatus> = {
 
 @Injectable()
 export class LifecycleService {
-  constructor(private readonly prisma: PrismaService, private readonly rates: RateService) {}
+  constructor(private readonly prisma: PrismaService, private readonly rates: RateService, private readonly storage: StorageService) {}
 
   /** Record a milestone scan for one or more AWBs. DLD requires a POD image. Terminal states
    *  (DLD/RTD/CAN) are locked once set — only a super admin can move a shipment off them. */
@@ -79,12 +80,15 @@ export class LifecycleService {
         const dest = s.destHub?.code || (s.destZone ? String(s.destZone).toUpperCase() : '') || (s.consigneeCity ? String(s.consigneeCity).replace(/\s+/g, '').slice(0, 3).toUpperCase() : 'GEN');
         autoBag = `${dest}-${ymd}`;
       }
+      // Offload the proof image to Spaces (returns an object key); falls back to the inline
+      // data URI when Spaces isn't configured, so behaviour is unchanged on a bare deploy.
+      const podStored = dto.podDataUrl ? await this.storage.store(dto.podDataUrl, code === 'PKD' ? 'pickup' : 'pod') : undefined;
       await this.prisma.shipment.update({
         where: { id: s.id },
         data: {
           statusCode: code, statusAt: at, status: TO_ENUM[code],
-          ...(code === 'DLD' && dto.podDataUrl ? { podUrl: dto.podDataUrl } : {}),
-          ...(code === 'PKD' && dto.podDataUrl ? { pickupPodUrl: dto.podDataUrl } : {}),
+          ...(code === 'DLD' && podStored ? { podUrl: podStored } : {}),
+          ...(code === 'PKD' && podStored ? { pickupPodUrl: podStored } : {}),
           ...(dto.location ? { currentLocation: dto.location } : {}),
           ...(dto.bagCode ? { bagCode: dto.bagCode } : autoBag ? { bagCode: autoBag } : {}),
           ...(['UDL', 'RTO', 'CAN'].includes(code) ? { exceptionFlag: dto.remark || code } : {}),
@@ -170,8 +174,8 @@ export class LifecycleService {
       tripRoute: [s.originHub?.code, s.destHub?.code].filter(Boolean).join(' → ') || null,
       pickupRider: riderOf('PKD'),
       deliveryRider: riderOf('OFD', 'DLD'),
-      deliveryPod: s.podUrl ?? null,
-      pickupPod: s.pickupPodUrl ?? null,
+      deliveryPod: await this.storage.resolve(s.podUrl),
+      pickupPod: await this.storage.resolve(s.pickupPodUrl),
       consignee: {
         name: s.consigneeName, phone: s.consigneePhone, contact: (s as any).consigneeContact ?? null,
         address: s.consigneeAddress, city: s.consigneeCity, state: (s as any).consigneeState ?? null,
