@@ -26,7 +26,7 @@ else
   pm2 start "node dist/main.js" --name logimart --cwd apps/api
 fi
 pm2 save
-pm2 startup systemd -u "$USER" --hp "$HOME" | tail -1 || true
+pm2 startup systemd -u "${USER:-root}" --hp "${HOME:-/root}" | tail -1 || true
 
 echo ""
 echo "Deployed. App on http://127.0.0.1:3000  (nginx serves https://erp.logimart.co.in)"
