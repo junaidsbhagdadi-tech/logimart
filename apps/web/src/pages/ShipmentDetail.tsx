@@ -102,6 +102,8 @@ export function ShipmentDetail() {
 
   const forward = async () => {
     setError(''); setMsg('');
+    // A forwarding AWB without a vendor bills SELF-network rates. Require the carrier be picked.
+    if (fwd.forwardingAwb && !fwd.vendor && !(s?.vendor)) { setError('Select the carrier/vendor before saving a forwarding AWB — the vendor drives billing rates.'); return; }
     try { const r = await api.setForwarding(awb!, { vendor: fwd.vendor || undefined, forwardingAwb: fwd.forwardingAwb || undefined }); setMsg(r.message); load(); }
     catch (e: any) { setError(e.message); }
   };
@@ -377,8 +379,8 @@ export function ShipmentDetail() {
           <p className="muted" style={{ fontSize: 12, marginTop: -6 }}>Record which vendor carried this AWB and the forwarding (carrier) AWB reference. BlueDart auto-fetches once integrated.</p>
           <div className="grid cols-3" style={{ gap: 12, alignItems: 'flex-end' }}>
             <div>
-              <label>Vendor</label>
-              <select value={fwd.vendor} onChange={(e) => setFwd((f) => ({ ...f, vendor: e.target.value }))}>
+              <label>Vendor <span style={{ color: 'var(--danger, #c0392b)' }}>*</span></label>
+              <select value={fwd.vendor} onChange={(e) => setFwd((f) => ({ ...f, vendor: e.target.value }))} style={fwd.forwardingAwb && !fwd.vendor ? { borderColor: 'var(--danger, #c0392b)' } : undefined}>
                 <option value="">— select —</option>
                 {vendors.map((v) => <option key={v.id} value={v.vendorCode || v.name}>{v.vendorCode} — {v.name}</option>)}
               </select>

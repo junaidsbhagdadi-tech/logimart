@@ -132,6 +132,10 @@ export class ShipmentsService {
     if (fwd) {
       const dup = await this.prisma.shipment.findFirst({ where: { forwardingAwb: { equals: fwd, mode: 'insensitive' } }, select: { awb: true } });
       if (dup) throw new ConflictException(`Forwarding no ${fwd} already exists (on AWB ${dup.awb}).`);
+      // A forwarding/carrier AWB must carry a vendor — the vendor drives billing rates. Booking one
+      // with a blank vendor would silently bill SELF-network rates. Require the carrier at booking too.
+      if (!(dto.vendor && String(dto.vendor).trim()))
+        throw new BadRequestException(`Forwarding no ${fwd} needs a vendor — set the carrier so it isn't billed at SELF-network rates.`);
     }
     const awb = manualAwb || (await this.nextAwb());
     const total = dto.pieces.length;
@@ -562,9 +566,15 @@ export class ShipmentsService {
    * matching. (BlueDart auto-fetches this once the integration is live.)
    */
   async setForwarding(awb: string, dto: { vendor?: string; forwardingAwb?: string }) {
-    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true } });
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, vendor: true } });
     if (!s) throw new NotFoundException(`AWB ${awb} not found`);
     const forwardingAwb = dto.forwardingAwb ? String(dto.forwardingAwb).trim() : null;
+    // A forwarding (carrier) AWB must carry a vendor — the vendor is what drives billing network/rates.
+    // Recording just the carrier AWB with a blank vendor silently bills SELF rates. Require one here
+    // (either supplied now or already on the shipment) so a missed vendor can't mis-price the invoice.
+    const vendor = dto.vendor ? String(dto.vendor).trim() : '';
+    if (forwardingAwb && !vendor && !(s.vendor && s.vendor.trim()))
+      throw new BadRequestException('Select the carrier/vendor before recording a forwarding AWB — the vendor drives billing rates (a blank vendor bills SELF-network rates).');
     const updated = await this.prisma.shipment.update({
       where: { id: s.id },
       data: {
