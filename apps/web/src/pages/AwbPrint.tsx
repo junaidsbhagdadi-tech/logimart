@@ -5,6 +5,8 @@ import { Barcode } from '../components/Barcode';
 
 const rup = (v: any) => (v == null || v === '' ? '' : Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 const d10 = (v: any) => (v ? new Date(v).toLocaleDateString('en-GB') : '');
+// date + 24h time (dd/mm/yyyy HH:MM) for the booking/pickup stamp
+const dt10 = (v: any) => (v ? `${new Date(v).toLocaleDateString('en-GB')} ${new Date(v).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })}` : '');
 
 /** Physical consignment note / AWB print, per product format:
  *  DP → ExcelEx Express · APEX → Blue Dart Apex · SURFACE → Blue Dart Surfaceline.
@@ -108,7 +110,7 @@ function ExcelExNote({ s, q }: { s: any; q: any }) {
                 <td>{(s.pieces || []).slice(0, 4).map((p: any, i: number) => <div key={i}>{p.lengthCm || '-'}×{p.widthCm || '-'}×{p.heightCm || '-'}</div>)}</td>
               </tr>
             </tbody></table>
-            <div className="strip">DATE: {d10(s.createdAt)} &nbsp;&nbsp; Invoice No: {s.referenceNo || ''}</div>
+            <div className="strip">DATE: {dt10(s.createdAt)} &nbsp;&nbsp; Invoice No: {s.referenceNo || ''}</div>
             <div className="strip">NATURE: {s.isCommercial ? 'COMMERCIAL' : 'NON-COMMERCIAL'} &nbsp;&nbsp; {s.paymentTerm === 'TO_PAY' ? '☑ TO-PAY' : '☑ CASH/CREDIT'}</div>
             <div className="receiver">
               <b>Receiver's Details (POD)</b>
@@ -200,7 +202,7 @@ function CargoNote({ s, q, surface }: { s: any; q: any; surface: boolean }) {
                 </td>
               </tr>
             </tbody></table>
-            <div className="strip">P/U Date: {d10(s.createdAt)} &nbsp; Pcs: {s.pieceCount} &nbsp; Decl. Value: {rup(s.declaredValue || s.shipmentValue)}</div>
+            <div className="strip">P/U Date: {dt10(s.createdAt)} &nbsp; Pcs: {s.pieceCount} &nbsp; Decl. Value: {rup(s.declaredValue || s.shipmentValue)}</div>
             <div className="strip">Description: {s.goodsDesc || ''} &nbsp; Fwd AWB: {s.forwardingAwb || s.bdWaybill || ''} &nbsp; Ref: {s.referenceNo || ''}</div>
             <div style={{ textAlign: 'center', margin: '6px 0' }}><Barcode value={s.awb} /><div className="awbno">{s.awb}</div></div>
             <div className="strip">Transaction Type: {s.paymentTerm === 'TO_PAY' ? 'To-Pay' : 'Cash / Credit'} &nbsp; {surface ? 'ODA ☐  SUB PRODUCT CODE ____' : 'EDL ☐  PACK TYPE ____'}</div>

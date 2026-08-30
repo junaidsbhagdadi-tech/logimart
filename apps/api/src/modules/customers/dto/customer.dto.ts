@@ -34,7 +34,10 @@ export class CreateClientDto {
   @IsOptional() @IsString() salesPerson?: string;
   @IsOptional() @IsString() salesPersonMobile?: string;
   @IsOptional() @IsString() salesPersonEmail?: string;
-  @IsOptional() @IsString() accountType?: string; // CREDIT | WALLET
+  @IsOptional() @IsString() csPerson?: string;         // customer-service owner for this account
+  @IsOptional() @IsString() csPersonMobile?: string;
+  @IsOptional() @IsString() csPersonEmail?: string;
+  @IsOptional() @IsString() accountType?: string; // CREDIT | WALLET | CASH | CARD
   @IsOptional() @IsString() billingCycle?: string; // MONTHLY | FORTNIGHTLY
   @IsOptional() @IsBoolean() allowSameGstin?: boolean;
   @IsOptional() @IsNumber() @Min(0) creditLimit?: number;
@@ -78,5 +81,13 @@ export class UpdateClientDto {
   @IsOptional() @IsBoolean() isCash?: boolean;
   @IsOptional() @IsBoolean() canCheckRates?: boolean;
   @IsOptional() @IsNumber() commissionPct?: number;
+  @IsOptional() @IsString() salesPerson?: string;
+  @IsOptional() @IsString() salesPersonMobile?: string;
+  @IsOptional() @IsString() salesPersonEmail?: string;
+  @IsOptional() @IsString() csPerson?: string;
+  @IsOptional() @IsString() csPersonMobile?: string;
+  @IsOptional() @IsString() csPersonEmail?: string;
+  @IsOptional() @IsString() accountType?: string; // CREDIT | WALLET | CASH | CARD
+  @IsOptional() @IsString() billingCycle?: string;
   @IsOptional() @IsInt() parentAccountId?: number | null; // group under a head-office account; null/0 clears
 }

@@ -10,6 +10,7 @@ const blank = {
   legalName: '', customerType: 'Domestic', accountCode: '', contactPhone: '',
   contactEmail: '', email2: '', gstin: '', pan: '', tanNo: '', iecCode: '',
   addressLine: '', pincode: '', city: '', state: '', salesPerson: '', salesPersonMobile: '', salesPersonEmail: '',
+  csPerson: '', csPersonMobile: '', csPersonEmail: '',
   accountType: 'CREDIT', billingCycle: 'MONTHLY', allowSameGstin: false,
   creditLimit: '', creditDays: '30', isCash: false, canCheckRates: false, commissionPct: '', parentAccountId: '',
 };
@@ -44,6 +45,28 @@ export function Customers() {
   const [q, setQ] = useState('');
   const load = () => { api.listClients().then(setClients).catch((e) => setError(e.message)); setSel(new Set()); };
   useEffect(load, []);
+
+  // Configurable customer-code series (super-admin) — CONFIG/CUSTOMER_CODE master { prefix, nextNo, pad }.
+  const [codeCfg, setCodeCfg] = useState({ prefix: '', nextNo: '1', pad: '4', active: false });
+  const [showCodeCfg, setShowCodeCfg] = useState(false);
+  useEffect(() => {
+    if (!isSuper) return;
+    api.listMaster('CONFIG').then((rows) => {
+      const r = rows.find((x) => x.code === 'CUSTOMER_CODE');
+      if (r) setCodeCfg({ prefix: String(r.attrs?.prefix ?? ''), nextNo: String(r.attrs?.nextNo ?? '1'), pad: String(r.attrs?.pad ?? '4'), active: r.active !== false });
+    }).catch(() => {});
+  }, [isSuper]);
+  const saveCodeCfg = async () => {
+    setError(''); setMsg('');
+    const prefix = codeCfg.prefix.trim().toUpperCase();
+    const nextNo = Math.max(1, Number(codeCfg.nextNo) || 1);
+    const pad = Math.max(1, Math.min(10, Number(codeCfg.pad) || 4));
+    try {
+      await api.saveMaster('CONFIG', { code: 'CUSTOMER_CODE', name: prefix || 'Customer code series', attrs: { prefix, nextNo, pad }, active: codeCfg.active && !!prefix });
+      setMsg(codeCfg.active && prefix ? `Customer codes will now generate as ${prefix}${String(nextNo).padStart(pad, '0')}, ${prefix}${String(nextNo + 1).padStart(pad, '0')}…` : 'Custom code series disabled — codes fall back to name-initials.');
+      setShowCodeCfg(false);
+    } catch (e: any) { setError(e.message); }
+  };
 
   // Search across code / name / GSTIN / PAN / city / contact.
   const filtered = clients.filter((c) => {
@@ -136,6 +159,7 @@ export function Customers() {
       gstin: (c as any).gstin ?? '', pan: (c as any).pan ?? '', tanNo: (c as any).tanNo ?? '', iecCode: (c as any).iecCode ?? '',
       addressLine: (c as any).addressLine ?? '', pincode: (c as any).pincode ?? '', city: (c as any).city ?? '', state: (c as any).state ?? '',
       salesPerson: (c as any).salesPerson ?? '', salesPersonMobile: (c as any).salesPersonMobile ?? '', salesPersonEmail: (c as any).salesPersonEmail ?? '',
+      csPerson: (c as any).csPerson ?? '', csPersonMobile: (c as any).csPersonMobile ?? '', csPersonEmail: (c as any).csPersonEmail ?? '',
       accountType: (c as any).accountType ?? 'CREDIT', billingCycle: (c as any).billingCycle ?? 'MONTHLY',
       allowSameGstin: !!(c as any).allowSameGstin, creditLimit: String((c as any).creditLimit ?? ''), creditDays: String((c as any).creditDays ?? '30'), isCash: !!(c as any).isCash, canCheckRates: !!(c as any).canCheckRates, commissionPct: String((c as any).commissionPct ?? ''),
       parentAccountId: (c as any).parentAccountId != null ? String((c as any).parentAccountId) : '',
@@ -163,6 +187,9 @@ export function Customers() {
       salesPerson: form.salesPerson || undefined,
       salesPersonMobile: form.salesPersonMobile || undefined,
       salesPersonEmail: form.salesPersonEmail || undefined,
+      csPerson: form.csPerson || undefined,
+      csPersonMobile: form.csPersonMobile || undefined,
+      csPersonEmail: form.csPersonEmail || undefined,
       accountType: form.accountType || undefined,
       billingCycle: form.billingCycle || undefined,
       allowSameGstin: form.allowSameGstin,
@@ -193,9 +220,29 @@ export function Customers() {
       {msg && <div className="card" style={{ borderLeft: '4px solid var(--ok)' }}>{msg}</div>}
 
       <div className="row" style={{ justifyContent: 'flex-end', marginBottom: 4, gap: 8 }}>
+        {isSuper && <button className="secondary" title="Configure the auto-generated customer-code series (prefix + running number)" onClick={() => setShowCodeCfg((v) => !v)}>🔢 Code series</button>}
         {isSuper && <button className="secondary" style={{ color: 'var(--bad, #c0392b)' }} title="Delete ALL customers + shipments (keeps vendors/pincodes/masters)" onClick={wipeAll}>🧹 Wipe all (start fresh)</button>}
         <button onClick={() => { setEditing(null); setForm({ ...blank }); setTab('Personal Information'); setShowAdd(true); }}>＋ Add Customer</button>
       </div>
+
+      {isSuper && showCodeCfg && (
+        <div className="card" style={{ borderLeft: '4px solid var(--brand)' }}>
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+            <strong>🔢 Customer code series</strong>
+            <label className="row" style={{ gap: 6, fontSize: 13, margin: 0 }}><input type="checkbox" checked={codeCfg.active} onChange={(e) => setCodeCfg((c) => ({ ...c, active: e.target.checked }))} /> Use this series</label>
+          </div>
+          <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>When on, new customer codes auto-generate as <b>Prefix + running number</b> (skipping any code already taken). When off, codes fall back to name-initials + count. Manually-entered codes are always honoured.</p>
+          <div className="grid cols-3" style={{ gap: 12, alignItems: 'flex-end' }}>
+            <div><label>Prefix</label><input value={codeCfg.prefix} onChange={(e) => setCodeCfg((c) => ({ ...c, prefix: e.target.value.toUpperCase() }))} placeholder="e.g. LMT" /></div>
+            <div><label>Next number</label><input type="number" value={codeCfg.nextNo} onChange={(e) => setCodeCfg((c) => ({ ...c, nextNo: e.target.value }))} placeholder="e.g. 1" /></div>
+            <div><label>Digits (padding)</label><input type="number" value={codeCfg.pad} onChange={(e) => setCodeCfg((c) => ({ ...c, pad: e.target.value }))} placeholder="e.g. 4" /></div>
+          </div>
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
+            <span className="muted" style={{ fontSize: 12 }}>Next code preview: <b>{(codeCfg.prefix.trim().toUpperCase() || '—')}{String(Math.max(1, Number(codeCfg.nextNo) || 1)).padStart(Math.max(1, Math.min(10, Number(codeCfg.pad) || 4)), '0')}</b></span>
+            <button onClick={saveCodeCfg}>Save series</button>
+          </div>
+        </div>
+      )}
 
       {showAdd && <Modal title="Customer" width={980} onClose={() => setShowAdd(false)}>
         <div className="tabbar">
@@ -243,11 +290,18 @@ export function Customers() {
               <div><label>Commission % <span className="muted">(this customer)</span></label><input type="number" value={form.commissionPct} onChange={(e) => set('commissionPct', e.target.value)} placeholder="e.g. 2.5" /></div>
             </div>
 
+            <div style={{ marginTop: 14 }}><label>CS Person <span className="muted">(customer-service owner, optional)</span></label><input value={form.csPerson} onChange={(e) => set('csPerson', e.target.value)} placeholder="e.g. Priya Nair" /></div>
+            <div className="grid cols-2" style={{ gap: 12, marginTop: 12 }}>
+              <div><label>CS Person Mobile</label><input value={form.csPersonMobile} onChange={(e) => set('csPersonMobile', e.target.value)} placeholder="e.g. 9876543210" /></div>
+              <div><label>CS Person Email</label><input type="email" value={form.csPersonEmail} onChange={(e) => set('csPersonEmail', e.target.value)} placeholder="e.g. priya@company.com" /></div>
+            </div>
+
             <div style={{ marginTop: 16 }}>
               <label>Account Type</label>
               <div className="row" style={{ gap: 10 }}>
                 <button type="button" className={form.accountType === 'CREDIT' ? '' : 'secondary'} onClick={() => set('accountType', 'CREDIT')}>Credit Account<div style={{ fontSize: 11, fontWeight: 400 }}>Post-paid — invoice each cycle</div></button>
                 <button type="button" className={form.accountType === 'WALLET' ? '' : 'secondary'} onClick={() => set('accountType', 'WALLET')}>Wallet Account<div style={{ fontSize: 11, fontWeight: 400 }}>Pre-paid — balance deducted</div></button>
+                <button type="button" className={form.accountType === 'CARD' ? '' : 'secondary'} onClick={() => set('accountType', 'CARD')}>Card Account<div style={{ fontSize: 11, fontWeight: 400 }}>Paid by card — post-paid</div></button>
               </div>
             </div>
 

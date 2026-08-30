@@ -9,6 +9,27 @@ export class CustomersService {
 
   /** Account code from the legal-name initials + a sequence, if not supplied. */
   private async nextAccountCode(legalName: string): Promise<string> {
+    // Configurable series: a CONFIG/CUSTOMER_CODE master with attrs { prefix, nextNo, pad } drives a
+    // fixed running series (e.g. LMT + 0001). When set, use & advance it; the unique constraint on
+    // accountCode still guards against a rare race. When unset, fall back to the initials scheme.
+    const cfg = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'CONFIG', code: 'CUSTOMER_CODE' } } });
+    const a: any = cfg?.active ? (cfg.attrs ?? {}) : null;
+    if (a && String(a.prefix ?? '').trim()) {
+      const prefix = String(a.prefix).trim().toUpperCase();
+      const pad = Math.max(1, Math.min(10, Number(a.pad) || 4));
+      let n = Math.max(1, Number(a.nextNo) || 1);
+      // Skip any codes already taken (e.g. imported), then reserve this one by advancing the series.
+      // Bounded loop so a misconfigured series can't spin forever.
+      for (let i = 0; i < 10000; i++) {
+        const code = `${prefix}${String(n).padStart(pad, '0')}`;
+        const taken = await this.prisma.b2bClient.findUnique({ where: { accountCode: code }, select: { id: true } });
+        if (!taken) {
+          await this.prisma.masterEntry.update({ where: { type_code: { type: 'CONFIG', code: 'CUSTOMER_CODE' } }, data: { attrs: { ...a, prefix, pad, nextNo: n + 1 } } });
+          return code;
+        }
+        n++;
+      }
+    }
     const initials = legalName
       .split(/\s+/)
       .map((w) => w[0])
@@ -68,6 +89,9 @@ export class CustomersService {
           salesPerson: dto.salesPerson,
           salesPersonMobile: dto.salesPersonMobile,
           salesPersonEmail: dto.salesPersonEmail,
+          csPerson: dto.csPerson,
+          csPersonMobile: dto.csPersonMobile,
+          csPersonEmail: dto.csPersonEmail,
           accountType: dto.accountType ?? undefined,
           billingCycle: dto.billingCycle ?? undefined,
           allowSameGstin: dto.allowSameGstin ?? false,

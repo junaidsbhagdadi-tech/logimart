@@ -98,7 +98,10 @@ model B2bClient {
   salesPerson       String?
   salesPersonMobile String?   // for MIS report SMS/notifications (SMTP wiring later)
   salesPersonEmail  String?   // for MIS report emails
-  accountType     String?   @default("CREDIT") // CREDIT | WALLET
+  csPerson          String?   // customer-service owner for this account (distinct from salesperson)
+  csPersonMobile    String?
+  csPersonEmail     String?
+  accountType     String?   @default("CREDIT") // CREDIT | WALLET | CASH | CARD
   billingCycle    String?   @default("MONTHLY") // MONTHLY | FORTNIGHTLY
   allowSameGstin  Boolean   @default(false) // permit another customer with the same GSTIN
   customerType    String?   @default("Customer") // Customer | Agent | ...
