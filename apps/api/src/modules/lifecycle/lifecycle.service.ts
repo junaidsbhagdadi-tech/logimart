@@ -165,6 +165,8 @@ export class LifecycleService {
       currentCode: s.statusCode ?? 'MAN',
       currentLabel: labelOf(String(s.statusCode ?? 'MAN')),
       remarks: s.exceptionFlag ?? null,
+      customerRemark: (s as any).customerRemark ?? null,        // remark left by the customer via portal
+      customerRemarkAt: (s as any).customerRemarkAt ?? null,
       edd: s.expectedDelivery ?? eddFallback(),
       shipmentValue: s.shipmentValue ?? s.declaredValue ?? null, // #9 visible on the tracker
       apptDelivery: s.apptDelivery, apptDate: s.apptDate ?? null,

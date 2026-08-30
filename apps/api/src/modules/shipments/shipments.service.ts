@@ -356,6 +356,35 @@ export class ShipmentsService {
     return { ok: true };
   }
 
+  // ---- Customer-portal self-service (CLIENT_ADMIN, own shipments only) ----
+  private async ownedShipment(awb: string, clientId: number) {
+    const s = await this.prisma.shipment.findUnique({ where: { awb: String(awb).trim().toUpperCase() }, select: { id: true, clientId: true } });
+    if (!s) throw new NotFoundException(`AWB ${awb} not found`);
+    const allowed = await this.bookableAccountIds(clientId);
+    if (!allowed.has(String(s.clientId))) throw new ForbiddenException('This shipment is not on your account.');
+    return s;
+  }
+
+  /** Customer sets an appointment-delivery date/time + optional morning remark on their own AWB. */
+  async portalAppointment(awb: string, clientId: number, dto: { date?: string; remark?: string }) {
+    const s = await this.ownedShipment(awb, clientId);
+    const date = dto.date ? new Date(dto.date) : null;
+    await this.prisma.shipment.update({
+      where: { id: s.id },
+      data: { apptDelivery: date != null, apptDate: date, customerRemark: dto.remark?.trim() || null, customerRemarkAt: new Date() },
+    });
+    return { ok: true };
+  }
+
+  /** Customer leaves a remark against their AWB (e.g. a contact number) — shown to CS + on tracking. */
+  async portalRemark(awb: string, clientId: number, dto: { remark: string }) {
+    const s = await this.ownedShipment(awb, clientId);
+    const remark = String(dto.remark || '').trim();
+    if (!remark) throw new BadRequestException('Enter a remark.');
+    await this.prisma.shipment.update({ where: { id: s.id }, data: { customerRemark: remark, customerRemarkAt: new Date() } });
+    return { ok: true };
+  }
+
   /** Wrong-entry transfer: reassign a mis-booked AWB to the correct customer. Blocked once the
    *  shipment has been invoiced (cancel/rebill the invoice first). Super-admin action. */
   async transfer(awb: string, clientId: number) {

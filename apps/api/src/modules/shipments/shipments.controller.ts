@@ -55,6 +55,19 @@ export class ShipmentsController {
     return this.shipments.removeAddon(Number(id));
   }
 
+  // ---- Customer portal self-service (own shipments only) ----
+  @Post(':awb/portal-appointment')
+  @Roles(UserRole.CLIENT_ADMIN)
+  portalAppointment(@Param('awb') awb: string, @Body() dto: { date?: string; remark?: string }, @Req() req: any) {
+    return this.shipments.portalAppointment(awb, Number(req.user.clientId), dto);
+  }
+
+  @Post(':awb/portal-remark')
+  @Roles(UserRole.CLIENT_ADMIN)
+  portalRemark(@Param('awb') awb: string, @Body() dto: { remark: string }, @Req() req: any) {
+    return this.shipments.portalRemark(awb, Number(req.user.clientId), dto);
+  }
+
   /** Super-admin: delete selected AWBs (and their children). Used by the AWB list select/delete. */
   @Post('bulk-delete')
   @Roles(UserRole.SYS_ADMIN)

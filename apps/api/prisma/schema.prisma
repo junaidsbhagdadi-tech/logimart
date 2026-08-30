@@ -111,6 +111,7 @@ model B2bClient {
   isActive        Boolean  @default(true)
   isOneTime       Boolean  @default(false) // walk-in / ad-hoc, non-contract
   isCash          Boolean  @default(false) // cash customer — no invoices generated
+  canCheckRates   Boolean  @default(false) // may view rate agreement + estimate cost in their portal
   // Explicit account grouping: a "child" account points to its parent (head office). A client
   // login may book under any account in its group (the parent + all its children). One level deep.
   parentAccountId BigInt?
@@ -495,6 +496,8 @@ model Shipment {
   isMedical      Boolean  @default(false)
   apptDelivery   Boolean  @default(false) // appointment delivery required
   apptDate       DateTime? // scheduled appointment delivery date
+  customerRemark   String?   // remark left by the customer via their portal (surfaced to CS + on tracking)
+  customerRemarkAt DateTime?
   referenceNo    String?
 
   vehicleNo      String?

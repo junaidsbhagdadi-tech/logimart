@@ -16,6 +16,21 @@ export function ClientPortal() {
 
   useEffect(() => { api.portalOverview().then(setD).catch((e) => setError(e.message)); }, []);
 
+  const [appt, setAppt] = useState<{ awb: string; date: string; remark: string } | null>(null);
+  const [msg, setMsg] = useState('');
+  const reload = () => api.portalOverview().then(setD).catch(() => {});
+  const saveAppt = async () => {
+    if (!appt) return;
+    try { await api.portalAppointment(appt.awb, { date: appt.date || undefined, remark: appt.remark || undefined }); setMsg(`✓ Appointment updated for ${appt.awb}. Our CS team has been notified.`); setAppt(null); reload(); }
+    catch (e: any) { setError(e.message); }
+  };
+  const addRemark = async (awb: string) => {
+    const r = window.prompt(`Leave a remark for our CS team about ${awb}\n(e.g. a contact number, delivery instruction, or a note for tomorrow's appointment):`);
+    if (r == null || !r.trim()) return;
+    try { await api.portalRemark(awb, r.trim()); setMsg(`✓ Remark sent to our CS team for ${awb}.`); reload(); }
+    catch (e: any) { setError(e.message); }
+  };
+
   const exportShipments = async () => {
     try {
       const rows = await api.awbList(2000);
@@ -35,6 +50,21 @@ export function ClientPortal() {
 
   return (
     <>
+      {msg && <div className="card" style={{ borderLeft: '4px solid var(--ok, #16a34a)', fontSize: 13 }}>{msg}</div>}
+      {appt && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 1300, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setAppt(null)}>
+          <div className="card" style={{ maxWidth: 420, width: '90%' }} onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ marginTop: 0 }}>📅 Appointment delivery — {appt.awb}</h2>
+            <p className="muted" style={{ fontSize: 12.5, marginTop: -4 }}>Pick a date &amp; time you'd like it delivered. Add a remark for our CS team (e.g. "call before delivery", or a note for a next‑day slot).</p>
+            <div><label>Preferred date &amp; time</label><input type="datetime-local" value={appt.date} onChange={(e) => setAppt({ ...appt, date: e.target.value })} /></div>
+            <div style={{ marginTop: 8 }}><label>Remark for CS <span className="muted">(optional)</span></label><input value={appt.remark} onChange={(e) => setAppt({ ...appt, remark: e.target.value })} placeholder="e.g. Please call 98xxxxxxx before delivery" /></div>
+            <div className="row" style={{ gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
+              <button className="secondary" onClick={() => setAppt(null)}>Cancel</button>
+              <button onClick={saveAppt}>Send to CS</button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <h1 style={{ margin: 0 }}>👋 Welcome, {user?.fullName?.split(' ')[0] ?? d.client.legalName}</h1>
@@ -91,6 +121,8 @@ export function ClientPortal() {
                       <td><span className={`badge ${STATUS_CLS[s.statusCode] ?? 'CREATED'}`}>{s.statusCode}</span></td>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         <Link to={`/tracker/${s.awb}`}><button className="secondary" style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }}>🧭 Track</button></Link>
+                        {!['DLD', 'CAN', 'RTD'].includes(s.statusCode) && <button className="secondary" style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }} title="Request an appointment delivery date/time" onClick={() => setAppt({ awb: s.awb, date: '', remark: '' })}>📅 Appt</button>}
+                        <button className="secondary" style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }} title="Leave a remark for CS" onClick={() => addRemark(s.awb)}>✎ Remark</button>
                         {s.hasPod && <Link to={`/tracker/${s.awb}`}><button className="secondary" style={{ padding: '3px 8px', fontSize: 12 }} title="View / download POD">📄 POD</button></Link>}
                         {['MAN', 'PKD'].includes(s.statusCode) && <CancelBtn awb={s.awb} onDone={() => api.portalOverview().then(setD)} />}
                       </td>

@@ -185,6 +185,7 @@ export function TrackDetail() {
               <Field label="Order Date (Manifested)" value={dateFmt(d.orderDate)} />
               <Field label="Current Status" value={`${d.currentLabel} — ${d.currentCode}`} color="var(--ok, #16a34a)" />
               <Field label="Remarks" value={d.remarks} color="var(--warn)" />
+              {(d as any).customerRemark && <Field label="📣 Customer note" value={(d as any).customerRemark} color="var(--brand)" />}
               <Field label="EDD" value={dateFmt(d.edd)} color="var(--brand)" />
               <Field label="Shipment Value" value={(d as any).shipmentValue != null ? `₹${Number((d as any).shipmentValue).toLocaleString('en-IN')}` : '—'} />
               {(d as any).apptDate && <Field label="Appointment" value={apptFmt((d as any).apptDate)} color="var(--brand)" />}
