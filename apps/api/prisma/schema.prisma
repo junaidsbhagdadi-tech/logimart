@@ -1329,12 +1329,14 @@ model PerBoxRateCard {
   @@map("per_box_rate_cards")
 }
 
+/// Each box is priced by the WEIGHT slab it falls into (0–15 kg, 16–30 kg …); the shipment's
+/// freight = sum over its boxes of the per-box rate for each box's own weight.
 model PerBoxSlab {
   id      BigInt         @id @default(autoincrement())
   cardId  BigInt
   card    PerBoxRateCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
-  fromPcs Int
-  toPcs   Int
+  fromKg  Decimal        @db.Decimal(10, 3)
+  toKg    Decimal        @db.Decimal(10, 3)
   perBox  Decimal        @db.Decimal(12, 2)
 
   @@index([cardId])
