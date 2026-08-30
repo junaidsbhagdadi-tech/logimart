@@ -48,10 +48,17 @@ export class ReportsService {
   async emailDailyDigest() {
     const { summary, message } = await this.dailyDigest();
     const recipients = String(process.env.REPORTS_EMAIL || process.env.COMPANY_EMAIL || 'accounts@excelexlog.com').split(',').map((r) => r.trim()).filter(Boolean);
+    let sent = 0;
     for (const r of recipients) {
-      await this.notifications.notify({ channel: 'email', recipient: r, kind: 'account', message });
+      const rec = await this.notifications.notify({ channel: 'email', recipient: r, kind: 'account', message });
+      if (rec.status === 'sent') sent++;
     }
-    return { ok: true, sentTo: recipients, summary, message, note: 'Queued via the notification system — actual delivery needs an email (SMTP) provider configured.' };
+    const note = sent === recipients.length
+      ? `Emailed to ${sent} recipient(s) via SMTP.`
+      : sent > 0
+        ? `Emailed to ${sent}/${recipients.length}; the rest are queued (check SMTP settings).`
+        : 'Queued — set SMTP_HOST/SMTP_USER/SMTP_PASS on the server to actually deliver.';
+    return { ok: true, sentTo: recipients, sent, summary, message, note };
   }
 
   async run(type: string, from?: string, to?: string): Promise<Report> {
