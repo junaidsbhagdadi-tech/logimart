@@ -4,6 +4,7 @@ import { api, Client } from '../api';
 import { useAuth } from '../auth';
 import { mapMode, modeLabel } from '../productMode';
 import { expandCity } from '../lib/cityCodes';
+import { ScanButton } from '../components/BarcodeScanner';
 
 interface PieceForm { deadKg: string; lengthCm: string; widthCm: string; heightCm: string; }
 const blank: PieceForm = { deadKg: '', lengthCm: '', widthCm: '', heightCm: '' };
@@ -674,7 +675,7 @@ export function CreateShipment() {
           <div><label>State</label><input value={c.consigneeState} onChange={(e) => setCf('consigneeState', e.target.value)} placeholder={destInfo?.state || ''} /></div>
           <div><label>Invoice / declared value ₹</label><input type="number" value={c.declaredValue} onChange={(e) => setCf('declaredValue', e.target.value)} /></div>
           {!isClient && <div><label>Agreed freight ₹ (one-time — overrides rate card)</label><input type="number" value={manualFreight} onChange={(e) => setManualFreight(e.target.value)} placeholder="optional" /></div>}
-          {!isClient && <div><label>Manual AWB <span className="muted">(pre-printed / hand-written — blank = auto)</span></label><input value={manualAwb} onChange={(e) => setManualAwb(e.target.value)} placeholder="e.g. 2030236" /></div>}
+          {!isClient && <div><label>Manual AWB <span className="muted">(pre-printed / hand-written — blank = auto)</span></label><div className="row" style={{ gap: 6 }}><input style={{ flex: 1 }} value={manualAwb} onChange={(e) => setManualAwb(e.target.value)} placeholder="e.g. 2030236" /><ScanButton title="Scan the AWB barcode" onScan={(c) => setManualAwb(c)} /></div></div>}
           <div><label>HSN</label><input value={c.hsnCode} onChange={(e) => setCf('hsnCode', e.target.value)} /></div>
           <div style={{ gridColumn: 'span 2' }}><label>Goods description</label><input value={c.goodsDesc} onChange={(e) => setCf('goodsDesc', e.target.value)} /></div>
         </div>
@@ -890,7 +891,7 @@ export function CreateShipment() {
               </div>
               <div>
                 <label>Forwarding AWB <span className="muted">(vendor's carrier AWB)</span></label>
-                <input value={svc.forwardingAwb} onChange={(e) => setSvc({ ...svc, forwardingAwb: e.target.value })} placeholder="e.g. 58001396353" />
+                <div className="row" style={{ gap: 6 }}><input style={{ flex: 1 }} value={svc.forwardingAwb} onChange={(e) => setSvc({ ...svc, forwardingAwb: e.target.value })} placeholder="e.g. 58001396353" /><ScanButton title="Scan the forwarding barcode" onScan={(c) => setSvc({ ...svc, forwardingAwb: c })} /></div>
               </div>
             </div>
           )}
