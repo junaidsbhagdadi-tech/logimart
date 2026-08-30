@@ -140,6 +140,29 @@ export function Invoices() {
     try { const r = await api.lockInvoice(String(inv.id)); setMsg(`🔒 ${inv.invoiceNo} locked${r.creditHold ? ' — customer now on CREDIT HOLD' : ''}.`); load(); }
     catch (e: any) { setError(e.message); }
   };
+
+  // Bulk lock (single / multiple / all) + bulk e-invoice
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const toggleSel = (id: string) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const lockSelected = async () => {
+    const ids = [...sel]; if (!ids.length) return;
+    if (!confirm(`Lock ${ids.length} invoice(s)? Each is posted to its ledger and frozen.`)) return;
+    setError(''); setMsg('');
+    try { const r = await api.lockManyInvoices({ ids }); setMsg(`🔒 Locked ${r.locked} invoice(s)${r.skipped.length ? ` · skipped ${r.skipped.length} (already locked/empty)` : ''}.`); setSel(new Set()); load(); }
+    catch (e: any) { setError(e.message); }
+  };
+  const lockAllDrafts = async () => {
+    if (!confirm('Lock ALL draft invoices? Each is posted to its ledger and frozen.')) return;
+    setError(''); setMsg('');
+    try { const r = await api.lockManyInvoices({ all: true }); setMsg(`🔒 Locked ${r.locked} draft invoice(s)${r.skipped.length ? ` · skipped ${r.skipped.length}` : ''}.`); setSel(new Set()); load(); }
+    catch (e: any) { setError(e.message); }
+  };
+  const einvoiceSelected = async () => {
+    const ids = [...sel]; if (!ids.length) return;
+    setError(''); setMsg('');
+    try { const r = await api.einvoiceManyInvoices(ids); setMsg(`🧾 e-invoice generated for ${r.done} invoice(s)${r.failed.length ? ` · ${r.failed.length} failed` : ''}.`); load(); }
+    catch (e: any) { setError(e.message); }
+  };
   const delInv = async (inv: any) => {
     if (!confirm(`Delete invoice ${inv.invoiceNo}?${inv.status !== 'DRAFT' ? '\n\nThis will REVERSE its ledger charge and free its AWBs to be billed again.' : ''}`)) return;
     setError(''); setMsg('');
@@ -255,6 +278,15 @@ export function Invoices() {
           ))}
         </div>
 
+        {isFinance && (
+          <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            {sel.size > 0 && <span className="muted" style={{ fontSize: 13 }}><strong>{sel.size}</strong> selected</span>}
+            <button className="secondary" style={{ padding: '6px 12px', fontSize: 13 }} disabled={!sel.size} onClick={lockSelected}>🔒 Lock selected</button>
+            <button className="secondary" style={{ padding: '6px 12px', fontSize: 13 }} disabled={!sel.size} onClick={einvoiceSelected} title="Generate GST e-invoice IRNs for the selected invoices">🧾 e-Invoice selected</button>
+            <button className="secondary" style={{ padding: '6px 12px', fontSize: 13 }} onClick={lockAllDrafts} title="Lock every draft invoice">🔒 Lock ALL drafts</button>
+          </div>
+        )}
+
         {filtered.length === 0 ? (
           invoices.length === 0
             ? <p className="muted">No invoices yet — use <b>Generate consolidated invoice</b> above to bill a customer's delivered shipments for a period, and it'll show up here.</p>
@@ -263,11 +295,12 @@ export function Invoices() {
           <div style={{ overflowX: 'auto' }}>
             <table>
               <thead>
-                <tr><th>Invoice No</th><th>From</th><th>To</th><th>Code</th><th>Customer</th><th style={{ textAlign: 'right' }}>Subtotal</th><th style={{ textAlign: 'right' }}>Tax</th><th style={{ textAlign: 'right' }}>Total</th><th>Status</th><th>Action</th></tr>
+                <tr>{isFinance && <th style={{ width: 30 }}><input type="checkbox" checked={filtered.length > 0 && filtered.every((i) => sel.has(String(i.id)))} onChange={(e) => setSel(e.target.checked ? new Set(filtered.map((i) => String(i.id))) : new Set())} style={{ width: 'auto' }} /></th>}<th>Invoice No</th><th>From</th><th>To</th><th>Code</th><th>Customer</th><th style={{ textAlign: 'right' }}>Subtotal</th><th style={{ textAlign: 'right' }}>Tax</th><th style={{ textAlign: 'right' }}>Total</th><th>Status</th><th>Action</th></tr>
               </thead>
               <tbody>
                 {filtered.map((inv) => (
                   <tr key={inv.id}>
+                    {isFinance && <td><input type="checkbox" checked={sel.has(String(inv.id))} onChange={() => toggleSel(String(inv.id))} style={{ width: 'auto' }} /></td>}
                     <td><Link to={`/invoices/${inv.id}`}><strong>{inv.invoiceNo}</strong></Link></td>
                     <td>{inv.periodStart.slice(0, 10)}</td>
                     <td>{inv.periodEnd.slice(0, 10)}</td>

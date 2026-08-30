@@ -108,6 +108,20 @@ export class BillingController {
     return this.invoices.generateEInvoice(Number(id));
   }
 
+  /** Lock many invoices — selected ids, or every DRAFT when {all:true}. */
+  @Post('billing/invoices/lock-many')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  lockMany(@Body() dto: { ids?: number[]; all?: boolean }) {
+    return this.invoices.lockMany(dto?.ids ?? null, !!dto?.all);
+  }
+
+  /** Bulk GST e-invoice generation for selected invoices. */
+  @Post('billing/invoices/einvoice-many')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  einvoiceMany(@Body() dto: { ids: number[] }) {
+    return this.invoices.einvoiceMany(dto?.ids ?? []);
+  }
+
   /** Sales MIS — per-customer summary (shipments, weights, sales, billed/unbilled, status, cash). */
   @Get('billing/mis/sales')
   @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SALES, UserRole.SYS_ADMIN)

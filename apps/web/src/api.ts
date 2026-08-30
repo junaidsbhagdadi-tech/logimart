@@ -394,6 +394,10 @@ export const api = {
     ),
   lockInvoice: (invoiceId: string) =>
     request<{ creditHold: boolean; newBalance: number }>('/api/v1/billing/invoices/' + invoiceId + '/lock', { method: 'POST' }),
+  lockManyInvoices: (body: { ids?: (string | number)[]; all?: boolean }) =>
+    request<{ ok: boolean; locked: number; skipped: { id: string; reason: string }[] }>('/api/v1/billing/invoices/lock-many', { method: 'POST', body: JSON.stringify({ ids: (body.ids ?? []).map(Number), all: body.all }) }),
+  einvoiceManyInvoices: (ids: (string | number)[]) =>
+    request<{ ok: boolean; done: number; failed: { id: string; reason: string }[] }>('/api/v1/billing/invoices/einvoice-many', { method: 'POST', body: JSON.stringify({ ids: ids.map(Number) }) }),
   deleteInvoice: (invoiceId: string) =>
     request<{ ok: boolean; invoiceNo: string; message: string }>('/api/v1/billing/invoices/' + invoiceId + '/delete', { method: 'POST' }),
   addAwbToInvoice: (invoiceId: string, awb: string) =>
@@ -696,6 +700,7 @@ export const api = {
   },
   createNote: (body: unknown) => request<any>('/api/v1/notes', { method: 'POST', body: JSON.stringify(body) }),
   cancelNote: (id: string) => request(`/api/v1/notes/${id}/cancel`, { method: 'POST' }),
+  getNote: (id: string) => request<any>(`/api/v1/notes/${id}`),
 
   // ---- weight discrepancy (re-weigh) ----
   reweigh: (awb: string, lines: { sequenceNo: number; actualKg: number; lengthCm?: number; widthCm?: number; heightCm?: number }[]) =>

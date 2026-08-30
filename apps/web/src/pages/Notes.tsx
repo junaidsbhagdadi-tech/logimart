@@ -126,7 +126,10 @@ export function Notes() {
                 <td>₹{Number(n.tax).toLocaleString('en-IN')}</td>
                 <td><strong>₹{Number(n.total).toLocaleString('en-IN')}</strong></td>
                 <td>{n.status}</td>
-                <td>{n.status !== 'cancelled' && <button className="secondary" onClick={() => cancel(n.id)}>Cancel</button>}</td>
+                <td className="row" style={{ gap: 6 }}>
+                  <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => window.open(`/notes/${n.id}/print`, '_blank')} title="Print / Save as PDF (with sign & stamp)">🖨 PDF</button>
+                  {n.status !== 'cancelled' && <button className="secondary" onClick={() => cancel(n.id)}>Cancel</button>}
+                </td>
               </tr>
             ))}
             {rows.length === 0 && <tr><td colSpan={8} className="muted">No notes yet.</td></tr>}

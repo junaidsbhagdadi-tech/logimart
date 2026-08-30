@@ -251,6 +251,34 @@ export class InvoiceService {
     return { invoice: updated, creditHold: overLimit, newBalance, creditLimit: client.creditLimit };
   }
 
+  /** Lock many invoices at once (single / multiple / all). `all` locks every DRAFT invoice.
+   *  Already-locked or empty invoices are skipped, not fatal. */
+  async lockMany(ids: number[] | null, all?: boolean) {
+    let targetIds: bigint[];
+    if (all) {
+      const drafts = await this.prisma.invoice.findMany({ where: { status: InvoiceStatus.DRAFT }, select: { id: true } });
+      targetIds = drafts.map((d) => d.id);
+    } else {
+      targetIds = (ids ?? []).map((x) => BigInt(x));
+    }
+    let locked = 0; const skipped: { id: string; reason: string }[] = [];
+    for (const id of targetIds) {
+      try { await this.lockInvoice(Number(id)); locked++; }
+      catch (e: any) { skipped.push({ id: id.toString(), reason: e?.message || 'failed' }); }
+    }
+    return { ok: true, locked, skipped };
+  }
+
+  /** Generate GST e-invoice IRNs for many invoices at once. */
+  async einvoiceMany(ids: number[]) {
+    let done = 0; const failed: { id: string; reason: string }[] = [];
+    for (const id of ids ?? []) {
+      try { await this.generateEInvoice(Number(id)); done++; }
+      catch (e: any) { failed.push({ id: String(id), reason: e?.message || 'failed' }); }
+    }
+    return { ok: true, done, failed };
+  }
+
   /** Delete an invoice (#4). DRAFT deletes freely; a locked (ISSUED) invoice reverses its ledger charge and
    *  frees the AWBs to be billed again. Blocked once any payment/adjustment has been recorded against it. */
   async deleteInvoice(invoiceId: number) {

@@ -122,7 +122,10 @@ export class NotesService {
   }
 
   async get(id: number) {
-    const note = await this.prisma.debitCreditNote.findUnique({ where: { id: BigInt(id) } });
+    const note = await this.prisma.debitCreditNote.findUnique({
+      where: { id: BigInt(id) },
+      include: { client: true, shipment: { select: { awb: true } } },
+    });
     if (!note) throw new NotFoundException('Note not found');
     return note;
   }

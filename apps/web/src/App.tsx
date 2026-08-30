@@ -25,6 +25,7 @@ import { BillWorksheet } from './pages/BillWorksheet';
 import { Pickups } from './pages/Pickups';
 import { Manifests } from './pages/Manifests';
 import { InvoicePrint } from './pages/InvoicePrint';
+import { NotePrint } from './pages/NotePrint';
 import { Users } from './pages/Users';
 import { Riders } from './pages/Riders';
 import { Feedback } from './pages/Feedback';
@@ -71,6 +72,7 @@ export function App() {
       <Route path="/track/:awb" element={<Track />} />
       <Route path="/deliver" element={<Deliver />} />
       <Route path="/invoices/:id/print" element={<InvoicePrint />} />
+      <Route path="/notes/:id/print" element={<NotePrint />} />
       <Route path="/shipments/:awb/awb-print" element={<AwbPrint />} />
       <Route element={<Layout />}>
         <Route path="/" element={user?.role === 'CLIENT_ADMIN' ? <ClientPortal /> : <Dashboard />} />
