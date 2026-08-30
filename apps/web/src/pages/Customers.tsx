@@ -11,7 +11,7 @@ const blank = {
   contactEmail: '', email2: '', gstin: '', pan: '', tanNo: '', iecCode: '',
   addressLine: '', pincode: '', city: '', state: '', salesPerson: '', salesPersonMobile: '', salesPersonEmail: '',
   accountType: 'CREDIT', billingCycle: 'MONTHLY', allowSameGstin: false,
-  creditLimit: '', creditDays: '30', isCash: false, canCheckRates: false, parentAccountId: '',
+  creditLimit: '', creditDays: '30', isCash: false, canCheckRates: false, commissionPct: '', parentAccountId: '',
 };
 
 const TABS = ['Personal Information', 'Fuel Surcharges', 'Other Charges', 'Customer Volumetric', 'Customer Address'] as const;
@@ -137,7 +137,7 @@ export function Customers() {
       addressLine: (c as any).addressLine ?? '', pincode: (c as any).pincode ?? '', city: (c as any).city ?? '', state: (c as any).state ?? '',
       salesPerson: (c as any).salesPerson ?? '', salesPersonMobile: (c as any).salesPersonMobile ?? '', salesPersonEmail: (c as any).salesPersonEmail ?? '',
       accountType: (c as any).accountType ?? 'CREDIT', billingCycle: (c as any).billingCycle ?? 'MONTHLY',
-      allowSameGstin: !!(c as any).allowSameGstin, creditLimit: String((c as any).creditLimit ?? ''), creditDays: String((c as any).creditDays ?? '30'), isCash: !!(c as any).isCash, canCheckRates: !!(c as any).canCheckRates,
+      allowSameGstin: !!(c as any).allowSameGstin, creditLimit: String((c as any).creditLimit ?? ''), creditDays: String((c as any).creditDays ?? '30'), isCash: !!(c as any).isCash, canCheckRates: !!(c as any).canCheckRates, commissionPct: String((c as any).commissionPct ?? ''),
       parentAccountId: (c as any).parentAccountId != null ? String((c as any).parentAccountId) : '',
     });
     setShowAdd(true);
@@ -167,6 +167,7 @@ export function Customers() {
       billingCycle: form.billingCycle || undefined,
       allowSameGstin: form.allowSameGstin,
       canCheckRates: form.canCheckRates,
+      commissionPct: form.commissionPct ? Number(form.commissionPct) : 0,
       isCash: form.accountType === 'WALLET' ? false : form.isCash,
       creditLimit: form.creditLimit ? +form.creditLimit : 0,
       creditDays: form.creditDays ? +form.creditDays : 30,
@@ -239,6 +240,7 @@ export function Customers() {
             <div className="grid cols-2" style={{ gap: 12, marginTop: 12 }}>
               <div><label>Sales Person Mobile <span className="muted">(for MIS reports)</span></label><input value={form.salesPersonMobile} onChange={(e) => set('salesPersonMobile', e.target.value)} placeholder="e.g. 9876543210" /></div>
               <div><label>Sales Person Email <span className="muted">(for MIS reports)</span></label><input type="email" value={form.salesPersonEmail} onChange={(e) => set('salesPersonEmail', e.target.value)} placeholder="e.g. rahul@company.com" /></div>
+              <div><label>Commission % <span className="muted">(this customer)</span></label><input type="number" value={form.commissionPct} onChange={(e) => set('commissionPct', e.target.value)} placeholder="e.g. 2.5" /></div>
             </div>
 
             <div style={{ marginTop: 16 }}>

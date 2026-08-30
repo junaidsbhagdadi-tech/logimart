@@ -76,6 +76,7 @@ export class CustomersService {
           isOneTime: dto.isOneTime ?? false,
           isCash: dto.isCash ?? false,
           canCheckRates: dto.canCheckRates ?? false,
+          commissionPct: new Prisma.Decimal(dto.commissionPct ?? 0),
         },
       });
     } catch (e) {

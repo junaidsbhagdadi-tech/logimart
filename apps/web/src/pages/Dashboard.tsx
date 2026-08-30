@@ -46,6 +46,24 @@ export function Dashboard() {
             <Kpi label="Customers" value={stats.clientCount} />
             <Kpi label="On credit hold" value={stats.clientsOnHold} tone={stats.clientsOnHold ? 'var(--warn)' : 'var(--ok)'} />
           </div>
+          {(stats as any).revenueTrend?.length > 0 && (() => {
+            const trend = (stats as any).revenueTrend as { label: string; total: number }[];
+            const max = Math.max(1, ...trend.map((t) => t.total));
+            return (
+              <div className="card" style={{ marginBottom: 8 }}>
+                <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}><h2 style={{ margin: 0, fontSize: 17 }}>📈 Revenue trend</h2><span className="muted" style={{ fontSize: 12 }}>invoiced, last 6 months</span></div>
+                <div className="row" style={{ alignItems: 'flex-end', gap: 14, height: 140, marginTop: 12 }}>
+                  {trend.map((t, i) => (
+                    <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{t.total >= 1e5 ? `₹${(t.total / 1e5).toFixed(1)}L` : t.total >= 1000 ? `₹${(t.total / 1000).toFixed(0)}k` : `₹${t.total}`}</div>
+                      <div title={`₹${t.total.toLocaleString('en-IN')}`} style={{ width: '100%', maxWidth: 54, height: `${Math.max(4, (t.total / max) * 100)}%`, background: 'linear-gradient(180deg, var(--brand) 0%, var(--brand-2, #16308f) 100%)', borderRadius: '6px 6px 0 0', transition: 'height .4s' }} />
+                      <div className="muted" style={{ fontSize: 11 }}>{t.label}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </>
       )}
       <h1>Shipments</h1>
