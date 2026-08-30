@@ -636,6 +636,11 @@ export const api = {
   addAddon: (awb: string, body: any) => request<any>(`/api/v1/shipments/${awb}/addons`, { method: 'POST', body: JSON.stringify(body) }),
   deleteAddon: (id: string | number) => request<{ ok: boolean }>(`/api/v1/shipments/addons/${id}`, { method: 'DELETE' }),
 
+  // ---- per-box (pcs-slab) rate cards ----
+  listPerBoxCards: (clientId: string | number) => request<any[]>(`/api/v1/per-box-rates?clientId=${clientId}`),
+  createPerBoxCard: (body: any) => request<any>('/api/v1/per-box-rates', { method: 'POST', body: JSON.stringify(body) }),
+  deletePerBoxCard: (id: string | number) => request<{ ok: boolean }>(`/api/v1/per-box-rates/${id}`, { method: 'DELETE' }),
+
   // ---- vendor branch contacts ----
   listVendorContacts: (vendorId: string | number) => request<any[]>(`/api/v1/vendors/${vendorId}/contacts`),
   addVendorContact: (vendorId: string | number, body: any) => request<any>(`/api/v1/vendors/${vendorId}/contacts`, { method: 'POST', body: JSON.stringify(body) }),

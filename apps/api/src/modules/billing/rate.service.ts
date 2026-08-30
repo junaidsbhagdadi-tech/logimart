@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { RateCard, ServiceMode } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PerBoxService } from './per-box.service';
 
 interface WeightLike {
   deadKg: unknown;
@@ -38,7 +39,7 @@ const BASE_DIESEL = 98.33; // reference base diesel ₹/L — DSC = basePct + ma
 
 @Injectable()
 export class RateService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly perBox: PerBoxService) {}
 
   findRate(clientId: bigint, originZone: string, destZone: string, serviceMode: ServiceMode) {
     return this.prisma.rateCard.findFirst({
@@ -761,7 +762,9 @@ export class RateService {
    * tariff. This is the single entry point used by quotes, invoicing, and reweigh comparisons.
    */
   async chargesForShipment(shipment: any, pieces: WeightLike[]): Promise<ChargeBreakup | null> {
-    const breakup = await this.resolveCharges(shipment, pieces);
+    // Per-box pricing takes over ONLY when the customer×product has a PerBoxRateCard; otherwise the
+    // weight engine runs exactly as before. The rest of the pipeline is shared.
+    const breakup = (await this.perBox.tryPrice(shipment, pieces)) ?? (await this.resolveCharges(shipment, pieces));
     const withCust = await this.applyCustomerOtherCharges(shipment, breakup);
     return this.applyOverrides(shipment, withCust);
   }

@@ -38,6 +38,7 @@ import { Notes } from './pages/Notes';
 import { Claims } from './pages/Claims';
 import { Documents } from './pages/Documents';
 import { ExpenseTracker } from './pages/ExpenseTracker';
+import { PerBoxRates } from './pages/PerBoxRates';
 import { Receivables } from './pages/Receivables';
 import { AuditLog } from './pages/AuditLog';
 import { Pincodes } from './pages/Pincodes';
@@ -119,6 +120,7 @@ export function App() {
         <Route path="/service-mapping" element={isAdminFin || canMaster ? <ServiceMap /> : <Navigate to="/" replace />} />
         <Route path="/sales" element={isAdminFin ? <Sales /> : <Navigate to="/" replace />} />
         <Route path="/ftl-rates" element={isAdminFin ? <FtlRates /> : <Navigate to="/" replace />} />
+        <Route path="/per-box-rates" element={isAdminFin ? <PerBoxRates /> : <Navigate to="/" replace />} />
         <Route path="/vendor-bills" element={isAdminFin ? <VendorBills /> : <Navigate to="/" replace />} />
         <Route path="/pincodes" element={canMaster ? <Pincodes /> : <Navigate to="/" replace />} />
         {/* old split routes → merged Pincodes screen (keep stale bookmarks working) */}

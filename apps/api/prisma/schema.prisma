@@ -1307,3 +1307,35 @@ model ShipmentAddon {
   @@index([shipmentId])
   @@map("shipment_addons")
 }
+
+/// ALTERNATIVE rate basis: price freight per BOX by a pcs-count slab (0-15, 16-20 …), instead of by
+/// weight. A customer×product either has a weight CustomerRateCard OR a PerBoxRateCard — never both.
+/// Carries its own fuel/FOV/ODA config so the shared accessorial math runs on top, same as weight cards.
+model PerBoxRateCard {
+  id        BigInt   @id @default(autoincrement())
+  clientId  BigInt // no FK relation on purpose — keeps this engine fully isolated
+  network   String   @default("SELF") // vendor / network (matches the weight card's network)
+  product   String
+  fuelPct   Decimal  @default(0) @db.Decimal(6, 2)   // fuel % applied on the per-box freight
+  fovPct    Decimal  @default(0) @db.Decimal(6, 3)   // FOV % on declared value
+  odaFlat   Decimal  @default(0) @db.Decimal(12, 2)  // ODA flat when the destination is ODA
+  odaMin    Decimal  @default(0) @db.Decimal(12, 2)
+  isActive  Boolean  @default(true)
+  slabs     PerBoxSlab[]
+  createdAt DateTime @default(now())
+
+  @@index([clientId, product])
+  @@map("per_box_rate_cards")
+}
+
+model PerBoxSlab {
+  id      BigInt         @id @default(autoincrement())
+  cardId  BigInt
+  card    PerBoxRateCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  fromPcs Int
+  toPcs   Int
+  perBox  Decimal        @db.Decimal(12, 2)
+
+  @@index([cardId])
+  @@map("per_box_slabs")
+}

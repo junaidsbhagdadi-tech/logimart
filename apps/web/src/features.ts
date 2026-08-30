@@ -57,6 +57,7 @@ export const FEATURE_CATALOG: FeatureSection[] = [
   ] },
   { section: 'Masters & Setup', features: [
     { to: '/ftl-rates', label: 'FTL Rates' },
+    { to: '/per-box-rates', label: 'Per-Box Rates' },
     { to: '/service-mapping', label: 'Service Mapping' },
     { to: '/pincodes', label: 'Pincodes and TAT' },
     { to: '/masters', label: 'Masters' },
