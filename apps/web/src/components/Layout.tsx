@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
+import { hasFeature } from '../rights';
 import { api } from '../api';
 import { Logo } from './Logo';
 import { FeedbackWidget } from './FeedbackWidget';
@@ -188,7 +189,7 @@ export function Layout() {
             // feature can be handed to any user — server-side RBAC remains the real security boundary);
             // otherwise fall back to the role's default visibility.
             const grants = (user?.role === 'SYS_ADMIN' || isClient) ? null : (user?.featureGrants ?? null);
-            const items = g.items.filter((it) => (grants ? grants.includes(it.to) : it.show !== false));
+            const items = g.items.filter((it) => (grants ? hasFeature(grants, it.to) : it.show !== false));
             if (items.length === 0) return null;
             const isClosed = !!closed[g.title];
             return (

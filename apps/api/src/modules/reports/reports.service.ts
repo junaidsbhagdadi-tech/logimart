@@ -4,6 +4,14 @@ import { NotificationsService } from '../notifications/notifications.service';
 
 type Report = { columns: { key: string; label: string }[]; rows: any[] };
 
+// Plain-English transport-mode labels — the raw enum (ROAD_PTL, AIR_EXPRESS…) is internal and
+// confuses users, so report exports show the friendly label too (mirrors the web modeLabel).
+const MODE_LABEL: Record<string, string> = {
+  AIR_EXPRESS: 'Air (Express)', AIR_ECONOMY: 'Air (Economy)',
+  ROAD_FTL: 'Surface (Full-load)', ROAD_PTL: 'Surface (Part-load)', RAIL: 'Surface (Rail)',
+};
+const modeLabel = (m: any) => MODE_LABEL[String(m ?? '').toUpperCase()] ?? (m ?? '—');
+
 @Injectable()
 export class ReportsService {
   constructor(private readonly prisma: PrismaService, private readonly notifications: NotificationsService) {}
@@ -79,6 +87,8 @@ export class ReportsService {
       case 'LOGIN_LOG': return this.loginLog(range);
       case 'MISSING_AWB': return this.missingAwb(range);
       case 'CUSTOMER_REGISTER': return this.customerRegister(range);
+      case 'SLA': return this.slaSummary(range);
+      case 'SLA_DETAIL': return this.slaDetail(range);
       default: return { columns: [{ key: 'msg', label: 'Info' }], rows: [{ msg: `Report '${type}' is not implemented yet.` }] };
     }
   }
@@ -227,9 +237,86 @@ export class ReportsService {
     return { columns: [{ key: 'invoiceNo', label: 'Invoice' }, { key: 'customer', label: 'Customer' }, { key: 'total', label: 'Total ₹' }, { key: 'dueDate', label: 'Due date' }, { key: 'daysOverdue', label: 'Days overdue' }, { key: 'bucket', label: 'Bucket' }], rows };
   }
 
+  /** Classify a delivered shipment against its promised EDD. Appointment deliveries are excluded
+   *  (the date was customer-chosen); shipments with no promise date can't be measured. */
+  private slaClassify(s: any): 'ONTIME' | 'DELAYED' | 'EXCLUDED' | 'NO_PROMISE' {
+    if (!s.expectedDelivery || !s.statusAt) return 'NO_PROMISE';
+    if (s.apptDelivery) return 'EXCLUDED';
+    const promised = new Date(s.expectedDelivery); promised.setHours(23, 59, 59, 999);
+    return new Date(s.statusAt) <= promised ? 'ONTIME' : 'DELAYED';
+  }
+  private slaDaysLate(s: any): number {
+    if (!s.expectedDelivery || !s.statusAt) return 0;
+    const d = new Date(s.statusAt); d.setHours(0, 0, 0, 0);
+    const p = new Date(s.expectedDelivery); p.setHours(0, 0, 0, 0);
+    return Math.max(0, Math.round((d.getTime() - p.getTime()) / 86400000));
+  }
+  private async slaDelivered(range: any) {
+    return this.prisma.shipment.findMany({
+      where: { statusCode: 'DLD', statusAt: range },
+      select: { awb: true, clientId: true, consigneeCity: true, destZone: true, serviceMode: true, createdAt: true, expectedDelivery: true, statusAt: true, apptDelivery: true },
+    });
+  }
+
+  /** On-time vs delay SLA summary — delivered shipments measured against their promised EDD,
+   *  excluding appointment (customer-scheduled) deliveries and those with no promise date. */
+  private async slaSummary(range: any): Promise<Report> {
+    const ships = await this.slaDelivered(range);
+    let ontime = 0, delayed = 0, excluded = 0, noPromise = 0, delaySum = 0;
+    for (const s of ships) {
+      const c = this.slaClassify(s);
+      if (c === 'ONTIME') ontime++;
+      else if (c === 'DELAYED') { delayed++; delaySum += this.slaDaysLate(s); }
+      else if (c === 'EXCLUDED') excluded++;
+      else noPromise++;
+    }
+    const measured = ontime + delayed;
+    const pct = (n: number) => (measured ? ((n / measured) * 100).toFixed(1) + '%' : '—');
+    const rows = [
+      { metric: 'Delivered in range', value: ships.length, note: '' },
+      { metric: 'Measured against promise (EDD)', value: measured, note: 'excludes appointment & no-promise' },
+      { metric: '✅ On-time', value: ontime, note: pct(ontime) },
+      { metric: '🔴 Delayed', value: delayed, note: pct(delayed) },
+      { metric: 'Avg delay on delayed (days)', value: delayed ? (delaySum / delayed).toFixed(1) : '0', note: '' },
+      { metric: '⏸ Excluded — appointment / customer-scheduled', value: excluded, note: '' },
+      { metric: 'No promise date (unmeasured)', value: noPromise, note: '' },
+    ];
+    return { columns: [{ key: 'metric', label: 'Metric' }, { key: 'value', label: 'Value' }, { key: 'note', label: 'Note' }], rows };
+  }
+
+  /** Per-AWB SLA detail — every delivered AWB with its promise vs actual and result, worst delays first. */
+  private async slaDetail(range: any): Promise<Report> {
+    const ships = await this.slaDelivered(range);
+    const clients = await this.prisma.b2bClient.findMany({ select: { id: true, legalName: true } });
+    const nm = new Map(clients.map((c) => [c.id.toString(), c.legalName]));
+    const d10 = (v: any) => (v ? new Date(v).toLocaleDateString('en-GB') : '—');
+    const label: Record<string, string> = { ONTIME: '✅ On-time', DELAYED: '🔴 Delayed', EXCLUDED: '⏸ Appt-excluded', NO_PROMISE: '— no promise' };
+    const rows = ships.map((s) => {
+      const cls = this.slaClassify(s);
+      const late = this.slaDaysLate(s);
+      return {
+        awb: s.awb,
+        customer: nm.get(s.clientId.toString()) || s.clientId.toString(),
+        dest: s.consigneeCity || s.destZone || '—',
+        mode: modeLabel(s.serviceMode),
+        booked: d10(s.createdAt),
+        promised: d10(s.expectedDelivery),
+        delivered: d10(s.statusAt),
+        daysLate: cls === 'DELAYED' ? late : 0,
+        result: cls === 'DELAYED' ? `${label[cls]} (${late}d)` : label[cls],
+        _sort: cls === 'DELAYED' ? late : -1,
+      };
+    }).sort((a, b) => b._sort - a._sort).map(({ _sort, ...r }) => r);
+    return { columns: [
+      { key: 'awb', label: 'AWB' }, { key: 'customer', label: 'Customer' }, { key: 'dest', label: 'Destination' },
+      { key: 'mode', label: 'Mode' }, { key: 'booked', label: 'Booked' }, { key: 'promised', label: 'Promised (EDD)' },
+      { key: 'delivered', label: 'Delivered' }, { key: 'daysLate', label: 'Days late' }, { key: 'result', label: 'Result' },
+    ], rows };
+  }
+
   private async tariff(): Promise<Report> {
     const rc = await this.prisma.rateCard.findMany({ include: { client: { select: { legalName: true } } }, orderBy: { id: 'desc' }, take: 1000 });
-    const rows = rc.map((x) => ({ customer: x.client?.legalName ?? '—', lane: `${x.originZone} → ${x.destZone}`, mode: x.serviceMode, perKg: Number(x.perKgRate).toFixed(2), minCharge: Number(x.minCharge).toFixed(2), fuelPct: Number(x.fuelPct).toFixed(2) }));
+    const rows = rc.map((x) => ({ customer: x.client?.legalName ?? '—', lane: `${x.originZone} → ${x.destZone}`, mode: modeLabel(x.serviceMode), perKg: Number(x.perKgRate).toFixed(2), minCharge: Number(x.minCharge).toFixed(2), fuelPct: Number(x.fuelPct).toFixed(2) }));
     return { columns: [{ key: 'customer', label: 'Customer' }, { key: 'lane', label: 'Lane' }, { key: 'mode', label: 'Mode' }, { key: 'perKg', label: 'Per-kg ₹' }, { key: 'minCharge', label: 'Min ₹' }, { key: 'fuelPct', label: 'Fuel %' }], rows };
   }
 

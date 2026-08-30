@@ -33,7 +33,8 @@ model User {
   passwordHash String
   role         UserRole
   hubId        BigInt?   // home hub for ops staff
-  featureGrants Json?    // super-admin-assigned nav feature keys (route paths). null = role defaults.
+  featureGrants Json?    // per-user feature access. Either a legacy string[] of route-path keys (each =
+                         // full access) or a { "<route>": "VIEW"|"EDIT"|"DELETE" } level map. null = role defaults.
   isActive     Boolean   @default(true)
   // ---- Rider/driver identity (role DRIVER) — used by the mobile app's Rider-ID + PIN login ----
   riderCode    String?   @unique // RID001 — the field ID a rider logs into the app with
@@ -160,6 +161,7 @@ model CustomerAddress {
   adCode       String?
   lutNo        String?
   isDefault    Boolean   @default(false)
+  isWarehouse  Boolean   @default(false) // a saved pickup point / warehouse — pickable at booking
   createdAt    DateTime  @default(now())
 
   client B2bClient @relation(fields: [clientId], references: [id])

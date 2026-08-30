@@ -320,7 +320,7 @@ export class CustomersService {
       email: d.email, mobile: d.mobile, landline: d.landline, addressLine1: d.addressLine1, addressLine2: d.addressLine2,
       addressLine3: d.addressLine3, pincode: d.pincode, city: d.city, state: d.state, country: d.country || 'India',
       gstNo: d.gstNo, panNo: d.panNo, aadhaarNo: d.aadhaarNo, iecNo: d.iecNo, adCode: d.adCode, lutNo: d.lutNo,
-      isDefault: !!d.isDefault,
+      isDefault: !!d.isDefault, isWarehouse: !!d.isWarehouse,
     } });
   }
   delAddr(rowId: number) { return this.prisma.customerAddress.delete({ where: { id: BigInt(rowId) } }); }

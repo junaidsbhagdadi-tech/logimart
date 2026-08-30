@@ -17,7 +17,9 @@ class UpdateUserDto {
   @IsOptional() @IsBoolean() isActive?: boolean;
   @IsOptional() @IsEnum(UserRole) role?: UserRole;
   @IsOptional() @IsString() @MinLength(4) password?: string;
-  @IsOptional() @IsArray() @IsString({ each: true }) featureGrants?: string[] | null;
+  // Either a legacy string[] (each feature = full access) or a { featureKey: 'VIEW'|'EDIT'|'DELETE' }
+  // map. SYS_ADMIN-only endpoint, so accepted as-is (validated in the UI editor).
+  @IsOptional() featureGrants?: string[] | Record<string, string> | null;
 }
 
 @Controller('api/v1/users')

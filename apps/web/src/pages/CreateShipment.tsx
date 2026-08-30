@@ -55,6 +55,41 @@ export function CreateShipment() {
   // Shipper auto-fills from the selected customer's registered details; tick "pickup out of
   // home location" to enter a different pickup address manually.
   const [pickupElsewhere, setPickupElsewhere] = useState(false);
+  // Saved pickup warehouses for the selected customer (CustomerAddress rows flagged isWarehouse).
+  const [warehouses, setWarehouses] = useState<any[]>([]);
+  const [savingWh, setSavingWh] = useState(false);
+  const loadWarehouses = (cid: number | string) => {
+    if (!cid) { setWarehouses([]); return; }
+    api.listAddr(String(cid)).then((rows) => setWarehouses((rows || []).filter((r: any) => r.isWarehouse))).catch(() => setWarehouses([]));
+  };
+  const applyWarehouse = (id: string) => {
+    const w = warehouses.find((x) => String(x.id) === id);
+    if (!w) return;
+    setShp((p) => ({ ...p,
+      shipperName: w.name ?? p.shipperName, shipperContact: w.designation ?? p.shipperContact,
+      shipperAddress1: w.addressLine1 ?? '', shipperAddress2: w.addressLine2 ?? '',
+      shipperPincode: w.pincode ?? '', shipperCity: w.city ?? '', shipperState: w.state ?? '',
+      shipperPhone: w.landline ?? '', shipperMobile: w.mobile ?? '', shipperEmail: w.email ?? '',
+      shipperGstin: w.gstNo ?? '', shipperCountry: w.country ?? 'India',
+      originLocation: (w.city || p.originLocation) ?? '',
+    }));
+    if (w.pincode && String(w.pincode).length === 6) lookShipper(String(w.pincode));
+  };
+  const saveWarehouse = async () => {
+    if (!clientId || !shp.shipperAddress1) return;
+    const label = window.prompt('Save this pickup address as a warehouse for the customer. Name it:', shp.shipperCity || shp.shipperName || 'Warehouse');
+    if (!label) return;
+    setSavingWh(true);
+    try {
+      await api.addAddr(String(clientId), {
+        contactType: 'Warehouse', isWarehouse: true, name: label, designation: shp.shipperContact,
+        addressLine1: shp.shipperAddress1, addressLine2: shp.shipperAddress2, pincode: shp.shipperPincode,
+        city: shp.shipperCity, state: shp.shipperState, country: shp.shipperCountry,
+        mobile: shp.shipperMobile, landline: shp.shipperPhone, email: shp.shipperEmail, gstNo: shp.shipperGstin,
+      });
+      loadWarehouses(clientId);
+    } catch { /* non-fatal */ } finally { setSavingWh(false); }
+  };
   // services extras
   const [svc, setSvc] = useState({ vendor: 'SELF', service: 'SELF', shipmentValue: '', referenceNo: '', forwardingAwb: '', isCommercial: false, isMedical: false });
   const [entryTab, setEntryTab] = useState<'AWB' | 'PROFORMA' | 'FORWARDING'>('AWB');
@@ -204,6 +239,9 @@ export function CreateShipment() {
     if (cl.pincode && String(cl.pincode) !== originPin) setOriginPin(String(cl.pincode));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, pickupElsewhere, clients, accounts, isClient]);
+
+  // Load the customer's saved pickup warehouses whenever the account changes.
+  useEffect(() => { loadWarehouses(clientId); /* eslint-disable-next-line */ }, [clientId]);
 
   // For a client, the pickup address IS the origin of record — keep the origin pincode tied to the
   // shipper pincode (home address by default, or the "pickup elsewhere" address). This prevents a
@@ -625,11 +663,22 @@ export function CreateShipment() {
       <div className="card">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
           <h2 style={{ margin: 0 }}>📤 Shipper details <span className="muted" style={{ fontSize: 12, fontWeight: 500 }}>— {pickupElsewhere ? 'enter the pickup address' : 'auto-filled from the customer'}</span></h2>
-          <label className="row" style={{ gap: 6, alignItems: 'center', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
-            <input type="checkbox" style={{ width: 'auto' }} checked={pickupElsewhere}
-              onChange={(e) => { const v = e.target.checked; setPickupElsewhere(v); if (v) setShp((p) => ({ ...p, shipperName: '', shipperContact: '', shipperGstin: '', shipperAddress1: '', shipperAddress2: '', shipperPincode: '', shipperCity: '', shipperState: '', shipperPhone: '', shipperMobile: '', shipperEmail: '', originLocation: '' })); }} />
-            🚚 Pickup out of home location
-          </label>
+          <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            {pickupElsewhere && !isClient && warehouses.length > 0 && (
+              <select defaultValue="" onChange={(e) => { applyWarehouse(e.target.value); e.currentTarget.selectedIndex = 0; }} style={{ maxWidth: 220 }} title="Fill from a saved warehouse">
+                <option value="">🏬 Pick a saved warehouse…</option>
+                {warehouses.map((w) => <option key={String(w.id)} value={String(w.id)}>{w.name}{w.city ? ` — ${w.city}` : ''}</option>)}
+              </select>
+            )}
+            {pickupElsewhere && !isClient && shp.shipperAddress1 && (
+              <button type="button" className="secondary" disabled={savingWh} onClick={saveWarehouse} title="Save this pickup address to the customer for reuse">{savingWh ? 'Saving…' : '＋ Save as warehouse'}</button>
+            )}
+            <label className="row" style={{ gap: 6, alignItems: 'center', fontWeight: 600, fontSize: 13, cursor: 'pointer', margin: 0 }}>
+              <input type="checkbox" style={{ width: 'auto' }} checked={pickupElsewhere}
+                onChange={(e) => { const v = e.target.checked; setPickupElsewhere(v); if (v) setShp((p) => ({ ...p, shipperName: '', shipperContact: '', shipperGstin: '', shipperAddress1: '', shipperAddress2: '', shipperPincode: '', shipperCity: '', shipperState: '', shipperPhone: '', shipperMobile: '', shipperEmail: '', originLocation: '' })); }} />
+              🚚 Pickup out of home location
+            </label>
+          </div>
         </div>
         {/* Staff/walk-in: pickup detail stays editable (auto-filled from the customer, but override-able,
             e.g. a different origin). Only client-portal logins are locked to their registered address. */}

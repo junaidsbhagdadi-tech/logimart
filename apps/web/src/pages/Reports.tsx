@@ -40,6 +40,10 @@ const REPORTS: { group: string; items: { key: string; label: string; noDate?: bo
     { key: 'RECEIVABLES', label: 'Receivables (Outstanding)', noDate: true },
     { key: 'LEDGER_AGING', label: 'Ledger Aging', noDate: true },
   ] },
+  { group: 'SLA', items: [
+    { key: 'SLA', label: 'On-time / Delay (summary)' },
+    { key: 'SLA_DETAIL', label: 'SLA — per AWB' },
+  ] },
 ];
 const ALL = REPORTS.flatMap((g) => g.items);
 const iso = (d: Date) => d.toISOString().slice(0, 10);

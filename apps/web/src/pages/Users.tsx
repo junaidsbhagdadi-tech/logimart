@@ -18,7 +18,7 @@ export function Users() {
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
   const [grantUser, setGrantUser] = useState<any | null>(null);
-  const [grants, setGrants] = useState<Set<string>>(new Set());
+  const [grants, setGrants] = useState<Record<string, 'VIEW' | 'EDIT' | 'DELETE'>>({});
   const [hubs, setHubs] = useState<{ id: string; code: string; name: string }[]>([]);
   const [cred, setCred] = useState<{ email: string; password: string; url: string; heading: string } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -37,11 +37,19 @@ export function Users() {
   useEffect(load, []);
   useEffect(() => { api.listHubs().then(setHubs).catch(() => {}); }, []);
 
-  const openGrants = (u: any) => { setGrantUser(u); setGrants(new Set(Array.isArray(u.featureGrants) ? u.featureGrants : [])); };
-  const toggleGrant = (to: string) => setGrants((g) => { const n = new Set(g); n.has(to) ? n.delete(to) : n.add(to); return n; });
+  // Grants can arrive as a legacy string[] (each = full/DELETE) or a { to: level } map.
+  const openGrants = (u: any) => {
+    setGrantUser(u);
+    const g = u.featureGrants;
+    const m: Record<string, 'VIEW' | 'EDIT' | 'DELETE'> = {};
+    if (Array.isArray(g)) g.forEach((k: string) => { m[k] = 'DELETE'; });
+    else if (g && typeof g === 'object') for (const [k, v] of Object.entries(g)) { const lv = String(v).toUpperCase(); if (['VIEW', 'EDIT', 'DELETE'].includes(lv)) m[k] = lv as any; }
+    setGrants(m);
+  };
+  const setGrant = (to: string, level: '' | 'VIEW' | 'EDIT' | 'DELETE') => setGrants((g) => { const n = { ...g }; if (!level) delete n[to]; else n[to] = level; return n; });
   const saveGrants = async (clear = false) => {
     if (!grantUser) return;
-    try { await api.updateUser(grantUser.id, { featureGrants: clear ? null : [...grants] }); setMsg(clear ? 'Reset to role defaults' : `Features updated for ${grantUser.fullName}`); setGrantUser(null); load(); }
+    try { await api.updateUser(grantUser.id, { featureGrants: clear ? null : grants }); setMsg(clear ? 'Reset to role defaults' : `Features updated for ${grantUser.fullName}`); setGrantUser(null); load(); }
     catch (e: any) { setError(e.message); }
   };
 
@@ -150,7 +158,7 @@ export function Users() {
                 <td className="row" style={{ gap: 6 }}>
                   <button className="secondary" onClick={() => toggle(u)}>{u.isActive ? 'Disable' : 'Enable'}</button>
                   <button className="secondary" onClick={() => resetPwd(u)}>Reset pwd</button>
-                  {u.role !== 'SYS_ADMIN' && <button className="secondary" onClick={() => openGrants(u)} title="Assign feature access">🔑 Features{Array.isArray(u.featureGrants) ? ` (${u.featureGrants.length})` : ''}</button>}
+                  {u.role !== 'SYS_ADMIN' && <button className="secondary" onClick={() => openGrants(u)} title="Assign feature access">🔑 Features{u.featureGrants ? ` (${Array.isArray(u.featureGrants) ? u.featureGrants.length : Object.keys(u.featureGrants).length})` : ''}</button>}
                   <button className="secondary" title="Delete user" onClick={async () => { if (!confirm(`Delete user ${u.email}? This cannot be undone.`)) return; try { await api.deleteUser(u.id); setMsg(`Deleted ${u.email}`); load(); } catch (e: any) { setError(e.message); } }}>🗑</button>
                 </td>
               </tr>
@@ -160,19 +168,29 @@ export function Users() {
       </div>
 
       {grantUser && <Modal title={`Feature access — ${grantUser.fullName}`} width={720} onClose={() => setGrantUser(null)}>
-        <p className="muted" style={{ marginTop: 0, fontSize: 12 }}>Tick the features this user can access in the sidebar. Empty + <em>Save</em> hides everything; <em>Reset to role defaults</em> reverts to their role's standard access. (Role-based server permissions still apply as the security boundary.)</p>
+        <p className="muted" style={{ marginTop: 0, fontSize: 12 }}>Set each feature's access level: <b>None</b> hides it, <b>View</b> = read-only, <b>Edit</b> = create/update, <b>Delete</b> = full including delete. Empty + <em>Save</em> hides everything; <em>Reset to role defaults</em> reverts to the role's standard full access. (Role-based server permissions remain the security boundary; levels are enforced in the UI.)</p>
         <div style={{ maxHeight: '58vh', overflow: 'auto' }}>
           {FEATURE_CATALOG.map((sec) => (
             <div key={sec.section} style={{ marginBottom: 12 }}>
               <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
                 <strong style={{ fontSize: 12, color: 'var(--muted)', letterSpacing: '.3px' }}>{sec.section.toUpperCase()}</strong>
-                <button className="secondary" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => setGrants((g) => { const n = new Set(g); const all = sec.features.every((f) => n.has(f.to)); sec.features.forEach((f) => all ? n.delete(f.to) : n.add(f.to)); return n; })}>toggle all</button>
+                <div className="row" style={{ gap: 4 }}>
+                  <button className="secondary" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => setGrants((g) => { const n = { ...g }; sec.features.forEach((f) => { n[f.to] = 'DELETE'; }); return n; })}>all: full</button>
+                  <button className="secondary" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => setGrants((g) => { const n = { ...g }; sec.features.forEach((f) => { n[f.to] = 'VIEW'; }); return n; })}>all: view</button>
+                  <button className="secondary" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => setGrants((g) => { const n = { ...g }; sec.features.forEach((f) => { delete n[f.to]; }); return n; })}>none</button>
+                </div>
               </div>
-              <div className="grid cols-3" style={{ gap: 4, marginTop: 4 }}>
+              <div className="grid cols-2" style={{ gap: 4, marginTop: 4 }}>
                 {sec.features.map((f) => (
-                  <label key={f.to} className="row" style={{ gap: 6, alignItems: 'center', fontSize: 12.5 }}>
-                    <input type="checkbox" style={{ width: 'auto' }} checked={grants.has(f.to)} onChange={() => toggleGrant(f.to)} /> {f.label}
-                  </label>
+                  <div key={f.to} className="row" style={{ gap: 6, alignItems: 'center', justifyContent: 'space-between', fontSize: 12.5, padding: '2px 0' }}>
+                    <span>{f.label}</span>
+                    <select value={grants[f.to] ?? ''} onChange={(e) => setGrant(f.to, e.target.value as any)} style={{ padding: '2px 6px', fontSize: 12, maxWidth: 110 }}>
+                      <option value="">None</option>
+                      <option value="VIEW">View</option>
+                      <option value="EDIT">Edit</option>
+                      <option value="DELETE">Delete</option>
+                    </select>
+                  </div>
                 ))}
               </div>
             </div>
@@ -182,7 +200,7 @@ export function Users() {
           <button className="secondary" onClick={() => saveGrants(true)}>↺ Reset to role defaults</button>
           <div className="row" style={{ gap: 8 }}>
             <button className="secondary" onClick={() => setGrantUser(null)}>Cancel</button>
-            <button onClick={() => saveGrants(false)}>Save features ({grants.size})</button>
+            <button onClick={() => saveGrants(false)}>Save features ({Object.keys(grants).length})</button>
           </div>
         </div>
       </Modal>}

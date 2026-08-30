@@ -104,7 +104,7 @@ export class UsersService {
   }
 
   /** Toggle active, change role, reset password, or assign feature access (super admin). */
-  async update(id: number, dto: { isActive?: boolean; role?: UserRole; password?: string; featureGrants?: string[] | null }) {
+  async update(id: number, dto: { isActive?: boolean; role?: UserRole; password?: string; featureGrants?: string[] | Record<string, string> | null }) {
     const u = await this.prisma.user.findUnique({ where: { id: BigInt(id) } });
     if (!u) throw new NotFoundException('User not found');
     return this.prisma.user.update({

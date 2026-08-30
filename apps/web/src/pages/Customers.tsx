@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, Client } from '../api';
 import { useAuth } from '../auth';
+import { useRights } from '../rights';
 import { CustomerSubTab } from '../components/CustomerSubTab';
 import { Modal } from '../components/Modal';
 import { RateCardsDialog } from '../components/RateCardsDialog';
@@ -21,6 +22,7 @@ type Tab = (typeof TABS)[number];
 export function Customers() {
   const { user } = useAuth();
   const isSuper = user?.role === 'SYS_ADMIN';
+  const rights = useRights('/customers');
   const [clients, setClients] = useState<Client[]>([]);
   const [form, setForm] = useState({ ...blank });
   const [tab, setTab] = useState<Tab>('Personal Information');
@@ -222,7 +224,7 @@ export function Customers() {
       <div className="row" style={{ justifyContent: 'flex-end', marginBottom: 4, gap: 8 }}>
         {isSuper && <button className="secondary" title="Configure the auto-generated customer-code series (prefix + running number)" onClick={() => setShowCodeCfg((v) => !v)}>🔢 Code series</button>}
         {isSuper && <button className="secondary" style={{ color: 'var(--bad, #c0392b)' }} title="Delete ALL customers + shipments (keeps vendors/pincodes/masters)" onClick={wipeAll}>🧹 Wipe all (start fresh)</button>}
-        <button onClick={() => { setEditing(null); setForm({ ...blank }); setTab('Personal Information'); setShowAdd(true); }}>＋ Add Customer</button>
+        {rights.edit && <button onClick={() => { setEditing(null); setForm({ ...blank }); setTab('Personal Information'); setShowAdd(true); }}>＋ Add Customer</button>}
       </div>
 
       {isSuper && showCodeCfg && (
@@ -387,7 +389,7 @@ export function Customers() {
             <span><strong>{sel.size}</strong> selected</span>
             <div className="row" style={{ gap: 8 }}>
               <button className="secondary" style={{ padding: '4px 12px', fontSize: 13 }} onClick={() => setSel(new Set())}>Clear</button>
-              <button style={{ padding: '4px 12px', fontSize: 13, background: 'var(--bad)' }} onClick={bulkDelete}>🗑 Delete selected</button>
+              {rights.del && <button style={{ padding: '4px 12px', fontSize: 13, background: 'var(--bad)' }} onClick={bulkDelete}>🗑 Delete selected</button>}
             </div>
           </div>
         )}
@@ -402,7 +404,7 @@ export function Customers() {
                 <td>Net {c.creditDays}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>
                   <Link to={`/customers/${c.id}/overview`}><button className="secondary" style={{ padding: '4px 10px', fontSize: 12, marginRight: 6 }} title="Customer 360 — full history">📊 360</button></Link>
-                  <button className="secondary" style={{ padding: '4px 10px', fontSize: 12, marginRight: 6 }} title="Edit customer" onClick={() => openEdit(c)}>✎ Edit</button>
+                  {rights.edit && <button className="secondary" style={{ padding: '4px 10px', fontSize: 12, marginRight: 6 }} title="Edit customer" onClick={() => openEdit(c)}>✎ Edit</button>}
                   <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} title="View / edit rate cards" onClick={() => setRcClient(c)}>👁 Cards</button>
                 </td>
                 <td>{c.isCash ? <span className="badge DOD">CASH</span> : c.isCreditHold ? <span className="badge PARTIAL">HOLD</span> : <span className="badge DELIVERED">OK</span>}</td>
@@ -410,7 +412,7 @@ export function Customers() {
                   <button className="secondary" style={{ padding: '4px 10px', fontSize: 12, marginRight: 6 }} onClick={() => toggleActive(c)}>
                     {c.isActive === false ? 'Activate' : 'Deactivate'}
                   </button>
-                  <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} title="Delete customer" onClick={() => removeOne(c)}>🗑</button>
+                  {rights.del && <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} title="Delete customer" onClick={() => removeOne(c)}>🗑</button>}
                 </td>
               </tr>
             ))}

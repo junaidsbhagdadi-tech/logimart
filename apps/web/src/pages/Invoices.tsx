@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, Credit, Invoice } from '../api';
 import { useAuth } from '../auth';
+import { useRights } from '../rights';
 
 export function Invoices() {
   const { user } = useAuth();
   const isFinance = user?.role === 'FINANCE_EXEC' || user?.role === 'SYS_ADMIN';
+  const rights = useRights('/invoices');
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [credit, setCredit] = useState<Credit | null>(null);
   const [clients, setClients] = useState<any[]>([]);
@@ -196,7 +198,7 @@ export function Invoices() {
         </div>
       )}
 
-      {isFinance && (
+      {isFinance && rights.edit && (
         <div className="card">
           <h2>Generate consolidated invoice</h2>
           {/* #5 scope: one customer, a chosen set, or every eligible customer for the period */}
@@ -278,7 +280,7 @@ export function Invoices() {
           ))}
         </div>
 
-        {isFinance && (
+        {isFinance && rights.edit && (
           <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
             {sel.size > 0 && <span className="muted" style={{ fontSize: 13 }}><strong>{sel.size}</strong> selected</span>}
             <button className="secondary" style={{ padding: '6px 12px', fontSize: 13 }} disabled={!sel.size} onClick={lockSelected}>🔒 Lock selected</button>
@@ -313,11 +315,11 @@ export function Invoices() {
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <Link to={`/invoices/${inv.id}`}><button className="secondary" style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }} title="View / edit AWBs">👁</button></Link>
                       <a href={`/invoices/${inv.id}/print`} target="_blank" rel="noreferrer"><button className="secondary" style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }} title="Print">🖨</button></a>
-                      {isFinance && inv.status === 'DRAFT' && <>
+                      {isFinance && rights.edit && inv.status === 'DRAFT' && <>
                         <button className="secondary" style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }} title="Add an AWB" onClick={() => addAwb(inv)}>＋AWB</button>
                         <button style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }} title="Lock / issue this invoice" onClick={() => lockInv(inv)}>🔒 Lock</button>
                       </>}
-                      {isFinance && inv.status !== 'PAID' && inv.status !== 'PARTIALLY_PAID' && (
+                      {isFinance && rights.del && inv.status !== 'PAID' && inv.status !== 'PARTIALLY_PAID' && (
                         <button className="secondary" style={{ padding: '3px 8px', fontSize: 12, color: 'var(--danger, #c0392b)' }} title="Delete invoice" onClick={() => delInv(inv)}>🗑</button>
                       )}
                     </td>
