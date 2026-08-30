@@ -611,6 +611,23 @@ export const api = {
   increaseRateCards: (body: { scope: 'ALL' | 'SELECT' | 'VENDOR'; mode?: 'PCT' | 'AMOUNT'; value?: number; increasePct?: number; clientIds?: (string | number)[]; vendorId?: string | number; round?: boolean }) =>
     request<{ ok: boolean; cardsAdjusted: number }>('/api/v1/rate-cards/increase', { method: 'POST', body: JSON.stringify(body) }),
 
+  // ---- expense tracker ----
+  listExpenses: (q: { from?: string; to?: string; branch?: string; category?: string } = {}) => {
+    const p = new URLSearchParams(Object.entries(q).filter(([, v]) => v) as [string, string][]).toString();
+    return request<{ count: number; total: number; byCategory: Record<string, number>; byBranch: Record<string, number>; rows: any[] }>(`/api/v1/expenses${p ? '?' + p : ''}`);
+  },
+  createExpense: (body: any) => request<any>('/api/v1/expenses', { method: 'POST', body: JSON.stringify(body) }),
+  deleteExpense: (id: string | number) => request<{ ok: boolean }>(`/api/v1/expenses/${id}`, { method: 'DELETE' }),
+
+  // ---- demurrage / reattempt debit note ----
+  raiseDemurrage: (body: { awb: string; firstAttemptDate?: string; days: number; ratePerKg: number; min?: number }) =>
+    request<any>('/api/v1/notes/demurrage', { method: 'POST', body: JSON.stringify(body) }),
+
+  // ---- per-AWB add-on charges ----
+  listAddons: (awb: string) => request<any[]>(`/api/v1/shipments/${awb}/addons`),
+  addAddon: (awb: string, body: any) => request<any>(`/api/v1/shipments/${awb}/addons`, { method: 'POST', body: JSON.stringify(body) }),
+  deleteAddon: (id: string | number) => request<{ ok: boolean }>(`/api/v1/shipments/addons/${id}`, { method: 'DELETE' }),
+
   // ---- vendors ----
   listVendors: () => request<any[]>('/api/v1/vendors'),
   getVendor: (id: string) => request<any>(`/api/v1/vendors/${id}`),

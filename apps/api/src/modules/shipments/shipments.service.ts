@@ -317,6 +317,45 @@ export class ShipmentsService {
     return { ok: true, deleted: shipments.length, detail: r };
   }
 
+  // ---- Per-AWB add-on charges (ad-hoc, billed to the customer on the next invoice when toBill) ----
+  private async shipmentByAwb(awb: string) {
+    const s = await this.prisma.shipment.findUnique({ where: { awb: String(awb).trim().toUpperCase() }, select: { id: true } });
+    if (!s) throw new NotFoundException(`AWB ${awb} not found`);
+    return s;
+  }
+
+  async listAddons(awb: string) {
+    const s = await this.shipmentByAwb(awb);
+    return this.prisma.shipmentAddon.findMany({ where: { shipmentId: s.id }, orderBy: { createdAt: 'desc' } });
+  }
+
+  async addAddon(awb: string, dto: any, userId?: number) {
+    const s = await this.shipmentByAwb(awb);
+    const amount = Number(dto.amount) || 0;
+    if (!(amount > 0)) throw new BadRequestException('Enter an amount greater than zero.');
+    return this.prisma.shipmentAddon.create({
+      data: {
+        shipmentId: s.id,
+        amount,
+        reason: String(dto.reason || '').trim() || 'Add-on charge',
+        serviceCentre: dto.serviceCentre?.trim() || null,
+        fromLoc: dto.fromLoc?.trim() || null,
+        toLoc: dto.toLoc?.trim() || null,
+        mode: dto.mode?.trim() || null,
+        toBill: dto.toBill !== false,
+        pickupDate: dto.pickupDate ? new Date(dto.pickupDate) : null,
+        createdById: userId != null ? BigInt(userId) : null,
+      },
+    });
+  }
+
+  async removeAddon(id: number) {
+    const a = await this.prisma.shipmentAddon.findUnique({ where: { id: BigInt(id) }, select: { billedInvoiceId: true } });
+    if (a?.billedInvoiceId) throw new ConflictException('This add-on is already billed on an invoice — cancel/rebill that invoice first.');
+    await this.prisma.shipmentAddon.delete({ where: { id: BigInt(id) } });
+    return { ok: true };
+  }
+
   /** Wrong-entry transfer: reassign a mis-booked AWB to the correct customer. Blocked once the
    *  shipment has been invoiced (cancel/rebill the invoice first). Super-admin action. */
   async transfer(awb: string, clientId: number) {

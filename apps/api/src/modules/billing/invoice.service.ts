@@ -78,6 +78,7 @@ export class InvoiceService {
       disputeReason: string | null;
     }[] = [];
     let subtotal = 0;
+    const addonIdsToMark: bigint[] = []; // per-AWB add-on charges pulled onto this invoice
 
     for (const s of shipments) {
       if (alreadyBilled.has(s.id.toString())) continue; // already invoiced
@@ -86,11 +87,16 @@ export class InvoiceService {
       const charges = await this.rates.chargesForShipment(s, s.pieces);
       if (!charges) continue; // no rate configured -> skip
 
+      // Per-AWB ad-hoc add-on charges (toBill, not yet billed) fold into this line's "other charges".
+      const addons = await this.prisma.shipmentAddon.findMany({ where: { shipmentId: s.id, toBill: true, billedInvoiceId: null }, select: { id: true, amount: true, reason: true } });
+      const addonTotal = +addons.reduce((a, x) => a + Number(x.amount), 0).toFixed(2);
+      if (addonTotal) { (charges as any).addonLines = addons.map((a) => ({ reason: a.reason, amount: Number(a.amount) })); addonIdsToMark.push(...addons.map((a) => a.id)); }
+
       const chargeableKg = charges.chargeableKg;
-      const amount = charges.subtotal; // freight + surcharges (or FTL/manual), pre-GST
+      const amount = +(Number(charges.subtotal) + addonTotal).toFixed(2); // freight + surcharges + add-ons, pre-GST
       const freight = +(Number(charges.freight ?? 0)).toFixed(2);
       const fuel = +(Number(charges.fuel ?? 0)).toFixed(2);
-      const otherCharges = +(amount - freight - fuel).toFixed(2); // FOV/ODA/docket/handling/etc.
+      const otherCharges = +(amount - freight - fuel).toFixed(2); // FOV/ODA/docket/handling/add-ons/etc.
       lines.push({ shipmentId: s.id, chargeableKg, amount, freight, fuel, otherCharges, breakup: charges as any, disputeReason: null });
       subtotal += amount;
     }
@@ -150,6 +156,11 @@ export class InvoiceService {
       },
       include: { lines: true },
     });
+
+    // Mark the add-on charges as billed so they aren't pulled onto a future invoice.
+    if (addonIdsToMark.length) {
+      await this.prisma.shipmentAddon.updateMany({ where: { id: { in: addonIdsToMark } }, data: { billedInvoiceId: invoice.id } });
+    }
 
     return { invoice, creditHold: false, draft: true, newBalance: Number(client.outstandingBal), creditLimit: client.creditLimit };
   }

@@ -36,6 +36,7 @@ import { TaxFiling } from './pages/TaxFiling';
 import { Notes } from './pages/Notes';
 import { Claims } from './pages/Claims';
 import { Documents } from './pages/Documents';
+import { ExpenseTracker } from './pages/ExpenseTracker';
 import { Receivables } from './pages/Receivables';
 import { AuditLog } from './pages/AuditLog';
 import { Pincodes } from './pages/Pincodes';
@@ -125,6 +126,7 @@ export function App() {
         <Route path="/receivables" element={isAdminFin ? <Receivables /> : <Navigate to="/" replace />} />
         <Route path="/notes" element={isAdminFin ? <Notes /> : <Navigate to="/" replace />} />
         <Route path="/claims" element={isAdminFin ? <Claims /> : <Navigate to="/" replace />} />
+        <Route path="/expenses" element={isAdminFin ? <ExpenseTracker /> : <Navigate to="/" replace />} />
         <Route path="/documents" element={isAdminFin ? <Documents /> : <Navigate to="/" replace />} />
         <Route path="/masters" element={canMaster ? <Masters /> : <Navigate to="/" replace />} />
         {/* Standard Charges merged into Masters → Charges (default rate/min per charge). Keep old bookmarks working. */}

@@ -541,6 +541,7 @@ model Shipment {
 
   pieces ShipmentPiece[]
   pods   Pod[]
+  addons ShipmentAddon[]
   invoiceLines InvoiceLineItem[]
   notes  DebitCreditNote[]
   claims Claim[]
@@ -1240,4 +1241,45 @@ model ArchiveItem {
   @@index([category])
   @@index([fiscalYear])
   @@map("archive_items")
+}
+
+/// Petty-cash / branch expense log (Expense Tracker).
+model Expense {
+  id          BigInt   @id @default(autoincrement())
+  date        DateTime
+  mode        String // GPAY | CASH | A/C TRANSFER | UPI | CARD | CHEQUE
+  category    String // Vehicle | Office | Stationary | Internet | Staff welfare | Freight | Other
+  remark      String?
+  amount      Decimal  @db.Decimal(12, 2)
+  paidBy      String?
+  paidTo      String?
+  branch      String? // BOM | DEL | AHD | BLR ...
+  createdById BigInt?
+  createdAt   DateTime @default(now())
+
+  @@index([date])
+  @@index([branch])
+  @@index([category])
+  @@map("expenses")
+}
+
+/// Per-AWB ad-hoc add-on charge (billed to the customer as an extra invoice line when toBill=true).
+model ShipmentAddon {
+  id            BigInt    @id @default(autoincrement())
+  shipmentId    BigInt
+  shipment      Shipment  @relation(fields: [shipmentId], references: [id])
+  amount        Decimal   @db.Decimal(12, 2)
+  reason        String
+  serviceCentre String?
+  fromLoc       String?
+  toLoc         String?
+  mode          String? // how WE paid the underlying expense (GPAY/CASH/…)
+  toBill        Boolean   @default(true) // bill to the customer?
+  pickupDate    DateTime?
+  billedInvoiceId BigInt? // set once it has been included on an invoice
+  createdById   BigInt?
+  createdAt     DateTime  @default(now())
+
+  @@index([shipmentId])
+  @@map("shipment_addons")
 }

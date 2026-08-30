@@ -45,6 +45,7 @@ import { ClaimsModule } from './modules/claims/claims.module';
 import { DeductionsModule } from './modules/deductions/deductions.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { AuditModule } from './modules/audit/audit.module';
+import { ExpensesModule } from './modules/expenses/expenses.module';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 
@@ -106,6 +107,7 @@ const webDist = join(__dirname, '..', '..', 'web', 'dist');
     DeductionsModule,
     DocumentsModule,
     AuditModule,
+    ExpensesModule,
   ],
   controllers: [AppController],
   providers: [{ provide: APP_INTERCEPTOR, useClass: AuditInterceptor }],

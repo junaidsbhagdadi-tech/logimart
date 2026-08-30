@@ -107,6 +107,7 @@ export function Layout() {
       { to: '/vendors', icon: '🏢', label: 'Vendors', show: isAdminFin },
       { to: '/vehicles', icon: '🚚', label: 'Vehicles', show: isAdminFin },
       { to: '/vendor-bills', icon: '🚚', label: 'Vendor Bills & P&L', show: isAdminFin },
+      { to: '/expenses', icon: '💸', label: 'Expense Tracker', show: isAdminFin },
       { to: '/documents', icon: '📁', label: 'Documents', show: isAdminFin },
       { to: '/sales', icon: '📈', label: 'Sales', show: isAdminFin || isSales },
     ] },

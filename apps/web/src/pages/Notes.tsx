@@ -18,12 +18,24 @@ export function Notes() {
   const [form, setForm] = useState({ ...blank });
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
+  const [dem, setDem] = useState({ awb: '', firstAttemptDate: '', days: '', ratePerKg: '', min: '' });
 
   const load = () => {
     api.listNotes().then(setRows).catch((e) => setError(e.message));
     api.listClients().then(setClients).catch(() => {});
   };
   useEffect(load, []);
+
+  const raiseDemurrage = async () => {
+    setError(''); setMsg('');
+    if (!dem.awb.trim() || !(Number(dem.days) > 0) || !(Number(dem.ratePerKg) > 0)) { setError('Enter AWB, days and ₹/kg for the demurrage note.'); return; }
+    try {
+      const res = await api.raiseDemurrage({ awb: dem.awb.trim(), firstAttemptDate: dem.firstAttemptDate || undefined, days: Number(dem.days), ratePerKg: Number(dem.ratePerKg), min: dem.min ? Number(dem.min) : undefined });
+      setMsg(`Demurrage debit note ${res.note.noteNo} raised for ${dem.awb} — ₹${res.note.total} (incl. GST).`);
+      setDem({ awb: '', firstAttemptDate: '', days: '', ratePerKg: '', min: '' });
+      load();
+    } catch (e: any) { setError(e.message); }
+  };
 
   const create = async () => {
     setError(''); setMsg('');
@@ -86,6 +98,19 @@ export function Notes() {
           <div style={{ gridColumn: 'span 3' }}><label>Narration</label><input value={form.narration} onChange={(e) => setForm({ ...form, narration: e.target.value })} /></div>
         </div>
         <button style={{ marginTop: 12 }} disabled={!form.clientId || !form.subtotal} onClick={create}>Raise note</button>
+      </div>
+
+      <div className="card">
+        <h2>⏳ Demurrage / Reattempt charge</h2>
+        <p className="muted" style={{ marginTop: -6, fontSize: 12.5 }}>Charged after the first delivery attempt, kept <strong>off the regular freight bill</strong> as a debit note. Amount = max(min, days × ₹/kg × chargeable kg), + GST.</p>
+        <div className="grid cols-4" style={{ gap: 12 }}>
+          <div><label>AWB *</label><input value={dem.awb} onChange={(e) => setDem({ ...dem, awb: e.target.value })} placeholder="e.g. BD10000001" /></div>
+          <div><label>First attempt date</label><input type="date" value={dem.firstAttemptDate} onChange={(e) => setDem({ ...dem, firstAttemptDate: e.target.value })} /></div>
+          <div><label>No. of days *</label><input type="number" value={dem.days} onChange={(e) => setDem({ ...dem, days: e.target.value })} placeholder="e.g. 3" /></div>
+          <div><label>Rate ₹ / kg *</label><input type="number" value={dem.ratePerKg} onChange={(e) => setDem({ ...dem, ratePerKg: e.target.value })} placeholder="e.g. 3" /></div>
+          <div><label>Minimum ₹</label><input type="number" value={dem.min} onChange={(e) => setDem({ ...dem, min: e.target.value })} placeholder="e.g. 200" /></div>
+        </div>
+        <button className="secondary" style={{ marginTop: 12 }} disabled={!dem.awb || !dem.days || !dem.ratePerKg} onClick={raiseDemurrage}>Raise demurrage debit note</button>
       </div>
 
       <div className="card">

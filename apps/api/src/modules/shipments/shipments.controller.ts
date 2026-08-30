@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles, SuperAdminOnly } from '../../common/rbac/roles.decorator';
@@ -34,6 +34,25 @@ export class ShipmentsController {
       rows = rows.map((r) => ({ ...r, clientId: r.clientId != null && allowed.has(String(r.clientId)) ? Number(r.clientId) : Number(req.user.clientId) }));
     }
     return this.shipments.bulkCreate(rows);
+  }
+
+  // ---- Per-AWB add-on charges ----
+  @Get(':awb/addons')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  listAddons(@Param('awb') awb: string) {
+    return this.shipments.listAddons(awb);
+  }
+
+  @Post(':awb/addons')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  addAddon(@Param('awb') awb: string, @Body() dto: any, @Req() req: any) {
+    return this.shipments.addAddon(awb, dto, req.user?.sub ? Number(req.user.sub) : undefined);
+  }
+
+  @Delete('addons/:id')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  removeAddon(@Param('id') id: string) {
+    return this.shipments.removeAddon(Number(id));
   }
 
   /** Super-admin: delete selected AWBs (and their children). Used by the AWB list select/delete. */

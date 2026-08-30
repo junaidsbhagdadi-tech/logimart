@@ -52,6 +52,7 @@ export const FEATURE_CATALOG: FeatureSection[] = [
     { to: '/vehicles', label: 'Vehicles' },
     { to: '/vendor-bills', label: 'Vendor Bills & P&L' },
     { to: '/documents', label: 'Documents' },
+    { to: '/expenses', label: 'Expense Tracker' },
     { to: '/sales', label: 'Sales' },
   ] },
   { section: 'Masters & Setup', features: [
