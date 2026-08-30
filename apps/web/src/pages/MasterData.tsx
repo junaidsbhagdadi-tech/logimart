@@ -4,7 +4,7 @@ import { api } from '../api';
 const REGIONS = ['NORTH', 'SOUTH', 'EAST', 'WEST', 'NORTHEAST'];
 type Pin = { pincode: string; city: string; state: string; region: string; tier: number; isOda: boolean };
 type Hub = { id: string; code: string; name: string; zone: string };
-type ServiceArea = { id: string; pincode: string; city: string | null; state: string | null; network: string; mode: string | null; tatDays: number | null; isOda: boolean };
+type ServiceArea = { id: string; pincode: string; city: string | null; state: string | null; network: string; mode: string | null; tatDays: number | null; isOda: boolean; isActive: boolean };
 
 export function MasterData() {
   const [pins, setPins] = useState<Pin[]>([]);
@@ -37,6 +37,10 @@ export function MasterData() {
     api.listServiceAreas(covFilter || undefined).then(setCovRows).catch(() => {});
   };
   useEffect(loadCoverage, [covFilter]);
+
+  const toggleSA = async (id: string, patch: { isOda?: boolean; isActive?: boolean }) => {
+    try { await api.toggleServiceArea(id, patch); loadCoverage(); } catch { /* keep silent — reload shows state */ }
+  };
 
   const covTemplate = () => {
     const url = URL.createObjectURL(new Blob([covCols + '\n'], { type: 'text/csv' }));
@@ -152,14 +156,19 @@ export function MasterData() {
           </select>
         </div>
         <table style={{ marginTop: 12 }}>
-          <thead><tr><th>Pincode</th><th>City</th><th>State</th><th>Network</th><th>Mode</th><th>TAT</th><th>ODA</th></tr></thead>
+          <thead><tr><th>Pincode</th><th>City</th><th>State</th><th>Network</th><th>Mode</th><th>TAT</th><th>EDL/ODA</th><th>Serviceable</th><th>Actions</th></tr></thead>
           <tbody>
             {covRows.slice(0, 300).map((x) => (
-              <tr key={x.id}>
+              <tr key={x.id} style={x.isActive === false ? { opacity: 0.55 } : undefined}>
                 <td><strong>{x.pincode}</strong></td><td>{x.city || '—'}</td><td>{x.state || '—'}</td>
                 <td><span className={'badge ' + (x.network === 'SELF' ? 'DELIVERED' : 'AT_HUB')}>{x.network}</span></td>
                 <td>{x.mode || '—'}</td><td>{x.tatDays != null ? `${x.tatDays}d` : '—'}</td>
-                <td>{x.isOda ? <span className="badge PARTIAL">ODA</span> : '—'}</td>
+                <td>{x.isOda ? <span className="badge PARTIAL">EDL/ODA</span> : <span className="muted">Regular</span>}</td>
+                <td>{x.isActive === false ? <span className="badge CANCELLED">Not serviced</span> : <span className="badge DELIVERED">Yes</span>}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  <button className="secondary" style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }} title="Toggle EDL/ODA ↔ Regular for this vendor" onClick={() => toggleSA(x.id, { isOda: !x.isOda })}>{x.isOda ? '→ Regular' : '→ EDL'}</button>
+                  <button className="secondary" style={{ padding: '3px 8px', fontSize: 12 }} title="Mark serviceable / not serviced by this vendor" onClick={() => toggleSA(x.id, { isActive: x.isActive === false })}>{x.isActive === false ? '✓ Serviceable' : '✕ Not serviced'}</button>
+                </td>
               </tr>
             ))}
           </tbody>

@@ -73,6 +73,10 @@ export function ShipmentDetail() {
       patch.shipmentValue = ef.shipmentValue === '' ? null : Number(ef.shipmentValue);
       // blank charge weight → null → engine recomputes from the card (divisor/CFT + round-up)
       patch.chargeWeight = ef.chargeWeight === '' ? null : Number(ef.chargeWeight);
+      if ((s as any)?.invoiced) {
+        if (!confirm('This AWB is already INVOICED. Editing it will NOT change the invoice already raised — cancel/rebill the invoice for any billing change. Continue with the edit?')) return;
+        patch.overrideInvoiced = true;
+      }
       const r = await api.editShipment(awb, patch);
       setMsg(`✓ ${r.message}${r.rezoned ? ' Zone/EDD re-derived.' : ''}`);
       setEditOpen(false); load();
@@ -301,7 +305,7 @@ export function ShipmentDetail() {
           {canAssign && <button className="secondary" onClick={handoffBd}>📦 Hand to BlueDart</button>}
           {canAssign && s.bdWaybill && <button className="secondary" onClick={trackBd}>🔎 BlueDart track</button>}
           {canReweigh && <button className="secondary" onClick={() => { setReweighMode((v) => !v); setMsg(''); }}>⚖ {reweighMode ? 'Cancel re-weigh' : 'Re-weigh'}</button>}
-          {canEditCharges && !(s as any).invoiced && <button className="secondary" onClick={openEdit} title="Edit product, consignee, vendor & other details">✏️ Edit AWB</button>}
+          {((canEditCharges && !(s as any).invoiced) || (isSysAdmin && (s as any).invoiced)) && <button className="secondary" onClick={openEdit} title={(s as any).invoiced ? 'Super-admin: edit an already-invoiced AWB (does NOT change the raised invoice)' : 'Edit product, consignee, vendor & other details'}>✏️ Edit AWB{(s as any).invoiced ? ' (invoiced)' : ''}</button>}
           {isSysAdmin && <button className="secondary" onClick={() => { setTransferOpen((v) => !v); setMsg(''); setError(''); }} title="Wrong-entry transfer to another customer">🔄 Transfer</button>}
           <Link to={`/shipments/${s.awb}/labels`}><button>🏷 Print labels</button></Link>
           <a href={`/shipments/${s.awb}/awb-print`} target="_blank" rel="noreferrer"><button>🖨 Print AWB</button></a>

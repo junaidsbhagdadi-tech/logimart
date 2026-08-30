@@ -484,8 +484,10 @@ export const api = {
   }>(`/api/v1/pincodes/lane-tat/${origin}/${dest}`),
   serviceNetworks: () => request<string[]>('/api/v1/pincodes/service-areas/networks'),
   listServiceAreas: (network?: string, limit = 500) =>
-    request<{ id: string; pincode: string; city: string | null; state: string | null; network: string; mode: string | null; tatDays: number | null; isOda: boolean }[]>(
+    request<{ id: string; pincode: string; city: string | null; state: string | null; network: string; mode: string | null; tatDays: number | null; isOda: boolean; isActive: boolean }[]>(
       `/api/v1/pincodes/service-areas?limit=${limit}${network ? `&network=${encodeURIComponent(network)}` : ''}`),
+  toggleServiceArea: (id: string | number, patch: { isOda?: boolean; isActive?: boolean }) =>
+    request<any>(`/api/v1/pincodes/service-areas/${id}/toggle`, { method: 'POST', body: JSON.stringify(patch) }),
   bulkServiceAreas: (rows: Record<string, string>[], defaultNetwork = 'SELF') =>
     request<{ imported: number; failed: number; errors: { pincode: string; error: string }[] }>(
       '/api/v1/pincodes/service-areas/bulk', { method: 'POST', body: JSON.stringify({ rows, defaultNetwork }) }),

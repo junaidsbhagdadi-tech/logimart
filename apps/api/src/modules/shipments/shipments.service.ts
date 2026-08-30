@@ -582,11 +582,15 @@ export class ShipmentsService {
    * the AWB is invoiced (cancel/rebill first). Changing product or a pincode re-derives the zone grid,
    * ODA flag and EDD so rating stays correct. Charges are computed live, so no stored total to patch.
    */
-  async editShipment(awbRaw: string, dto: any) {
+  async editShipment(awbRaw: string, dto: any, opts?: { isSuper?: boolean }) {
     const awb = String(awbRaw || '').trim().toUpperCase();
     const s = await this.prisma.shipment.findUnique({ where: { awb }, include: { _count: { select: { invoiceLines: true } } } });
     if (!s) throw new NotFoundException(`AWB ${awb} not found`);
-    if (s._count.invoiceLines > 0) throw new ConflictException('This AWB is already invoiced — cancel/rebill the invoice before editing.');
+    // Invoiced shipments are locked — EXCEPT a super-admin who explicitly overrides (the edit does NOT
+    // retro-change the already-raised invoice; cancel/rebill for billing changes).
+    if (s._count.invoiceLines > 0 && !(opts?.isSuper && dto?.overrideInvoiced)) {
+      throw new ConflictException('This AWB is already invoiced — cancel/rebill the invoice before editing.');
+    }
 
     const data: any = {};
     const str = (k: string, v: any) => { if (v !== undefined) data[k] = v === null || String(v).trim() === '' ? null : String(v).trim(); };

@@ -181,6 +181,14 @@ export class PincodesService {
     });
   }
 
+  /** Per-vendor toggle: EDL/ODA (isOda) or serviceable/non-serviceable (isActive) for one pincode row. */
+  async toggleServiceArea(id: number, patch: { isOda?: boolean; isActive?: boolean }) {
+    const data: any = {};
+    if (typeof patch.isOda === 'boolean') data.isOda = patch.isOda;
+    if (typeof patch.isActive === 'boolean') data.isActive = patch.isActive;
+    return this.prisma.serviceablePincode.update({ where: { id: BigInt(id) }, data });
+  }
+
   /**
    * Bulk upsert serviceable pincodes for a network. Each row: pincode (required),
    * plus optional city/state/mode/tatDays/isOda; network defaults to the row's

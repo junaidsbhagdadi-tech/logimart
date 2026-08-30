@@ -54,6 +54,14 @@ export class PincodesController {
     return this.pincodes.listServiceAreas(network || undefined, limit ? Number(limit) : 500);
   }
 
+  /** Per-vendor toggle — mark a pincode EDL/Regular (isOda) or serviceable/not (isActive). */
+  @Post('service-areas/:id/toggle')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  toggleServiceArea(@Param('id') id: string, @Body() dto: { isOda?: boolean; isActive?: boolean }) {
+    return this.pincodes.toggleServiceArea(Number(id), dto);
+  }
+
   /** Bulk upload serviceable pincodes for a network (SELF or a vendor). */
   @Post('service-areas/bulk')
   @UseGuards(RolesGuard)
