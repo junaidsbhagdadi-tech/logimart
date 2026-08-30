@@ -354,6 +354,8 @@ export const api = {
     request<{ ok: boolean }>(`/api/v1/shipments/${awb}/portal-appointment`, { method: 'POST', body: JSON.stringify(body) }),
   portalRemark: (awb: string, remark: string) =>
     request<{ ok: boolean }>(`/api/v1/shipments/${awb}/portal-remark`, { method: 'POST', body: JSON.stringify({ remark }) }),
+  portalRateEstimate: (body: { product: string; vendor?: string; originPincode?: string; destPincode: string; deadKg: number; pcs?: number; declaredValue?: number }) =>
+    request<{ ok: boolean; message?: string; subtotal?: number; gst?: number; total?: number; chargeableKg?: number; isOda?: boolean; lines?: any[]; basis?: string }>('/api/v1/shipments/portal-rate-estimate', { method: 'POST', body: JSON.stringify(body) }),
   portalAccounts: () => request<any[]>('/api/v1/portal/accounts'),
   cancelShipment: (awb: string, reason?: string) =>
     request<{ awb: string; status: string }>(`/api/v1/shipments/${awb}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),

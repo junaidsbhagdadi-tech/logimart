@@ -31,6 +31,18 @@ export function ClientPortal() {
     catch (e: any) { setError(e.message); }
   };
 
+  // Rate check (only if enabled for this account)
+  const [products, setProducts] = useState<any[]>([]);
+  const [est, setEst] = useState({ product: '', originPincode: '', destPincode: '', deadKg: '', pcs: '1', declaredValue: '' });
+  const [estResult, setEstResult] = useState<any>(null);
+  useEffect(() => { if (d?.client?.canCheckRates) api.listMaster('PRODUCT').then(setProducts).catch(() => {}); }, [d?.client?.canCheckRates]);
+  const runEstimate = async () => {
+    setError(''); setEstResult(null);
+    if (!est.product || !est.destPincode) { setError('Pick a product and enter the destination pincode.'); return; }
+    try { setEstResult(await api.portalRateEstimate({ product: est.product, originPincode: est.originPincode || undefined, destPincode: est.destPincode, deadKg: Number(est.deadKg) || 0, pcs: Number(est.pcs) || 1, declaredValue: Number(est.declaredValue) || 0 })); }
+    catch (e: any) { setError(e.message); }
+  };
+
   const exportShipments = async () => {
     try {
       const rows = await api.awbList(2000);
@@ -64,6 +76,27 @@ export function ClientPortal() {
             </div>
           </div>
         </div>
+      )}
+      {d.client?.canCheckRates && (
+        <details className="card">
+          <summary style={{ cursor: 'pointer', fontWeight: 700 }}>💹 Check rates — estimate a shipment cost</summary>
+          <div className="grid cols-4" style={{ gap: 10, marginTop: 12 }}>
+            <div><label>Product</label><select value={est.product} onChange={(e) => setEst({ ...est, product: e.target.value })}><option value="">— select —</option>{products.map((p: any) => <option key={p.code} value={p.code}>{p.code} — {p.name}</option>)}</select></div>
+            <div><label>Origin pincode <span className="muted">(opt)</span></label><input value={est.originPincode} maxLength={6} onChange={(e) => setEst({ ...est, originPincode: e.target.value })} /></div>
+            <div><label>Destination pincode *</label><input value={est.destPincode} maxLength={6} onChange={(e) => setEst({ ...est, destPincode: e.target.value })} /></div>
+            <div><label>Weight (kg)</label><input type="number" value={est.deadKg} onChange={(e) => setEst({ ...est, deadKg: e.target.value })} /></div>
+            <div><label>No. of boxes</label><input type="number" value={est.pcs} onChange={(e) => setEst({ ...est, pcs: e.target.value })} /></div>
+            <div><label>Invoice value ₹ <span className="muted">(for FOV)</span></label><input type="number" value={est.declaredValue} onChange={(e) => setEst({ ...est, declaredValue: e.target.value })} /></div>
+          </div>
+          <button style={{ marginTop: 10 }} onClick={runEstimate} disabled={!est.product || !est.destPincode}>Estimate cost</button>
+          {estResult && (estResult.ok
+            ? <div className="card" style={{ marginTop: 10, borderLeft: '4px solid var(--ok, #16a34a)' }}>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>Estimated total: ₹{Number(estResult.total).toLocaleString('en-IN')}</div>
+                <div className="muted" style={{ fontSize: 12.5 }}>Freight + charges ₹{Number(estResult.subtotal).toLocaleString('en-IN')} + GST ₹{Number(estResult.gst).toLocaleString('en-IN')} · chargeable {estResult.chargeableKg} kg{estResult.isOda ? ' · ODA location' : ''}</div>
+                <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>Indicative estimate — final billing may vary with actual weight, ODA and applicable charges.</div>
+              </div>
+            : <div className="muted" style={{ marginTop: 10 }}>{estResult.message || 'No rate available.'}</div>)}
+        </details>
       )}
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>

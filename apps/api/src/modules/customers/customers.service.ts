@@ -75,6 +75,7 @@ export class CustomersService {
           creditDays: dto.creditDays ?? 30,
           isOneTime: dto.isOneTime ?? false,
           isCash: dto.isCash ?? false,
+          canCheckRates: dto.canCheckRates ?? false,
         },
       });
     } catch (e) {

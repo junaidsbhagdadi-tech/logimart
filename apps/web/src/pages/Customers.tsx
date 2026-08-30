@@ -11,7 +11,7 @@ const blank = {
   contactEmail: '', email2: '', gstin: '', pan: '', tanNo: '', iecCode: '',
   addressLine: '', pincode: '', city: '', state: '', salesPerson: '', salesPersonMobile: '', salesPersonEmail: '',
   accountType: 'CREDIT', billingCycle: 'MONTHLY', allowSameGstin: false,
-  creditLimit: '', creditDays: '30', isCash: false, parentAccountId: '',
+  creditLimit: '', creditDays: '30', isCash: false, canCheckRates: false, parentAccountId: '',
 };
 
 const TABS = ['Personal Information', 'Fuel Surcharges', 'Other Charges', 'Customer Volumetric', 'Customer Address'] as const;
@@ -137,7 +137,7 @@ export function Customers() {
       addressLine: (c as any).addressLine ?? '', pincode: (c as any).pincode ?? '', city: (c as any).city ?? '', state: (c as any).state ?? '',
       salesPerson: (c as any).salesPerson ?? '', salesPersonMobile: (c as any).salesPersonMobile ?? '', salesPersonEmail: (c as any).salesPersonEmail ?? '',
       accountType: (c as any).accountType ?? 'CREDIT', billingCycle: (c as any).billingCycle ?? 'MONTHLY',
-      allowSameGstin: !!(c as any).allowSameGstin, creditLimit: String((c as any).creditLimit ?? ''), creditDays: String((c as any).creditDays ?? '30'), isCash: !!(c as any).isCash,
+      allowSameGstin: !!(c as any).allowSameGstin, creditLimit: String((c as any).creditLimit ?? ''), creditDays: String((c as any).creditDays ?? '30'), isCash: !!(c as any).isCash, canCheckRates: !!(c as any).canCheckRates,
       parentAccountId: (c as any).parentAccountId != null ? String((c as any).parentAccountId) : '',
     });
     setShowAdd(true);
@@ -166,6 +166,7 @@ export function Customers() {
       accountType: form.accountType || undefined,
       billingCycle: form.billingCycle || undefined,
       allowSameGstin: form.allowSameGstin,
+      canCheckRates: form.canCheckRates,
       isCash: form.accountType === 'WALLET' ? false : form.isCash,
       creditLimit: form.creditLimit ? +form.creditLimit : 0,
       creditDays: form.creditDays ? +form.creditDays : 30,
@@ -260,6 +261,10 @@ export function Customers() {
             <label className="row" style={{ gap: 8, marginTop: 16, fontWeight: 600, color: 'var(--text)' }}>
               <input type="checkbox" style={{ width: 'auto' }} checked={form.allowSameGstin} onChange={(e) => setForm((f) => ({ ...f, allowSameGstin: e.target.checked }))} />
               Allow duplicate GSTIN <span className="muted" style={{ fontWeight: 400 }}>— create a second billing account for the same legal entity</span>
+            </label>
+            <label className="row" style={{ gap: 8, marginTop: 10, fontWeight: 600, color: 'var(--text)' }}>
+              <input type="checkbox" style={{ width: 'auto' }} checked={form.canCheckRates} onChange={(e) => setForm((f) => ({ ...f, canCheckRates: e.target.checked }))} />
+              Allow rate check in portal <span className="muted" style={{ fontWeight: 400 }}>— customer can estimate shipment costs from their login</span>
             </label>
 
             {editing && (

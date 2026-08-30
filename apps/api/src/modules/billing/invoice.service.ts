@@ -782,6 +782,7 @@ export class InvoiceService {
         id: client.id, legalName: client.legalName, accountCode: client.accountCode,
         gstin: client.gstin, creditLimit: client.creditLimit, creditDays: client.creditDays,
         outstandingBal: client.outstandingBal, isCreditHold: client.isCreditHold,
+        canCheckRates: (client as any).canCheckRates ?? false,
       },
       invoices: invoices.map((i) => ({ ...i, remaining: +(remainingByInvoice.get(String(i.id)) ?? Number(i.total)).toFixed(2) })),
       ledger,

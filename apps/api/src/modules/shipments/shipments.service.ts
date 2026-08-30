@@ -385,6 +385,41 @@ export class ShipmentsService {
     return { ok: true };
   }
 
+  /**
+   * Estimate the cost of a hypothetical shipment (portal rate-check, gated by canCheckRates).
+   * Builds a synthetic shipment, derives zones from the pincode master, and runs the live rate engine.
+   */
+  async estimate(clientId: number, dto: { product: string; vendor?: string; originPincode: string; destPincode: string; deadKg: number; pcs?: number; declaredValue?: number }) {
+    const client = await this.prisma.b2bClient.findUnique({ where: { id: BigInt(clientId) }, select: { canCheckRates: true } });
+    if (!client?.canCheckRates) throw new ForbiddenException('Rate check is not enabled for your account. Please contact us.');
+    if (!dto.product || !dto.destPincode) throw new BadRequestException('Product and destination pincode are required.');
+
+    const [originPin, destPin] = await Promise.all([
+      dto.originPincode ? this.prisma.pincode.findFirst({ where: { pincode: String(dto.originPincode) } }) : Promise.resolve(null),
+      this.prisma.pincode.findFirst({ where: { pincode: String(dto.destPincode) } }),
+    ]);
+    const originZone = this.productZone(originPin, dto.product, undefined, dto.originPincode, 'SOUTH') || 'SOUTH';
+    const destZone = this.productZone(destPin, dto.product, undefined, dto.destPincode, 'SOUTH') || 'SOUTH';
+    const pcs = Math.max(1, Math.floor(Number(dto.pcs) || 1));
+    const totalKg = Number(dto.deadKg) || 0.5;
+    const pieces = Array.from({ length: pcs }, () => ({ deadKg: totalKg / pcs, volKg: 0, lengthCm: null, widthCm: null, heightCm: null }));
+    const isOda = !!(destPin?.edl && String(destPin.edl).toUpperCase() !== 'REGULAR');
+
+    const shipment: any = {
+      clientId: BigInt(clientId), product: dto.product, vendor: dto.vendor || 'SELF',
+      originZone, destZone, originPincode: dto.originPincode, destPincode: dto.destPincode,
+      declaredValue: Number(dto.declaredValue) || 0, shipmentValue: Number(dto.declaredValue) || 0,
+      pieceCount: pcs, isOda,
+    };
+    const charges = await this.rates.chargesForShipment(shipment, pieces);
+    if (!charges) return { ok: false, message: 'No rate is configured for this product yet — please contact us for a quote.' };
+    const gst = +(Number(charges.subtotal) * 0.18).toFixed(2);
+    return {
+      ok: true, subtotal: charges.subtotal, gst, total: +(Number(charges.subtotal) + gst).toFixed(2),
+      chargeableKg: charges.chargeableKg, isOda, lines: charges.lines, basis: charges.basis,
+    };
+  }
+
   /** Wrong-entry transfer: reassign a mis-booked AWB to the correct customer. Blocked once the
    *  shipment has been invoiced (cancel/rebill the invoice first). Super-admin action. */
   async transfer(awb: string, clientId: number) {

@@ -41,6 +41,7 @@ export class CreateClientDto {
   @IsOptional() @IsInt() @Min(0) creditDays?: number;
   @IsOptional() @IsBoolean() isOneTime?: boolean;
   @IsOptional() @IsBoolean() isCash?: boolean;
+  @IsOptional() @IsBoolean() canCheckRates?: boolean;
 }
 
 export class UpdateClientDto {
@@ -74,5 +75,6 @@ export class UpdateClientDto {
   @IsOptional() @IsNumber() @Min(0) creditLimit?: number;
   @IsOptional() @IsInt() @Min(0) creditDays?: number;
   @IsOptional() @IsBoolean() isCash?: boolean;
+  @IsOptional() @IsBoolean() canCheckRates?: boolean;
   @IsOptional() @IsInt() parentAccountId?: number | null; // group under a head-office account; null/0 clears
 }

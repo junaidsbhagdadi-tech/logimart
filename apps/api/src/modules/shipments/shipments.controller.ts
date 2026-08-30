@@ -68,6 +68,13 @@ export class ShipmentsController {
     return this.shipments.portalRemark(awb, Number(req.user.clientId), dto);
   }
 
+  /** Portal rate-check estimate (gated by the customer's canCheckRates flag). */
+  @Post('portal-rate-estimate')
+  @Roles(UserRole.CLIENT_ADMIN)
+  portalEstimate(@Body() dto: any, @Req() req: any) {
+    return this.shipments.estimate(Number(req.user.clientId), dto);
+  }
+
   /** Super-admin: delete selected AWBs (and their children). Used by the AWB list select/delete. */
   @Post('bulk-delete')
   @Roles(UserRole.SYS_ADMIN)
