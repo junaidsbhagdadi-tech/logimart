@@ -84,14 +84,37 @@ export class NotificationsService {
     return map[kind] ?? 'Logimart notification';
   }
 
-  /** Email via SMTP (nodemailer). Returns true only when actually accepted by the server. */
+  /** Sender identity, parsed from SMTP_FROM ("Name <email>" or "email"). */
+  private emailSender(): { email: string; name: string } {
+    const raw = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@logimart.co.in';
+    const m = raw.match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
+    if (m) return { name: (m[1] || 'Logimart').replace(/^"|"$/g, ''), email: m[2].trim() };
+    return { name: 'Logimart', email: raw.trim() };
+  }
+
+  /** Email — Brevo HTTPS API first (works where outbound SMTP ports are blocked, e.g. DO droplets),
+   *  else SMTP (nodemailer). Returns true only when the provider actually accepted the message. */
   private async sendEmail(input: NotifyInput): Promise<boolean> {
-    const t = this.getMailer();
-    if (!t) { this.logger.log(`[email->${input.recipient}] (no SMTP configured) ${input.message}`); return false; }
-    const from = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@logimart.co.in';
     const subject = input.awb ? `${this.emailSubject(input.kind)} · AWB ${input.awb}` : this.emailSubject(input.kind);
+    if (process.env.BREVO_API_KEY) return this.sendEmailViaBrevo(input, subject);
+    const t = this.getMailer();
+    if (!t) { this.logger.log(`[email->${input.recipient}] (no email provider configured) ${input.message}`); return false; }
+    const from = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@logimart.co.in';
     const info = await t.sendMail({ from, to: input.recipient, subject, text: input.message });
-    this.logger.log(`[email->${input.recipient}] sent id=${info.messageId}`);
+    this.logger.log(`[email->${input.recipient}] sent via SMTP id=${info.messageId}`);
+    return true;
+  }
+
+  /** Send one email through Brevo's transactional API (HTTPS, port 443). Set BREVO_API_KEY in env. */
+  private async sendEmailViaBrevo(input: NotifyInput, subject: string): Promise<boolean> {
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: { 'api-key': process.env.BREVO_API_KEY as string, 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({ sender: this.emailSender(), to: [{ email: input.recipient }], subject, textContent: input.message }),
+    });
+    if (!res.ok) { this.logger.warn(`Brevo send failed: ${res.status} ${await res.text()}`); return false; }
+    const j: any = await res.json().catch(() => ({}));
+    this.logger.log(`[email->${input.recipient}] sent via Brevo id=${j.messageId ?? 'ok'}`);
     return true;
   }
 

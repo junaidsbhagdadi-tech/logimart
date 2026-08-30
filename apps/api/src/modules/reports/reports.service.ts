@@ -54,10 +54,10 @@ export class ReportsService {
       if (rec.status === 'sent') sent++;
     }
     const note = sent === recipients.length
-      ? `Emailed to ${sent} recipient(s) via SMTP.`
+      ? `Emailed to ${sent} recipient(s).`
       : sent > 0
-        ? `Emailed to ${sent}/${recipients.length}; the rest are queued (check SMTP settings).`
-        : 'Queued — set SMTP_HOST/SMTP_USER/SMTP_PASS on the server to actually deliver.';
+        ? `Emailed to ${sent}/${recipients.length}; the rest are queued (check the email provider / server logs).`
+        : 'Queued — email did not send (provider not configured, or the send failed; check server logs).';
     return { ok: true, sentTo: recipients, sent, summary, message, note };
   }
 
