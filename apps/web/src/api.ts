@@ -636,6 +636,11 @@ export const api = {
   addAddon: (awb: string, body: any) => request<any>(`/api/v1/shipments/${awb}/addons`, { method: 'POST', body: JSON.stringify(body) }),
   deleteAddon: (id: string | number) => request<{ ok: boolean }>(`/api/v1/shipments/addons/${id}`, { method: 'DELETE' }),
 
+  // ---- vendor branch contacts ----
+  listVendorContacts: (vendorId: string | number) => request<any[]>(`/api/v1/vendors/${vendorId}/contacts`),
+  addVendorContact: (vendorId: string | number, body: any) => request<any>(`/api/v1/vendors/${vendorId}/contacts`, { method: 'POST', body: JSON.stringify(body) }),
+  deleteVendorContact: (cid: string | number) => request<{ ok: boolean }>(`/api/v1/vendors/contacts/${cid}`, { method: 'DELETE' }),
+
   // ---- vendors ----
   listVendors: () => request<any[]>('/api/v1/vendors'),
   getVendor: (id: string) => request<any>(`/api/v1/vendors/${id}`),

@@ -1,10 +1,35 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class VendorsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  // ---- Vendor branch/location contacts (multiple per location, optionally product-wise) ----
+  listContacts(vendorId: number) {
+    return this.prisma.vendorContact.findMany({ where: { vendorId: BigInt(vendorId) }, orderBy: [{ location: 'asc' }, { personName: 'asc' }] });
+  }
+
+  addContact(vendorId: number, dto: any) {
+    if (!String(dto.location || '').trim() || !String(dto.personName || '').trim()) throw new BadRequestException('Location and contact name are required.');
+    return this.prisma.vendorContact.create({
+      data: {
+        vendorId: BigInt(vendorId),
+        location: String(dto.location).trim().toUpperCase(),
+        product: dto.product?.trim() || null,
+        personName: String(dto.personName).trim(),
+        phone: dto.phone?.trim() || null,
+        email: dto.email?.trim() || null,
+        role: dto.role?.trim() || null,
+      },
+    });
+  }
+
+  async removeContact(id: number) {
+    await this.prisma.vendorContact.delete({ where: { id: BigInt(id) } });
+    return { ok: true };
+  }
 
   private vendorData(dto: any) {
     return {

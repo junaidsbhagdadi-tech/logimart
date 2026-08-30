@@ -44,6 +44,27 @@ const TO_ENUM: Record<string, ShipmentStatus> = {
 export class LifecycleService {
   constructor(private readonly prisma: PrismaService, private readonly rates: RateService, private readonly storage: StorageService) {}
 
+  /** The carrier's branch contacts relevant to this shipment's route (origin/dest/current + product). */
+  private async vendorContactsFor(s: any) {
+    const code = s?.vendor;
+    if (!code) return [];
+    const vendor = await this.prisma.vendor.findFirst({ where: { OR: [{ vendorCode: code }, { name: code }] }, select: { id: true } });
+    if (!vendor) return [];
+    const contacts = await this.prisma.vendorContact.findMany({ where: { vendorId: vendor.id, isActive: true }, orderBy: { location: 'asc' } });
+    if (!contacts.length) return [];
+    const locs = [s.originHub?.code, s.originHub?.name, s.destHub?.code, s.destHub?.name, s.consigneeCity, s.currentLocation, s.originZone, s.destZone]
+      .filter(Boolean).map((x: string) => String(x).toUpperCase());
+    const prod = s.product ? String(s.product).toUpperCase() : null;
+    const matched = contacts.filter((c) => {
+      const cl = c.location.toUpperCase();
+      const locMatch = locs.length === 0 || locs.some((l) => l.includes(cl) || cl.includes(l));
+      const prodMatch = !c.product || !prod || c.product.toUpperCase() === prod;
+      return locMatch && prodMatch;
+    });
+    // Prefer route-matched contacts; if none match a location, show all so the team still has someone to call.
+    return (matched.length ? matched : contacts).map((c) => ({ location: c.location, product: c.product, name: c.personName, phone: c.phone, email: c.email, role: c.role }));
+  }
+
   /** Record a milestone scan for one or more AWBs. DLD requires a POD image. Terminal states
    *  (DLD/RTD/CAN) are locked once set — only a super admin can move a shipment off them. */
   async scan(dto: { awbs: string[]; code: string; hubId?: number; location?: string; remark?: string; podDataUrl?: string; bagCode?: string; scanAt?: string }, userId?: bigint, role?: string) {
@@ -178,6 +199,7 @@ export class LifecycleService {
       deliveryRider: riderOf('OFD', 'DLD'),
       deliveryPod: await this.storage.resolve(s.podUrl),
       pickupPod: await this.storage.resolve(s.pickupPodUrl),
+      vendorContacts: await this.vendorContactsFor(s),
       consignee: {
         name: s.consigneeName, phone: s.consigneePhone, contact: (s as any).consigneeContact ?? null,
         address: s.consigneeAddress, city: s.consigneeCity, state: (s as any).consigneeState ?? null,

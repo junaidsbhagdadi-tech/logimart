@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { Modal } from '../components/Modal';
 import { RateCardsDialog } from '../components/RateCardsDialog';
+import { VendorContactsDialog } from '../components/VendorContactsDialog';
 
 const MODES = ['FTL', 'PTL', 'AIR', 'TRAIN'];
 const blank = {
@@ -20,6 +21,7 @@ export function Vendors() {
   const [msg, setMsg] = useState('');
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [rateVendor, setRateVendor] = useState<any | null>(null); // vendor whose rate cards are open
+  const [contactVendor, setContactVendor] = useState<any | null>(null); // vendor whose branch contacts are open
 
   const load = () => { api.listVendors().then(setRows).catch((e) => setError(e.message)); setSel(new Set()); };
   useEffect(load, []);
@@ -182,6 +184,7 @@ export function Vendors() {
                 <td>{v.advancePending > 0 ? <span className="badge PARTIAL">₹{Number(v.advancePending).toLocaleString('en-IN')}</span> : '—'}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>
                   <button className="secondary" style={{ padding: '4px 10px', fontSize: 12, marginRight: 6 }} onClick={() => setRateVendor(v)} title="Vendor rate cards (cost)">💳 Rate cards</button>
+                  <button className="secondary" style={{ padding: '4px 10px', fontSize: 12, marginRight: 6 }} onClick={() => setContactVendor(v)} title="Branch / location contacts">📇 Contacts</button>
                   <button className="secondary" style={{ padding: '4px 10px', fontSize: 12, marginRight: 6 }} onClick={() => addAdvance(v.id)}>+ Advance</button>
                   <button className="secondary" style={{ padding: '4px 10px', fontSize: 12, marginRight: 6 }} onClick={() => openEdit(v)}>✎ Edit</button>
                   <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => remove(v)}>🗑</button>
@@ -193,6 +196,7 @@ export function Vendors() {
         </table>
       </div>
       {rateVendor && <RateCardsDialog vendor={rateVendor} onClose={() => setRateVendor(null)} />}
+      {contactVendor && <VendorContactsDialog vendor={{ id: contactVendor.id, name: contactVendor.name }} onClose={() => setContactVendor(null)} />}
     </>
   );
 }

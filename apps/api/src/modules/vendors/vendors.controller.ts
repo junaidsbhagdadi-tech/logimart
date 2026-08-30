@@ -48,6 +48,22 @@ export class VendorsController {
     return this.vendors.delMapping(Number(id));
   }
 
+  // ---- vendor branch/location contacts ----
+  @Get(':id/contacts')
+  listContacts(@Param('id') id: string) {
+    return this.vendors.listContacts(Number(id));
+  }
+
+  @Post(':id/contacts')
+  addContact(@Param('id') id: string, @Body() dto: any) {
+    return this.vendors.addContact(Number(id), dto);
+  }
+
+  @Delete('contacts/:cid')
+  removeContact(@Param('cid') cid: string) {
+    return this.vendors.removeContact(Number(cid));
+  }
+
   @Get(':id')
   get(@Param('id') id: string) {
     return this.vendors.get(Number(id));

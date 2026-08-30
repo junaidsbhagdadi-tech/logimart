@@ -967,8 +967,29 @@ model Vendor {
 
   payments VendorPayment[]
   rateCards CustomerRateCard[] @relation("VendorRateCards")
+  contacts  VendorContact[]
 
   @@map("vendors")
+}
+
+/// A vendor's contact at a specific branch / location (optionally product-specific).
+/// Surfaced on tracking so the team knows who to call for the origin / destination hop.
+model VendorContact {
+  id         BigInt   @id @default(autoincrement())
+  vendorId   BigInt
+  vendor     Vendor   @relation(fields: [vendorId], references: [id])
+  location   String // branch / service-centre / city (e.g. AHMEDABAD, DEL-HUB)
+  product    String? // optional — a product-specific contact
+  personName String
+  phone      String?
+  email      String?
+  role       String? // e.g. Branch Manager, Ops, CS
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  @@index([vendorId])
+  @@index([location])
+  @@map("vendor_contacts")
 }
 
 /// Vendor ↔ service ↔ billing-vendor mapping with weight bands (Xpresion "Service Mapping").
