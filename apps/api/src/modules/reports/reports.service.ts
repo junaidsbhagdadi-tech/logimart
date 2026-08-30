@@ -1,11 +1,50 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 type Report = { columns: { key: string; label: string }[]; rows: any[] };
 
 @Injectable()
 export class ReportsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly notifications: NotificationsService) {}
+
+  /** Assemble the daily NDR + MIS digest numbers (today's activity + open exceptions/receivables). */
+  async dailyDigest() {
+    const start = new Date(); start.setHours(0, 0, 0, 0);
+    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const [booked, delivered, inTransit, ndr, monthInv, receivables] = await Promise.all([
+      this.prisma.shipment.count({ where: { createdAt: { gte: start } } }),
+      this.prisma.shipment.count({ where: { statusCode: 'DLD', statusAt: { gte: start } } }),
+      this.prisma.shipmentPiece.count({ where: { status: { in: ['LOADED', 'IN_TRANSIT'] } } }),
+      this.prisma.shipment.count({ where: { statusCode: { in: ['UDL', 'RTO'] } } }),
+      this.prisma.invoice.findMany({ where: { issuedAt: { gte: monthStart } }, select: { total: true } }),
+      this.prisma.b2bClient.findMany({ select: { outstandingBal: true } }),
+    ]);
+    const revenueMonth = +monthInv.reduce((s, i) => s + Number(i.total), 0).toFixed(2);
+    const outstanding = +receivables.reduce((s, c) => s + Number(c.outstandingBal), 0).toFixed(2);
+    const dateStr = new Date().toLocaleDateString('en-GB');
+    const summary = { date: dateStr, bookedToday: booked, deliveredToday: delivered, piecesInTransit: inTransit, ndrOpen: ndr, revenueThisMonth: revenueMonth, outstandingReceivables: outstanding };
+    const message = [
+      `Logimart daily digest — ${dateStr}`,
+      `Booked today: ${booked}`,
+      `Delivered today: ${delivered}`,
+      `Pieces in transit: ${inTransit}`,
+      `NDR / undelivered open: ${ndr}`,
+      `Revenue (month): ₹${revenueMonth.toLocaleString('en-IN')}`,
+      `Outstanding receivables: ₹${outstanding.toLocaleString('en-IN')}`,
+    ].join('\n');
+    return { summary, message };
+  }
+
+  /** Queue the daily digest as an email to the configured recipients (REPORTS_EMAIL, comma-separated). */
+  async emailDailyDigest() {
+    const { summary, message } = await this.dailyDigest();
+    const recipients = String(process.env.REPORTS_EMAIL || process.env.COMPANY_EMAIL || 'accounts@excelexlog.com').split(',').map((r) => r.trim()).filter(Boolean);
+    for (const r of recipients) {
+      await this.notifications.notify({ channel: 'email', recipient: r, kind: 'account', message });
+    }
+    return { ok: true, sentTo: recipients, summary, message, note: 'Queued via the notification system — actual delivery needs an email (SMTP) provider configured.' };
+  }
 
   async run(type: string, from?: string, to?: string): Promise<Report> {
     const gte = from ? new Date(from) : new Date(Date.now() - 30 * 86400000);

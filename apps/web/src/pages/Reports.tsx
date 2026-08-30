@@ -62,6 +62,12 @@ export function Reports() {
   };
   useEffect(() => { run(); /* eslint-disable-next-line */ }, [type]);
 
+  const [digest, setDigest] = useState<any>(null);
+  const emailDigest = async () => {
+    setError('');
+    try { setDigest(await api.emailDailyDigest()); } catch (e: any) { setError(e.message); }
+  };
+
   const exportCsv = () => {
     if (!data) return;
     const head = data.columns.map((c) => c.label).join(',');
@@ -73,6 +79,19 @@ export function Reports() {
   return (
     <>
       <h1>📊 Reports</h1>
+
+      <div className="card" style={{ borderLeft: '4px solid var(--brand)' }}>
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          <div><strong>📧 Daily digest (NDR + MIS)</strong><div className="muted" style={{ fontSize: 12 }}>Today's bookings/deliveries, open NDR, revenue & receivables — emailed to your reports recipients.</div></div>
+          <button className="secondary" onClick={emailDigest}>Email daily digest now</button>
+        </div>
+        {digest && (
+          <div className="card" style={{ marginTop: 10, background: 'var(--bg-soft, #f2f4f7)' }}>
+            <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 13 }}>{digest.message}</pre>
+            <div className="muted" style={{ fontSize: 11.5, marginTop: 8 }}>Queued to: {digest.sentTo?.join(', ')}. {digest.note}</div>
+          </div>
+        )}
+      </div>
 
       <div className="card" style={{ padding: 14 }}>
         {REPORTS.map((g) => (

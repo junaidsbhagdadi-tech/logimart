@@ -559,6 +559,8 @@ export const api = {
     const s = q.toString();
     return request<{ columns: { key: string; label: string }[]; rows: any[] }>(`/api/v1/reports/${type}${s ? '?' + s : ''}`);
   },
+  dailyDigestPreview: () => request<{ summary: any; message: string }>('/api/v1/reports/daily-digest/preview'),
+  emailDailyDigest: () => request<{ ok: boolean; sentTo: string[]; message: string; note: string }>('/api/v1/reports/daily-digest', { method: 'POST' }),
   createHub: (body: { code: string; name: string; zone: string }) =>
     request('/api/v1/hubs', { method: 'POST', body: JSON.stringify(body) }),
 
