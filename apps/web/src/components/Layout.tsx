@@ -48,7 +48,27 @@ export function Layout() {
   const todayStr = new Date().toISOString().slice(0, 10);
   const isToday = (d?: string | null) => !!d && String(d).slice(0, 10) === todayStr;
   const apptDay = (d?: string | null) => { if (!d) return '—'; const dt = new Date(d); const p = (n: number) => String(n).padStart(2, '0'); return `${p(dt.getUTCDate())}/${p(dt.getUTCMonth() + 1)}/${dt.getUTCFullYear()} ${p(dt.getUTCHours())}:${p(dt.getUTCMinutes())}`; };
-  const dueToday = appts.filter((a) => isToday(a.apptDate)).length;
+  // Popup fires only ~24h early; on Saturday it also surfaces Sunday/Monday appts (office shut).
+  const dueSoon = (d?: string | null) => {
+    if (!d) return false;
+    const appt = new Date(d); appt.setHours(0, 0, 0, 0);
+    const t = new Date(); const dow = t.getDay(); t.setHours(0, 0, 0, 0);
+    const diff = Math.round((appt.getTime() - t.getTime()) / 86400000);
+    if (diff < 0) return false;
+    if (diff <= 1) return true;                 // today or tomorrow
+    if (dow === 6 && diff === 2) return true;   // Saturday → Monday
+    return false;
+  };
+  const dueAppts = appts.filter((a) => dueSoon(a.apptDate));
+  const dueToday = dueAppts.filter((a) => isToday(a.apptDate)).length;
+  const exportAppts = async () => {
+    const XLSX = await import('xlsx');
+    const head = ['AWB', 'Appt date', 'Customer', 'Consignee', 'Pcs', 'Destination'];
+    const rows = dueAppts.map((a: any) => [a.awb, apptDay(a.apptDate), a.customer ?? '', a.consignee ?? '', a.pcs ?? '', a.destination ?? '']);
+    const ws = XLSX.utils.aoa_to_sheet([head, ...rows]);
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Appointments');
+    XLSX.writeFile(wb, `appointments-${todayStr}.xlsx`);
+  };
 
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('lm.rail') === '1');
   const toggleRail = () => setCollapsed((c) => { const n = !c; localStorage.setItem('lm.rail', n ? '1' : '0'); return n; });
@@ -199,23 +219,26 @@ export function Layout() {
       </main>
 
       {/* Global appointment-delivery notification — visible on every page. */}
-      {!isClient && appts.length > 0 && (
+      {!isClient && dueAppts.length > 0 && (
         <div style={{ position: 'fixed', top: 14, right: 18, zIndex: 1200 }}>
-          <button onClick={() => setApptOpen((o) => !o)} title="Appointment deliveries"
+          <button onClick={() => setApptOpen((o) => !o)} title="Appointment deliveries due"
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 20, fontSize: 13, fontWeight: 700, boxShadow: '0 2px 8px rgba(0,0,0,.15)', background: dueToday ? 'var(--danger, #c0392b)' : 'var(--brand)', color: '#fff', border: 'none' }}>
-            📅 {appts.length} appt{appts.length > 1 ? 's' : ''}{dueToday ? ` · ${dueToday} today` : ''}
+            📅 {dueAppts.length} appt{dueAppts.length > 1 ? 's' : ''} due{dueToday ? ` · ${dueToday} today` : ''}
           </button>
           {apptOpen && (
-            <div style={{ position: 'absolute', right: 0, top: 44, width: 360, maxHeight: 420, overflowY: 'auto', background: 'var(--surface, #fff)', border: '1px solid var(--line, #d7dadf)', borderRadius: 12, boxShadow: '0 8px 28px rgba(0,0,0,.18)', padding: 10 }}>
+            <div style={{ position: 'absolute', right: 0, top: 44, width: 380, maxHeight: 440, overflowY: 'auto', background: 'var(--surface, #fff)', border: '1px solid var(--line, #d7dadf)', borderRadius: 12, boxShadow: '0 8px 28px rgba(0,0,0,.18)', padding: 10 }}>
               <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <strong style={{ fontSize: 14 }}>📅 Appointment deliveries</strong>
-                <button className="secondary" style={{ padding: '2px 8px', fontSize: 12 }} onClick={() => setApptOpen(false)}>✕</button>
+                <strong style={{ fontSize: 14 }}>📅 Appointments due (24h)</strong>
+                <div className="row" style={{ gap: 6 }}>
+                  <button className="secondary" style={{ padding: '2px 8px', fontSize: 12 }} onClick={exportAppts} title="Export to Excel (AWB, customer, pcs, consignee)">⬇ Excel</button>
+                  <button className="secondary" style={{ padding: '2px 8px', fontSize: 12 }} onClick={() => setApptOpen(false)}>✕</button>
+                </div>
               </div>
-              {appts.map((a) => (
+              {dueAppts.map((a: any) => (
                 <div key={a.awb} onClick={() => { setApptOpen(false); nav(`/tracker/${a.awb}`); }}
                   style={{ padding: '8px 10px', borderRadius: 8, cursor: 'pointer', marginBottom: 4, background: isToday(a.apptDate) ? 'var(--surface-2, #f1f3f6)' : 'transparent', borderLeft: isToday(a.apptDate) ? '3px solid var(--danger, #c0392b)' : '3px solid transparent' }}>
                   <div style={{ fontWeight: 700, fontSize: 13 }}>{apptDay(a.apptDate)}{isToday(a.apptDate) ? ' · TODAY' : ''} <span className="muted" style={{ fontWeight: 500 }}>· {a.awb}</span></div>
-                  <div className="muted" style={{ fontSize: 12 }}>{a.customer || a.consignee || '—'}{a.accountCode ? ` (${a.accountCode})` : ''} → {a.destination || '—'}</div>
+                  <div className="muted" style={{ fontSize: 12 }}>{a.customer || a.consignee || '—'}{a.accountCode ? ` (${a.accountCode})` : ''}{a.pcs ? ` · ${a.pcs} pcs` : ''} → {a.destination || '—'}</div>
                 </div>
               ))}
             </div>

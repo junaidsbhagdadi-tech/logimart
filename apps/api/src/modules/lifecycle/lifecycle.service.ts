@@ -225,12 +225,13 @@ export class LifecycleService {
     const rows = await this.prisma.shipment.findMany({
       where: { apptDelivery: true, apptDate: { gte: from }, statusCode: { notIn: ['DLD', 'RTD', 'CAN'] } },
       orderBy: { apptDate: 'asc' }, take: 200,
-      select: { awb: true, apptDate: true, consigneeName: true, consigneeCity: true, destZone: true, statusCode: true, client: { select: { legalName: true, accountCode: true } } },
+      select: { awb: true, apptDate: true, consigneeName: true, consigneeCity: true, destZone: true, statusCode: true, pieceCount: true, client: { select: { legalName: true, accountCode: true } } },
     });
     return rows.map((r) => ({
       awb: r.awb, apptDate: r.apptDate,
       customer: r.client?.legalName ?? null, accountCode: r.client?.accountCode ?? null,
       consignee: r.consigneeName ?? null, destination: r.consigneeCity ?? r.destZone ?? null, statusCode: r.statusCode,
+      pcs: r.pieceCount ?? null,
     }));
   }
 

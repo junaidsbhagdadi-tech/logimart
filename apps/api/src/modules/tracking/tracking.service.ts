@@ -10,6 +10,29 @@ const labelOf = (c: string) => LIFECYCLE.find((l) => l.code === c)?.label ?? c;
 export class TrackingService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** Bulk track — compact status for many AWBs at once (unknown ones flagged found:false). */
+  async trackMany(awbsRaw: string[]) {
+    const awbs = [...new Set((awbsRaw || []).map((a) => String(a || '').trim().toUpperCase()).filter(Boolean))].slice(0, 300);
+    if (!awbs.length) return [];
+    const ships = await this.prisma.shipment.findMany({
+      where: { awb: { in: awbs } },
+      include: { destHub: { select: { name: true } }, pieces: { select: { status: true } } },
+    });
+    const byAwb = new Map(ships.map((s) => [s.awb, s]));
+    return awbs.map((awb) => {
+      const s = byAwb.get(awb);
+      if (!s) return { awb, found: false };
+      const delivered = s.pieces.filter((p) => p.status === 'DELIVERED').length;
+      return {
+        awb: s.awb, found: true, statusCode: s.statusCode ?? 'MAN',
+        currentLabel: labelOf(String(s.statusCode ?? 'MAN')), status: s.status,
+        destination: s.destHub?.name ?? s.consigneeCity ?? s.destZone,
+        consignee: s.consigneeName ?? null, pieceCount: s.pieceCount, delivered,
+        expectedDelivery: s.expectedDelivery ?? null, forwardingAwb: s.forwardingAwb ?? null,
+      };
+    });
+  }
+
   async track(awbRaw: string) {
     const awb = String(awbRaw || '').trim().toUpperCase();
     const s = await this.prisma.shipment.findUnique({

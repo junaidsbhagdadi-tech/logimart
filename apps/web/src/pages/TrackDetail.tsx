@@ -41,6 +41,15 @@ export function TrackDetail() {
   const [tab, setTab] = useState<(typeof TABS)[number]>('Scans');
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
+  const [multiText, setMultiText] = useState('');
+  const [multi, setMulti] = useState<any[] | null>(null);
+  const [multiBusy, setMultiBusy] = useState(false);
+  const trackMulti = async () => {
+    const awbs = multiText.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean);
+    if (!awbs.length) return;
+    setMultiBusy(true); setError('');
+    try { setMulti(await api.trackMany(awbs)); } catch (e: any) { setError(e.message); } finally { setMultiBusy(false); }
+  };
 
   const search = async (val?: string, e?: FormEvent) => {
     e?.preventDefault(); setError(''); setMsg(''); setD(null);
@@ -115,6 +124,32 @@ export function TrackDetail() {
             <button type="submit" style={{ padding: '12px 24px', fontSize: 15 }}>Track</button>
           </form>
           {error && <div className="error" style={{ marginTop: 8, maxWidth: 540, width: '100%' }}>{error}</div>}
+          <details style={{ width: '100%', maxWidth: 760, marginTop: 6, textAlign: 'left' }}>
+            <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--muted)', textAlign: 'center' }}>📋 Track multiple AWBs at once</summary>
+            <div style={{ marginTop: 10 }}>
+              <textarea value={multiText} onChange={(e) => setMultiText(e.target.value)} placeholder="Paste AWBs — one per line, or comma / space separated" style={{ width: '100%', minHeight: 90, fontFamily: 'monospace', fontSize: 13, padding: 10 }} />
+              <button className="secondary" style={{ marginTop: 8 }} disabled={multiBusy} onClick={trackMulti}>{multiBusy ? 'Tracking…' : 'Track all'}</button>
+              {multi && (
+                <div style={{ overflowX: 'auto', marginTop: 12 }}>
+                  <table style={{ fontSize: 13, width: '100%' }}>
+                    <thead><tr><th>AWB</th><th>Status</th><th>Consignee</th><th>Destination</th><th>Pcs</th><th>EDD</th></tr></thead>
+                    <tbody>
+                      {multi.map((r, i) => (
+                        <tr key={i} onClick={() => r.found && search(r.awb)} style={{ cursor: r.found ? 'pointer' : 'default' }}>
+                          <td><strong>{r.awb}</strong></td>
+                          <td>{r.found ? <span style={{ fontWeight: 600 }}>{r.currentLabel}</span> : <span className="badge EXCEPTION">not found</span>}</td>
+                          <td>{r.consignee || '—'}</td>
+                          <td>{r.destination || '—'}</td>
+                          <td>{r.found ? `${r.delivered}/${r.pieceCount}` : '—'}</td>
+                          <td>{r.expectedDelivery ? new Date(r.expectedDelivery).toLocaleDateString('en-GB') : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </details>
         </div>
       ) : (
         <>
