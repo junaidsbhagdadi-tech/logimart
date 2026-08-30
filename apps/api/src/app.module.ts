@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 import { existsSync } from 'fs';
@@ -56,6 +57,7 @@ const webDist = join(__dirname, '..', '..', 'web', 'dist');
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(), // enables @Cron jobs (e.g. the morning digest)
     // Serve the React portal for all non-API routes (SPA fallback to index.html).
     // /api/* and /health are excluded so they reach the controllers below.
     ...(existsSync(webDist)

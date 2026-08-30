@@ -1,8 +1,9 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ShipmentStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RateService } from '../billing/rate.service';
 import { StorageService } from '../storage/storage.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 // Milestone lifecycle. Each scan advances the shipment's statusCode and mirrors the coarse
 // ShipmentStatus enum (which existing screens/reports read).
@@ -42,7 +43,28 @@ const TO_ENUM: Record<string, ShipmentStatus> = {
 
 @Injectable()
 export class LifecycleService {
-  constructor(private readonly prisma: PrismaService, private readonly rates: RateService, private readonly storage: StorageService) {}
+  private readonly logger = new Logger(LifecycleService.name);
+  constructor(private readonly prisma: PrismaService, private readonly rates: RateService, private readonly storage: StorageService, private readonly notifications: NotificationsService) {}
+
+  /** Email the billing customer a delivery confirmation with a tracking link. Best-effort, non-fatal. */
+  private async sendDeliveryEmails(awbs: string[]) {
+    if (!awbs.length) return;
+    const base = process.env.APP_URL ?? 'https://erp.logimart.co.in';
+    const ships = await this.prisma.shipment.findMany({
+      where: { awb: { in: awbs } },
+      select: { awb: true, consigneeName: true, consigneeCity: true, referenceNo: true, client: { select: { legalName: true, contactEmail: true, email2: true } } },
+    });
+    for (const s of ships) {
+      const emails = [...new Set([s.client?.contactEmail, s.client?.email2].map((e) => String(e ?? '').trim()).filter((e) => e.includes('@')))];
+      if (!emails.length) continue;
+      const ref = s.referenceNo ? ` (ref ${s.referenceNo})` : '';
+      const msg = `Dear ${s.client?.legalName ?? 'Customer'},\n\nYour shipment ${s.awb}${ref} to ${s.consigneeName ?? s.consigneeCity ?? 'the consignee'} has been DELIVERED.\nTrack details & POD: ${base}/track/${s.awb}\n\n— Logimart (ExcelEx Express Logistics LLP)`;
+      for (const to of emails) {
+        try { await this.notifications.notify({ channel: 'email', recipient: to, kind: 'delivery', awb: s.awb, message: msg }); }
+        catch (e) { this.logger.warn(`delivery email failed for ${s.awb}: ${(e as Error).message}`); }
+      }
+    }
+  }
 
   /** The carrier's branch contacts relevant to this shipment's route (origin/dest/current + product). */
   private async vendorContactsFor(s: any) {
@@ -118,6 +140,8 @@ export class LifecycleService {
       await this.prisma.scanLog.create({ data: { awb, eventType: code, scanAt: at, remark: dto.remark || null, serviceCenter: dto.location || null, scannedById: userId ?? null } });
       done.push(awb);
     }
+    // Delivery confirmation email to the customer for AWBs just marked Delivered (best-effort).
+    if (code === 'DLD' && done.length) await this.sendDeliveryEmails(done);
     return { code, updated: done.length, done, missing, locked, duplicate };
   }
 

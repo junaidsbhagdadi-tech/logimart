@@ -244,10 +244,15 @@ export class InvoiceService {
     const overLimit = newBalance > Number(client.creditLimit);
     await this.prisma.b2bClient.update({ where: { id: client.id }, data: { outstandingBal: new Prisma.Decimal(newBalance), isCreditHold: overLimit } });
     const updated = await this.prisma.invoice.update({ where: { id: inv.id }, data: { status: InvoiceStatus.ISSUED, issuedAt: new Date() } });
-    await this.notifications.notify({
-      channel: 'email', recipient: client.accountCode, kind: 'invoice',
-      message: `Invoice ${inv.invoiceNo} issued: ₹${total} due ${new Date(inv.dueDate).toISOString().slice(0, 10)}${overLimit ? ' — ACCOUNT ON CREDIT HOLD' : ''}.`,
-    });
+    // Email the invoice to the customer (contactEmail + secondary billing email), with a portal link
+    // to view/download. No valid email on file → nothing is sent (no error).
+    const portal = `${process.env.APP_URL ?? 'https://erp.logimart.co.in'}/portal`;
+    const due = new Date(inv.dueDate).toISOString().slice(0, 10);
+    const invMsg = `Dear ${client.legalName},\n\nInvoice ${inv.invoiceNo} for ₹${total.toLocaleString('en-IN')} has been issued (due ${due}).${overLimit ? '\nNote: your account is now on credit hold.' : ''}\nView or download it in your portal: ${portal}\n\n— Logimart (ExcelEx Express Logistics LLP)`;
+    const invEmails = [...new Set([client.contactEmail, (client as any).email2].map((e) => String(e ?? '').trim()).filter((e) => e.includes('@')))];
+    for (const to of invEmails) {
+      await this.notifications.notify({ channel: 'email', recipient: to, kind: 'invoice', message: invMsg });
+    }
     return { invoice: updated, creditHold: overLimit, newBalance, creditLimit: client.creditLimit };
   }
 

@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
@@ -14,7 +15,25 @@ const modeLabel = (m: any) => MODE_LABEL[String(m ?? '').toUpperCase()] ?? (m ??
 
 @Injectable()
 export class ReportsService {
+  private readonly logger = new Logger(ReportsService.name);
   constructor(private readonly prisma: PrismaService, private readonly notifications: NotificationsService) {}
+
+  /**
+   * Auto-send the daily NDR + MIS digest every morning. Time is fixed to 08:00 IST (the CronExpression
+   * runs in Asia/Kolkata regardless of the server's UTC clock). Skips itself unless recipients are
+   * configured (REPORTS_EMAIL / COMPANY_EMAIL) and DIGEST_AUTOSEND isn't set to 'false'.
+   */
+  @Cron('0 8 * * *', { timeZone: 'Asia/Kolkata' })
+  async scheduledDigest() {
+    if (String(process.env.DIGEST_AUTOSEND ?? 'true').toLowerCase() === 'false') return;
+    if (!String(process.env.REPORTS_EMAIL || process.env.COMPANY_EMAIL || '').trim()) return;
+    try {
+      const r = await this.emailDailyDigest();
+      this.logger.log(`Morning digest auto-sent → ${r.sent}/${r.sentTo.length} recipient(s).`);
+    } catch (e) {
+      this.logger.error('Morning digest auto-send failed', e as Error);
+    }
+  }
 
   /** Assemble the daily NDR + MIS digest numbers (today's activity + open exceptions/receivables). */
   async dailyDigest() {
