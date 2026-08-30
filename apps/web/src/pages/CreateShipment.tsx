@@ -233,11 +233,7 @@ export function CreateShipment() {
   useEffect(() => {
     api.listHubs().then((hs) => {
       setHubs(hs);
-      // Clients don't route via hubs — leave unassigned so staff route it later.
-      if (!isClient) {
-        if (hs[0]) setOriginHubId(Number(hs[0].id));
-        setDestHubId(Number((hs[1] ?? hs[0])?.id));
-      }
+      // Origin & destination hubs start BLANK — staff pick them (or they auto-derive from the pincode).
     }).catch(() => {});
     api.listMaster('PRODUCT').then((r) => setProducts(r.map((x) => ({ code: x.code, name: x.name, type: (x.attrs as any)?.productType || (x.attrs as any)?.groupType, mode: mapMode((x.attrs as any)?.service || (x.attrs as any)?.mode || (x.attrs as any)?.serviceMode || (x.attrs as any)?.groupType) })))).catch(() => {});
     api.listMaster('CHARGE').then((r) => setChargeMasters(r.map((x) => ({ code: x.code, name: x.name })))).catch(() => {});

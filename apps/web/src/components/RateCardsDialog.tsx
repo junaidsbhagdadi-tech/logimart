@@ -60,14 +60,24 @@ export function RateCardsDialog({ client, vendor, onClose }: { client?: Client; 
       alert(`Copied ${r.copied} card(s)${Number(copy.pct) ? ` with +${copy.pct}%` : ''}.`);
     } catch (e: any) { setErr(e.message); } finally { setBusy2(false); }
   };
-  // #increase: bump THIS customer's freight rates by a %.
+  // #increase: change THIS owner's freight rates — by % (e.g. 5% / -3%) or flat ₹ (e.g. 50 / -20).
   const doIncrease = async () => {
-    const pct = window.prompt(`Increase ALL of ${owner.name}'s freight rates by what %? (e.g. 5)`);
-    if (pct == null || pct.trim() === '') return;
+    const raw = window.prompt(`Change ALL of ${owner.name}'s freight rates by how much?\n\n• Percent — add a % sign:  5%  or  -3%\n• Flat ₹ per-kg — a plain number:  50  or  -20`);
+    if (raw == null || raw.trim() === '') return;
+    const t = raw.trim();
+    const mode: 'PCT' | 'AMOUNT' = t.endsWith('%') ? 'PCT' : 'AMOUNT';
+    const value = Number(t.replace('%', '').trim());
+    if (!Number.isFinite(value) || value === 0) { setErr('Enter a non-zero number (optionally with %).'); return; }
     const round = confirm('Round the new rates to the nearest whole rupee?');
     setBusy2(true); setErr('');
-    try { const r = await api.increaseRateCards({ scope: 'SELECT', clientIds: [owner.id], increasePct: Number(pct), round }); load(); alert(`Increased rates on ${r.cardsAdjusted} card(s) by ${pct}%.`); }
-    catch (e: any) { setErr(e.message); } finally { setBusy2(false); }
+    try {
+      const body = owner.kind === 'vendor'
+        ? { scope: 'VENDOR' as const, vendorId: owner.id, mode, value, round }
+        : { scope: 'SELECT' as const, clientIds: [owner.id], mode, value, round };
+      const r = await api.increaseRateCards(body);
+      load();
+      alert(`Updated ${r.cardsAdjusted} card(s) by ${mode === 'PCT' ? value + '%' : '₹' + value}.`);
+    } catch (e: any) { setErr(e.message); } finally { setBusy2(false); }
   };
 
   const del = async (id: string) => {
@@ -117,7 +127,7 @@ export function RateCardsDialog({ client, vendor, onClose }: { client?: Client; 
               <button className="secondary" onClick={async () => { (await import('../lib/rateSheet')).downloadCargoTemplate(); }}>⬇ Cargo template</button>
               <button className="secondary" disabled={!cards.length} title="Export these rate cards to Excel" onClick={async () => { (await import('../lib/rateSheet')).exportRateCardsXlsx(owner.name, cards); }}>⬇ Export XLS</button>
               {owner.kind === 'client' && <button className="secondary" onClick={() => setCopyOpen((o) => !o)} title="Copy another customer's rate cards into this one">📋 Copy from…</button>}
-              {owner.kind === 'client' && <button className="secondary" disabled={!cards.length || busy2} onClick={doIncrease} title="Increase this customer's freight rates by a %">↑ Increase %</button>}
+              <button className="secondary" disabled={!cards.length || busy2} onClick={doIncrease} title="Increase or decrease these freight rates by % or a flat ₹ amount">↑↓ Change rates</button>
               <button className="secondary" onClick={() => setUploading(true)}>⬆ Upload rates</button>
               <button onClick={() => setEditing({ _new: true })}>＋ Add Rate Card</button>
             </div>

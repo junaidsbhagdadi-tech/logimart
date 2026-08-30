@@ -102,11 +102,10 @@ function ExcelExNote({ s, q }: { s: any; q: any }) {
         <tr>
           <td style={{ width: '64%', verticalAlign: 'top' }}>
             <table className="inner"><tbody>
-              <tr><th>NO. OF PCS</th><th>VALUE OF CONSIGNMENT</th><th>CONTENTS — DESCRIPTION</th><th>DIMENSIONS (Cms)</th><th>ACTUAL WT</th></tr>
+              <tr><th>NO. OF PCS</th><th>VALUE OF CONSIGNMENT</th><th>CONTENTS — DESCRIPTION</th><th>DIMENSIONS (Cms)</th></tr>
               <tr>
                 <td>{s.pieceCount}</td><td>{rup(s.shipmentValue || s.declaredValue)}</td><td>{s.goodsDesc || ''}</td>
                 <td>{(s.pieces || []).slice(0, 4).map((p: any, i: number) => <div key={i}>{p.lengthCm || '-'}×{p.widthCm || '-'}×{p.heightCm || '-'}</div>)}</td>
-                <td>{s.chargeWeight || s.totalDeadKg} Kg</td>
               </tr>
             </tbody></table>
             <div className="strip">DATE: {d10(s.createdAt)} &nbsp;&nbsp; Invoice No: {s.referenceNo || ''}</div>
@@ -171,7 +170,7 @@ function CargoNote({ s, q, surface }: { s: any; q: any; surface: boolean }) {
             <div className="tiny">GST NO - 07AAIFE6185E1ZC · www.excelexlog.com</div>
           </td>
           <td style={{ textAlign: 'right', fontSize: 10 }}>
-            <div className="tiny">Origin: {s.originZone} &nbsp; Dst: {s.destZone} &nbsp; Wt: {s.chargeWeight || s.totalDeadKg}kg</div>
+            <div className="tiny">Origin: {s.originZone} &nbsp; Dst: {s.destZone}</div>
             <div className="awbno" style={{ fontSize: 13 }}>AWB {s.awb}</div>
           </td>
         </tr>

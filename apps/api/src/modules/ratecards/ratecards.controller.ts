@@ -67,12 +67,21 @@ export class RateCardsController {
     return this.rateCards.copyRateCards(Number(dto.sourceClientId), Number(dto.targetClientId), Number(dto.increasePct) || 0, !!dto.round);
   }
 
-  /** Bulk rate increase by % — all customers or a selected set; optional round-off. */
+  /**
+   * One-shot bulk rate change — increase/decrease by % or flat ₹ amount, scoped to all customers,
+   * a selected set, or a single vendor's cost cards. Optional round-off.
+   */
   @Post('increase')
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
-  increase(@Body() dto: { scope: 'ALL' | 'SELECT'; clientIds?: number[]; increasePct: number; round?: boolean }) {
-    const ids = dto.scope === 'ALL' ? null : (dto.clientIds ?? []).map(Number);
-    return this.rateCards.increaseRateCards(ids, Number(dto.increasePct), !!dto.round);
+  increase(@Body() dto: { scope: 'ALL' | 'SELECT' | 'VENDOR'; mode?: 'PCT' | 'AMOUNT'; value?: number; increasePct?: number; clientIds?: number[]; vendorId?: number; round?: boolean }) {
+    return this.rateCards.adjustRateCards({
+      scope: dto.scope,
+      mode: dto.mode ?? 'PCT',
+      value: Number(dto.value ?? dto.increasePct), // back-compat: old callers sent increasePct
+      clientIds: (dto.clientIds ?? []).map(Number),
+      vendorId: dto.vendorId != null ? Number(dto.vendorId) : undefined,
+      round: !!dto.round,
+    });
   }
 
   // ---- EDL (ODA) matrix, per vendor/network ----

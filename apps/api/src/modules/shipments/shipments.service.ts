@@ -127,6 +127,12 @@ export class ShipmentsService {
       const exists = await this.prisma.shipment.findUnique({ where: { awb: manualAwb }, select: { id: true } });
       if (exists) throw new ConflictException(`AWB ${manualAwb} already exists.`);
     }
+    // Dedupe on the forwarding/carrier no too — so a re-uploaded row is caught even when our AWB differs.
+    const fwd = (dto as any).forwardingAwb ? String((dto as any).forwardingAwb).trim().toUpperCase() : '';
+    if (fwd) {
+      const dup = await this.prisma.shipment.findFirst({ where: { forwardingAwb: { equals: fwd, mode: 'insensitive' } }, select: { awb: true } });
+      if (dup) throw new ConflictException(`Forwarding no ${fwd} already exists (on AWB ${dup.awb}).`);
+    }
     const awb = manualAwb || (await this.nextAwb());
     const total = dto.pieces.length;
 

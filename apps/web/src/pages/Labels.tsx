@@ -83,10 +83,6 @@ export function Labels() {
               AWB <strong>{l.masterAwb}</strong> · {l.serviceMode} · {l.route}
             </div>
             <Barcode value={l.barcode} />
-            <div className="wt">
-              <span>Dead: {l.deadKg} kg</span>
-              <span>Vol: {l.volKg} kg</span>
-            </div>
             <div style={{ fontSize: 11, marginTop: 4 }} className="muted">{l.client}</div>
           </div>
         ))}

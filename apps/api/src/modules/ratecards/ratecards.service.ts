@@ -186,21 +186,51 @@ export class RateCardsService {
    * (or ALL customers when clientIds is null). Optional round-off to the nearest whole rupee.
    * Only touches customer (sell-side) cards, never vendor cost cards.
    */
-  async increaseRateCards(clientIds: number[] | null, pct: number, round: boolean) {
-    const factor = 1 + (Number(pct) || 0) / 100;
-    if (!(factor > 0) || Number(pct) === 0) throw new BadRequestException('Enter a non-zero percentage.');
+  /**
+   * One-shot bulk rate change. Increase OR decrease (signed value) by PERCENT or a flat AMOUNT (₹),
+   * scoped to ALL customers, a selected set of customers, or a single VENDOR's cost cards.
+   * Negative value = decrease; flat amounts are floored at 0.
+   */
+  async adjustRateCards(opts: {
+    scope: 'ALL' | 'SELECT' | 'VENDOR';
+    mode: 'PCT' | 'AMOUNT';
+    value: number;
+    clientIds?: number[];
+    vendorId?: number;
+    round?: boolean;
+  }) {
+    const value = Number(opts.value);
+    if (!Number.isFinite(value) || value === 0) throw new BadRequestException('Enter a non-zero value.');
+
     const where: any = { isActive: true };
-    if (clientIds && clientIds.length) where.clientId = { in: clientIds.map((x) => BigInt(x)) };
-    else where.clientId = { not: null }; // ALL customers (excludes vendor cost cards)
+    if (opts.scope === 'VENDOR') {
+      if (!opts.vendorId) throw new BadRequestException('Select a vendor.');
+      where.ownerVendorId = BigInt(opts.vendorId);
+    } else if (opts.scope === 'SELECT') {
+      const ids = (opts.clientIds ?? []).map((x) => BigInt(x));
+      if (!ids.length) throw new BadRequestException('Select at least one customer.');
+      where.clientId = { in: ids };
+    } else {
+      where.clientId = { not: null }; // ALL customers (sell-side cards)
+    }
+
     const cards = await this.prisma.customerRateCard.findMany({ where, select: { id: true } });
     const ids = cards.map((c) => c.id);
-    if (!ids.length) return { ok: true, cardsAdjusted: 0, factor };
-    await this.prisma.customerRateCardSlab.updateMany({ where: { rateCardId: { in: ids } }, data: { rate: { multiply: factor } } });
-    if (round) {
-      const idList = ids.map((i) => i.toString()).join(','); // internal numeric ids — safe to inline
+    if (!ids.length) return { ok: true, cardsAdjusted: 0 };
+    const idList = ids.map((i) => i.toString()).join(','); // internal numeric ids — safe to inline
+
+    if (opts.mode === 'PCT') {
+      const factor = 1 + value / 100;
+      if (!(factor > 0)) throw new BadRequestException('That decrease would drop rates to zero or below.');
+      await this.prisma.customerRateCardSlab.updateMany({ where: { rateCardId: { in: ids } }, data: { rate: { multiply: factor } } });
+    } else {
+      await this.prisma.customerRateCardSlab.updateMany({ where: { rateCardId: { in: ids } }, data: { rate: { increment: value } } });
+      await this.prisma.$executeRawUnsafe(`UPDATE customer_rate_card_slabs SET rate = 0 WHERE rate < 0 AND "rateCardId" IN (${idList})`); // floor at 0
+    }
+    if (opts.round) {
       await this.prisma.$executeRawUnsafe(`UPDATE customer_rate_card_slabs SET rate = ROUND(rate) WHERE "rateCardId" IN (${idList})`);
     }
-    return { ok: true, cardsAdjusted: ids.length, factor };
+    return { ok: true, cardsAdjusted: ids.length };
   }
 
   /**

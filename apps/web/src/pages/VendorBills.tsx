@@ -87,9 +87,20 @@ function PnlTab() {
   const [data, setData] = useState<{ count: number; totalSell: number; totalCost: number; totalMargin: number; rows: any[] } | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [q, setQ] = useState('');
+  const [sign, setSign] = useState<'all' | 'pos' | 'zero' | 'neg'>('all');
 
   const run = async () => { setErr(''); setBusy(true); try { setData(await api.getPnl(from || undefined, to || undefined)); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
   useEffect(() => { run(); /* eslint-disable-next-line */ }, []);
+
+  // Client-side search (vendor + customer + AWB + lane) and margin-sign filter; totals reflect the filter.
+  const rows = (data?.rows ?? []).filter((r) => {
+    const s = q.trim().toLowerCase();
+    const hitQ = !s || [r.vendorAwb, r.ourAwb, r.customer, r.vendorCode, r.product, r.origin, r.destination].some((v) => String(v ?? '').toLowerCase().includes(s));
+    const hitSign = sign === 'all' || (sign === 'pos' && r.margin > 0) || (sign === 'zero' && r.margin === 0) || (sign === 'neg' && r.margin < 0);
+    return hitQ && hitSign;
+  });
+  const fT = rows.reduce((a, r) => ({ sell: a.sell + r.sell, cost: a.cost + r.cost, margin: a.margin + r.margin }), { sell: 0, cost: 0, margin: 0 });
 
   return (
     <>
@@ -99,22 +110,30 @@ function PnlTab() {
           <div><label>To <span className="muted">(opt.)</span></label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
           <button onClick={run} disabled={busy}>{busy ? 'Working…' : 'Refresh'}</button>
         </div>
+        <div className="row" style={{ gap: 10, alignItems: 'flex-end', marginTop: 10 }}>
+          <div style={{ flex: 1, minWidth: 200 }}><label>Search <span className="muted">vendor / customer / AWB</span></label><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="e.g. BDR, Acme, 5800…" /></div>
+          <div className="row" style={{ gap: 6 }}>
+            {([['all', 'All'], ['pos', '▲ Positive'], ['zero', '0 Zero'], ['neg', '▼ Negative']] as const).map(([k, lbl]) => (
+              <button key={k} className={sign === k ? '' : 'secondary'} style={{ padding: '7px 12px', fontSize: 13 }} onClick={() => setSign(k)}>{lbl}</button>
+            ))}
+          </div>
+        </div>
       </div>
       {err && <div className="error">{err}</div>}
       {data && (
         <>
           <div className="grid cols-4" style={{ gap: 12 }}>
-            <div className="card"><div className="muted">AWBs</div><div style={{ fontSize: 24, fontWeight: 800 }}>{data.count}</div></div>
-            <div className="card"><div className="muted">Sell</div><div style={{ fontSize: 24, fontWeight: 800 }}>{money(data.totalSell)}</div></div>
-            <div className="card"><div className="muted">Cost</div><div style={{ fontSize: 24, fontWeight: 800 }}>{money(data.totalCost)}</div></div>
-            <div className="card" style={{ borderLeft: `4px solid ${data.totalMargin >= 0 ? 'var(--ok)' : 'var(--warn)'}` }}><div className="muted">Margin</div><div style={{ fontSize: 24, fontWeight: 800, color: data.totalMargin >= 0 ? 'var(--ok)' : 'var(--warn)' }}>{money(data.totalMargin)}</div></div>
+            <div className="card"><div className="muted">AWBs{rows.length !== data.count ? ` (of ${data.count})` : ''}</div><div style={{ fontSize: 24, fontWeight: 800 }}>{rows.length}</div></div>
+            <div className="card"><div className="muted">Sell</div><div style={{ fontSize: 24, fontWeight: 800 }}>{money(fT.sell)}</div></div>
+            <div className="card"><div className="muted">Cost</div><div style={{ fontSize: 24, fontWeight: 800 }}>{money(fT.cost)}</div></div>
+            <div className="card" style={{ borderLeft: `4px solid ${fT.margin >= 0 ? 'var(--ok)' : 'var(--warn)'}` }}><div className="muted">Margin</div><div style={{ fontSize: 24, fontWeight: 800, color: fT.margin >= 0 ? 'var(--ok)' : 'var(--warn)' }}>{money(fT.margin)}</div></div>
           </div>
           <div className="card">
             <div style={{ overflowX: 'auto' }}>
               <table style={{ fontSize: 13 }}>
                 <thead><tr><th>Vendor AWB</th><th>Our AWB</th><th>Customer</th><th>Product</th><th>Lane</th><th>Sell</th><th>Cost</th><th>Margin</th><th>Match</th></tr></thead>
                 <tbody>
-                  {data.rows.map((r, i) => (
+                  {rows.map((r, i) => (
                     <tr key={i}>
                       <td>{r.vendorAwb}</td><td>{r.ourAwb ?? '—'}</td><td>{r.customer ?? '—'}</td><td>{r.product}</td><td>{r.origin}→{r.destination}</td>
                       <td>{money(r.sell)}</td><td>{money(r.cost)}</td>
@@ -122,7 +141,7 @@ function PnlTab() {
                       <td>{r.matched ? <span className="badge DELIVERED">matched</span> : <span className="badge EXCEPTION">unmatched</span>}</td>
                     </tr>
                   ))}
-                  {!data.rows.length && <tr><td colSpan={9} className="muted">No vendor bills yet — upload some first.</td></tr>}
+                  {!rows.length && <tr><td colSpan={9} className="muted">{data.count ? 'No rows match the search / filter.' : 'No vendor bills yet — upload some first.'}</td></tr>}
                 </tbody>
               </table>
             </div>

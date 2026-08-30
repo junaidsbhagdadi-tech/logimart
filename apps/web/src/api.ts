@@ -608,8 +608,8 @@ export const api = {
     request<{ ok: boolean; product: string; copiedTo: number; networks: string[] }>(`/api/v1/rate-cards/cards/${id}/copy-charges`, { method: 'POST' }),
   copyRateCards: (body: { sourceClientId: string | number; targetClientId: string | number; increasePct?: number; round?: boolean }) =>
     request<{ ok: boolean; copied: number; factor: number }>('/api/v1/rate-cards/copy', { method: 'POST', body: JSON.stringify(body) }),
-  increaseRateCards: (body: { scope: 'ALL' | 'SELECT'; clientIds?: (string | number)[]; increasePct: number; round?: boolean }) =>
-    request<{ ok: boolean; cardsAdjusted: number; factor: number }>('/api/v1/rate-cards/increase', { method: 'POST', body: JSON.stringify(body) }),
+  increaseRateCards: (body: { scope: 'ALL' | 'SELECT' | 'VENDOR'; mode?: 'PCT' | 'AMOUNT'; value?: number; increasePct?: number; clientIds?: (string | number)[]; vendorId?: string | number; round?: boolean }) =>
+    request<{ ok: boolean; cardsAdjusted: number }>('/api/v1/rate-cards/increase', { method: 'POST', body: JSON.stringify(body) }),
 
   // ---- vendors ----
   listVendors: () => request<any[]>('/api/v1/vendors'),
