@@ -19,6 +19,35 @@ export function Pickups() {
   const [assigning, setAssigning] = useState<any | null>(null); // the pickup being assigned
   const [selRider, setSelRider] = useState('');
 
+  // Bulk upload (paste rows from Excel — tab-delimited — or a CSV). Ops rows carry an accountCode
+  // per row; a client login is pinned to its own account so that column is ignored.
+  const BULK_COLS = (isClient
+    ? 'pickupAddress,city,pincode,contactName,contactPhone,estPieces,cargoMode,invoiceNo,invoiceDate,invoiceValue,ewbNo,notes'
+    : 'accountCode,pickupAddress,city,pincode,contactName,contactPhone,estPieces,cargoMode,invoiceNo,invoiceDate,invoiceValue,ewbNo,notes');
+  const [bulkText, setBulkText] = useState('');
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{ total: number; created: number; results: { row: string; ok: boolean; error?: string }[] } | null>(null);
+  const parseBulk = (text: string) => {
+    const lines = text.trim().split(/\r?\n/).filter((l) => l.trim());
+    if (!lines.length) return [] as any[];
+    const delim = lines[0].includes('\t') ? '\t' : ',';
+    const known = BULK_COLS.split(',');
+    const first = lines[0].split(delim).map((h) => h.trim());
+    const useHeader = first.some((h) => known.includes(h));
+    const cols = useHeader ? first : known;
+    const body = useHeader ? lines.slice(1) : lines;
+    return body.map((l) => { const p = l.split(delim); const o: any = {}; cols.forEach((c, i) => { o[c] = (p[i] ?? '').trim(); }); return o; });
+  };
+  const doBulk = async () => {
+    setError(''); setBulkResult(null);
+    const rows = parseBulk(bulkText);
+    if (!rows.length) { setError('Nothing to import — paste rows first.'); return; }
+    setBulkBusy(true);
+    try { const r = await api.bulkPickups(rows); setBulkResult(r); load(); }
+    catch (e: any) { setError(e.message); }
+    finally { setBulkBusy(false); }
+  };
+
   const load = () => {
     api.listPickups().then(setRows).catch((e) => setError(e.message));
   };
@@ -88,6 +117,33 @@ export function Pickups() {
             <div style={{ gridColumn: 'span 2' }}><label>Notes</label><input value={form.notes} onChange={(e) => set('notes', e.target.value)} /></div>
           </div>
           <button style={{ marginTop: 12 }} disabled={!form.pickupAddress} onClick={create}>Request pickup</button>
+        </div>
+      )}
+
+      {(isClient || isOps) && (
+        <div className="card">
+          <details>
+            <summary style={{ cursor: 'pointer', fontWeight: 600 }}>⬆ Bulk pickup upload {isOps ? '(many customers)' : ''}</summary>
+            <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+              Paste rows from Excel (copy cells — they come in tab-separated) or a CSV. One pickup per line.
+              First row may be a header. Columns:
+              <br /><code style={{ fontSize: 11 }}>{BULK_COLS}</code>
+              {isOps && <><br /><b>accountCode</b> = the customer's code; unknown codes are reported and skipped.</>}
+            </p>
+            <textarea rows={6} style={{ width: '100%', fontFamily: 'monospace', fontSize: 12 }} value={bulkText} onChange={(e) => setBulkText(e.target.value)} placeholder={BULK_COLS} />
+            <div className="row" style={{ gap: 8, marginTop: 8, alignItems: 'center' }}>
+              <button disabled={bulkBusy || !bulkText.trim()} onClick={doBulk}>{bulkBusy ? 'Importing…' : 'Import pickups'}</button>
+              {bulkResult && <span className="muted" style={{ fontSize: 13 }}>Imported <b>{bulkResult.created}</b>/{bulkResult.total}.</span>}
+            </div>
+            {bulkResult && bulkResult.results.some((r) => !r.ok) && (
+              <div className="card" style={{ marginTop: 10, background: 'var(--bg-soft, #fbe9e6)', fontSize: 12.5 }}>
+                <b>Skipped rows:</b>
+                <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                  {bulkResult.results.filter((r) => !r.ok).map((r, i) => <li key={i}>{r.row} — {r.error}</li>)}
+                </ul>
+              </div>
+            )}
+          </details>
         </div>
       )}
 

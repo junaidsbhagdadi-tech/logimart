@@ -156,6 +156,19 @@ export function CreateShipment() {
   const [cwTouched, setCwTouched] = useState(false);
   const [autoCarrier, setAutoCarrier] = useState<{ vendor: string; minWeight?: number; maxWeight?: number } | null>(null);
   const [vendorTouched, setVendorTouched] = useState(false);
+  // Carrier rate comparison (staff): price every carrier for this booking, cheapest first.
+  const [rateCompare, setRateCompare] = useState<{ vendor: string; total: number; freight: number }[] | null>(null);
+  const [rcBusy, setRcBusy] = useState(false);
+  const compareRates = async () => {
+    if (!clientId || !product || !destPin) return;
+    setRcBusy(true); setRateCompare(null);
+    try {
+      const totalDead = pieces.reduce((s, p) => s + (Number(p.deadKg) || 0), 0) || 0.5;
+      const r = await api.carrierRates({ clientId, product, originPincode: originPin || undefined, destPincode: destPin, deadKg: totalDead, pcs: pieces.length, declaredValue: Number(svc.shipmentValue) || undefined });
+      setRateCompare(r.options.map((o) => ({ vendor: o.vendor, total: o.total, freight: o.freight })));
+    } catch { setRateCompare([]); }
+    finally { setRcBusy(false); }
+  };
 
   // ---- Draft autosave: keep the whole form in localStorage so navigating away
   // (e.g. to add a vendor / fix a pincode) and coming back never wipes the data. ----
@@ -617,7 +630,10 @@ export function CreateShipment() {
         {/* Staff see the carrier products (they pick the vendor); clients see only the ETA. */}
         {!isClient && carrierOptions.length > 0 && (
           <div style={{ marginTop: 10, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--surface-2)' }}>
-            <div className="muted" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 6 }}>Carriers serving {destPin} — fastest auto-picked</div>
+            <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <div className="muted" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.5px' }}>Carriers serving {destPin} — fastest auto-picked</div>
+              <button type="button" className="secondary" style={{ padding: '3px 10px', fontSize: 11 }} disabled={rcBusy || !product || !destPin} onClick={compareRates} title="Price every carrier for this booking, cheapest first">{rcBusy ? 'Pricing…' : '₹ Compare rates'}</button>
+            </div>
             <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
               {carrierOptions.map((o) => {
                 const picked = o.network === svc.vendor;
@@ -626,12 +642,29 @@ export function CreateShipment() {
                     className={picked ? '' : 'secondary'}
                     style={{ padding: '6px 12px', fontSize: 12 }}
                     title={o.network}
-                    onClick={() => setSvc((s) => ({ ...s, vendor: o.network, service: o.mode || s.service }))}>
+                    onClick={() => { setVendorTouched(true); setSvc((s) => ({ ...s, vendor: o.network, service: o.mode || s.service })); }}>
                     {vendorLabel(o.network)} · {o.mode ?? '—'} · {o.tatDays != null ? `${o.tatDays}d` : 'TAT ?'}{o.isOda ? ' · ODA' : ''}{picked ? ' ✓' : ''}
                   </button>
                 );
               })}
             </div>
+            {rateCompare && (
+              <div style={{ marginTop: 10 }}>
+                <div className="muted" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>Rate comparison (incl. GST) — cheapest first</div>
+                {rateCompare.length === 0 && <div className="muted" style={{ fontSize: 12 }}>No priced carriers — check the rate cards for this customer × product.</div>}
+                <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                  {rateCompare.map((o, i) => {
+                    const picked = o.vendor === svc.vendor;
+                    return (
+                      <button key={o.vendor} type="button" className={picked ? '' : 'secondary'} style={{ padding: '6px 12px', fontSize: 12 }}
+                        onClick={() => { setVendorTouched(true); setSvc((s) => ({ ...s, vendor: o.vendor })); }}>
+                        {i === 0 ? '⭐ ' : ''}{vendorLabel(o.vendor)} · ₹{o.total.toLocaleString('en-IN')}{picked ? ' ✓' : ''}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
         {isClient && product && clientEtaDays != null && (

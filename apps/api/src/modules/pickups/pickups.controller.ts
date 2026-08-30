@@ -37,6 +37,15 @@ export class PickupsController {
     return this.pickups.create({ ...dto, clientId });
   }
 
+  /** Bulk pickup upload. A client-portal login is pinned to its own account; ops staff resolve
+   *  each row's customer from the sheet (accountCode / id). */
+  @Post('bulk')
+  @Roles(UserRole.CLIENT_ADMIN, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  bulk(@Body() body: { rows: any[] }, @Req() req: any) {
+    const forced = req.user.role === UserRole.CLIENT_ADMIN ? Number(req.user.clientId) : undefined;
+    return this.pickups.bulkCreate(body?.rows ?? [], forced);
+  }
+
   @Get()
   list(@Req() req: any) {
     const clientId = req.user.role === UserRole.CLIENT_ADMIN ? BigInt(req.user.clientId) : undefined;

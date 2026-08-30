@@ -433,6 +433,41 @@ export function exportRateCardsXlsx(clientName: string, cards: any[]): void {
   XLSX.writeFile(wb, `ratecards-${clientName.replace(/[^a-z0-9]+/gi, '_')}.xlsx`);
 }
 
+/**
+ * Export a customer's rate cards in the SAME layout the bulk uploader reads (Customer Code · Vendor ·
+ * Product · Origin\Dest · N1…NE3), filled with each card's ₹/kg matrix — so you can export, tweak the
+ * cells, and re-upload. One (customer, vendor, product) block per card. Freight matrix only (the upload
+ * format carries no accessorials/VAS); weight-banded detail collapses to the base ₹/kg per origin×dest.
+ */
+export function exportRateCardsAsTemplate(customerCode: string, cards: any[]): void {
+  const zones = ['N1', 'N2', 'N3', 'N4', 'C1', 'C2', 'W1', 'W2', 'W3', 'S1', 'S2', 'S3', 'E1', 'E2', 'E3', 'NE1', 'NE2', 'NE3'];
+  const header = ['Customer Code', 'Vendor', 'Product', 'Origin \\ Dest', ...zones];
+  const aoa: any[][] = [header];
+  for (const c of cards) {
+    // origin → dest → rate. Prefer the base (weight ≤ 1) rate; a blank origin applies to every origin row.
+    const cell: Record<string, Record<string, number>> = {};
+    for (const s of c.slabs || []) {
+      const oz = String(s.originZone ?? '').replace(/\s+/g, '').toUpperCase() || 'ANY';
+      const dz = String(s.zone ?? '').replace(/\s+/g, '').toUpperCase();
+      if (!dz) continue;
+      cell[oz] = cell[oz] || {};
+      const w = Number(s.weight) || 0;
+      if (cell[oz][dz] == null || w <= 1) cell[oz][dz] = Number(s.rate);
+    }
+    zones.forEach((oz, i) => {
+      aoa.push([
+        i === 0 ? customerCode : '', i === 0 ? c.network : '', i === 0 ? c.product : '', oz,
+        ...zones.map((dz) => cell[oz]?.[dz] ?? cell['ANY']?.[dz] ?? ''),
+      ]);
+    });
+    aoa.push([]); // spacer between blocks
+  }
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Rate matrix');
+  XLSX.writeFile(wb, `ratecards-template-${customerCode.replace(/[^a-z0-9]+/gi, '_')}.xlsx`);
+}
+
 /** Parse a customer-code-wise cargo rate workbook. Layout: columns CUSTOMER · VENDOR · PRODUCT ·
  *  Origin\Dest · <18 dest-zone columns>. Each block = one (customer, vendor, product); the block's
  *  rows are origin zones with a ₹/kg rate per dest zone. Returns one entry per block. */

@@ -75,6 +75,13 @@ export class ShipmentsController {
     return this.shipments.estimate(Number(req.user.clientId), dto);
   }
 
+  /** Staff carrier-rate comparison at booking — every carrier priced, cheapest first. */
+  @Post('carrier-rates')
+  @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  carrierRates(@Body() dto: { clientId: number } & any) {
+    return this.shipments.carrierRates(Number(dto.clientId), dto);
+  }
+
   /** Super-admin: delete selected AWBs (and their children). Used by the AWB list select/delete. */
   @Post('bulk-delete')
   @Roles(UserRole.SYS_ADMIN)

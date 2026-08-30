@@ -125,7 +125,8 @@ export function RateCardsDialog({ client, vendor, onClose }: { client?: Client; 
             <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginBottom: 12 }}>
               <button className="secondary" onClick={async () => { (await import('../lib/rateSheet')).downloadCourierTemplate(); }}>⬇ DP/Courier template</button>
               <button className="secondary" onClick={async () => { (await import('../lib/rateSheet')).downloadCargoTemplate(); }}>⬇ Cargo template</button>
-              <button className="secondary" disabled={!cards.length} title="Export these rate cards to Excel" onClick={async () => { (await import('../lib/rateSheet')).exportRateCardsXlsx(owner.name, cards); }}>⬇ Export XLS</button>
+              <button className="secondary" disabled={!cards.length} title="Export these rate cards to Excel (review layout)" onClick={async () => { (await import('../lib/rateSheet')).exportRateCardsXlsx(owner.name, cards); }}>⬇ Export XLS</button>
+              {owner.kind === 'client' && <button className="secondary" disabled={!cards.length} title="Export in the bulk-upload layout — edit the cells and re-upload" onClick={async () => { (await import('../lib/rateSheet')).exportRateCardsAsTemplate(String(client?.accountCode || owner.name), cards); }}>⬇ Export as upload template</button>}
               {owner.kind === 'client' && <button className="secondary" onClick={() => setCopyOpen((o) => !o)} title="Copy another customer's rate cards into this one">📋 Copy from…</button>}
               <button className="secondary" disabled={!cards.length || busy2} onClick={doIncrease} title="Increase or decrease these freight rates by % or a flat ₹ amount">↑↓ Change rates</button>
               <button className="secondary" onClick={() => setUploading(true)}>⬆ Upload rates</button>

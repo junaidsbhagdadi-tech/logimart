@@ -424,6 +424,51 @@ export class ShipmentsService {
     };
   }
 
+  /**
+   * Price EVERY candidate carrier for a booking and return them cheapest-first, so ops can pick by
+   * rate at booking (staff-side — no canCheckRates gate). Candidates = SELF plus every vendor that
+   * has an active rate card for this customer×product. TAT (if configured) rides along for context.
+   */
+  async carrierRates(clientId: number, dto: { product: string; originPincode?: string; destPincode: string; deadKg?: number; pcs?: number; declaredValue?: number }) {
+    if (!dto.product || !dto.destPincode) throw new BadRequestException('Product and destination pincode are required.');
+    const now = new Date();
+    const cards = await this.prisma.customerRateCard.findMany({
+      where: { clientId: BigInt(clientId), isActive: true, product: { equals: dto.product, mode: 'insensitive' }, validFrom: { lte: now }, OR: [{ validTo: null }, { validTo: { gte: now } }] },
+      select: { network: true },
+    });
+    const networks = [...new Set(['SELF', ...cards.map((c) => String(c.network || 'SELF').toUpperCase())])];
+
+    const [originPin, destPin] = await Promise.all([
+      dto.originPincode ? this.prisma.pincode.findFirst({ where: { pincode: String(dto.originPincode) } }) : Promise.resolve(null),
+      this.prisma.pincode.findFirst({ where: { pincode: String(dto.destPincode) } }),
+    ]);
+    const originZone = this.productZone(originPin, dto.product, undefined, dto.originPincode, 'SOUTH') || 'SOUTH';
+    const destZone = this.productZone(destPin, dto.product, undefined, dto.destPincode, 'SOUTH') || 'SOUTH';
+    const pcs = Math.max(1, Math.floor(Number(dto.pcs) || 1));
+    const totalKg = Number(dto.deadKg) || 0.5;
+    const pieces = Array.from({ length: pcs }, () => ({ deadKg: totalKg / pcs, volKg: 0, lengthCm: null, widthCm: null, heightCm: null }));
+    const isOda = !!(destPin?.edl && String(destPin.edl).toUpperCase() !== 'REGULAR');
+    const base: any = {
+      clientId: BigInt(clientId), product: dto.product, originZone, destZone,
+      originPincode: dto.originPincode, destPincode: dto.destPincode,
+      declaredValue: Number(dto.declaredValue) || 0, shipmentValue: Number(dto.declaredValue) || 0,
+      pieceCount: pcs, isOda,
+    };
+
+    const options: { vendor: string; freight: number; subtotal: number; gst: number; total: number; basis?: string }[] = [];
+    for (const net of networks) {
+      try {
+        const charges = await this.rates.chargesForShipment({ ...base, vendor: net }, pieces);
+        if (!charges) continue;
+        const subtotal = Number(charges.subtotal);
+        const gst = +(subtotal * 0.18).toFixed(2);
+        options.push({ vendor: net, freight: Number(charges.freight), subtotal, gst, total: +(subtotal + gst).toFixed(2), basis: charges.basis });
+      } catch { /* skip a carrier that can't be priced */ }
+    }
+    options.sort((a, b) => a.total - b.total);
+    return { originZone, destZone, isOda, options };
+  }
+
   /** Wrong-entry transfer: reassign a mis-booked AWB to the correct customer. Blocked once the
    *  shipment has been invoiced (cancel/rebill the invoice first). Super-admin action. */
   async transfer(awb: string, clientId: number) {
