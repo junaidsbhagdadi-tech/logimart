@@ -2,12 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, RateQuote, Shipment } from '../api';
 import { useAuth } from '../auth';
-
-// Friendly service labels (the raw enum like ROAD_PTL is internal).
-const MODE_LABELS: Record<string, string> = {
-  ROAD_PTL: 'Surface (PTL)', ROAD_FTL: 'Surface (FTL)', RAIL: 'Train', TRAIN: 'Train',
-  AIR_EXPRESS: 'Air Express', AIR: 'Air', ECOM: 'Surface (E-com)', SURFACE: 'Surface',
-};
+import { modeLabel } from '../productMode';
 
 export function ShipmentDetail() {
   const { awb } = useParams();
@@ -480,7 +475,7 @@ export function ShipmentDetail() {
       <div className="card">
         <div className="grid cols-3">
           <div><label>Status</label><span className={`badge ${s.status}`}>{s.status}</span></div>
-          <div><label>Service</label>{MODE_LABELS[s.serviceMode] ?? s.serviceMode}{s.product ? ` · ${s.product}` : ''}</div>
+          <div><label>Service</label>{modeLabel(s.serviceMode)}{s.product ? ` · ${s.product}` : ''}</div>
           <div><label>Route</label>{s.originZone} → {s.destZone}</div>
           <div><label>Shipper</label>{(s as any).shipperName || (s as any).client?.legalName || '—'}</div>
           <div><label>Consignee</label>{(s as any).consigneeName || '—'}{(s as any).consigneeCity ? ` · ${(s as any).consigneeCity}` : ''}</div>

@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api, LabelItem, MasterLabel } from '../api';
 import { Barcode } from '../components/Barcode';
 import { Logo } from '../components/Logo';
+import { modeLabel } from '../productMode';
 
 export function Labels() {
   const { awb } = useParams();
@@ -35,7 +36,7 @@ export function Labels() {
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: 12, color: 'var(--muted)' }}>Consignment Note</div>
               <div style={{ fontWeight: 800, fontSize: 18 }}>{master.lrNumber}</div>
-              <div style={{ fontSize: 12 }}>{master.serviceMode} · {master.route}</div>
+              <div style={{ fontSize: 12 }}>{modeLabel(master.serviceMode)} · {master.route}</div>
             </div>
           </div>
           <div className="ship-grid">
@@ -80,7 +81,7 @@ export function Labels() {
               <div className="seq">{l.sequenceLabel}</div>
             </div>
             <div style={{ fontSize: 13, marginBottom: 6 }}>
-              AWB <strong>{l.masterAwb}</strong> · {l.serviceMode} · {l.route}
+              AWB <strong>{l.masterAwb}</strong> · {modeLabel(l.serviceMode)} · {l.route}
             </div>
             <Barcode value={l.barcode} />
             <div style={{ fontSize: 11, marginTop: 4 }} className="muted">{l.client}</div>

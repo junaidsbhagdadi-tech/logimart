@@ -15,8 +15,9 @@ export function mapMode(v?: string): string {
   return '';
 }
 
+// Plain-English labels — the raw enum (ROAD_PTL, AIR_EXPRESS…) is internal and confuses users.
 const MODE_LABEL: Record<string, string> = {
-  AIR_EXPRESS: 'Air — Express', AIR_ECONOMY: 'Air — Economy',
-  ROAD_FTL: 'Road — FTL', ROAD_PTL: 'Road — PTL', RAIL: 'Rail',
+  AIR_EXPRESS: 'Air (Express)', AIR_ECONOMY: 'Air (Economy)',
+  ROAD_FTL: 'Surface (Full-load)', ROAD_PTL: 'Surface (Part-load)', RAIL: 'Surface (Rail)',
 };
 export const modeLabel = (m: string) => MODE_LABEL[m] ?? m;

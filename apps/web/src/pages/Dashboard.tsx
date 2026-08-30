@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, ShipmentRow } from '../api';
 import { useAuth } from '../auth';
+import { modeLabel } from '../productMode';
 
 type Stats = Awaited<ReturnType<typeof api.statsOverview>>;
 
@@ -90,7 +91,7 @@ export function Dashboard() {
                 <tr key={r.awb}>
                   <td><Link to={`/shipments/${r.awb}`}><strong>{r.awb}</strong></Link></td>
                   <td>{r.route}</td>
-                  <td>{r.serviceMode}</td>
+                  <td>{modeLabel(r.serviceMode)}</td>
                   <td>{r.delivered}/{r.pieceCount}</td>
                   <td>{r.totalDeadKg} / {r.totalVolKg} kg</td>
                   <td><span className={`badge ${r.status}`}>{r.status}</span></td>
