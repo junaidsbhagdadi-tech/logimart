@@ -502,12 +502,18 @@ function RateCardEditor({ owner, card, products, zones, vendors, mechs, chargeMa
   const delRow = (i: number) => setRows((rs) => rs.filter((_, idx) => idx !== i));
 
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  // This grid is DEST-only (no origin axis). A card uploaded as a per-origin matrix (18×18) would be
+  // flattened to 18 dest-only slabs if we saved the grid — silently destroying the uploaded rates.
+  // So for a matrix card we DON'T send `slabs` (updateCard then keeps the existing grid); we only save
+  // the header/charges. Full per-origin rates are managed via Bulk Rate Upload.
+  const isMatrixCard = (card?.slabs || []).some((s: any) => s.originZone && String(s.originZone).trim());
   const save = async () => {
     setErr('');
     if (!h.product) { setErr('Pick a product.'); return; }
     const slabs: any[] = [];
     for (const r of rows) for (const z of zoneCols) { const v = r.rates[z]; if (v !== undefined && v !== '' && Number(v) > 0) slabs.push({ zone: z, rateType: r.rateType, weight: Number(r.weight || 0), rate: Number(v) }); }
-    const body = { ...ownerKey(owner), ...h, mode: productMode(h.product) || h.mode, vendor: h.network === 'SELF' ? null : (h.vendor || h.network), slabs, charges: chg };
+    const body: any = { ...ownerKey(owner), ...h, mode: productMode(h.product) || h.mode, vendor: h.network === 'SELF' ? null : (h.vendor || h.network), charges: chg };
+    if (!isMatrixCard) body.slabs = slabs; // omit slabs for a matrix card → its origin×dest grid is preserved
     setBusy(true);
     try {
       if (card) await api.updateCustomerCard(card.id, body); else await api.createCustomerCard(body);
@@ -659,11 +665,16 @@ function RateCardEditor({ owner, card, products, zones, vendors, mechs, chargeMa
         <div><label style={{ fontSize: 12 }}>Valid to</label><input type="date" value={h.validTo} onChange={(e) => set('validTo', e.target.value)} /></div>
       </div>
 
+      {isMatrixCard && (
+        <div className="card" style={{ padding: 12, marginTop: 12, background: 'var(--bg-soft, #f7edd6)', border: '1px solid #e6c34d', fontSize: 12.5 }}>
+          🔒 <strong>Per‑origin matrix card.</strong> This card was uploaded with origin × destination rates. The dest‑only grid below can’t show all of them, so the rate grid is <strong>read‑only here and will not be overwritten on save</strong> — your uploaded rates stay intact. Edit the full matrix via <strong>Bulk Rate Upload</strong>. (Charges, fuel, ODA and min‑freight above still save.)
+        </div>
+      )}
       {/* zone × slab grid — DP/courier: gram bands × A/B/C/OTHER · cargo: ₹/kg × zone matrix */}
-      <div className="card" style={{ padding: 12, marginTop: 12 }}>
+      <div className="card" style={{ padding: 12, marginTop: 12, opacity: isMatrixCard ? 0.55 : 1 }}>
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-          <strong>{fam === 'COURIER' ? 'DP / Courier Slab Rates (₹) — gram bands × zones' : 'Zone × Weight Slab Rates (₹)'}</strong>
-          <button className="secondary" onClick={addRow} style={{ padding: '3px 10px', fontSize: 12 }}>＋ Slab</button>
+          <strong>{fam === 'COURIER' ? 'DP / Courier Slab Rates (₹) — gram bands × zones' : 'Zone × Weight Slab Rates (₹)'}{isMatrixCard ? ' — shows one origin only (read-only)' : ''}</strong>
+          {!isMatrixCard && <button className="secondary" onClick={addRow} style={{ padding: '3px 10px', fontSize: 12 }}>＋ Slab</button>}
         </div>
         <div style={{ overflowX: 'auto', marginTop: 8 }}>
           <table style={{ fontSize: 13 }}>
