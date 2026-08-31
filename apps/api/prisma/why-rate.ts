@@ -45,7 +45,7 @@ async function main() {
   const now = new Date();
   const cards = await prisma.customerRateCard.findMany({
     where: { clientId: ship.clientId, isActive: true, validFrom: { lte: now }, OR: [{ validTo: null }, { validTo: { gte: now } }] },
-    include: { slabs: false },
+    include: { slabs: true },
   });
   console.log(`\n=== ACTIVE RATE CARDS for this client (${cards.length}) ===`);
   for (const c of cards) console.log(`  network=${String(c.network).padEnd(12)} product=${String(c.product).padEnd(8)} fuelPct=${c.fuelPct?.toString() ?? '-'} id=${c.id}`);
@@ -91,6 +91,34 @@ async function main() {
       console.log(`  forwardingAwb ("${ship.forwardingAwb ?? ''}") is the carrier AWB and does NOT drive pricing.`);
       console.log(`  Fix: record the carrier in shipment.vendor at hand-off (not just forwardingAwb).`);
     }
+
+    // --- ZONE-SLAB ANALYSIS on the picked card (this is where the ₹/kg comes from) ---
+    const slabs: any[] = (picked as any).slabs || [];
+    const oz = norm(ship.originZone), dz = norm(ship.destZone);
+    const eq = (a: any, b: any) => !a || (b != null && norm(a) === norm(b));
+    console.log(`\n=== ZONE-SLAB MATCH on picked card id=${picked.id} (${slabs.length} slabs) ===`);
+    console.log(`Shipment lane: origin ${ship.originZone} → dest ${ship.destZone}`);
+    // exact filter the engine uses
+    const zoneSlabs = slabs.filter((s) => eq(s.zone, ship.destZone) && eq(s.originZone, ship.originZone));
+    console.log(`Slabs matching (origin ${ship.originZone} × dest ${ship.destZone}): ${zoneSlabs.length}`);
+    if (zoneSlabs.length) {
+      for (const s of zoneSlabs) console.log(`   ✅ origin=${s.originZone ?? '∅'} dest=${s.zone ?? '∅'} type=${s.rateType} wt=${s.weight} rate=${s.rate}`);
+    } else {
+      console.log(`   ⚠ NONE — the engine FALLS BACK to ALL ${slabs.length} slabs and prices from an arbitrary zone (this is the bug you saw).`);
+    }
+    // what a correct dest-only match would look like
+    const destOnly = slabs.filter((s) => norm(s.zone) === dz);
+    const originOnly = slabs.filter((s) => norm(s.originZone) === oz);
+    console.log(`\nFor reference on this card:`);
+    console.log(`  slabs with dest=${ship.destZone} (any origin): ${destOnly.length}${destOnly.length ? ' → ' + destOnly.map((s) => `${s.originZone || '∅'}:${s.rate}`).join(', ') : ''}`);
+    console.log(`  slabs with origin=${ship.originZone} (any dest): ${originOnly.length}`);
+    const blankOrigin = slabs.filter((s) => !norm(s.originZone)).length;
+    const blankDest = slabs.filter((s) => !norm(s.zone)).length;
+    console.log(`  slabs with BLANK origin: ${blankOrigin} · BLANK dest: ${blankDest}`);
+    const distinctOrigins = [...new Set(slabs.map((s) => s.originZone ?? '∅'))];
+    const distinctDests = [...new Set(slabs.map((s) => s.zone ?? '∅'))];
+    console.log(`  distinct origins on card: ${distinctOrigins.join(', ')}`);
+    console.log(`  distinct dests on card:   ${distinctDests.join(', ')}`);
   }
 }
 
