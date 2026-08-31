@@ -128,14 +128,32 @@ export class RateCardsService {
   }
 
   /** Create a card header + its slab grid in one shot. Owned by a customer (clientId) OR a vendor (ownerVendorId). */
-  createCard(d: any) {
-    return this.prisma.customerRateCard.create({
-      data: {
-        clientId: d.clientId != null && d.clientId !== '' ? BigInt(d.clientId) : null,
-        ownerVendorId: d.ownerVendorId != null && d.ownerVendorId !== '' ? BigInt(d.ownerVendorId) : null,
-        ...this.cardHeader(d),
-        slabs: { create: this.slabRows(d.slabs) },
+  /**
+   * Create OR update a rate card. There must be exactly ONE card per owner × network × product —
+   * the rate engine picks the first matching card, so a duplicate silently shadows the other.
+   * A re-upload therefore UPDATES the existing card (replacing its whole slab grid) instead of
+   * creating a duplicate that the engine would ignore. (This was the "upload ignored, card wins" bug.)
+   */
+  async createCard(d: any) {
+    const clientId = d.clientId != null && d.clientId !== '' ? BigInt(d.clientId) : null;
+    const ownerVendorId = d.ownerVendorId != null && d.ownerVendorId !== '' ? BigInt(d.ownerVendorId) : null;
+    const header = this.cardHeader(d);
+    const existing = await this.prisma.customerRateCard.findMany({
+      where: {
+        clientId, ownerVendorId,
+        network: { equals: header.network, mode: 'insensitive' },
+        product: { equals: header.product, mode: 'insensitive' },
       },
+      select: { id: true }, orderBy: { id: 'asc' },
+    });
+    if (existing.length) {
+      // Collapse any pre-existing duplicates: keep the first, remove the rest, then overwrite it.
+      const [keep, ...dupes] = existing;
+      if (dupes.length) await this.prisma.customerRateCard.deleteMany({ where: { id: { in: dupes.map((c) => c.id) } } });
+      return this.updateCard(Number(keep.id), d); // overwrite header + slabs
+    }
+    return this.prisma.customerRateCard.create({
+      data: { clientId, ownerVendorId, ...header, slabs: { create: this.slabRows(d.slabs) } },
       include: { slabs: true },
     });
   }
