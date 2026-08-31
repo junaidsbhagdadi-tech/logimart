@@ -533,11 +533,17 @@ export class RateService {
       }
     }
     const chargeableKg = this.cardChargeableKg(shipment, pieces, card);
-    // Zone match is space- and case-insensitive so "NE 1" (pincode) matches "NE1" (rate card).
-    const norm = (x: any) => String(x ?? '').replace(/\s+/g, '').toUpperCase();
+    // Zone match strips ALL non-alphanumerics (not just spaces) so "NE 1" / "NE-1" / "ne1" all match
+    // the rate-card "NE1". A blank slab zone/origin is a wildcard (single-origin or flat cards).
+    const norm = (x: any) => String(x ?? '').replace(/[^a-z0-9]/gi, '').toUpperCase();
     const eq = (a: any, b: any) => !a || (b != null && norm(a) === norm(b));
-    const zoneSlabs = card.slabs.filter((s: any) => eq(s.zone, shipment.destZone) && eq(s.originZone, shipment.originZone));
-    const priced = this.priceSlabs(zoneSlabs.length ? zoneSlabs : card.slabs, chargeableKg);
+    // Slab selection, in strict precedence — the freight MUST come from the shipment's DEST zone:
+    //   1. exact origin × dest lane;  2. dest zone with any/blank origin (origin not on the card).
+    // If neither exists there is no rate for this lane — return null so it surfaces, rather than
+    // silently pricing from a DIFFERENT zone (the old `: card.slabs` fallback billed a wrong zone).
+    const exact = card.slabs.filter((s: any) => eq(s.zone, shipment.destZone) && eq(s.originZone, shipment.originZone));
+    const laneSlabs = exact.length ? exact : card.slabs.filter((s: any) => eq(s.zone, shipment.destZone));
+    const priced = laneSlabs.length ? this.priceSlabs(laneSlabs, chargeableKg) : null;
     if (!priced) return null;
 
     // City-specific special rate: overrides the zone slab when the destination city matches.
