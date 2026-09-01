@@ -9,11 +9,7 @@ import { ScanButton } from '../components/BarcodeScanner';
 interface PieceForm { deadKg: string; lengthCm: string; widthCm: string; heightCm: string; }
 const blank: PieceForm = { deadKg: '', lengthCm: '', widthCm: '', heightCm: '' };
 
-const VOL_DIVISOR = 5000;
-const volOf = (p: PieceForm) => {
-  const l = +p.lengthCm, w = +p.widthCm, h = +p.heightCm;
-  return l && w && h ? +(l * w * h / VOL_DIVISOR).toFixed(3) : 0;
-};
+const VOL_DIVISOR = 5000; // air default; surface uses the card's divisor + CFT (fetched per booking)
 
 type PinInfo = Awaited<ReturnType<typeof api.lookupPincode>>;
 
@@ -455,8 +451,27 @@ export function CreateShipment() {
       </div>
     ) : null;
 
+  // #25 — the per-box volumetric preview must match what the engine bills: use the customer×product×
+  // vendor card's actual divisor + CFT (surface uses CFT), not a hardcoded ÷5000.
+  const [volCfg, setVolCfg] = useState<{ divisor: number; cft: number }>({ divisor: VOL_DIVISOR, cft: 0 });
+  useEffect(() => {
+    if (!clientId || !product) { setVolCfg({ divisor: VOL_DIVISOR, cft: 0 }); return; }
+    let cancelled = false;
+    api.volConfig(clientId, product, svc.vendor || undefined)
+      .then((c) => { if (!cancelled) setVolCfg({ divisor: Number(c.divisor) || VOL_DIVISOR, cft: Number(c.cft) || 0 }); })
+      .catch(() => { if (!cancelled) setVolCfg({ divisor: VOL_DIVISOR, cft: 0 }); });
+    return () => { cancelled = true; };
+  }, [clientId, product, svc.vendor]);
+  const boxVol = (p: PieceForm) => {
+    const l = +p.lengthCm, w = +p.widthCm, h = +p.heightCm;
+    if (!(l && w && h)) return 0;
+    const base = (l * w * h) / (volCfg.divisor || VOL_DIVISOR);
+    return +(volCfg.cft > 0 ? base * volCfg.cft : base).toFixed(3);
+  };
+  const volLabel = volCfg.cft > 0 ? `÷${volCfg.divisor}×${volCfg.cft} CFT` : `÷${volCfg.divisor}`;
+
   const totalDead = pieces.reduce((s, p) => s + (+p.deadKg || 0), 0);
-  const totalVol = pieces.reduce((s, p) => s + volOf(p), 0);
+  const totalVol = pieces.reduce((s, p) => s + boxVol(p), 0);
   // Charge weight auto-calculates from the boxes (max of actual dead vs volumetric); editable to override.
   useEffect(() => {
     if (cwTouched) return;
@@ -913,7 +928,7 @@ export function CreateShipment() {
         <h2>Boxes ({pieces.length}) — each becomes a child label</h2>
         <table>
           <thead>
-            <tr><th>#</th><th>Actual (dead) kg</th><th>L (cm)</th><th>W (cm)</th><th>H (cm)</th><th>Vol kg (÷5000)</th><th></th></tr>
+            <tr><th>#</th><th>Actual (dead) kg</th><th>L (cm)</th><th>W (cm)</th><th>H (cm)</th><th>Vol kg ({volLabel})</th><th></th></tr>
           </thead>
           <tbody>
             {pieces.map((p, i) => (
@@ -923,7 +938,7 @@ export function CreateShipment() {
                 <td><input value={p.lengthCm} onChange={(e) => update(i, 'lengthCm', e.target.value)} /></td>
                 <td><input value={p.widthCm} onChange={(e) => update(i, 'widthCm', e.target.value)} /></td>
                 <td><input value={p.heightCm} onChange={(e) => update(i, 'heightCm', e.target.value)} /></td>
-                <td><strong>{volOf(p) || '—'}</strong></td>
+                <td><strong>{boxVol(p) || '—'}</strong></td>
                 <td>{pieces.length > 1 && <button className="secondary" onClick={() => removePiece(i)}>✕</button>}</td>
               </tr>
             ))}

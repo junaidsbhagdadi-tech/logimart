@@ -361,6 +361,8 @@ export const api = {
     request<{ ok: boolean }>(`/api/v1/shipments/${awb}/portal-remark`, { method: 'POST', body: JSON.stringify({ remark }) }),
   portalRateEstimate: (body: { product: string; vendor?: string; originPincode?: string; destPincode: string; deadKg: number; pcs?: number; declaredValue?: number }) =>
     request<{ ok: boolean; message?: string; subtotal?: number; gst?: number; total?: number; chargeableKg?: number; isOda?: boolean; lines?: any[]; basis?: string }>('/api/v1/shipments/portal-rate-estimate', { method: 'POST', body: JSON.stringify(body) }),
+  volConfig: (clientId: number | string, product: string, vendor?: string) =>
+    request<{ divisor: number; cft: number }>(`/api/v1/shipments/vol-config?clientId=${clientId}&product=${encodeURIComponent(product)}${vendor ? `&vendor=${encodeURIComponent(vendor)}` : ''}`),
   carrierRates: (body: { clientId: number | string; product: string; originPincode?: string; destPincode: string; deadKg?: number; pcs?: number; declaredValue?: number }) =>
     request<{ originZone: string; destZone: string; isOda: boolean; options: { vendor: string; freight: number; subtotal: number; gst: number; total: number; basis?: string }[] }>('/api/v1/shipments/carrier-rates', { method: 'POST', body: JSON.stringify(body) }),
   portalAccounts: () => request<any[]>('/api/v1/portal/accounts'),

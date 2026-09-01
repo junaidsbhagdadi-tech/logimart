@@ -300,6 +300,13 @@ export class RateService {
     return v;
   }
 
+  /** Effective volumetric config (divisor + CFT) the engine would use for this customer × product ×
+   *  vendor — so the booking screen's per-box volumetric preview matches what's actually billed. */
+  async volConfigFor(clientId: number, product: string, vendor?: string): Promise<{ divisor: number; cft: number }> {
+    const card: any = await this.resolveRateCard({ clientId: BigInt(clientId), product, vendor: vendor || 'SELF' });
+    return { divisor: Number(card?.volumetricDivisor ?? 5000) || 5000, cft: Number(card?.cft ?? 0) };
+  }
+
   /** Best-matching active card for the shipment: same product, then exact network > SELF > any. */
   async resolveRateCard(shipment: any) {
     const now = new Date();

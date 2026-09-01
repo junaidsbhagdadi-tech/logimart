@@ -82,6 +82,14 @@ export class ShipmentsController {
     return this.shipments.carrierRates(Number(dto.clientId), dto);
   }
 
+  /** #25 — effective volumetric divisor + CFT for a customer × product × vendor, so the booking
+   *  screen's per-box vol preview matches what the engine actually bills. */
+  @Get('vol-config')
+  @Roles(UserRole.CLIENT_ADMIN, UserRole.WAREHOUSE_HANDLER, UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  volConfig(@Query('clientId') clientId: string, @Query('product') product: string, @Query('vendor') vendor?: string) {
+    return this.shipments.volConfig(Number(clientId), product, vendor);
+  }
+
   /** Super-admin: delete selected AWBs (and their children). Used by the AWB list select/delete. */
   @Post('bulk-delete')
   @Roles(UserRole.SYS_ADMIN)

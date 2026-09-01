@@ -424,6 +424,11 @@ export class ShipmentsService {
     };
   }
 
+  /** #25 — effective volumetric divisor + CFT for the booking screen's per-box preview. */
+  volConfig(clientId: number, product: string, vendor?: string) {
+    return this.rates.volConfigFor(clientId, product, vendor);
+  }
+
   /**
    * Price EVERY candidate carrier for a booking and return them cheapest-first, so ops can pick by
    * rate at booking (staff-side — no canCheckRates gate). Candidates = SELF plus every vendor that
