@@ -24,6 +24,17 @@ enum UserRole {
   SYS_ADMIN
 }
 
+/// Functional department — drives a user's DEFAULT feature access (which modules + at what
+/// level). Role stays the hard security boundary; department + role together decide what each
+/// person sees, and a per-user grant can still override the department default.
+enum Department {
+  OPERATIONS        // mid/last-mile, warehouse, hub — booking + scanning
+  CUSTOMER_SERVICE  // support desk — booking on behalf, tracking, claims
+  FINANCE           // billing, receivables, notes, tax
+  SALES             // customers, quoting, sales targets
+  MANAGEMENT        // full cross-department visibility
+}
+
 model User {
   id           BigInt    @id @default(autoincrement())
   clientId     BigInt?   // null for internal staff
@@ -32,6 +43,7 @@ model User {
   email        String    @unique
   passwordHash String
   role         UserRole
+  department   Department? // functional desk — drives default feature access (see Department enum)
   hubId        BigInt?   // home hub for ops staff
   featureGrants Json?    // per-user feature access. Either a legacy string[] of route-path keys (each =
                          // full access) or a { "<route>": "VIEW"|"EDIT"|"DELETE" } level map. null = role defaults.

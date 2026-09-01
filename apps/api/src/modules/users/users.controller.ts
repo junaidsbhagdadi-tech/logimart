@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { IsArray, IsBoolean, IsEmail, IsEnum, IsInt, IsOptional, IsString, MinLength } from 'class-validator';
-import { UserRole } from '@prisma/client';
+import { Department, UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles, SuperAdminOnly } from '../../common/rbac/roles.decorator';
 import { UsersService } from './users.service';
@@ -10,12 +10,15 @@ class CreateUserDto {
   @IsEmail() email!: string;
   @IsOptional() @IsString() @MinLength(4) password?: string; // blank → auto-generated + emailed
   @IsEnum(UserRole) role!: UserRole;
+  @IsOptional() @IsEnum(Department) department?: Department;
   @IsOptional() @IsInt() hubId?: number;
   @IsOptional() @IsInt() clientId?: number;
 }
 class UpdateUserDto {
   @IsOptional() @IsBoolean() isActive?: boolean;
   @IsOptional() @IsEnum(UserRole) role?: UserRole;
+  // null clears the department (unassigned); a value sets it. Skips @IsEnum so null passes through.
+  @IsOptional() department?: Department | null;
   @IsOptional() @IsString() @MinLength(4) password?: string;
   // Either a legacy string[] (each feature = full access) or a { featureKey: 'VIEW'|'EDIT'|'DELETE' }
   // map. SYS_ADMIN-only endpoint, so accepted as-is (validated in the UI editor).

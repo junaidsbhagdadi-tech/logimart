@@ -282,7 +282,7 @@ export const api = {
   login: (email: string, password: string) =>
     request<{
       accessToken: string;
-      user: { id: string; fullName: string; role: string; clientId: string | null; hubId?: string | null };
+      user: { id: string; fullName: string; role: string; clientId: string | null; hubId?: string | null; department?: string | null; featureGrants?: string[] | Record<string, 'VIEW' | 'EDIT' | 'DELETE'> | null };
     }>('/api/v1/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   listShipments: () => request<ShipmentRow[]>('/api/v1/shipments'),
   getShipment: (awb: string) => request<Shipment>(`/api/v1/shipments/${awb}`),

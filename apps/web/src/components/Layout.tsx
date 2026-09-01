@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
-import { hasFeature } from '../rights';
+import { hasFeature, effectiveGrants } from '../rights';
 import { api } from '../api';
 import { Logo } from './Logo';
 import { FeedbackWidget } from './FeedbackWidget';
@@ -184,11 +184,10 @@ export function Layout() {
         )}
         <nav>
           {groups.map((g) => {
-            // Super admins see everything role-allows. Others: if the super admin assigned explicit
-            // feature grants, show EXACTLY those (an allow-list that overrides role defaults, so any
-            // feature can be handed to any user — server-side RBAC remains the real security boundary);
-            // otherwise fall back to the role's default visibility.
-            const grants = (user?.role === 'SYS_ADMIN' || isClient) ? null : (user?.featureGrants ?? null);
+            // Visibility precedence (see rights.ts): explicit per-user grants → the user's
+            // DEPARTMENT default feature map → role defaults. Super/client admins are role-driven
+            // (effectiveGrants returns null for them). Server-side RBAC remains the real boundary.
+            const grants = effectiveGrants(user as any);
             const items = g.items.filter((it) => (grants ? hasFeature(grants, it.to) : it.show !== false));
             if (items.length === 0) return null;
             const isClosed = !!closed[g.title];

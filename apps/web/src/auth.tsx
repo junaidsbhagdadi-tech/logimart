@@ -7,6 +7,7 @@ interface User {
   role: string;
   clientId: string | null;
   hubId?: string | null;
+  department?: string | null;
   featureGrants?: string[] | Record<string, 'VIEW' | 'EDIT' | 'DELETE'> | null;
 }
 interface AuthCtx {

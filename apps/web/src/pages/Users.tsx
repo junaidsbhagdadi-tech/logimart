@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { Modal } from '../components/Modal';
-import { FEATURE_CATALOG } from '../features';
+import { FEATURE_CATALOG, DEPARTMENTS, departmentLabel } from '../features';
 
 const ROLES = ['SYS_ADMIN', 'ADMIN', 'FINANCE_EXEC', 'SALES', 'HUB_MANAGER', 'WAREHOUSE_HANDLER', 'DRIVER', 'CLIENT_ADMIN'];
 // Friendly labels shown in the dropdowns (enum value stays the same on the wire).
@@ -10,7 +10,16 @@ const ROLE_LABELS: Record<string, string> = {
   HUB_MANAGER: 'Ops (Hub Manager)', WAREHOUSE_HANDLER: 'Warehouse', DRIVER: 'Driver', CLIENT_ADMIN: 'Customer',
 };
 const roleLabel = (r: string) => ROLE_LABELS[r] ?? r;
-const blank = { fullName: '', email: '', password: '', role: 'WAREHOUSE_HANDLER', hubId: '', clientId: '' };
+// Board columns: each department + an "Unassigned" bucket, shown in this order.
+const DEPT_COLUMNS: { value: string; label: string; accent: string }[] = [
+  { value: 'OPERATIONS', label: 'Operations / Warehouse', accent: '#2563eb' },
+  { value: 'CUSTOMER_SERVICE', label: 'Customer Service', accent: '#0891b2' },
+  { value: 'FINANCE', label: 'Finance & Billing', accent: '#16a34a' },
+  { value: 'SALES', label: 'Sales & CRM', accent: '#d97706' },
+  { value: 'MANAGEMENT', label: 'Management', accent: '#7c3aed' },
+  { value: '', label: 'Unassigned', accent: '#94a3b8' },
+];
+const blank = { fullName: '', email: '', password: '', role: 'WAREHOUSE_HANDLER', department: '', hubId: '', clientId: '' };
 
 export function Users() {
   const [rows, setRows] = useState<any[]>([]);
@@ -49,7 +58,7 @@ export function Users() {
   const setGrant = (to: string, level: '' | 'VIEW' | 'EDIT' | 'DELETE') => setGrants((g) => { const n = { ...g }; if (!level) delete n[to]; else n[to] = level; return n; });
   const saveGrants = async (clear = false) => {
     if (!grantUser) return;
-    try { await api.updateUser(grantUser.id, { featureGrants: clear ? null : grants }); setMsg(clear ? 'Reset to role defaults' : `Features updated for ${grantUser.fullName}`); setGrantUser(null); load(); }
+    try { await api.updateUser(grantUser.id, { featureGrants: clear ? null : grants }); setMsg(clear ? 'Reset to department default' : `Features updated for ${grantUser.fullName}`); setGrantUser(null); load(); }
     catch (e: any) { setError(e.message); }
   };
 
@@ -63,6 +72,7 @@ export function Users() {
         email: form.email,
         password: form.password || undefined,
         role: form.role,
+        department: form.department || undefined,
         hubId: form.hubId ? +form.hubId : undefined,
         clientId: form.clientId ? +form.clientId : undefined,
       });
@@ -81,6 +91,10 @@ export function Users() {
   };
   const changeRole = async (u: any, role: string) => {
     try { await api.updateUser(u.id, { role }); load(); } catch (e: any) { setError(e.message); }
+  };
+  const changeDept = async (u: any, department: string) => {
+    try { await api.updateUser(u.id, { department: department || null }); setMsg(`${u.fullName} → ${department ? departmentLabel(department) : 'Unassigned'}`); load(); }
+    catch (e: any) { setError(e.message); }
   };
   const resetPwd = async (u: any) => {
     setError(''); setMsg(''); setCred(null);
@@ -125,9 +139,16 @@ export function Users() {
           <div><label>Email *</label><input value={form.email} onChange={(e) => set('email', e.target.value)} /></div>
           <div><label>Password <span className="muted">(blank = auto-generate + email)</span></label><input value={form.password} onChange={(e) => set('password', e.target.value)} placeholder="leave blank to auto-generate" /></div>
           <div>
-            <label>Role</label>
+            <label>Role <span className="muted">(security boundary)</span></label>
             <select value={form.role} onChange={(e) => set('role', e.target.value)}>
               {ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
+            </select>
+          </div>
+          <div>
+            <label>Department <span className="muted">(drives default access)</span></label>
+            <select value={form.department} onChange={(e) => set('department', e.target.value)}>
+              <option value="">— none (role defaults) —</option>
+              {DEPARTMENTS.map((d) => <option key={d.value} value={d.value} title={d.desc}>{d.label}</option>)}
             </select>
           </div>
           <div><label>Home hub (ops — scopes their scans)</label>
@@ -141,34 +162,64 @@ export function Users() {
         <button style={{ marginTop: 12 }} disabled={!form.fullName || !form.email} onClick={create}>Create user</button>
       </div>
 
-      <div className="card">
-        <table>
-          <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Active</th><th></th></tr></thead>
-          <tbody>
-            {rows.map((u) => (
-              <tr key={u.id}>
-                <td><strong>{u.fullName}</strong></td>
-                <td>{u.email}</td>
-                <td>
-                  <select value={u.role} onChange={(e) => changeRole(u, e.target.value)} style={{ width: 'auto' }}>
-                    {ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
-                  </select>
-                </td>
-                <td><span className={`badge ${u.isActive ? 'DELIVERED' : 'CANCELLED'}`}>{u.isActive ? 'ACTIVE' : 'DISABLED'}</span></td>
-                <td className="row" style={{ gap: 6 }}>
-                  <button className="secondary" onClick={() => toggle(u)}>{u.isActive ? 'Disable' : 'Enable'}</button>
-                  <button className="secondary" onClick={() => resetPwd(u)}>Reset pwd</button>
-                  {u.role !== 'SYS_ADMIN' && <button className="secondary" onClick={() => openGrants(u)} title="Assign feature access">🔑 Features{u.featureGrants ? ` (${Array.isArray(u.featureGrants) ? u.featureGrants.length : Object.keys(u.featureGrants).length})` : ''}</button>}
-                  <button className="secondary" title="Delete user" onClick={async () => { if (!confirm(`Delete user ${u.email}? This cannot be undone.`)) return; try { await api.deleteUser(u.id); setMsg(`Deleted ${u.email}`); load(); } catch (e: any) { setError(e.message); } }}>🗑</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <p className="muted" style={{ fontSize: 12.5, margin: '4px 2px 10px' }}>
+        Users are organised by <strong>department</strong> — the department sets each person's default
+        pages and access level. <strong>Role</strong> stays the security boundary. Use 🔑 <em>Features</em>
+        to fine-tune any individual beyond their department default. Move someone between desks with the
+        Department dropdown on their row.
+      </p>
+
+      {DEPT_COLUMNS.map((col) => {
+        const members = rows.filter((u) => (u.department || '') === col.value);
+        if (col.value === '' && members.length === 0) return null; // hide empty Unassigned
+        return (
+          <div className="card" key={col.value || 'none'} style={{ borderLeft: `4px solid ${col.accent}`, marginBottom: 14 }}>
+            <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: members.length ? 8 : 0 }}>
+              <h2 style={{ margin: 0, fontSize: 16 }}>
+                <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: col.accent, marginRight: 8, verticalAlign: 'middle' }} />
+                {col.label}
+              </h2>
+              <span className="muted" style={{ fontSize: 13, fontWeight: 700 }}>{members.length} {members.length === 1 ? 'person' : 'people'}</span>
+            </div>
+            {members.length === 0 ? (
+              <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>No one in this department yet.</p>
+            ) : (
+              <table>
+                <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Department</th><th>Active</th><th></th></tr></thead>
+                <tbody>
+                  {members.map((u) => (
+                    <tr key={u.id}>
+                      <td><strong>{u.fullName}</strong></td>
+                      <td>{u.email}</td>
+                      <td>
+                        <select value={u.role} onChange={(e) => changeRole(u, e.target.value)} style={{ width: 'auto' }}>
+                          {ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
+                        </select>
+                      </td>
+                      <td>
+                        <select value={u.department || ''} onChange={(e) => changeDept(u, e.target.value)} style={{ width: 'auto' }}>
+                          <option value="">— Unassigned —</option>
+                          {DEPARTMENTS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+                        </select>
+                      </td>
+                      <td><span className={`badge ${u.isActive ? 'DELIVERED' : 'CANCELLED'}`}>{u.isActive ? 'ACTIVE' : 'DISABLED'}</span></td>
+                      <td className="row" style={{ gap: 6 }}>
+                        <button className="secondary" onClick={() => toggle(u)}>{u.isActive ? 'Disable' : 'Enable'}</button>
+                        <button className="secondary" onClick={() => resetPwd(u)}>Reset pwd</button>
+                        {u.role !== 'SYS_ADMIN' && <button className="secondary" onClick={() => openGrants(u)} title="Override this person's department default, feature by feature">🔑 Features{u.featureGrants ? ` (${Array.isArray(u.featureGrants) ? u.featureGrants.length : Object.keys(u.featureGrants).length})` : ''}</button>}
+                        <button className="secondary" title="Delete user" onClick={async () => { if (!confirm(`Delete user ${u.email}? This cannot be undone.`)) return; try { await api.deleteUser(u.id); setMsg(`Deleted ${u.email}`); load(); } catch (e: any) { setError(e.message); } }}>🗑</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        );
+      })}
 
       {grantUser && <Modal title={`Feature access — ${grantUser.fullName}`} width={720} onClose={() => setGrantUser(null)}>
-        <p className="muted" style={{ marginTop: 0, fontSize: 12 }}>Set each feature's access level: <b>None</b> hides it, <b>View</b> = read-only, <b>Edit</b> = create/update, <b>Delete</b> = full including delete. Empty + <em>Save</em> hides everything; <em>Reset to role defaults</em> reverts to the role's standard full access. (Role-based server permissions remain the security boundary; levels are enforced in the UI.)</p>
+        <p className="muted" style={{ marginTop: 0, fontSize: 12 }}>Set each feature's access level: <b>None</b> hides it, <b>View</b> = read-only, <b>Edit</b> = create/update, <b>Delete</b> = full including delete. This is a per-person override on top of the <strong>{departmentLabel(grantUser.department)}</strong> department default. Empty + <em>Save</em> hides everything; <em>Reset to department default</em> clears the override so the department's standard access applies again. (Role-based server permissions remain the security boundary; levels are enforced in the UI.)</p>
         <div style={{ maxHeight: '58vh', overflow: 'auto' }}>
           {FEATURE_CATALOG.map((sec) => (
             <div key={sec.section} style={{ marginBottom: 12 }}>
@@ -197,7 +248,7 @@ export function Users() {
           ))}
         </div>
         <div className="row" style={{ justifyContent: 'space-between', gap: 8, marginTop: 14 }}>
-          <button className="secondary" onClick={() => saveGrants(true)}>↺ Reset to role defaults</button>
+          <button className="secondary" onClick={() => saveGrants(true)}>↺ Reset to department default</button>
           <div className="row" style={{ gap: 8 }}>
             <button className="secondary" onClick={() => setGrantUser(null)}>Cancel</button>
             <button onClick={() => saveGrants(false)}>Save features ({Object.keys(grants).length})</button>

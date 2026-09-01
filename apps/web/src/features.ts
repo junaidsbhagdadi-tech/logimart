@@ -73,3 +73,61 @@ export const FEATURE_CATALOG: FeatureSection[] = [
 ];
 
 export const ALL_FEATURES = FEATURE_CATALOG.flatMap((s) => s.features.map((f) => f.to));
+
+// ============================ DEPARTMENTS ============================
+// A user's department drives their DEFAULT feature access (which pages + at what level). Role
+// remains the hard server-side boundary; an explicit per-user grant still overrides the default.
+export type DeptLevel = 'VIEW' | 'EDIT' | 'DELETE';
+export type Department = 'OPERATIONS' | 'CUSTOMER_SERVICE' | 'FINANCE' | 'SALES' | 'MANAGEMENT';
+
+export const DEPARTMENTS: { value: Department; label: string; desc: string }[] = [
+  { value: 'OPERATIONS', label: 'Operations / Warehouse', desc: 'Booking + first/mid/last-mile scanning, pickups, delivery.' },
+  { value: 'CUSTOMER_SERVICE', label: 'Customer Service', desc: 'Booking on behalf, tracking, claims, customer coordination.' },
+  { value: 'FINANCE', label: 'Finance & Billing', desc: 'Invoices, receivables, notes, vendor bills, tax.' },
+  { value: 'SALES', label: 'Sales & CRM', desc: 'Customers, quoting, rates, sales targets & MIS.' },
+  { value: 'MANAGEMENT', label: 'Management', desc: 'Full cross-department visibility.' },
+];
+export const departmentLabel = (d?: string | null) =>
+  DEPARTMENTS.find((x) => x.value === d)?.label ?? '—';
+
+// Compact level maps per department. Anything not listed is hidden for that department.
+const OPERATIONS: Record<string, DeptLevel> = {
+  '/': 'VIEW', '/tracker': 'VIEW', '/pincode-search': 'VIEW',
+  '/create': 'EDIT', '/awb-list': 'EDIT', '/bulk': 'EDIT', '/deliver': 'EDIT', '/pickups': 'EDIT', '/walk-in': 'EDIT',
+  '/fm': 'VIEW', '/fm/pickup-outscan': 'EDIT', '/fm/bulk-pickup-outscan': 'EDIT', '/fm/update-pickup': 'EDIT',
+  '/mm': 'VIEW', '/mm/inscan-shipment': 'EDIT', '/mm/bagging': 'EDIT', '/mm/trips': 'EDIT', '/mm/inscan-trip': 'EDIT',
+  '/lm': 'VIEW', '/lm/inscan-shipment': 'EDIT', '/lm/inscan-trip': 'EDIT', '/lm/delivery-outscan': 'EDIT',
+  '/lm/update-delivery': 'EDIT', '/lm/bulk-delivery-update': 'EDIT', '/lm/manual-scan': 'EDIT',
+  '/reports': 'VIEW',
+};
+const CUSTOMER_SERVICE: Record<string, DeptLevel> = {
+  '/': 'VIEW', '/team-dashboards': 'VIEW', '/tracker': 'VIEW', '/pincode-search': 'VIEW',
+  '/create': 'EDIT', '/awb-list': 'EDIT', '/bulk': 'EDIT', '/pickups': 'EDIT',
+  '/customers': 'EDIT', '/claims': 'EDIT', '/documents': 'EDIT', '/notes': 'VIEW', '/invoices': 'VIEW',
+  '/reports': 'VIEW',
+};
+const FINANCE: Record<string, DeptLevel> = {
+  '/': 'VIEW', '/team-dashboards': 'VIEW', '/tracker': 'VIEW',
+  '/invoices': 'DELETE', '/bill-worksheet': 'EDIT', '/sales-mis': 'VIEW', '/receivables': 'EDIT',
+  '/notes': 'DELETE', '/claims': 'EDIT', '/customers': 'EDIT', '/vendors': 'EDIT', '/vehicles': 'EDIT',
+  '/vendor-bills': 'EDIT', '/documents': 'EDIT', '/expenses': 'EDIT', '/sales': 'VIEW',
+  '/ftl-rates': 'VIEW', '/per-box-rates': 'VIEW', '/tax': 'EDIT', '/reports': 'VIEW',
+};
+const SALES: Record<string, DeptLevel> = {
+  '/': 'VIEW', '/team-dashboards': 'VIEW', '/tracker': 'VIEW', '/pincode-search': 'VIEW',
+  '/create': 'EDIT', '/awb-list': 'VIEW', '/invoices': 'VIEW',
+  '/customers': 'EDIT', '/sales': 'EDIT', '/sales-mis': 'VIEW',
+  '/ftl-rates': 'VIEW', '/per-box-rates': 'VIEW', '/service-mapping': 'VIEW', '/pincodes': 'VIEW',
+  '/reports': 'VIEW',
+};
+// Management sees everything at full level.
+const MANAGEMENT: Record<string, DeptLevel> = Object.fromEntries(ALL_FEATURES.map((to) => [to, 'DELETE']));
+
+export const DEPARTMENT_DEFAULTS: Record<Department, Record<string, DeptLevel>> = {
+  OPERATIONS, CUSTOMER_SERVICE, FINANCE, SALES, MANAGEMENT,
+};
+
+/** Default feature grants for a department (or null if unassigned/unknown). */
+export function departmentGrants(dep?: string | null): Record<string, DeptLevel> | null {
+  return dep && dep in DEPARTMENT_DEFAULTS ? DEPARTMENT_DEFAULTS[dep as Department] : null;
+}

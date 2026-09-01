@@ -35,7 +35,7 @@ export class AuthService {
   /** Build the JWT + user summary returned by every login path. */
   private async issue(user: {
     id: bigint; email: string; role: UserRole; clientId: bigint | null; hubId: bigint | null;
-    fullName: string; featureGrants: unknown; riderCode?: string | null;
+    fullName: string; featureGrants: unknown; department?: string | null; riderCode?: string | null;
   }) {
     const payload = {
       sub: user.id.toString(),
@@ -52,7 +52,13 @@ export class AuthService {
         role: user.role,
         clientId: user.clientId?.toString() ?? null,
         riderCode: user.riderCode ?? null,
-        featureGrants: Array.isArray(user.featureGrants) ? (user.featureGrants as string[]) : null,
+        department: user.department ?? null,
+        // Pass through either grant shape (legacy string[] OR { route: level } map) so a per-user
+        // override actually reaches the client; null/other → department/role defaults apply.
+        featureGrants:
+          Array.isArray(user.featureGrants) || (user.featureGrants && typeof user.featureGrants === 'object')
+            ? (user.featureGrants as any)
+            : null,
       },
     };
   }

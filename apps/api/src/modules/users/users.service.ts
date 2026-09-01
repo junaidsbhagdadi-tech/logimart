@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, UserRole } from '@prisma/client';
+import { Department, Prisma, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -10,6 +10,7 @@ interface CreateUser {
   email: string;
   password?: string; // blank → auto-generated + emailed
   role: UserRole;
+  department?: Department | null;
   hubId?: number;
   clientId?: number;
 }
@@ -29,7 +30,7 @@ export class UsersService {
   list() {
     return this.prisma.user.findMany({
       orderBy: { id: 'asc' },
-      select: { id: true, fullName: true, email: true, role: true, hubId: true, clientId: true, isActive: true, featureGrants: true },
+      select: { id: true, fullName: true, email: true, role: true, department: true, hubId: true, clientId: true, isActive: true, featureGrants: true },
     });
   }
 
@@ -44,10 +45,11 @@ export class UsersService {
           email: dto.email.toLowerCase(),
           passwordHash: await bcrypt.hash(password, 10),
           role: dto.role,
+          department: dto.department ?? null,
           hubId: dto.hubId != null ? BigInt(dto.hubId) : null,
           clientId: dto.clientId != null ? BigInt(dto.clientId) : null,
         },
-        select: { id: true, fullName: true, email: true, role: true, isActive: true },
+        select: { id: true, fullName: true, email: true, role: true, department: true, isActive: true },
       });
       // Send login credentials to the registered email (queued until an email provider is configured).
       const url = process.env.APP_URL ?? 'https://erp.logimart.co.in';
@@ -104,7 +106,7 @@ export class UsersService {
   }
 
   /** Toggle active, change role, reset password, or assign feature access (super admin). */
-  async update(id: number, dto: { isActive?: boolean; role?: UserRole; password?: string; featureGrants?: string[] | Record<string, string> | null }) {
+  async update(id: number, dto: { isActive?: boolean; role?: UserRole; department?: Department | null; password?: string; featureGrants?: string[] | Record<string, string> | null }) {
     const u = await this.prisma.user.findUnique({ where: { id: BigInt(id) } });
     if (!u) throw new NotFoundException('User not found');
     return this.prisma.user.update({
@@ -112,10 +114,11 @@ export class UsersService {
       data: {
         isActive: dto.isActive,
         role: dto.role,
+        ...(dto.department !== undefined ? { department: dto.department ?? null } : {}),
         passwordHash: dto.password ? await bcrypt.hash(dto.password, 10) : undefined,
         ...(dto.featureGrants !== undefined ? { featureGrants: dto.featureGrants ?? Prisma.DbNull } : {}),
       },
-      select: { id: true, fullName: true, email: true, role: true, isActive: true, featureGrants: true },
+      select: { id: true, fullName: true, email: true, role: true, department: true, isActive: true, featureGrants: true },
     });
   }
 }
