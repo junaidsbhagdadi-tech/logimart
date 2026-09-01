@@ -8,7 +8,7 @@ const STATUS_BADGE: Record<string, string> = {
   settled: 'DELIVERED', rejected: 'EXCEPTION', closed: '',
 };
 
-const blank = { awb: '', type: 'damage', claimedAmount: '', declaredValue: '', description: '' };
+const blank = { awb: '', type: 'damage', claimedAmount: '', declaredValue: '', description: '', attachments: [] as { name: string; dataUrl: string }[] };
 
 export function Claims() {
   const [rows, setRows] = useState<any[]>([]);
@@ -20,6 +20,14 @@ export function Claims() {
   const load = () => { api.listClaims().then(setRows).catch((e) => setError(e.message)); };
   useEffect(load, []);
 
+  const addFiles = async (files: FileList | null) => {
+    if (!files) return;
+    const arr = await Promise.all(Array.from(files).slice(0, 8).map((f) => new Promise<{ name: string; dataUrl: string }>((res) => {
+      const r = new FileReader(); r.onload = () => res({ name: f.name, dataUrl: String(r.result) }); r.readAsDataURL(f);
+    })));
+    setForm((f) => ({ ...f, attachments: [...f.attachments, ...arr].slice(0, 8) }));
+  };
+
   const create = async () => {
     setError(''); setMsg('');
     try {
@@ -29,6 +37,7 @@ export function Claims() {
         claimedAmount: +form.claimedAmount,
         declaredValue: form.declaredValue ? +form.declaredValue : undefined,
         description: form.description || undefined,
+        attachments: form.attachments.length ? form.attachments : undefined,
       });
       setMsg(`Claim ${c.claimNo} logged`);
       setForm({ ...blank });
@@ -77,6 +86,17 @@ export function Claims() {
           <div><label>Claimed amount ₹ *</label><input type="number" value={form.claimedAmount} onChange={(e) => setForm({ ...form, claimedAmount: e.target.value })} /></div>
           <div><label>Declared value ₹</label><input type="number" value={form.declaredValue} onChange={(e) => setForm({ ...form, declaredValue: e.target.value })} /></div>
           <div style={{ gridColumn: 'span 2' }}><label>Description</label><input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
+          <div style={{ gridColumn: 'span 2' }}>
+            <label>Attachments <span className="muted">(photos / email screenshots — up to 8)</span></label>
+            <input type="file" accept="image/*,.pdf" multiple onChange={(e) => { addFiles(e.target.files); e.currentTarget.value = ''; }} />
+            {form.attachments.length > 0 && (
+              <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                {form.attachments.map((a, i) => (
+                  <span key={i} className="pill" style={{ fontSize: 11 }}>{a.name || `file ${i + 1}`} <button className="secondary" style={{ padding: '0 5px', fontSize: 11 }} onClick={() => setForm((f) => ({ ...f, attachments: f.attachments.filter((_, j) => j !== i) }))}>✕</button></span>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         <button style={{ marginTop: 12 }} disabled={!form.claimedAmount} onClick={create}>Log claim</button>
       </div>

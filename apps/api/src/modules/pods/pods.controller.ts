@@ -21,4 +21,11 @@ export class PodsController {
   ) {
     return this.pods.createPod(awb, dto, BigInt(req.user.sub), force === 'true');
   }
+
+  /** #23b — Attach a POD image from the tracking page (no delivery sign-off). */
+  @Post(':awb/pod-image')
+  @Roles(UserRole.DRIVER, UserRole.WAREHOUSE_HANDLER, UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  attachImage(@Param('awb') awb: string, @Body() dto: { dataUrl: string }) {
+    return this.pods.attachPodImage(awb, dto?.dataUrl);
+  }
 }

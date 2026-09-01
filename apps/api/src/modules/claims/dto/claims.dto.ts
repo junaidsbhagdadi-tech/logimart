@@ -1,4 +1,4 @@
-import { IsIn, IsInt, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { IsArray, IsIn, IsInt, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 
 export class CreateClaimDto {
   @IsOptional() @IsString() awb?: string;
@@ -7,6 +7,7 @@ export class CreateClaimDto {
   @IsNumber() @Min(0.01) claimedAmount!: number;
   @IsOptional() @IsNumber() declaredValue?: number;
   @IsOptional() @IsString() description?: string;
+  @IsOptional() @IsArray() attachments?: { name?: string; dataUrl: string }[]; // #15 — pics / email comms
 }
 
 export class ReviewClaimDto {

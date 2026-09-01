@@ -37,6 +37,32 @@ export class InvoiceService {
   ) {}
 
   /**
+   * #11 — Invoice number. A CONFIG/INVOICE_SERIES master { prefix, nextNo, pad } drives a fixed,
+   * continuous series (e.g. EXL/25-26/00001). When set & active it is used and advanced (skipping any
+   * already-taken number — GST needs unique, non-reused numbers); otherwise the legacy INV-<code>-<mm>
+   * format applies. Editable via the Invoices → "Invoice number series" panel.
+   */
+  private async nextInvoiceNo(client: any, periodEnd: string): Promise<string> {
+    const cfg = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'CONFIG', code: 'INVOICE_SERIES' } } }).catch(() => null);
+    const a: any = cfg?.active ? (cfg.attrs ?? {}) : null;
+    if (a && String(a.prefix ?? '').trim()) {
+      const prefix = String(a.prefix).trim();
+      const pad = Math.max(1, Math.min(12, Number(a.pad) || 5));
+      let n = Math.max(1, Number(a.nextNo) || 1);
+      for (let i = 0; i < 100000; i++) {
+        const no = `${prefix}${String(n).padStart(pad, '0')}`;
+        const taken = await this.prisma.invoice.findFirst({ where: { invoiceNo: no }, select: { id: true } });
+        if (!taken) {
+          await this.prisma.masterEntry.update({ where: { type_code: { type: 'CONFIG', code: 'INVOICE_SERIES' } }, data: { attrs: { ...a, prefix, pad, nextNo: n + 1 } } });
+          return no;
+        }
+        n++;
+      }
+    }
+    return `INV-${client.accountCode}-${new Date(periodEnd).toISOString().slice(0, 7)}-${Date.now().toString().slice(-5)}`;
+  }
+
+  /**
    * Consolidated invoice for a client over a period.
    * Bills only DELIVERED pieces per AWB (partial-delivery logic); short
    * shipments are flagged for structural review on the line.
@@ -117,9 +143,7 @@ export class InvoiceService {
     const igst = intraState ? 0 : tax;
     const placeOfSupply = stateName(clientState) ?? client.city ?? stateName(carrierState) ?? 'Delhi';
 
-    const invoiceNo = `INV-${client.accountCode}-${new Date(periodEnd).toISOString().slice(0, 7)}-${Date.now()
-      .toString()
-      .slice(-5)}`;
+    const invoiceNo = await this.nextInvoiceNo(client, periodEnd);
     const dueDate = new Date(new Date(periodEnd).getTime() + client.creditDays * 86400000);
 
     // Created as a DRAFT — editable (add/remove AWBs) and NOT yet posted to the ledger. Locking the

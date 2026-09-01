@@ -8,8 +8,29 @@ export function Invoices() {
   const { user } = useAuth();
   const isFinance = user?.role === 'FINANCE_EXEC' || user?.role === 'SYS_ADMIN';
   const rights = useRights('/invoices');
+  const isSuper = user?.role === 'SYS_ADMIN';
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [credit, setCredit] = useState<Credit | null>(null);
+  // #11 — configurable invoice-number series (CONFIG/INVOICE_SERIES { prefix, nextNo, pad, fromDate }).
+  const [invCfg, setInvCfg] = useState({ prefix: '', nextNo: '1', pad: '5', fromDate: '', active: false });
+  const [showInvCfg, setShowInvCfg] = useState(false);
+  useEffect(() => {
+    if (!isSuper) return;
+    api.listMaster('CONFIG').then((rows) => {
+      const r = rows.find((x) => x.code === 'INVOICE_SERIES');
+      if (r) setInvCfg({ prefix: String(r.attrs?.prefix ?? ''), nextNo: String(r.attrs?.nextNo ?? '1'), pad: String(r.attrs?.pad ?? '5'), fromDate: String(r.attrs?.fromDate ?? ''), active: r.active !== false });
+    }).catch(() => {});
+  }, [isSuper]);
+  const saveInvCfg = async () => {
+    const prefix = invCfg.prefix.trim();
+    const nextNo = Math.max(1, Number(invCfg.nextNo) || 1);
+    const pad = Math.max(1, Math.min(12, Number(invCfg.pad) || 5));
+    try {
+      await api.saveMaster('CONFIG', { code: 'INVOICE_SERIES', name: prefix || 'Invoice series', attrs: { prefix, nextNo, pad, fromDate: invCfg.fromDate || null }, active: invCfg.active && !!prefix });
+      setMsg(invCfg.active && prefix ? `Invoices will number as ${prefix}${String(nextNo).padStart(pad, '0')}, ${prefix}${String(nextNo + 1).padStart(pad, '0')}…` : 'Custom invoice series disabled — using the default INV-… format.');
+      setShowInvCfg(false);
+    } catch (e: any) { setError(e.message); }
+  };
   const [clients, setClients] = useState<any[]>([]);
   const [fClient, setFClient] = useState('');
   const [fFrom, setFFrom] = useState('');
@@ -181,9 +202,31 @@ export function Invoices() {
 
   return (
     <>
-      <h1>Invoices</h1>
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+        <h1>Invoices</h1>
+        {isSuper && <button className="secondary" onClick={() => setShowInvCfg((v) => !v)} title="Set a fixed invoice-number series">🔢 Invoice number series</button>}
+      </div>
       {error && <div className="error">{error}</div>}
       {msg && <div className="card" style={{ borderLeft: '4px solid var(--brand)' }}>{msg}</div>}
+      {isSuper && showInvCfg && (
+        <div className="card" style={{ borderLeft: '4px solid var(--brand)' }}>
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+            <strong>🔢 Invoice number series</strong>
+            <label className="row" style={{ gap: 6, fontSize: 13, margin: 0 }}><input type="checkbox" checked={invCfg.active} onChange={(e) => setInvCfg((c) => ({ ...c, active: e.target.checked }))} /> Use this series</label>
+          </div>
+          <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>When on, new invoices number as <b>Prefix + running number</b> (skips any already-used number — GST requires unique, non-reused numbers). When off, the default <code>INV-CODE-YYYY-MM</code> format is used.</p>
+          <div className="grid cols-4" style={{ gap: 12, alignItems: 'flex-end' }}>
+            <div><label>Prefix</label><input value={invCfg.prefix} onChange={(e) => setInvCfg((c) => ({ ...c, prefix: e.target.value }))} placeholder="e.g. EXL/25-26/" /></div>
+            <div><label>Next number</label><input type="number" value={invCfg.nextNo} onChange={(e) => setInvCfg((c) => ({ ...c, nextNo: e.target.value }))} /></div>
+            <div><label>Digits (padding)</label><input type="number" value={invCfg.pad} onChange={(e) => setInvCfg((c) => ({ ...c, pad: e.target.value }))} /></div>
+            <div><label>Effective from</label><input type="date" value={invCfg.fromDate} onChange={(e) => setInvCfg((c) => ({ ...c, fromDate: e.target.value }))} /></div>
+          </div>
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
+            <span className="muted" style={{ fontSize: 12 }}>Next invoice: <b>{(invCfg.prefix || '—')}{String(Math.max(1, Number(invCfg.nextNo) || 1)).padStart(Math.max(1, Math.min(12, Number(invCfg.pad) || 5)), '0')}</b></span>
+            <button onClick={saveInvCfg}>Save series</button>
+          </div>
+        </div>
+      )}
 
       {credit && (
         <div className="card">

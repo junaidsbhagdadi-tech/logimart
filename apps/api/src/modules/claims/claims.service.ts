@@ -10,6 +10,7 @@ export interface CreateClaimInput {
   claimedAmount: number;
   declaredValue?: number;
   description?: string;
+  attachments?: { name?: string; dataUrl: string }[]; // #15 — supporting pics / email comms
   createdById?: number;
 }
 
@@ -51,6 +52,7 @@ export class ClaimsService {
         declaredValue: declaredValue != null ? new Prisma.Decimal(declaredValue) : null,
         claimedAmount: new Prisma.Decimal(input.claimedAmount),
         description: input.description,
+        attachments: Array.isArray(input.attachments) ? (input.attachments as any) : [],
         createdById: input.createdById != null ? BigInt(input.createdById) : null,
       },
     });

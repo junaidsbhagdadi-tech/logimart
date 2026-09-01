@@ -36,6 +36,7 @@ export function TrackDetail() {
   const nav = useNavigate();
   const { user } = useAuth();
   const isSuper = user?.role === 'SYS_ADMIN';
+  const isClient = user?.role === 'CLIENT_ADMIN';
   const [awb, setAwb] = useState(awbParam ?? '');
   const [d, setD] = useState<Detail | null>(null);
   const [tab, setTab] = useState<(typeof TABS)[number]>('Scans');
@@ -49,6 +50,17 @@ export function TrackDetail() {
     if (!awbs.length) return;
     setMultiBusy(true); setError('');
     try { setMulti(await api.trackMany(awbs)); } catch (e: any) { setError(e.message); } finally { setMultiBusy(false); }
+  };
+
+  // #23b — attach a POD image from the tracker (staff), then refresh the detail.
+  const uploadPodImg = (file?: File) => {
+    if (!file || !d) return;
+    const r = new FileReader();
+    r.onload = async () => {
+      try { await api.attachPodImage((d as any).awb, String(r.result)); setD(await api.lifecycleDetail((d as any).awb)); setMsg('POD uploaded.'); }
+      catch (err: any) { setError(err.message); }
+    };
+    r.readAsDataURL(file);
   };
 
   const search = async (val?: string, e?: FormEvent) => {
@@ -196,7 +208,9 @@ export function TrackDetail() {
               <Field label="Pickup Rider" value={d.pickupRider} color="var(--brand)" />
               <Field label="Delivery Rider" value={d.deliveryRider} color="var(--brand)" />
               <Field label="Pickup POD" value={d.pickupPod ? <a href={d.pickupPod} target="_blank" rel="noreferrer">🖼 view</a> : '—'} />
-              <Field label="Delivery POD" value={d.deliveryPod ? <a href={d.deliveryPod} target="_blank" rel="noreferrer">🖼 view</a> : '—'} />
+              <Field label="Delivery POD" value={d.deliveryPod
+                ? <span>🖼 <a href={d.deliveryPod} target="_blank" rel="noreferrer">view</a>{!isClient && <> · <label style={{ cursor: 'pointer', color: 'var(--brand)' }}>replace<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => uploadPodImg(e.target.files?.[0])} /></label></>}</span>
+                : (isClient ? '—' : <label style={{ cursor: 'pointer', color: 'var(--brand)' }}>⬆ Upload POD<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => uploadPodImg(e.target.files?.[0])} /></label>)} />
             </div>
             {(d as any).vendorContacts?.length > 0 && (
               <div className="card" style={{ borderLeft: '4px solid var(--brand)', marginTop: 12 }}>

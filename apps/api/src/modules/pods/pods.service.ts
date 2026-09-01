@@ -95,4 +95,17 @@ export class PodsService {
 
     return { pod, isShort, expected: shipment.pieceCount };
   }
+
+  /**
+   * #23b — Attach (or replace) a POD image on an AWB from the tracking page, without running the full
+   * delivery sign-off. Stores the image and sets shipment.podUrl. Does not change status.
+   */
+  async attachPodImage(awb: string, dataUrl: string) {
+    const s = await this.prisma.shipment.findUnique({ where: { awb: String(awb).trim().toUpperCase() }, select: { id: true } });
+    if (!s) throw new NotFoundException(`AWB ${awb} not found`);
+    if (!dataUrl) throw new ConflictException('No image provided.');
+    const stored = await this.storage.store(dataUrl, 'pod');
+    await this.prisma.shipment.update({ where: { id: s.id }, data: { podUrl: stored } });
+    return { ok: true, awb };
+  }
 }

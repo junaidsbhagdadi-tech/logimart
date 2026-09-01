@@ -311,6 +311,8 @@ export const api = {
       `/api/v1/shipments/${awb}/pod${force ? '?force=true' : ''}`,
       { method: 'POST', body: JSON.stringify(body) },
     ),
+  attachPodImage: (awb: string, dataUrl: string) =>
+    request<{ ok: boolean }>(`/api/v1/shipments/${awb}/pod-image`, { method: 'POST', body: JSON.stringify({ dataUrl }) }),
 
   // ---- To-Pay / DOD ----
   collectDod: (awb: string, body: { reference: string; bankName?: string; amount?: number }) =>
