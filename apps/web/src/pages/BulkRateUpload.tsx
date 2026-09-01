@@ -18,6 +18,7 @@ export function BulkRateUpload() {
   const [msg, setMsg] = useState('');
 
   const [products, setProducts] = useState<string[]>(['APEX', 'SURFACE']);
+  const [validFrom, setValidFrom] = useState(''); // #26 — rates applicable-from date for this upload
   useEffect(() => { api.listClients().then(setClients).catch((e) => setError(e.message)); }, []);
   // Domestic products only (exclude international) — one template block per product.
   useEffect(() => {
@@ -44,6 +45,7 @@ export function BulkRateUpload() {
           await api.createCustomerCard({
             clientId: client.id, network: b.vendor || 'SELF', vendor: b.vendor || null,
             product: b.product, mode: modeOf(b.product), slabs: b.slabs,
+            ...(validFrom ? { validFrom } : {}),
           });
           res.push({ customer: `${b.customerCode} — ${client.legalName}`, product: b.product, vendor: b.vendor, slabs: b.slabs.length, ok: true });
         } catch (e: any) { res.push({ customer: b.customerCode, product: b.product, vendor: b.vendor, slabs: b.slabs.length, ok: false, error: e.message }); }
@@ -62,6 +64,7 @@ export function BulkRateUpload() {
 
       <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
         <strong>Upload rate workbook</strong>
+        <label style={{ fontSize: 12, display: 'flex', gap: 6, alignItems: 'center' }}>Applicable from <input type="date" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} title="These rates take effect from this date (blank = today)" /></label>
         <input type="file" accept=".xlsx,.xls,.xlsb,.csv" disabled={busy} onChange={(e) => upload(e.target.files?.[0])} />
         {busy && <span className="muted">Processing…</span>}
         <button className="secondary" style={{ marginLeft: 'auto' }} onClick={async () => { (await import('../lib/rateSheet')).downloadCargoTemplate([], products); }}>⬇ Cargo matrix template ({products.length} products)</button>
