@@ -433,12 +433,30 @@ export function Customers() {
 }
 
 /** CSV → array of {header: value} rows (first line = header). */
+// Quote-aware field split (RFC-4180-ish): commas inside "..." stay in the field,
+// so addresses like "Road No 1, Near Air Logic" don't shift every later column.
+function splitLine(line: string): string[] {
+  const out: string[] = [];
+  let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQ && line[i + 1] === '"') { cur += '"'; i++; continue; } // escaped ""
+      inQ = !inQ; continue;
+    }
+    if (ch === ',' && !inQ) { out.push(cur); cur = ''; continue; }
+    cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
 function parseCsv(text: string): Record<string, string>[] {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   if (lines.length < 2) return [];
-  const header = lines[0].split(',').map((h) => h.trim());
+  const header = splitLine(lines[0]).map((h) => h.trim());
   return lines.slice(1).map((line) => {
-    const cells = line.split(',');
+    const cells = splitLine(line);
     const row: Record<string, string> = {};
     header.forEach((h, i) => { row[h] = (cells[i] ?? '').trim(); });
     return row;

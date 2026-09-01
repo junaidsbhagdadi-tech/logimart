@@ -95,13 +95,13 @@ export class CustomersService {
           accountType: dto.accountType ?? undefined,
           billingCycle: dto.billingCycle ?? undefined,
           allowSameGstin: dto.allowSameGstin ?? false,
-          creditLimit: new Prisma.Decimal(dto.creditLimit ?? 0),
-          creditDays: dto.creditDays ?? 30,
+          creditLimit: this.dec(dto.creditLimit),
+          creditDays: Number.isFinite(Number(dto.creditDays)) ? Number(dto.creditDays) : 30,
           isOneTime: dto.isOneTime ?? false,
           isCash: dto.isCash ?? false,
           canCheckRates: dto.canCheckRates ?? false,
           canViewInvoices: dto.canViewInvoices ?? false,
-          commissionPct: new Prisma.Decimal(dto.commissionPct ?? 0),
+          commissionPct: this.dec(dto.commissionPct),
         },
       });
     } catch (e) {
@@ -115,7 +115,11 @@ export class CustomersService {
   /** Bulk-create customers from imported rows. Reuses create() per row; reports per-row status. */
   async bulkCreate(rows: any[]) {
     const bool = (v: any) => v === true || ['true', '1', 'yes', 'y'].includes(String(v ?? '').trim().toLowerCase());
-    const num = (v: any) => (v != null && String(v).trim() !== '' ? Number(v) : undefined);
+    const num = (v: any) => {
+      if (v == null || String(v).trim() === '') return undefined;
+      const n = Number(String(v).replace(/[,\s]/g, '')); // tolerate "1,00,000" / stray spaces
+      return Number.isFinite(n) ? n : undefined; // never let a non-numeric cell become NaN
+    };
     const results: { name: string; code?: string; ok: boolean; error?: string }[] = [];
     for (const r of rows) {
       const legalName = String(r.legalName ?? r.name ?? '').trim();
@@ -266,7 +270,10 @@ export class CustomersService {
   }
 
   // ============ sub-tabs (per customer) ============
-  private dec(n: any) { return new Prisma.Decimal(n ?? 0); }
+  private dec(n: any) {
+    const v = Number(typeof n === 'string' ? n.replace(/[,\s]/g, '') : n);
+    return new Prisma.Decimal(Number.isFinite(v) ? v : 0); // guard '' / NaN / null → 0
+  }
   private date(s?: string) { return s ? new Date(s) : null; }
 
   // ---- Fuel Surcharges ----
