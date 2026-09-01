@@ -43,6 +43,22 @@ export class LabelsService {
       declaredValue: shipment.declaredValue ? Number(shipment.declaredValue) : null,
       goodsDesc: shipment.goodsDesc ?? null,
       ewbNo: shipment.ewbNo ?? null,
+      // ---- extra fields for the BlueDart-style label (#5) ----
+      accountCode: client.accountCode,
+      senderPincode: shipment.shipperPincode ?? client.pincode ?? null,
+      originZone: shipment.originZone,
+      destZone: shipment.destZone,
+      originCity: shipment.originLocation ?? shipment.shipperCity ?? client.city ?? null,
+      consigneeCity: shipment.consigneeCity ?? null,
+      consigneeState: shipment.consigneeState ?? null,
+      destPincode: shipment.destPincode ?? null,
+      consigneePhone: shipment.consigneePhone ?? null,
+      vendor: shipment.vendor ?? 'SELF',
+      product: shipment.product ?? null,
+      referenceNo: shipment.referenceNo ?? shipment.lrNumber ?? null,
+      shipmentValue: shipment.shipmentValue ? Number(shipment.shipmentValue) : (shipment.declaredValue ? Number(shipment.declaredValue) : null),
+      createdAt: shipment.createdAt,
+      boxes: shipment.pieces.map((p) => ({ l: Number(p.lengthCm || 0), w: Number(p.widthCm || 0), h: Number(p.heightCm || 0), deadKg: Number(p.deadKg) })),
     };
 
     const labels = shipment.pieces.map((p) => {

@@ -24,6 +24,7 @@ export function Labels() {
         <h1>Labels — {awb}</h1>
         <div className="row">
           <Link to={`/shipments/${awb}`}><button className="secondary">← Back</button></Link>
+          <Link to={`/shipments/${awb}/bd-label`}><button className="secondary">🏷 Courier label</button></Link>
           <button onClick={() => window.print()}>🖨 Print</button>
         </div>
       </div>

@@ -135,6 +135,22 @@ export interface MasterLabel {
   declaredValue: number | null;
   goodsDesc: string | null;
   ewbNo: string | null;
+  // BlueDart-style label extras (#5)
+  accountCode?: string;
+  senderPincode?: string | null;
+  originZone?: string;
+  destZone?: string;
+  originCity?: string | null;
+  consigneeCity?: string | null;
+  consigneeState?: string | null;
+  destPincode?: string | null;
+  consigneePhone?: string | null;
+  vendor?: string;
+  product?: string | null;
+  referenceNo?: string | null;
+  shipmentValue?: number | null;
+  createdAt?: string;
+  boxes?: { l: number; w: number; h: number; deadKg: number }[];
 }
 export interface LabelItem {
   masterAwb: string;

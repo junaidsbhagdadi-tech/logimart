@@ -21,6 +21,7 @@ import { FtlRates } from './pages/FtlRates';
 import { VendorBills } from './pages/VendorBills';
 import { WalkIn } from './pages/WalkIn';
 import { AwbPrint } from './pages/AwbPrint';
+import { BdLabel } from './pages/BdLabel';
 import { BillWorksheet } from './pages/BillWorksheet';
 import { Pickups } from './pages/Pickups';
 import { Manifests } from './pages/Manifests';
@@ -75,6 +76,7 @@ export function App() {
       <Route path="/invoices/:id/print" element={<InvoicePrint />} />
       <Route path="/notes/:id/print" element={<NotePrint />} />
       <Route path="/shipments/:awb/awb-print" element={<AwbPrint />} />
+      <Route path="/shipments/:awb/bd-label" element={<BdLabel />} />
       <Route element={<Layout />}>
         <Route path="/" element={user?.role === 'CLIENT_ADMIN' ? <ClientPortal /> : <Dashboard />} />
         <Route path="/team-dashboards" element={user?.role === 'CLIENT_ADMIN' ? <Navigate to="/" replace /> : <TeamDashboards />} />
