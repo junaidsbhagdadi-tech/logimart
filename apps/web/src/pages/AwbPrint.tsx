@@ -111,6 +111,7 @@ function ExcelExNote({ s, q }: { s: any; q: any }) {
               </tr>
             </tbody></table>
             <div className="strip">DATE: {dt10(s.createdAt)} &nbsp;&nbsp; Invoice No: {s.referenceNo || ''}</div>
+            <div className="strip">PRODUCT: {s.product || '—'} &nbsp;&nbsp; ACTUAL WT: {s.totalDeadKg != null ? `${Number(s.totalDeadKg).toFixed(3)} kg` : '—'} &nbsp;&nbsp; CHARGE WT: {(s.chargeWeight != null ? Number(s.chargeWeight) : Math.max(Number(s.totalDeadKg || 0), Number(s.totalVolKg || 0))).toFixed(3)} kg</div>
             <div className="strip">NATURE: {s.isCommercial ? 'COMMERCIAL' : 'NON-COMMERCIAL'} &nbsp;&nbsp; {s.paymentTerm === 'TO_PAY' ? '☑ TO-PAY' : '☑ CASH/CREDIT'}</div>
             <div className="receiver">
               <b>Receiver's Details (POD)</b>

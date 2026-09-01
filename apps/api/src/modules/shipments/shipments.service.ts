@@ -723,6 +723,9 @@ export class ShipmentsService {
       actualWeight: Number(s.totalDeadKg),
       chargeWeight: s.chargeWeight != null ? Number(s.chargeWeight) : Math.max(Number(s.totalDeadKg), Number(s.totalVolKg)),
       pieces: s.pieceCount,
+      shipmentValue: s.shipmentValue != null ? Number(s.shipmentValue) : (s.declaredValue != null ? Number(s.declaredValue) : null), // #6
+      originPincode: s.shipperPincode ?? null, // #6
+      destPincode: s.destPincode ?? null,                        // #6
       deliveryVendor: s.bdWaybill ?? s.awb, // carrier waybill; self = own AWB
       status: s.status,
     }));
@@ -748,6 +751,9 @@ export class ShipmentsService {
         delivered,
         totalDeadKg: s.totalDeadKg,
         totalVolKg: s.totalVolKg,
+        shipmentValue: s.shipmentValue ?? s.declaredValue ?? null, // #6
+        originPincode: s.shipperPincode ?? null,                     // #6
+        destPincode: s.destPincode ?? null,                        // #6
         createdAt: s.createdAt,
       };
     });

@@ -52,6 +52,11 @@ export function Track() {
               To {result.destination} · {result.delivered}/{result.pieceCount} boxes delivered{result.isShort && ' · SHORT'}
               {result.expectedDelivery && <> · Est. delivery {new Date(result.expectedDelivery).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</>}
             </p>
+            {(result as any).isOda && (
+              <p style={{ marginTop: 4, fontSize: 13, color: 'var(--amber, #9a6a12)' }}>
+                📍 This is an <strong>ODA (out‑of‑delivery‑area) location</strong> — please allow ~2 extra days beyond the estimated delivery date.
+              </p>
+            )}
             {result.timeline.length === 0 ? (
               <p className="muted" style={{ marginTop: 12 }}>No scans yet — your shipment is being processed.</p>
             ) : (

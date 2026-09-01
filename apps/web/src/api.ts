@@ -115,6 +115,9 @@ export interface ShipmentRow {
   delivered: number;
   totalDeadKg: string;
   totalVolKg: string;
+  shipmentValue?: number | string | null;
+  originPincode?: string | null;
+  destPincode?: string | null;
   createdAt: string;
 }
 export interface MasterLabel {

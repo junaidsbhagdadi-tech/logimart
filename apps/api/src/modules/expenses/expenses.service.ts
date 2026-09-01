@@ -4,7 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 
 export interface ExpenseInput {
   date?: string; mode?: string; category?: string; remark?: string;
-  amount: number; paidBy?: string; paidTo?: string; branch?: string; createdById?: number;
+  amount: number; companyAmount?: number; paidBy?: string; paidTo?: string; branch?: string; createdById?: number;
 }
 
 @Injectable()
@@ -19,6 +19,7 @@ export class ExpensesService {
         category: String(dto.category || 'Other'),
         remark: dto.remark?.trim() || null,
         amount: new Prisma.Decimal(Number(dto.amount) || 0),
+        companyAmount: dto.companyAmount != null && String(dto.companyAmount) !== '' ? new Prisma.Decimal(Number(dto.companyAmount) || 0) : null,
         paidBy: dto.paidBy?.trim() || null,
         paidTo: dto.paidTo?.trim() || null,
         branch: dto.branch?.trim() || null,

@@ -13,7 +13,7 @@ const blank = {
   addressLine: '', pincode: '', city: '', state: '', salesPerson: '', salesPersonMobile: '', salesPersonEmail: '',
   csPerson: '', csPersonMobile: '', csPersonEmail: '',
   accountType: 'CREDIT', billingCycle: 'MONTHLY', allowSameGstin: false,
-  creditLimit: '', creditDays: '30', isCash: false, canCheckRates: false, commissionPct: '', parentAccountId: '',
+  creditLimit: '', creditDays: '30', isCash: false, canCheckRates: false, canViewInvoices: false, commissionPct: '', parentAccountId: '',
 };
 
 const TABS = ['Personal Information', 'Fuel Surcharges', 'Other Charges', 'Customer Volumetric', 'Customer Address'] as const;
@@ -163,7 +163,7 @@ export function Customers() {
       salesPerson: (c as any).salesPerson ?? '', salesPersonMobile: (c as any).salesPersonMobile ?? '', salesPersonEmail: (c as any).salesPersonEmail ?? '',
       csPerson: (c as any).csPerson ?? '', csPersonMobile: (c as any).csPersonMobile ?? '', csPersonEmail: (c as any).csPersonEmail ?? '',
       accountType: (c as any).accountType ?? 'CREDIT', billingCycle: (c as any).billingCycle ?? 'MONTHLY',
-      allowSameGstin: !!(c as any).allowSameGstin, creditLimit: String((c as any).creditLimit ?? ''), creditDays: String((c as any).creditDays ?? '30'), isCash: !!(c as any).isCash, canCheckRates: !!(c as any).canCheckRates, commissionPct: String((c as any).commissionPct ?? ''),
+      allowSameGstin: !!(c as any).allowSameGstin, creditLimit: String((c as any).creditLimit ?? ''), creditDays: String((c as any).creditDays ?? '30'), isCash: !!(c as any).isCash, canCheckRates: !!(c as any).canCheckRates, canViewInvoices: !!(c as any).canViewInvoices, commissionPct: String((c as any).commissionPct ?? ''),
       parentAccountId: (c as any).parentAccountId != null ? String((c as any).parentAccountId) : '',
     });
     setShowAdd(true);
@@ -196,6 +196,7 @@ export function Customers() {
       billingCycle: form.billingCycle || undefined,
       allowSameGstin: form.allowSameGstin,
       canCheckRates: form.canCheckRates,
+      canViewInvoices: form.canViewInvoices,
       commissionPct: form.commissionPct ? Number(form.commissionPct) : 0,
       isCash: form.accountType === 'WALLET' ? false : form.isCash,
       creditLimit: form.creditLimit ? +form.creditLimit : 0,
@@ -323,6 +324,10 @@ export function Customers() {
             <label className="row" style={{ gap: 8, marginTop: 10, fontWeight: 600, color: 'var(--text)' }}>
               <input type="checkbox" style={{ width: 'auto' }} checked={form.canCheckRates} onChange={(e) => setForm((f) => ({ ...f, canCheckRates: e.target.checked }))} />
               Allow rate check in portal <span className="muted" style={{ fontWeight: 400 }}>— customer can estimate shipment costs from their login</span>
+            </label>
+            <label className="row" style={{ gap: 8, alignItems: 'center', marginTop: 8 }}>
+              <input type="checkbox" style={{ width: 'auto' }} checked={form.canViewInvoices} onChange={(e) => setForm((f) => ({ ...f, canViewInvoices: e.target.checked }))} />
+              Show invoices in portal <span className="muted" style={{ fontWeight: 400 }}>— customer can see &amp; download their invoices from their login (#22)</span>
             </label>
 
             {editing && (

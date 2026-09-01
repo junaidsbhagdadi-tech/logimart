@@ -9,7 +9,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 export function ExpenseTracker() {
   const [data, setData] = useState<{ count: number; total: number; byCategory: Record<string, number>; byBranch: Record<string, number>; rows: any[] } | null>(null);
   const [filters, setFilters] = useState({ from: '', to: '', branch: '', category: '' });
-  const [form, setForm] = useState({ date: today(), mode: 'CASH', category: 'Vehicle', remark: '', amount: '', paidBy: '', paidTo: '', branch: '' });
+  const [form, setForm] = useState({ date: today(), mode: 'CASH', category: 'Vehicle', remark: '', amount: '', companyAmount: '', paidBy: '', paidTo: '', branch: '' });
   const [err, setErr] = useState('');
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
@@ -23,7 +23,7 @@ export function ExpenseTracker() {
     setErr(''); setMsg('');
     if (!(Number(form.amount) > 0)) { setErr('Enter an amount greater than zero.'); return; }
     setBusy(true);
-    try { await api.createExpense({ ...form, amount: Number(form.amount) }); setMsg('✓ Expense recorded.'); setForm((f) => ({ ...f, remark: '', amount: '', paidTo: '' })); load(); }
+    try { await api.createExpense({ ...form, amount: Number(form.amount), companyAmount: form.companyAmount !== '' ? Number(form.companyAmount) : undefined }); setMsg('✓ Expense recorded.'); setForm((f) => ({ ...f, remark: '', amount: '', companyAmount: '', paidTo: '' })); load(); }
     catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
 
@@ -51,7 +51,8 @@ export function ExpenseTracker() {
           <div><label>Date</label><input type="date" value={form.date} onChange={(e) => set('date', e.target.value)} /></div>
           <div><label>Mode of payment</label><select value={form.mode} onChange={(e) => set('mode', e.target.value)}>{MODES.map((m) => <option key={m}>{m}</option>)}</select></div>
           <div><label>Category</label><select value={form.category} onChange={(e) => set('category', e.target.value)}>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></div>
-          <div><label>Amount (₹)</label><input type="number" value={form.amount} onChange={(e) => set('amount', e.target.value)} placeholder="0" /></div>
+          <div><label>Amount spent (₹)</label><input type="number" value={form.amount} onChange={(e) => set('amount', e.target.value)} placeholder="0" /></div>
+          <div><label>Amount given by company (₹)</label><input type="number" value={form.companyAmount} onChange={(e) => set('companyAmount', e.target.value)} placeholder="(optional)" /></div>
           <div style={{ gridColumn: 'span 2' }}><label>Remark</label><input value={form.remark} onChange={(e) => set('remark', e.target.value)} placeholder="e.g. ALLIED 150 box handling pickup" /></div>
           <div><label>Paid by</label><input value={form.paidBy} onChange={(e) => set('paidBy', e.target.value)} placeholder="Neha" /></div>
           <div><label>Paid to</label><input value={form.paidTo} onChange={(e) => set('paidTo', e.target.value)} placeholder="(optional)" /></div>
@@ -80,12 +81,13 @@ export function ExpenseTracker() {
           <div className="card">
             <div style={{ overflowX: 'auto' }}>
               <table style={{ fontSize: 13 }}>
-                <thead><tr><th>Date</th><th>Mode</th><th>Category</th><th>Remark</th><th style={{ textAlign: 'right' }}>Amount</th><th>Paid by</th><th>Paid to</th><th>Branch</th><th></th></tr></thead>
+                <thead><tr><th>Date</th><th>Mode</th><th>Category</th><th>Remark</th><th style={{ textAlign: 'right' }}>Spent</th><th style={{ textAlign: 'right' }}>Company</th><th>Paid by</th><th>Paid to</th><th>Branch</th><th></th></tr></thead>
                 <tbody>
                   {data.rows.map((r) => (
                     <tr key={r.id}>
                       <td>{new Date(r.date).toLocaleDateString('en-GB')}</td><td>{r.mode}</td><td>{r.category}</td><td>{r.remark || '—'}</td>
                       <td style={{ textAlign: 'right', fontWeight: 600 }}>{money(Number(r.amount))}</td>
+                      <td style={{ textAlign: 'right' }}>{r.companyAmount != null ? money(Number(r.companyAmount)) : '—'}</td>
                       <td>{r.paidBy || '—'}</td><td>{r.paidTo || '—'}</td><td>{r.branch || '—'}</td>
                       <td><button className="secondary" style={{ padding: '3px 8px', fontSize: 12 }} onClick={() => remove(r.id)}>🗑</button></td>
                     </tr>

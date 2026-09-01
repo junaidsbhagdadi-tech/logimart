@@ -995,12 +995,13 @@ export class InvoiceService {
       return { id: String(i.id), invoiceNo: i.invoiceNo, periodStart: i.periodStart, periodEnd: i.periodEnd, total: totalv, remaining, dueDate: i.dueDate, paidStatus };
     });
 
+    const canViewInvoices = (client as any).canViewInvoices ?? false; // #22
     return {
-      client: { id: String(client.id), legalName: client.legalName, accountCode: client.accountCode, gstin: client.gstin, city: client.city, state: client.state, accountType: client.accountType },
+      client: { id: String(client.id), legalName: client.legalName, accountCode: client.accountCode, gstin: client.gstin, city: client.city, state: client.state, accountType: client.accountType, canCheckRates: (client as any).canCheckRates ?? false, canViewInvoices },
       credit: { limit: r2n(Number(client.creditLimit)), outstanding: r2n(Number(client.outstandingBal)), available: r2n(Number(client.creditLimit) - Number(client.outstandingBal)), overdue: r2n(overdue), walletBalance: r2n(Number(client.walletBalance)) },
       kpis: { total, delivered, inTransit, rto, cancelled, onTimePct, deliveredPct: total ? Math.round((delivered / total) * 100) : 0 },
       trend,
-      invoices: invRows,
+      invoices: canViewInvoices ? invRows : [], // #22 — only when the customer is granted invoice access
       recentShipments: ships.slice(0, 12).map((s) => ({ awb: s.awb, destination: s.consigneeCity ?? s.destZone ?? '—', statusCode: s.statusCode ?? 'MAN', status: s.status, createdAt: s.createdAt, expectedDelivery: s.expectedDelivery, hasPod: !!s.podUrl, pieceCount: s.pieceCount })),
     };
   }

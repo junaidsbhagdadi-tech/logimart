@@ -86,6 +86,7 @@ export class TrackingService {
       delivered,
       isShort: delivered > 0 && delivered < s.pieceCount,
       expectedDelivery: s.expectedDelivery ?? eddFallback(),
+      isOda: !!s.isOda, // #14 — ODA destinations take ~2 extra days beyond EDD
       timeline,
     };
   }

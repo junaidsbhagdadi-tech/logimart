@@ -100,6 +100,7 @@ export class CustomersService {
           isOneTime: dto.isOneTime ?? false,
           isCash: dto.isCash ?? false,
           canCheckRates: dto.canCheckRates ?? false,
+          canViewInvoices: dto.canViewInvoices ?? false,
           commissionPct: new Prisma.Decimal(dto.commissionPct ?? 0),
         },
       });

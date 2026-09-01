@@ -7,6 +7,7 @@ type Row = {
   awb: string; invoiced?: boolean; bookDate: string; shipperName: string; customerCode: string; customerName: string;
   consigneeName: string; destination: string; product: string; vendor: string; forwardingAwb: string | null;
   actualWeight: number; chargeWeight: number; pieces: number; deliveryVendor: string; status: string;
+  shipmentValue?: number | null; originPincode?: string | null; destPincode?: string | null;
 };
 
 const COLS: { key: keyof Row; label: string; num?: boolean }[] = [
@@ -17,6 +18,9 @@ const COLS: { key: keyof Row; label: string; num?: boolean }[] = [
   { key: 'customerName', label: 'Customer Name' },
   { key: 'consigneeName', label: 'Consignee Name' },
   { key: 'destination', label: 'Destination' },
+  { key: 'originPincode', label: 'Origin PIN' },
+  { key: 'destPincode', label: 'Dest PIN' },
+  { key: 'shipmentValue', label: 'Shipment Value', num: true },
   { key: 'product', label: 'Product' },
   { key: 'vendor', label: 'Vendor' },
   { key: 'forwardingAwb', label: 'Fwd AWB' },
@@ -143,6 +147,9 @@ export function AwbEntryList() {
                   <td>{r.customerName}</td>
                   <td>{r.consigneeName || '—'}</td>
                   <td>{r.destination || '—'}</td>
+                  <td>{r.originPincode || '—'}</td>
+                  <td>{r.destPincode || '—'}</td>
+                  <td>{r.shipmentValue != null ? `₹${Number(r.shipmentValue).toLocaleString('en-IN')}` : '—'}</td>
                   <td>{r.product || '—'}</td>
                   <td>{r.vendor || '—'}</td>
                   <td>{r.forwardingAwb || '—'}</td>

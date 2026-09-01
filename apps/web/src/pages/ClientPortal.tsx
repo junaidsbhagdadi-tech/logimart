@@ -179,7 +179,7 @@ export function ClientPortal() {
               <div><label>Credit available</label><div style={{ fontSize: 18, fontWeight: 700, color: 'var(--ok)' }}>{compact(cr.available)}</div></div>
             </div>
           </div>
-          <div className="card">
+          {d.client?.canViewInvoices && <div className="card">
             <div className="row" style={{ justifyContent: 'space-between' }}><h2 style={{ margin: 0 }}>My invoices</h2><Link to="/invoices" className="muted" style={{ fontSize: 12 }}>all →</Link></div>
             <table style={{ marginTop: 6 }}>
               <tbody>
@@ -194,7 +194,7 @@ export function ClientPortal() {
                 {d.invoices.length === 0 && <tr><td className="muted">No invoices yet.</td></tr>}
               </tbody>
             </table>
-          </div>
+          </div>}
         </div>
       </div>
     </>

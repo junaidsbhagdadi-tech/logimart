@@ -116,6 +116,7 @@ model B2bClient {
   isOneTime       Boolean  @default(false) // walk-in / ad-hoc, non-contract
   isCash          Boolean  @default(false) // cash customer — no invoices generated
   canCheckRates   Boolean  @default(false) // may view rate agreement + estimate cost in their portal
+  canViewInvoices Boolean  @default(false) // #22 — may see their invoices in the customer portal (opt-in)
   commissionPct   Decimal  @default(0) @db.Decimal(6, 2) // salesperson commission % for this customer
   // Explicit account grouping: a "child" account points to its parent (head office). A client
   // login may book under any account in its group (the parent + all its children). One level deep.
@@ -1173,6 +1174,7 @@ model Claim {
   status         String    @default("open") // open | under_review | approved | rejected | settled | closed
   description    String?
   resolution     String?
+  attachments    Json      @default("[]") // #15 — [{ name, dataUrl }] supporting pics / email comms
   noteId         BigInt?   // credit note raised on settlement
   createdById    BigInt?
   createdAt      DateTime  @default(now())
@@ -1281,6 +1283,7 @@ model Expense {
   category    String // Vehicle | Office | Stationary | Internet | Staff welfare | Freight | Other
   remark      String?
   amount      Decimal  @db.Decimal(12, 2)
+  companyAmount Decimal? @db.Decimal(12, 2) // #10 — amount given/funded by the company (vs. actual spent)
   paidBy      String?
   paidTo      String?
   branch      String? // BOM | DEL | AHD | BLR ...
