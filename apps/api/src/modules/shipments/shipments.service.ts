@@ -885,6 +885,14 @@ export class ShipmentsService {
         await this.prisma.shipmentPiece.update({
           where: { id: p.id },
           data: {
+            // The re-weighed figures BECOME the piece's live weight (billing + every display reads
+            // deadKg/volKg), while reweighKg/reweighVolKg keep the audit that a re-weigh happened.
+            deadKg: new Prisma.Decimal(l.actualKg),
+            volKg: new Prisma.Decimal(volKg),
+            // preserve any actual box dimensions captured during the re-weigh
+            ...(l.lengthCm != null ? { lengthCm: new Prisma.Decimal(l.lengthCm) } : {}),
+            ...(l.widthCm != null ? { widthCm: new Prisma.Decimal(l.widthCm) } : {}),
+            ...(l.heightCm != null ? { heightCm: new Prisma.Decimal(l.heightCm) } : {}),
             reweighKg: new Prisma.Decimal(l.actualKg),
             reweighVolKg: new Prisma.Decimal(volKg),
             reweighedAt: now,
@@ -900,6 +908,18 @@ export class ShipmentsService {
     const newCharge = await this.rates.chargesForShipment({ ...shipment }, reweighed as any);
     const bookedKg = this.rates.chargeableKg(shipment.pieces);
     const actualKg = this.rates.chargeableKg(reweighed as any);
+
+    // Roll the re-weighed totals up onto the shipment so the list/detail/label show the new weight.
+    const newTotalDead = reweighed.reduce((s, r) => s + Number(r.deadKg), 0);
+    const newTotalVol = reweighed.reduce((s, r) => s + Number(r.volKg), 0);
+    await this.prisma.shipment.update({
+      where: { id: shipment.id },
+      data: {
+        totalDeadKg: new Prisma.Decimal(newTotalDead.toFixed(3)),
+        totalVolKg: new Prisma.Decimal(newTotalVol.toFixed(3)),
+        chargeWeight: new Prisma.Decimal(Number(actualKg).toFixed(3)),
+      },
+    });
 
     let note: any = null;
     const delta = newCharge && bookedCharge ? +(newCharge.subtotal - bookedCharge.subtotal).toFixed(2) : 0;
