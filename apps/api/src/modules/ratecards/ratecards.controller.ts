@@ -73,14 +73,17 @@ export class RateCardsController {
    */
   @Post('increase')
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
-  increase(@Body() dto: { scope: 'ALL' | 'SELECT' | 'VENDOR'; mode?: 'PCT' | 'AMOUNT'; value?: number; increasePct?: number; clientIds?: number[]; vendorId?: number; round?: boolean }) {
+  increase(@Body() dto: { scope: 'ALL' | 'SELECT' | 'VENDOR'; mode?: 'PCT' | 'AMOUNT'; value?: number; increasePct?: number; clientIds?: number[]; vendorId?: number; product?: string; network?: string; round?: boolean; dryRun?: boolean }) {
     return this.rateCards.adjustRateCards({
       scope: dto.scope,
       mode: dto.mode ?? 'PCT',
       value: Number(dto.value ?? dto.increasePct), // back-compat: old callers sent increasePct
       clientIds: (dto.clientIds ?? []).map(Number),
       vendorId: dto.vendorId != null ? Number(dto.vendorId) : undefined,
+      product: dto.product,
+      network: dto.network,
       round: !!dto.round,
+      dryRun: !!dto.dryRun,
     });
   }
 

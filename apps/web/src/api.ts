@@ -647,8 +647,8 @@ export const api = {
     request<{ ok: boolean; product: string; copiedTo: number; networks: string[] }>(`/api/v1/rate-cards/cards/${id}/copy-charges`, { method: 'POST' }),
   copyRateCards: (body: { sourceClientId: string | number; targetClientId: string | number; increasePct?: number; round?: boolean }) =>
     request<{ ok: boolean; copied: number; factor: number }>('/api/v1/rate-cards/copy', { method: 'POST', body: JSON.stringify(body) }),
-  increaseRateCards: (body: { scope: 'ALL' | 'SELECT' | 'VENDOR'; mode?: 'PCT' | 'AMOUNT'; value?: number; increasePct?: number; clientIds?: (string | number)[]; vendorId?: string | number; round?: boolean }) =>
-    request<{ ok: boolean; cardsAdjusted: number }>('/api/v1/rate-cards/increase', { method: 'POST', body: JSON.stringify(body) }),
+  increaseRateCards: (body: { scope: 'ALL' | 'SELECT' | 'VENDOR'; mode?: 'PCT' | 'AMOUNT'; value?: number; increasePct?: number; clientIds?: (string | number)[]; vendorId?: string | number; product?: string; network?: string; round?: boolean; dryRun?: boolean }) =>
+    request<{ ok: boolean; dryRun?: boolean; cardsAdjusted: number; slabsAffected?: number; preview?: { zone: string; rateType: string; before: number; after: number }[] }>('/api/v1/rate-cards/increase', { method: 'POST', body: JSON.stringify(body) }),
 
   // ---- expense tracker ----
   listExpenses: (q: { from?: string; to?: string; branch?: string; category?: string } = {}) => {

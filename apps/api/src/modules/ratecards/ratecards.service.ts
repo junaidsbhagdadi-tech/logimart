@@ -215,7 +215,10 @@ export class RateCardsService {
     value: number;
     clientIds?: number[];
     vendorId?: number;
+    product?: string;      // optional PRODUCT filter (e.g. only SURFACE cards)
+    network?: string;      // optional network/vendor filter for sell-side cards (SELF | BLUEDART …)
     round?: boolean;
+    dryRun?: boolean;      // preview: return affected card/slab counts without changing anything
   }) {
     const value = Number(opts.value);
     if (!Number.isFinite(value) || value === 0) throw new BadRequestException('Enter a non-zero value.');
@@ -231,11 +234,27 @@ export class RateCardsService {
     } else {
       where.clientId = { not: null }; // ALL customers (sell-side cards)
     }
+    // Optional product- and vendor(network)-wise narrowing (#1).
+    if (opts.product && opts.product.trim()) where.product = { equals: opts.product.trim(), mode: 'insensitive' };
+    if (opts.network && opts.network.trim()) where.network = { equals: opts.network.trim(), mode: 'insensitive' };
 
     const cards = await this.prisma.customerRateCard.findMany({ where, select: { id: true } });
     const ids = cards.map((c) => c.id);
-    if (!ids.length) return { ok: true, cardsAdjusted: 0 };
+    if (!ids.length) return { ok: true, cardsAdjusted: 0, slabsAffected: 0, dryRun: !!opts.dryRun };
     const idList = ids.map((i) => i.toString()).join(','); // internal numeric ids — safe to inline
+
+    // Preview: how many slabs would move, with a couple of before/after examples.
+    if (opts.dryRun) {
+      const slabsAffected = await this.prisma.customerRateCardSlab.count({ where: { rateCardId: { in: ids } } });
+      const samples = await this.prisma.customerRateCardSlab.findMany({ where: { rateCardId: { in: ids } }, take: 4, orderBy: { rate: 'desc' } });
+      const preview = samples.map((s) => {
+        const before = Number(s.rate);
+        let after = opts.mode === 'PCT' ? before * (1 + value / 100) : before + value;
+        after = Math.max(0, opts.round ? Math.round(after) : +after.toFixed(2));
+        return { zone: s.zone, rateType: s.rateType, before, after };
+      });
+      return { ok: true, dryRun: true, cardsAdjusted: ids.length, slabsAffected, preview };
+    }
 
     if (opts.mode === 'PCT') {
       const factor = 1 + value / 100;
@@ -248,7 +267,8 @@ export class RateCardsService {
     if (opts.round) {
       await this.prisma.$executeRawUnsafe(`UPDATE customer_rate_card_slabs SET rate = ROUND(rate) WHERE "rateCardId" IN (${idList})`);
     }
-    return { ok: true, cardsAdjusted: ids.length };
+    const slabsAffected = await this.prisma.customerRateCardSlab.count({ where: { rateCardId: { in: ids } } });
+    return { ok: true, dryRun: false, cardsAdjusted: ids.length, slabsAffected };
   }
 
   /**
