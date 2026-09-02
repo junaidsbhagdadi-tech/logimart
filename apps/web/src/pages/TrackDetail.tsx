@@ -215,14 +215,14 @@ export function TrackDetail() {
             </div>
             {(d as any).vendorContacts?.length > 0 && (
               <div className="card" style={{ borderLeft: '4px solid var(--brand)', marginTop: 12 }}>
-                <h3 style={{ margin: '0 0 6px' }}>🏢 Carrier branch contacts <span className="muted" style={{ fontSize: 12, fontWeight: 400 }}>— who to call for this route</span></h3>
+                <h3 style={{ margin: '0 0 6px' }}>🏢 Carrier branch contacts <span className="muted" style={{ fontSize: 12, fontWeight: 400 }}>— who to call for this route (📍 = current branch)</span></h3>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ fontSize: 13 }}>
                     <thead><tr><th>Location</th><th>Contact</th><th>Role</th><th>Phone</th><th>Email</th></tr></thead>
                     <tbody>
                       {(d as any).vendorContacts.map((c: any, i: number) => (
-                        <tr key={i}>
-                          <td><strong>{c.location}</strong>{c.product ? <span className="muted"> · {c.product}</span> : ''}</td>
+                        <tr key={i} style={c.current ? { background: 'var(--surface-2, #fff7ed)', borderLeft: '3px solid var(--warn, #d97706)' } : undefined}>
+                          <td>{c.current ? '📍 ' : ''}<strong>{c.location}</strong>{c.product ? <span className="muted"> · {c.product}</span> : ''}{c.current ? <span className="badge PARTIAL" style={{ marginLeft: 6 }}>current branch</span> : ''}</td>
                           <td>{c.name}</td><td>{c.role || '—'}</td>
                           <td>{c.phone ? <a href={`tel:${c.phone}`}>📞 {c.phone}</a> : '—'}</td>
                           <td>{c.email ? <a href={`mailto:${c.email}`}>{c.email}</a> : '—'}</td>

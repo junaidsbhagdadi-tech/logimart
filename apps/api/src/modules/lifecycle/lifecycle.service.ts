@@ -83,8 +83,14 @@ export class LifecycleService {
       const prodMatch = !c.product || !prod || c.product.toUpperCase() === prod;
       return locMatch && prodMatch;
     });
+    // #15 — flag the contact(s) at the shipment's CURRENT branch so CS knows exactly who to call now.
+    const curLocs = [s.currentLocation, s.destHub?.code, s.destHub?.name].filter(Boolean).map((x: string) => String(x).toUpperCase());
+    const isCurrent = (c: any) => { const cl = c.location.toUpperCase(); return curLocs.some((l) => l.includes(cl) || cl.includes(l)); };
     // Prefer route-matched contacts; if none match a location, show all so the team still has someone to call.
-    return (matched.length ? matched : contacts).map((c) => ({ location: c.location, product: c.product, name: c.personName, phone: c.phone, email: c.email, role: c.role }));
+    // Current-branch contacts sort first.
+    const out = (matched.length ? matched : contacts)
+      .map((c) => ({ location: c.location, product: c.product, name: c.personName, phone: c.phone, email: c.email, role: c.role, current: isCurrent(c) }));
+    return out.sort((a, b) => Number(b.current) - Number(a.current));
   }
 
   /** Record a milestone scan for one or more AWBs. DLD requires a POD image. Terminal states
