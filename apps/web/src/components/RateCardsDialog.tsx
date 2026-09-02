@@ -151,6 +151,11 @@ export function RateCardsDialog({ client, vendor, onClose }: { client?: Client; 
               </div>
             )}
             {!cards.length && <p className="muted">No rate cards yet. Click “Add Rate Card” to create one per network (SELF / vendor) &amp; product.</p>}
+            {cards.length > 0 && (
+              <p className="muted" style={{ fontSize: 11.5, margin: '0 0 10px', padding: '8px 10px', background: 'var(--surface-2, #f1f3f6)', borderRadius: 8, borderLeft: '3px solid var(--brand)' }}>
+                ℹ️ <strong>SELF rates &amp; add-on charges apply to every vendor automatically.</strong> When a shipment goes on a vendor with no card for this product, the whole SELF card is used. When a vendor <em>does</em> have a card, its freight and any charge it sets win, but every blank field falls back to SELF — so you set add-ons once on SELF. Use <strong>⧉ Copy charges</strong> on a card only if you want to freeze a copy onto the other vendors to edit per-vendor.
+              </p>
+            )}
             {grouped.map(([network, list]) => (
               <div key={network} style={{ marginBottom: 18 }}>
                 <div style={{ fontWeight: 800, fontSize: 13, letterSpacing: .3, color: 'var(--muted)', margin: '4px 0 8px' }}>
