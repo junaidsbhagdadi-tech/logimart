@@ -41,9 +41,15 @@ export function Layout() {
   // Global appointment-delivery notification (all pages, staff only).
   const [appts, setAppts] = useState<any[]>([]);
   const [apptOpen, setApptOpen] = useState(false);
+  // #16 — customer remarks awaiting CS (all pages, staff only).
+  const [custReqs, setCustReqs] = useState<any[]>([]);
+  const [custOpen, setCustOpen] = useState(false);
+  const loadCustReqs = () => api.customerRequests().then(setCustReqs).catch(() => {});
+  const ackCust = async (awb: string) => { try { await api.ackCustomerRequest(awb); setCustReqs((r) => r.filter((x) => x.awb !== awb)); } catch { /* ignore */ } };
   useEffect(() => {
     if (!user || user.role === 'CLIENT_ADMIN') return;
     api.upcomingAppointments().then(setAppts).catch(() => {});
+    loadCustReqs();
   }, [user]);
   const todayStr = new Date().toISOString().slice(0, 10);
   const isToday = (d?: string | null) => !!d && String(d).slice(0, 10) === todayStr;
@@ -238,6 +244,35 @@ export function Layout() {
                   style={{ padding: '8px 10px', borderRadius: 8, cursor: 'pointer', marginBottom: 4, background: isToday(a.apptDate) ? 'var(--surface-2, #f1f3f6)' : 'transparent', borderLeft: isToday(a.apptDate) ? '3px solid var(--danger, #c0392b)' : '3px solid transparent' }}>
                   <div style={{ fontWeight: 700, fontSize: 13 }}>{apptDay(a.apptDate)}{isToday(a.apptDate) ? ' · TODAY' : ''} <span className="muted" style={{ fontWeight: 500 }}>· {a.awb}</span></div>
                   <div className="muted" style={{ fontSize: 12 }}>{a.customer || a.consignee || '—'}{a.accountCode ? ` (${a.accountCode})` : ''}{a.pcs ? ` · ${a.pcs} pcs` : ''} → {a.destination || '—'}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!isClient && custReqs.length > 0 && (
+        <div style={{ position: 'fixed', top: dueAppts.length > 0 ? 56 : 14, right: 18, zIndex: 1199 }}>
+          <button onClick={() => setCustOpen((o) => !o)} title="Customer remarks awaiting CS"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 20, fontSize: 13, fontWeight: 700, boxShadow: '0 2px 8px rgba(0,0,0,.15)', background: 'var(--warn, #d97706)', color: '#fff', border: 'none' }}>
+            📣 {custReqs.length} customer note{custReqs.length > 1 ? 's' : ''}
+          </button>
+          {custOpen && (
+            <div style={{ position: 'absolute', right: 0, top: 44, width: 400, maxHeight: 460, overflowY: 'auto', background: 'var(--surface, #fff)', border: '1px solid var(--line, #d7dadf)', borderRadius: 12, boxShadow: '0 8px 28px rgba(0,0,0,.18)', padding: 10 }}>
+              <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <strong style={{ fontSize: 14 }}>📣 Customer remarks for CS</strong>
+                <button className="secondary" style={{ padding: '2px 8px', fontSize: 12 }} onClick={() => setCustOpen(false)}>✕</button>
+              </div>
+              {custReqs.map((c: any) => (
+                <div key={c.awb} style={{ padding: '8px 10px', borderRadius: 8, marginBottom: 4, borderLeft: '3px solid var(--warn, #d97706)', background: 'var(--surface-2, #f1f3f6)' }}>
+                  <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                    <div style={{ cursor: 'pointer', flex: 1 }} onClick={() => { setCustOpen(false); nav(`/tracker/${c.awb}`); }}>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>{c.awb} <span className="muted" style={{ fontWeight: 500 }}>· {c.customer || c.consignee || '—'}{c.accountCode ? ` (${c.accountCode})` : ''}</span></div>
+                      <div style={{ fontSize: 12.5, margin: '2px 0' }}>“{c.remark}”</div>
+                      <div className="muted" style={{ fontSize: 11 }}>{c.remarkAt ? new Date(c.remarkAt).toLocaleString('en-GB') : ''}{c.apptDate ? ` · 📅 appt ${apptDay(c.apptDate)}` : ''} · {c.statusCode}</div>
+                    </div>
+                    <button className="secondary" style={{ padding: '2px 8px', fontSize: 11, whiteSpace: 'nowrap' }} title="Mark handled" onClick={() => ackCust(c.awb)}>✓ Done</button>
+                  </div>
                 </div>
               ))}
             </div>

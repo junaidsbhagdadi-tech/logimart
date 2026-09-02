@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ShipmentStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RateService } from '../billing/rate.service';
@@ -282,6 +282,39 @@ export class LifecycleService {
       consignee: r.consigneeName ?? null, destination: r.consigneeCity ?? r.destZone ?? null, statusCode: r.statusCode,
       pcs: r.pieceCount ?? null,
     }));
+  }
+
+  /** #16 — Customer-left remarks awaiting CS attention (unacknowledged, not yet closed). Feeds the CS
+   *  prompt bell so a note (contact number, instruction, next-day appt) reaches CS, not just tracking. */
+  async customerRequests() {
+    const rows = await this.prisma.shipment.findMany({
+      where: {
+        customerRemark: { not: null },
+        customerRemarkAckAt: null,
+        statusCode: { notIn: ['DLD', 'RTD', 'CAN'] },
+      },
+      orderBy: { customerRemarkAt: 'desc' }, take: 200,
+      select: {
+        awb: true, customerRemark: true, customerRemarkAt: true, apptDate: true, apptDelivery: true,
+        consigneeName: true, consigneeCity: true, destZone: true, statusCode: true,
+        client: { select: { legalName: true, accountCode: true } },
+      },
+    });
+    return rows.map((r) => ({
+      awb: r.awb, remark: r.customerRemark, remarkAt: r.customerRemarkAt,
+      apptDate: r.apptDelivery ? r.apptDate : null,
+      customer: r.client?.legalName ?? null, accountCode: r.client?.accountCode ?? null,
+      consignee: r.consigneeName ?? null, destination: r.consigneeCity ?? r.destZone ?? null,
+      statusCode: r.statusCode,
+    }));
+  }
+
+  /** CS marks a customer remark as handled — clears it from the prompt. */
+  async ackCustomerRemark(awb: string) {
+    const s = await this.prisma.shipment.findUnique({ where: { awb: String(awb).trim().toUpperCase() }, select: { id: true } });
+    if (!s) throw new NotFoundException(`AWB ${awb} not found`);
+    await this.prisma.shipment.update({ where: { id: s.id }, data: { customerRemarkAckAt: new Date() } });
+    return { ok: true };
   }
 
   /** Customer-Service dashboard: pending / stuck shipments with aging, NDR (undelivered) + overdue flags. */

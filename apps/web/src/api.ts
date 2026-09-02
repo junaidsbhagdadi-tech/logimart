@@ -547,6 +547,10 @@ export const api = {
     request<{ ok: boolean; awb: string; apptDate: string | null; remark: string | null }>(`/api/v1/lifecycle/appointment/${encodeURIComponent(awb)}`, { method: 'POST', body: JSON.stringify(body) }),
   upcomingAppointments: () =>
     request<{ awb: string; apptDate: string | null; customer: string | null; accountCode: string | null; consignee: string | null; destination: string | null; statusCode: string; pcs: number | null }[]>('/api/v1/lifecycle/appointments'),
+  customerRequests: () =>
+    request<{ awb: string; remark: string; remarkAt: string | null; apptDate: string | null; customer: string | null; accountCode: string | null; consignee: string | null; destination: string | null; statusCode: string }[]>('/api/v1/lifecycle/customer-requests'),
+  ackCustomerRequest: (awb: string) =>
+    request<{ ok: boolean }>(`/api/v1/lifecycle/customer-requests/${encodeURIComponent(awb)}/ack`, { method: 'POST' }),
   lifecycleDetail: (awb: string) =>
     request<{
       awb: string; forwardingAwb: string | null; payMode: string; shipper: string | null;

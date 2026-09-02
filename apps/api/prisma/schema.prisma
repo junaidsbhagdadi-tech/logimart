@@ -517,6 +517,7 @@ model Shipment {
   apptDate       DateTime? // scheduled appointment delivery date
   customerRemark   String?   // remark left by the customer via their portal (surfaced to CS + on tracking)
   customerRemarkAt DateTime?
+  customerRemarkAckAt DateTime? // #16 — when CS acknowledged the latest customer remark (clears the CS prompt)
   referenceNo    String?
 
   vehicleNo      String?

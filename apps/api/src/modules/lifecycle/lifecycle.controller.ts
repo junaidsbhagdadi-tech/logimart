@@ -56,6 +56,16 @@ export class LifecycleController {
   @Roles(...OPS)
   appointments() { return this.svc.upcomingAppointments(); }
 
+  /** #16 — customer remarks awaiting CS attention (feeds the CS prompt bell). */
+  @Get('customer-requests')
+  @Roles(...OPS, UserRole.SALES)
+  customerRequests() { return this.svc.customerRequests(); }
+
+  /** #16 — CS acknowledges a customer remark (clears it from the prompt). */
+  @Post('customer-requests/:awb/ack')
+  @Roles(...OPS, UserRole.SALES)
+  ackCustomerRemark(@Param('awb') awb: string) { return this.svc.ackCustomerRemark(awb); }
+
   /** Customer-Service dashboard — pending/stuck shipments + NDR. */
   @Get('cs-dashboard')
   @Roles(...OPS, UserRole.SALES)
