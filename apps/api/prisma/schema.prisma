@@ -680,6 +680,7 @@ model PickupRequest {
   contactPhone  String?
   estPieces     Int          @default(1)
   cargoMode     String?      // AIR | ROAD | TRAIN | FTL | PTL
+  vendor        String?      // #3 — carrier for this pickup (one vendor for a bulk upload, or blank = assign at booking)
   invoiceNo     String?
   invoiceDate   DateTime?
   invoiceValue  Decimal?     @db.Decimal(14, 2)

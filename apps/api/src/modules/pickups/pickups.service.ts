@@ -11,6 +11,7 @@ interface CreatePickup {
   contactPhone?: string;
   estPieces?: number;
   cargoMode?: string;
+  vendor?: string;
   invoiceNo?: string;
   invoiceDate?: string;
   invoiceValue?: number;
@@ -33,6 +34,7 @@ export class PickupsService {
         contactPhone: dto.contactPhone,
         estPieces: dto.estPieces ?? 1,
         cargoMode: dto.cargoMode,
+        vendor: dto.vendor || null,
         invoiceNo: dto.invoiceNo,
         invoiceDate: dto.invoiceDate ? new Date(dto.invoiceDate) : null,
         invoiceValue: dto.invoiceValue != null ? new Prisma.Decimal(dto.invoiceValue) : null,
@@ -44,7 +46,7 @@ export class PickupsService {
 
   /** Bulk pickup-request upload. Each row resolves its client by accountCode or internal id (or the
    *  forced clientId for a portal login). Bad rows are reported, good rows imported — the rest continue. */
-  async bulkCreate(rows: any[], forcedClientId?: number) {
+  async bulkCreate(rows: any[], forcedClientId?: number, vendor?: string) {
     const results: { row: string; ok: boolean; error?: string }[] = [];
     for (const r of rows || []) {
       const label = String(r.pickupAddress ?? r.accountCode ?? r.clientId ?? '(blank)').slice(0, 40);
@@ -65,7 +67,9 @@ export class PickupsService {
           clientId, pickupAddress: String(r.pickupAddress).trim(), city: r.city, pincode: r.pincode,
           contactName: r.contactName, contactPhone: r.contactPhone,
           estPieces: r.estPieces != null && r.estPieces !== '' ? Number(r.estPieces) : 1,
-          cargoMode: r.cargoMode, invoiceNo: r.invoiceNo, invoiceDate: r.invoiceDate,
+          // a per-row vendor wins; otherwise the single vendor chosen for the whole upload (blank = none)
+          cargoMode: r.cargoMode, vendor: (r.vendor && String(r.vendor).trim()) || vendor || undefined,
+          invoiceNo: r.invoiceNo, invoiceDate: r.invoiceDate,
           invoiceValue: r.invoiceValue != null && r.invoiceValue !== '' ? Number(r.invoiceValue) : undefined,
           ewbNo: r.ewbNo, notes: r.notes,
         });

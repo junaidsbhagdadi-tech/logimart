@@ -26,7 +26,18 @@ export function Pickups() {
     : 'accountCode,pickupAddress,city,pincode,contactName,contactPhone,estPieces,cargoMode,invoiceNo,invoiceDate,invoiceValue,ewbNo,notes');
   const [bulkText, setBulkText] = useState('');
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkVendor, setBulkVendor] = useState(''); // #3 — one vendor for the whole upload (blank = none / assign at booking)
+  const [vendors, setVendors] = useState<{ vendorCode: string; name: string }[]>([]);
+  useEffect(() => { api.listVendors().then((v: any[]) => setVendors(v.filter((x) => x.isActive !== false).map((x) => ({ vendorCode: x.vendorCode, name: x.name })))).catch(() => {}); }, []);
   const [bulkResult, setBulkResult] = useState<{ total: number; created: number; results: { row: string; ok: boolean; error?: string }[] } | null>(null);
+  const downloadTemplate = () => {
+    const example = isClient
+      ? '"12 MG Road, Indiranagar",Bengaluru,560038,Ravi,9900112233,3,ROAD,INV-101,2026-09-01,48500,,handle with care'
+      : 'ACME001,"12 MG Road, Indiranagar",Bengaluru,560038,Ravi,9900112233,3,ROAD,INV-101,2026-09-01,48500,,handle with care';
+    const csv = BULK_COLS + '\n' + example + '\n';
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    const a = document.createElement('a'); a.href = url; a.download = 'logimart-pickups-template.csv'; a.click(); URL.revokeObjectURL(url);
+  };
   const parseBulk = (text: string) => {
     const lines = text.trim().split(/\r?\n/).filter((l) => l.trim());
     if (!lines.length) return [] as any[];
@@ -43,7 +54,7 @@ export function Pickups() {
     const rows = parseBulk(bulkText);
     if (!rows.length) { setError('Nothing to import — paste rows first.'); return; }
     setBulkBusy(true);
-    try { const r = await api.bulkPickups(rows); setBulkResult(r); load(); }
+    try { const r = await api.bulkPickups(rows, bulkVendor || undefined); setBulkResult(r); load(); }
     catch (e: any) { setError(e.message); }
     finally { setBulkBusy(false); }
   };
@@ -129,7 +140,17 @@ export function Pickups() {
               First row may be a header. Columns:
               <br /><code style={{ fontSize: 11 }}>{BULK_COLS}</code>
               {isOps && <><br /><b>accountCode</b> = the customer's code; unknown codes are reported and skipped.</>}
+              <br />Pick a <b>vendor</b> below to apply to every row in this file, or leave it as <em>None</em> to assign the carrier later at booking. A per-row <code>vendor</code> column, if present, overrides this.
             </p>
+            <div className="row" style={{ gap: 10, marginBottom: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <label style={{ fontSize: 13, display: 'flex', gap: 6, alignItems: 'center' }}>Vendor for this upload
+                <select value={bulkVendor} onChange={(e) => setBulkVendor(e.target.value)} style={{ width: 'auto' }}>
+                  <option value="">— None (assign at booking) —</option>
+                  {vendors.map((v) => <option key={v.vendorCode} value={v.vendorCode}>{v.vendorCode} — {v.name}</option>)}
+                </select>
+              </label>
+              <button className="secondary" style={{ padding: '5px 12px', fontSize: 12 }} onClick={downloadTemplate}>⬇ Download CSV template</button>
+            </div>
             <textarea rows={6} style={{ width: '100%', fontFamily: 'monospace', fontSize: 12 }} value={bulkText} onChange={(e) => setBulkText(e.target.value)} placeholder={BULK_COLS} />
             <div className="row" style={{ gap: 8, marginTop: 8, alignItems: 'center' }}>
               <button disabled={bulkBusy || !bulkText.trim()} onClick={doBulk}>{bulkBusy ? 'Importing…' : 'Import pickups'}</button>

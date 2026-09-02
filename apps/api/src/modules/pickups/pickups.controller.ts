@@ -14,6 +14,7 @@ class CreatePickupDto {
   @IsOptional() @IsString() contactPhone?: string;
   @IsOptional() @IsInt() estPieces?: number;
   @IsOptional() @IsString() cargoMode?: string;
+  @IsOptional() @IsString() vendor?: string;
   @IsOptional() @IsString() invoiceNo?: string;
   @IsOptional() @IsString() invoiceDate?: string;
   @IsOptional() @IsNumber() invoiceValue?: number;
@@ -41,9 +42,9 @@ export class PickupsController {
    *  each row's customer from the sheet (accountCode / id). */
   @Post('bulk')
   @Roles(UserRole.CLIENT_ADMIN, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
-  bulk(@Body() body: { rows: any[] }, @Req() req: any) {
+  bulk(@Body() body: { rows: any[]; vendor?: string }, @Req() req: any) {
     const forced = req.user.role === UserRole.CLIENT_ADMIN ? Number(req.user.clientId) : undefined;
-    return this.pickups.bulkCreate(body?.rows ?? [], forced);
+    return this.pickups.bulkCreate(body?.rows ?? [], forced, body?.vendor);
   }
 
   @Get()

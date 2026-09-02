@@ -722,8 +722,8 @@ export const api = {
   listPickups: () => request<any[]>('/api/v1/pickups'),
   createPickup: (body: unknown) =>
     request('/api/v1/pickups', { method: 'POST', body: JSON.stringify(body) }),
-  bulkPickups: (rows: any[]) =>
-    request<{ total: number; created: number; results: { row: string; ok: boolean; error?: string }[] }>('/api/v1/pickups/bulk', { method: 'POST', body: JSON.stringify({ rows }) }),
+  bulkPickups: (rows: any[], vendor?: string) =>
+    request<{ total: number; created: number; results: { row: string; ok: boolean; error?: string }[] }>('/api/v1/pickups/bulk', { method: 'POST', body: JSON.stringify({ rows, vendor: vendor || undefined }) }),
   assignPickup: (id: string, riderId: number) =>
     request(`/api/v1/pickups/${id}/assign`, { method: 'POST', body: JSON.stringify({ riderId }) }),
   completePickup: (id: string) =>
