@@ -213,6 +213,7 @@ export class LifecycleService {
       customerRemark: (s as any).customerRemark ?? null,        // remark left by the customer via portal
       customerRemarkAt: (s as any).customerRemarkAt ?? null,
       edd: s.expectedDelivery ?? eddFallback(),
+      isOda: !!s.isOda, // #10 — ODA destination: customer is told to allow ~2 extra days beyond EDD
       shipmentValue: s.shipmentValue ?? s.declaredValue ?? null, // #9 visible on the tracker
       apptDelivery: s.apptDelivery, apptDate: s.apptDate ?? null,
       collectOnDelivery: await this.rates.chargesForShipment(s as any, s.pieces as any).then((c) => Number((c as any)?.collectOnDelivery || 0)).catch(() => 0), // FOD: freight to collect from consignee

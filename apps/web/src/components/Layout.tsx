@@ -30,7 +30,6 @@ export function Layout() {
     ] },
     { title: 'My Shipments', items: [
       { to: '/create', icon: '➕', label: 'Book Shipment' },
-      { to: '/bulk', icon: '📥', label: 'Bulk Booking' },
       { to: '/awb-list', icon: '📝', label: 'My Shipments' },
       { to: '/pickups', icon: '📦', label: 'Schedule Pickup' },
     ] },
@@ -91,7 +90,6 @@ export function Layout() {
     { title: 'Operations', items: [
       { to: '/create', icon: '➕', label: 'New Shipment' },
       { to: '/awb-list', icon: '📝', label: 'Shipment List' },
-      { to: '/bulk', icon: '📥', label: 'Bulk Booking' },
       { to: '/walk-in', icon: '🧾', label: 'Walk-in Counter', show: isAdminFin || canMaster },
       { to: '/deliver', icon: '🚚', label: 'Delivery App', show: isOps },
       { to: '/pickups', icon: '📦', label: 'Pickups' },

@@ -208,7 +208,10 @@ export class ShipmentsService {
         destPincode: dto.destPincode,
         isOda,
         expectedDelivery,
-        statusCode: 'MAN', statusAt: new Date(),
+        statusCode: 'MAN',
+        // #2 — honour a manual booking date+time (backdated entry); default now.
+        ...(dto.bookedAt ? { createdAt: new Date(dto.bookedAt) } : {}),
+        statusAt: dto.bookedAt ? new Date(dto.bookedAt) : new Date(),
         // ---- shipper (sender) ----
         shipperName: dto.shipperName || null,
         shipperContact: dto.shipperContact || null,

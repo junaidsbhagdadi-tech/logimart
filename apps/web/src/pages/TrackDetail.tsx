@@ -199,6 +199,7 @@ export function TrackDetail() {
               <Field label="Remarks" value={d.remarks} color="var(--warn)" />
               {(d as any).customerRemark && <Field label="📣 Customer note" value={(d as any).customerRemark} color="var(--brand)" />}
               <Field label="EDD" value={dateFmt(d.edd)} color="var(--brand)" />
+              {(d as any).isOda && <Field label="⚠ ODA location" value="Outstation delivery area — please allow ~2 extra days beyond the EDD." color="var(--warn, #d97706)" />}
               <Field label="Shipment Value" value={(d as any).shipmentValue != null ? `₹${Number((d as any).shipmentValue).toLocaleString('en-IN')}` : '—'} />
               {(d as any).apptDate && <Field label="Appointment" value={apptFmt((d as any).apptDate)} color="var(--brand)" />}
               {Number((d as any).collectOnDelivery) > 0 && <Field label="💰 Collect on Delivery (FOD)" value={`₹${Number((d as any).collectOnDelivery).toLocaleString('en-IN')}`} color="var(--danger, #c0392b)" />}

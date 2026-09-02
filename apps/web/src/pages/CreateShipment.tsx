@@ -87,7 +87,7 @@ export function CreateShipment() {
     } catch { /* non-fatal */ } finally { setSavingWh(false); }
   };
   // services extras
-  const [svc, setSvc] = useState({ vendor: 'SELF', service: 'SELF', shipmentValue: '', referenceNo: '', forwardingAwb: '', isCommercial: false, isMedical: false });
+  const [svc, setSvc] = useState({ vendor: 'SELF', service: 'SELF', shipmentValue: '', referenceNo: '', forwardingAwb: '', isCommercial: false, isMedical: false, bookedAt: '' });
   const [entryTab, setEntryTab] = useState<'AWB' | 'PROFORMA' | 'FORWARDING'>('AWB');
   const [flags, setFlags] = useState({ oda: false, appt: false });
   const [svcOptions, setSvcOptions] = useState<{ network: string; mode: string | null; tatDays: number | null; isOda: boolean }[]>([]);
@@ -406,6 +406,7 @@ export function CreateShipment() {
         forwardingAwb: svc.forwardingAwb?.trim() || undefined,
         isCommercial: svc.isCommercial,
         isMedical: svc.isMedical,
+        bookedAt: svc.bookedAt ? new Date(svc.bookedAt).toISOString() : undefined, // #2 manual book date+time
         hsnCode: c.hsnCode || undefined,
         vehicleNo: ftl.vehicleNo || undefined,
         ftlVehicleType: isFtl ? ftl.ftlVehicleType : undefined,
@@ -818,6 +819,7 @@ export function CreateShipment() {
           {!isClient && <div><label>Service</label><input value={svc.service} onChange={(e) => setSvc({ ...svc, service: e.target.value })} placeholder="SELF / DHL / …" /></div>}
           <div><label>Shipment value ₹</label><input type="number" value={svc.shipmentValue} onChange={(e) => setSvc({ ...svc, shipmentValue: e.target.value })} /></div>
           <div><label>Reference No.</label><input value={svc.referenceNo} onChange={(e) => setSvc({ ...svc, referenceNo: e.target.value })} /></div>
+          {!isClient && <div><label>Booking date &amp; time <span className="muted" style={{ fontSize: 11 }}>(blank = now)</span></label><input type="datetime-local" value={svc.bookedAt} onChange={(e) => setSvc({ ...svc, bookedAt: e.target.value })} /></div>}
         </div>
         <div className="row" style={{ gap: 20, marginTop: 10 }}>
           <label className="row" style={{ gap: 6, fontWeight: 600, color: 'var(--text)' }}><input type="checkbox" style={{ width: 'auto' }} checked={svc.isCommercial} onChange={(e) => setSvc({ ...svc, isCommercial: e.target.checked })} /> Commercial</label>

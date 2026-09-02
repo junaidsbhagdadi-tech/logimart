@@ -29,6 +29,9 @@ export class CreateShipmentDto {
   @IsInt()
   clientId!: number;
 
+  // #2 — optional manual booking date+time (backdated entry). Blank → now.
+  @IsOptional() @IsISO8601() bookedAt?: string;
+
   @IsOptional() @IsString() manualAwb?: string; // pre-assigned AWB for a manually-booked shipment
 
   @IsEnum(ServiceMode)

@@ -54,7 +54,8 @@ export function AwbEntryList() {
     catch (e: any) { setError(e.message); }
   };
 
-  const fmtDate = (d: string) => (d ? new Date(d).toLocaleDateString('en-GB') : '');
+  // #2 — Book Date shows date + time (24h).
+  const fmtDate = (d: string) => (d ? new Date(d).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : '');
 
   const filtered = useMemo(() => {
     return rows.filter((r) =>
