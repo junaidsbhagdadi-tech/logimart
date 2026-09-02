@@ -96,7 +96,7 @@ function PnlTab() {
   // Client-side search (vendor + customer + AWB + lane) and margin-sign filter; totals reflect the filter.
   const rows = (data?.rows ?? []).filter((r) => {
     const s = q.trim().toLowerCase();
-    const hitQ = !s || [r.vendorAwb, r.ourAwb, r.customer, r.vendorCode, r.product, r.origin, r.destination].some((v) => String(v ?? '').toLowerCase().includes(s));
+    const hitQ = !s || [r.vendorAwb, r.forwardingNo, r.ourAwb, r.customer, r.vendorCode, r.product, r.origin, r.destination].some((v) => String(v ?? '').toLowerCase().includes(s));
     const hitSign = sign === 'all' || (sign === 'pos' && r.margin > 0) || (sign === 'zero' && r.margin === 0) || (sign === 'neg' && r.margin < 0);
     return hitQ && hitSign;
   });
@@ -131,21 +131,21 @@ function PnlTab() {
           <div className="card">
             <div style={{ overflowX: 'auto' }}>
               <table style={{ fontSize: 13 }}>
-                <thead><tr><th>Vendor AWB</th><th>Our AWB</th><th>Customer</th><th>Product</th><th>Lane</th><th>Sell</th><th>Cost</th><th>Margin</th><th>Match</th></tr></thead>
+                <thead><tr><th>Vendor AWB</th><th>Fwd No.</th><th>Our AWB</th><th>Customer</th><th>Product</th><th>Lane</th><th>Sell</th><th>Cost</th><th>Margin</th><th>Match</th></tr></thead>
                 <tbody>
                   {rows.map((r, i) => (
                     <tr key={i}>
-                      <td>{r.vendorAwb}</td><td>{r.ourAwb ?? '—'}</td><td>{r.customer ?? '—'}</td><td>{r.product}</td><td>{r.origin}→{r.destination}</td>
+                      <td>{r.vendorAwb}</td><td>{r.forwardingNo ?? '—'}</td><td>{r.ourAwb ?? '—'}</td><td>{r.customer ?? '—'}</td><td>{r.product}</td><td>{r.origin}→{r.destination}</td>
                       <td>{money(r.sell)}</td><td>{money(r.cost)}</td>
                       <td style={{ color: r.margin >= 0 ? 'var(--ok)' : 'var(--warn)', fontWeight: 700 }}>{money(r.margin)}</td>
                       <td>{r.matched ? <span className="badge DELIVERED">matched</span> : <span className="badge EXCEPTION">unmatched</span>}</td>
                     </tr>
                   ))}
-                  {!rows.length && <tr><td colSpan={9} className="muted">{data.count ? 'No rows match the search / filter.' : 'No vendor bills yet — upload some first.'}</td></tr>}
+                  {!rows.length && <tr><td colSpan={10} className="muted">{data.count ? 'No rows match the search / filter.' : 'No vendor bills yet — upload some first.'}</td></tr>}
                 </tbody>
               </table>
             </div>
-            <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>Match = our shipment found by carrier waybill (bdWaybill) or AWB. Unmatched bills show cost only (sell needs the AWB link).</p>
+            <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>Match = our shipment found by <strong>AWB or forwarding number</strong> (the bill's AWB or Fwd-No matched against our AWB / forwarding AWB / carrier waybill / reference no, case-insensitive). Unmatched bills show cost only (sell needs the AWB link).</p>
           </div>
         </>
       )}

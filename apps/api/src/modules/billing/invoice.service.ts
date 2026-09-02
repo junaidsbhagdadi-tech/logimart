@@ -516,10 +516,21 @@ export class InvoiceService {
     const rows: any[] = [];
     let totSell = 0, totCost = 0;
     for (const b of bills) {
-      const ship = await this.prisma.shipment.findFirst({
-        where: { OR: [{ forwardingAwb: b.awb }, { bdWaybill: b.awb }, { awb: b.awb }] },
+      // #12 — reconcile the vendor bill to our shipment by AWB OR forwarding number. The vendor may
+      // bill under our AWB or under their own waybill (the forwarding no), and either can land in the
+      // bill's `awb` or `forwardingNo` column — so match every key against every shipment id field,
+      // case-insensitively.
+      const keys = Array.from(new Set([b.awb, (b as any).forwardingNo].map((k) => String(k ?? '').trim()).filter(Boolean)));
+      const or = keys.flatMap((k) => [
+        { awb: { equals: k, mode: 'insensitive' as const } },
+        { forwardingAwb: { equals: k, mode: 'insensitive' as const } },
+        { bdWaybill: { equals: k, mode: 'insensitive' as const } },
+        { referenceNo: { equals: k, mode: 'insensitive' as const } },
+      ]);
+      const ship = or.length ? await this.prisma.shipment.findFirst({
+        where: { OR: or },
         include: { pieces: true, client: { select: { legalName: true, accountCode: true, isCash: true, accountType: true } } },
-      });
+      }) : null;
       // Cash / Wallet (prepaid) shipments are settled at booking — excluded from P&L.
       if (ship?.client && (ship.client.isCash || ship.client.accountType === 'WALLET')) continue;
       let sell = 0, ourAwb: string | null = null, customer: string | null = null;
@@ -531,7 +542,7 @@ export class InvoiceService {
       const cost = Number(b.totalWithGst || b.total);
       totSell += sell; totCost += cost;
       rows.push({
-        vendorAwb: b.awb, ourAwb, customer, vendorCode: b.vendorCode, product: b.product,
+        vendorAwb: b.awb, forwardingNo: (b as any).forwardingNo ?? null, ourAwb, customer, vendorCode: b.vendorCode, product: b.product,
         origin: b.origin, destination: b.destination, chrgWeight: Number(b.chrgWeight ?? 0),
         cost: +cost.toFixed(2), sell, margin: +(sell - cost).toFixed(2), matched: !!ship,
       });
