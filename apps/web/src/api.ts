@@ -661,6 +661,8 @@ export const api = {
   // ---- demurrage / reattempt debit note ----
   raiseDemurrage: (body: { awb: string; firstAttemptDate?: string; days: number; ratePerKg: number; min?: number }) =>
     request<any>('/api/v1/notes/demurrage', { method: 'POST', body: JSON.stringify(body) }),
+  raiseReattempt: (body: { awb: string; ratePerKg: number; min?: number; afterAttempt?: number; attempts?: number }) =>
+    request<any>('/api/v1/notes/reattempt', { method: 'POST', body: JSON.stringify(body) }),
 
   // ---- per-AWB add-on charges ----
   listAddons: (awb: string) => request<any[]>(`/api/v1/shipments/${awb}/addons`),

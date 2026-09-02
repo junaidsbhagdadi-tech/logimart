@@ -23,6 +23,13 @@ export class NotesController {
     return this.notes.demurrage({ ...dto, createdById: req.user?.sub ? Number(req.user.sub) : undefined });
   }
 
+  /** Raise a Reattempt debit note for an AWB (₹/kg × chargeable kg, min, × attempts), + GST. */
+  @Post('reattempt')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  reattempt(@Body() dto: { awb: string; ratePerKg: number; min?: number; afterAttempt?: number; attempts?: number }, @Req() req: any) {
+    return this.notes.reattempt({ ...dto, createdById: req.user?.sub ? Number(req.user.sub) : undefined });
+  }
+
   @Get()
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
   list(@Query('clientId') clientId?: string, @Query('kind') kind?: string) {

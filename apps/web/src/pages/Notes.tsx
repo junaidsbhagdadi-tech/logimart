@@ -19,6 +19,7 @@ export function Notes() {
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
   const [dem, setDem] = useState({ awb: '', firstAttemptDate: '', days: '', ratePerKg: '', min: '' });
+  const [rea, setRea] = useState({ awb: '', ratePerKg: '', min: '', afterAttempt: '1', attempts: '1' });
 
   const load = () => {
     api.listNotes().then(setRows).catch((e) => setError(e.message));
@@ -33,6 +34,17 @@ export function Notes() {
       const res = await api.raiseDemurrage({ awb: dem.awb.trim(), firstAttemptDate: dem.firstAttemptDate || undefined, days: Number(dem.days), ratePerKg: Number(dem.ratePerKg), min: dem.min ? Number(dem.min) : undefined });
       setMsg(`Demurrage debit note ${res.note.noteNo} raised for ${dem.awb} — ₹${res.note.total} (incl. GST).`);
       setDem({ awb: '', firstAttemptDate: '', days: '', ratePerKg: '', min: '' });
+      load();
+    } catch (e: any) { setError(e.message); }
+  };
+
+  const raiseReattempt = async () => {
+    setError(''); setMsg('');
+    if (!rea.awb.trim() || !(Number(rea.ratePerKg) > 0)) { setError('Enter AWB and ₹/kg for the reattempt note.'); return; }
+    try {
+      const res = await api.raiseReattempt({ awb: rea.awb.trim(), ratePerKg: Number(rea.ratePerKg), min: rea.min ? Number(rea.min) : undefined, afterAttempt: rea.afterAttempt ? Number(rea.afterAttempt) : undefined, attempts: rea.attempts ? Number(rea.attempts) : undefined });
+      setMsg(`Reattempt debit note ${res.note.noteNo} raised for ${rea.awb} — ₹${res.note.total} (incl. GST).`);
+      setRea({ awb: '', ratePerKg: '', min: '', afterAttempt: '1', attempts: '1' });
       load();
     } catch (e: any) { setError(e.message); }
   };
@@ -101,16 +113,29 @@ export function Notes() {
       </div>
 
       <div className="card">
-        <h2>⏳ Demurrage / Reattempt charge</h2>
+        <h2>⏳ Demurrage / detention charge</h2>
         <p className="muted" style={{ marginTop: -6, fontSize: 12.5 }}>Charged after the first delivery attempt, kept <strong>off the regular freight bill</strong> as a debit note. Amount = max(min, days × ₹/kg × chargeable kg), + GST.</p>
         <div className="grid cols-4" style={{ gap: 12 }}>
           <div><label>AWB *</label><input value={dem.awb} onChange={(e) => setDem({ ...dem, awb: e.target.value })} placeholder="e.g. BD10000001" /></div>
           <div><label>First attempt date</label><input type="date" value={dem.firstAttemptDate} onChange={(e) => setDem({ ...dem, firstAttemptDate: e.target.value })} /></div>
-          <div><label>No. of days *</label><input type="number" value={dem.days} onChange={(e) => setDem({ ...dem, days: e.target.value })} placeholder="e.g. 3" /></div>
+          <div><label>No. of days (before return/delivery) *</label><input type="number" value={dem.days} onChange={(e) => setDem({ ...dem, days: e.target.value })} placeholder="e.g. 3" /></div>
           <div><label>Rate ₹ / kg *</label><input type="number" value={dem.ratePerKg} onChange={(e) => setDem({ ...dem, ratePerKg: e.target.value })} placeholder="e.g. 3" /></div>
           <div><label>Minimum ₹</label><input type="number" value={dem.min} onChange={(e) => setDem({ ...dem, min: e.target.value })} placeholder="e.g. 200" /></div>
         </div>
         <button className="secondary" style={{ marginTop: 12 }} disabled={!dem.awb || !dem.days || !dem.ratePerKg} onClick={raiseDemurrage}>Raise demurrage debit note</button>
+      </div>
+
+      <div className="card">
+        <h2>🔁 Reattempt charge</h2>
+        <p className="muted" style={{ marginTop: -6, fontSize: 12.5 }}>Charged on chargeable weight for repeated delivery attempts, kept <strong>off the regular freight bill</strong> as a debit note. Amount = max(min, ₹/kg × chargeable kg) × no. of reattempts, + GST.</p>
+        <div className="grid cols-4" style={{ gap: 12 }}>
+          <div><label>AWB *</label><input value={rea.awb} onChange={(e) => setRea({ ...rea, awb: e.target.value })} placeholder="e.g. BD10000001" /></div>
+          <div><label>Charged after attempt #</label><input type="number" value={rea.afterAttempt} onChange={(e) => setRea({ ...rea, afterAttempt: e.target.value })} placeholder="1 = from 2nd attempt" /></div>
+          <div><label>No. of reattempts to bill</label><input type="number" value={rea.attempts} onChange={(e) => setRea({ ...rea, attempts: e.target.value })} placeholder="e.g. 1" /></div>
+          <div><label>Rate ₹ / kg *</label><input type="number" value={rea.ratePerKg} onChange={(e) => setRea({ ...rea, ratePerKg: e.target.value })} placeholder="e.g. 5" /></div>
+          <div><label>Minimum ₹</label><input type="number" value={rea.min} onChange={(e) => setRea({ ...rea, min: e.target.value })} placeholder="e.g. 150" /></div>
+        </div>
+        <button className="secondary" style={{ marginTop: 12 }} disabled={!rea.awb || !rea.ratePerKg} onClick={raiseReattempt}>Raise reattempt debit note</button>
       </div>
 
       <div className="card">

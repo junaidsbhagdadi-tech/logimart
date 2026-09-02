@@ -45,6 +45,30 @@ export class NotesService {
     return this.create({ clientId: Number(s.clientId), kind: 'DEBIT', reason: 'demurrage', subtotal, narration, shipmentId: Number(s.id), createdById: input.createdById });
   }
 
+  /**
+   * Reattempt charge as a DEBIT note (kept OFF the regular freight bill). Charged on chargeable
+   * weight: amount = max(min, ratePerKg × chargeable-kg); GST added by create().
+   * `afterAttempt` is descriptive — e.g. "1" = charged from the 2nd attempt onward.
+   */
+  async reattempt(input: { awb: string; ratePerKg: number; min?: number; afterAttempt?: number; attempts?: number; createdById?: number }) {
+    const awb = String(input.awb || '').trim().toUpperCase();
+    const s = await this.prisma.shipment.findUnique({
+      where: { awb },
+      select: { id: true, clientId: true, chargeWeight: true, totalDeadKg: true },
+    });
+    if (!s) throw new NotFoundException(`AWB ${awb} not found`);
+    const kg = Number(s.chargeWeight || s.totalDeadKg || 0) || 1;
+    const rate = Number(input.ratePerKg) || 0;
+    const min = Number(input.min) || 0;
+    const times = Math.max(1, Math.floor(Number(input.attempts) || 1)); // number of reattempts to bill
+    const per = Math.max(min, rate * kg);
+    const subtotal = +(per * times).toFixed(2);
+    if (!(subtotal > 0)) throw new BadRequestException('Reattempt charge works out to zero — check rate / min.');
+    const after = input.afterAttempt != null ? ` (from attempt ${Math.floor(Number(input.afterAttempt)) + 1})` : '';
+    const narration = `Reattempt${times > 1 ? ` ×${times}` : ''} — ₹${rate}/kg × ${kg} kg${min ? ` (min ₹${min})` : ''}${after}.`;
+    return this.create({ clientId: Number(s.clientId), kind: 'DEBIT', reason: 'reattempt', subtotal, narration, shipmentId: Number(s.id), createdById: input.createdById });
+  }
+
   private async nextNoteNo(kind: 'DEBIT' | 'CREDIT', accountCode: string): Promise<string> {
     const prefix = kind === 'DEBIT' ? 'DN' : 'CN';
     const count = await this.prisma.debitCreditNote.count({ where: { kind } });
