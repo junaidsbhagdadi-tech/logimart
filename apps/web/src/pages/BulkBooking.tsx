@@ -8,7 +8,7 @@ import { mapMode } from '../productMode';
  * MPS: one row per BOX; rows sharing the same `ref` are grouped into a single AWB
  * (each row contributes one piece with its own dimensions). Shipment-level fields are
  * taken from the first row of each ref group. A blank ref = a single-box shipment. */
-const COLS_STAFF = ['ref', 'awb', 'clientId', 'product', 'vendor', 'forwardingAwb', 'originPincode', 'destPincode', 'consigneeName', 'consigneePhone', 'consigneeAddress', 'declaredValue', 'deadKg', 'lengthCm', 'widthCm', 'heightCm', 'paymentTerm', 'freightToCollect', 'agreedFreight', 'referenceNo', 'goodsDesc'];
+const COLS_STAFF = ['ref', 'awb', 'clientId', 'product', 'vendor', 'forwardingAwb', 'originPincode', 'destPincode', 'consigneeName', 'consigneePhone', 'consigneeAddress', 'declaredValue', 'pcs', 'deadKg', 'lengthCm', 'widthCm', 'heightCm', 'bookedAt', 'paymentTerm', 'freightToCollect', 'agreedFreight', 'referenceNo', 'goodsDesc'];
 const COLS_CLIENT = COLS_STAFF.filter((c) => c !== 'clientId');
 
 export function BulkBooking() {
@@ -50,16 +50,18 @@ export function BulkBooking() {
     // A1 = a 2-box MPS shipment (two rows, same ref); A2 = a single-box shipment.
     const p = Object.keys(prodModes)[0] || 'SURFACE'; // a real product code if any, else a mode keyword
     // A1 = a manually-booked shipment (pre-assigned AWB BD10000001); A2 = blank awb -> auto-generated.
+    // cols: … declaredValue, pcs, deadKg, lengthCm, widthCm, heightCm, bookedAt, paymentTerm, …
+    // A1 = a 2-box MPS shipment (two rows, same ref). A2 = one row, pcs=3 → 3 identical boxes.
     const sample = ownClientId
       ? [
-          `A1,BD10000001,${p},BDR,7712345678,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,5,30,20,15,PREPAID,,,REF-A1,Apparel`,
-          `A1,BD10000001,${p},BDR,7712345678,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,8,40,30,20,,,,,`,
-          `A2,,${p},DLY,,560001,400001,Beta Corp,9812345670,5 Fort Mumbai,12000,3,25,20,10,TO_PAY,1500,,REF-A2,Electronics`,
+          `A1,BD10000001,${p},BDR,7712345678,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,1,5,30,20,15,2026-09-01 10:30,PREPAID,,,REF-A1,Apparel`,
+          `A1,BD10000001,${p},BDR,7712345678,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,1,8,40,30,20,,,,,,`,
+          `A2,,${p},DLY,,560001,400001,Beta Corp,9812345670,5 Fort Mumbai,12000,3,3,25,20,10,,TO_PAY,1500,,REF-A2,Electronics`,
         ].join('\n')
       : [
-          `A1,BD10000001,1,${p},BDR,7712345678,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,5,30,20,15,PREPAID,,,REF-A1,Apparel`,
-          `A1,BD10000001,1,${p},BDR,7712345678,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,8,40,30,20,,,,,`,
-          `A2,,1,${p},DLY,,560001,400001,Beta Corp,9812345670,5 Fort Mumbai,12000,3,25,20,10,TO_PAY,1500,,REF-A2,Electronics`,
+          `A1,BD10000001,1,${p},BDR,7712345678,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,1,5,30,20,15,2026-09-01 10:30,PREPAID,,,REF-A1,Apparel`,
+          `A1,BD10000001,1,${p},BDR,7712345678,560001,110001,Acme Traders,9876543210,12 MG Road Bengaluru,45000,1,8,40,30,20,,,,,,`,
+          `A2,,1,${p},DLY,,560001,400001,Beta Corp,9812345670,5 Fort Mumbai,12000,3,3,25,20,10,,TO_PAY,1500,,REF-A2,Electronics`,
         ].join('\n');
     const csv = cols.join(',') + '\n' + sample + '\n';
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -97,13 +99,19 @@ export function BulkBooking() {
         paymentTerm: (first.paymentTerm || '').trim().toUpperCase() === 'TO_PAY' ? 'TO_PAY' : undefined,
         freightToCollect: first.freightToCollect ? Number(first.freightToCollect) : undefined,
         manualFreight: first.agreedFreight && !isNaN(Number(first.agreedFreight)) && Number(first.agreedFreight) > 0 ? Number(first.agreedFreight) : undefined,
-        // one piece per box-row, each with its own dimensions (MPS)
-        pieces: grp.map((r) => ({
-          deadKg: Number(r.deadKg) || 0.5,
-          lengthCm: r.lengthCm ? Number(r.lengthCm) : undefined,
-          widthCm: r.widthCm ? Number(r.widthCm) : undefined,
-          heightCm: r.heightCm ? Number(r.heightCm) : undefined,
-        })),
+        bookedAt: first.bookedAt ? new Date(first.bookedAt).toISOString() : undefined, // manual booking date+time
+        // One piece per box-row (MPS). A `pcs` column on a row replicates that box N times with the
+        // same dims — book the count now, the team edits each box's dims later once the AWB is in hand.
+        pieces: grp.flatMap((r) => {
+          const n = Math.max(1, Math.floor(Number(r.pcs) || 1));
+          const box = {
+            deadKg: Number(r.deadKg) || 0.5,
+            lengthCm: r.lengthCm ? Number(r.lengthCm) : undefined,
+            widthCm: r.widthCm ? Number(r.widthCm) : undefined,
+            heightCm: r.heightCm ? Number(r.heightCm) : undefined,
+          };
+          return Array.from({ length: n }, () => ({ ...box }));
+        }),
       };
     });
     setBusy(true);
@@ -126,6 +134,10 @@ export function BulkBooking() {
           Fill <code>awb</code> to import a <strong>manually-booked</strong> shipment with its existing AWB; leave it blank to auto-generate.
           The <code>product</code> column sets the service / transport mode (same as the booking form).
           E-way bills auto-generate when invoice value ≥ ₹50,000.
+        </p>
+        <p className="muted" style={{ marginTop: 6, fontSize: 12.5 }}>
+          <strong><code>pcs</code></strong> = number of boxes for that row — put a count with one set of dims and it creates that many identical boxes (upload the same dims for all, the team edits each box's dims later once the AWB is in hand). Leave <code>pcs</code> blank/1 for one box per row (still combine rows by <code>ref</code> for mixed-size MPS).
+          <strong> <code>bookedAt</code></strong> = manual booking date &amp; time (e.g. <code>2026-09-01 10:30</code>); blank = now.
         </p>
         <p className="muted" style={{ marginTop: 6, fontSize: 12.5 }}>
           <strong><code>vendor</code></strong> (e.g. BDR, DLY) picks the <strong>vendor rate card</strong> so pricing matches the assigned carrier — blank = SELF.
