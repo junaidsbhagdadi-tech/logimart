@@ -91,5 +91,7 @@ export class UpdateClientDto {
   @IsOptional() @IsString() csPersonEmail?: string;
   @IsOptional() @IsString() accountType?: string; // CREDIT | WALLET | CASH | CARD
   @IsOptional() @IsString() billingCycle?: string;
+  @IsOptional() @IsString() accountCode?: string;   // the edit form round-trips this (unchanged); allow it through
+  @IsOptional() @IsBoolean() allowSameGstin?: boolean;
   @IsOptional() @IsInt() parentAccountId?: number | null; // group under a head-office account; null/0 clears
 }
