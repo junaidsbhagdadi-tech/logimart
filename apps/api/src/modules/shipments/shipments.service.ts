@@ -18,10 +18,14 @@ export class ShipmentsService {
     private readonly notifications: NotificationsService,
   ) {}
 
-  /** Volumetric weight in kg from cm dimensions (divisor 5000). */
-  private volKg(l?: number, w?: number, h?: number): number {
+  /** Volumetric weight in kg from cm dimensions. Uses the customer/product card's divisor and, for
+   *  SURFACE cards, its CFT factor — so the stored/displayed volumetric matches what the engine bills
+   *  (SFC no longer wrongly divides by 5000). Falls back to the default divisor when no card config. */
+  private volKg(l?: number, w?: number, h?: number, divisor = VOLUMETRIC_DIVISOR, cft = 0): number {
     if (!l || !w || !h) return 0;
-    return Number(((l * w * h) / VOLUMETRIC_DIVISOR).toFixed(3));
+    const d = divisor > 0 ? divisor : VOLUMETRIC_DIVISOR;
+    const base = (l * w * h) / d;
+    return Number((cft > 0 ? base * cft : base).toFixed(3));
   }
 
   /**
@@ -158,6 +162,9 @@ export class ShipmentsService {
     // Promised delivery = booking date + vendor-specific zone→zone transit TAT.
     const expectedDelivery = await this.expectedDeliveryFor(dto.product, dto.serviceMode, originZone, destZone, (dto as any).vendor);
 
+    // Volumetric config for this customer × product × vendor (divisor + surface CFT), so the stored
+    // volumetric matches the engine's billing basis (surface uses CFT, not ÷5000).
+    const vc = await this.rates.volConfigFor(dto.clientId, String(dto.product ?? ''), (dto as any).vendor).catch(() => ({ divisor: VOLUMETRIC_DIVISOR, cft: 0 }));
     const pieces = dto.pieces.map((p, i) => {
       const sequenceNo = i + 1;
       const childId = `${awb}-${String(sequenceNo).padStart(3, '0')}`;
@@ -169,7 +176,7 @@ export class ShipmentsService {
         lengthCm: p.lengthCm != null ? new Prisma.Decimal(p.lengthCm) : null,
         widthCm: p.widthCm != null ? new Prisma.Decimal(p.widthCm) : null,
         heightCm: p.heightCm != null ? new Prisma.Decimal(p.heightCm) : null,
-        volKg: new Prisma.Decimal(this.volKg(p.lengthCm, p.widthCm, p.heightCm)),
+        volKg: new Prisma.Decimal(this.volKg(p.lengthCm, p.widthCm, p.heightCm, vc.divisor, vc.cft)),
       };
     });
 
@@ -879,12 +886,20 @@ export class ShipmentsService {
     // Charge on booked weights (baseline).
     const bookedCharge = await this.rates.chargesForShipment(shipment, shipment.pieces);
 
-    // Apply re-weigh to each piece; build the re-weighed weight set.
-    const reweighed = [] as { deadKg: number; volKg: number }[];
+    // Volumetric config (divisor + surface CFT) so the re-weighed volumetric matches billing — SFC
+    // uses CFT, not ÷5000.
+    const vc = await this.rates.volConfigFor(Number(shipment.clientId), String((shipment as any).product ?? ''), (shipment as any).vendor).catch(() => ({ divisor: VOLUMETRIC_DIVISOR, cft: 0 }));
+
+    // Apply re-weigh to each piece; build the re-weighed weight set (WITH dims so the engine can
+    // recompute CFT volumetric).
+    const reweighed = [] as { deadKg: number; volKg: number; lengthCm: number | null; widthCm: number | null; heightCm: number | null }[];
     for (const p of shipment.pieces) {
       const l = bySeq.get(p.sequenceNo);
       if (l) {
-        const volKg = this.volKg(l.lengthCm, l.widthCm, l.heightCm) || Number(p.volKg);
+        const L = l.lengthCm != null ? Number(l.lengthCm) : (p.lengthCm != null ? Number(p.lengthCm) : undefined);
+        const W = l.widthCm != null ? Number(l.widthCm) : (p.widthCm != null ? Number(p.widthCm) : undefined);
+        const H = l.heightCm != null ? Number(l.heightCm) : (p.heightCm != null ? Number(p.heightCm) : undefined);
+        const volKg = this.volKg(L, W, H, vc.divisor, vc.cft) || Number(p.volKg);
         await this.prisma.shipmentPiece.update({
           where: { id: p.id },
           data: {
@@ -902,15 +917,16 @@ export class ShipmentsService {
             reweighedById: reweighedById != null ? BigInt(reweighedById) : null,
           },
         });
-        reweighed.push({ deadKg: l.actualKg, volKg });
+        reweighed.push({ deadKg: l.actualKg, volKg, lengthCm: L ?? null, widthCm: W ?? null, heightCm: H ?? null });
       } else {
-        reweighed.push({ deadKg: Number(p.deadKg), volKg: Number(p.volKg) });
+        reweighed.push({ deadKg: Number(p.deadKg), volKg: Number(p.volKg), lengthCm: p.lengthCm != null ? Number(p.lengthCm) : null, widthCm: p.widthCm != null ? Number(p.widthCm) : null, heightCm: p.heightCm != null ? Number(p.heightCm) : null });
       }
     }
 
-    const newCharge = await this.rates.chargesForShipment({ ...shipment }, reweighed as any);
-    const bookedKg = this.rates.chargeableKg(shipment.pieces);
-    const actualKg = this.rates.chargeableKg(reweighed as any);
+    const newCharge = await this.rates.chargesForShipment({ ...shipment, chargeWeight: null }, reweighed as any);
+    // Chargeable weight comes from the ENGINE (card-aware, CFT for surface) — not the naive ÷5000 helper.
+    const bookedKg = bookedCharge?.chargeableKg ?? this.rates.chargeableKg(shipment.pieces);
+    const actualKg = newCharge?.chargeableKg ?? this.rates.chargeableKg(reweighed as any);
 
     // Roll the re-weighed totals up onto the shipment so the list/detail/label show the new weight.
     const newTotalDead = reweighed.reduce((s, r) => s + Number(r.deadKg), 0);
