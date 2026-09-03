@@ -208,8 +208,13 @@ export class CustomersService {
   }
 
   async update(id: number, dto: UpdateClientDto) {
-    await this.get(id);
+    const current = await this.get(id);
     const { startDate, dobAadhaar, creditLimit, parentAccountId, ...rest } = dto;
+    // Re-evaluate the credit hold on every save against the effective limit (new if supplied, else the
+    // current one): a customer stays on hold only while outstanding still exceeds the limit. Without
+    // this, raising the limit never cleared a stale hold (e.g. ₹415 outstanding vs a ₹10,00,000 limit).
+    const effLimit = creditLimit != null ? Number(creditLimit) : Number(current.creditLimit);
+    const holdPatch = { isCreditHold: Number(current.outstandingBal) > effLimit };
     // Resolve the account-group parent link: 0/null clears it; a value must be another account.
     let parentPatch: { parentAccountId?: bigint | null } = {};
     if (parentAccountId !== undefined) {
@@ -229,6 +234,7 @@ export class CustomersService {
       data: {
         ...rest,
         ...parentPatch,
+        ...holdPatch,
         startDate: startDate ? new Date(startDate) : undefined,
         dobAadhaar: dobAadhaar ? new Date(dobAadhaar) : undefined,
         creditLimit: creditLimit != null ? new Prisma.Decimal(creditLimit) : undefined,
