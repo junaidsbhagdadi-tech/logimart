@@ -62,7 +62,8 @@ export class BluedartService {
   /** Tracking — shipment details/status for a BlueDart waybill (returns XML in `raw`). */
   async track(awb: string) {
     this.ensure();
-    const q = `/tracking/v1?handler=tnt&action=custawbquery&loginid=${encodeURIComponent(BLUEDART.loginId)}&numbers=${encodeURIComponent(awb)}&format=xml&lickey=${encodeURIComponent(BLUEDART.licKey)}&verno=1&scan=1`;
+    // TSD tracking URL: handler=tnt, action=custawbquery, awb=awb, numbers=<waybill>, format=xml, scan=1 (all scans).
+    const q = `/tracking/v1?handler=tnt&action=custawbquery&loginid=${encodeURIComponent(BLUEDART.loginId)}&awb=awb&numbers=${encodeURIComponent(awb)}&format=xml&lickey=${encodeURIComponent(BLUEDART.licKey)}&verno=1&scan=1`;
     return this.authed(q, { method: 'GET' });
   }
 
@@ -86,28 +87,87 @@ export class BluedartService {
     if (!s) throw new BadRequestException(`AWB ${awb} not found`);
     const payload = this.mapWaybill(s);
     const resp = await this.authed('/waybill/v1/GenerateWayBill', { method: 'POST', body: JSON.stringify(payload) });
-    const bdWaybill = resp?.GenerateWayBillResult?.AWBNo || resp?.AWBNo || resp?.awbNo || null;
-    if (bdWaybill) await this.prisma.shipment.update({ where: { id: s.id }, data: { bdWaybill, bdHandedAt: new Date() } });
-    return { awb, bdWaybill, response: resp };
+    // TSD WayBillGenerationResponse: AWBNo, IsError, Status[]{StatusCode,StatusInformation}, TokenNumber…
+    if (resp?.IsError === true || resp?.isError === true) {
+      const msg = (resp?.Status ?? resp?.status ?? []).map((x: any) => x?.StatusInformation ?? x?.statusInformation).filter(Boolean).join('; ');
+      throw new BadRequestException(`BlueDart rejected the waybill: ${msg || JSON.stringify(resp).slice(0, 300)}`);
+    }
+    const bdWaybill = resp?.AWBNo || resp?.awbNo || resp?.GenerateWayBillResult?.AWBNo || null;
+    if (bdWaybill) {
+      await this.prisma.shipment.update({
+        where: { id: s.id },
+        data: { bdWaybill, forwardingAwb: (s as any).forwardingAwb ?? bdWaybill, vendor: (s as any).vendor ?? 'BLUEDART', bdHandedAt: new Date() },
+      });
+    }
+    return { awb, bdWaybill, token: resp?.TokenNumber ?? null, labelBase64: resp?.AWBPrintContent ?? null, response: resp };
   }
 
+  /** Logimart product/service → BlueDart ProductCode (A=Apex/air, D=Domestic Priority/surface). */
+  private bdProductCode(s: any): string {
+    const p = String(s.product ?? '').toUpperCase();
+    if (BLUEDART.productMap[p]) return BLUEDART.productMap[p];
+    const air = /AIR|EXP|APEX/i.test(String(s.serviceMode ?? '') + p);
+    return air ? 'A' : 'D';
+  }
+
+  /** BlueDart→Logimart pay-mode → SubProductCode: P=Prepaid, C=COD, A=FOD(To-Pay), D=DOD. */
+  private bdSubProduct(s: any): string {
+    if (s.isDod) return 'D';
+    if (String(s.paymentTerm).toUpperCase() === 'TO_PAY') return 'A';
+    return 'P';
+  }
+
+  /** Map Logimart shipment → BlueDart GenerateWayBill request (TSD v2.7). */
   private mapWaybill(s: any) {
-    // TODO(bluedart): finalize exact field names/casing against the TSD GenerateWayBill
-    // request during UAT. This is the Logimart -> BlueDart field mapping.
+    // Dimensions grouped by identical box size, with a Count per size (TSD Dimension object).
+    const dimGroups = new Map<string, { Length: number; Breadth: number; Height: number; Count: number }>();
+    for (const p of s.pieces ?? []) {
+      const L = Number(p.lengthCm || 0), B = Number(p.widthCm || 0), H = Number(p.heightCm || 0);
+      if (!(L && B && H)) continue;
+      const k = `${L}x${B}x${H}`;
+      const g = dimGroups.get(k) ?? { Length: L, Breadth: B, Height: H, Count: 0 };
+      g.Count += 1; dimGroups.set(k, g);
+    }
+    const dims = [...dimGroups.values()];
+    const codAmount = s.isDod ? Number(s.dodAmount || 0) : (String(s.paymentTerm).toUpperCase() === 'TO_PAY' ? Number(s.freightToCollect || 0) : 0);
+
     return {
       Request: {
+        Shipper: {
+          OriginArea: BLUEDART.originArea || String(s.originZone ?? '').slice(0, 3).toUpperCase(),
+          CustomerCode: BLUEDART.customerCode || BLUEDART.loginId,
+          CustomerName: (s.shipperName ?? s.client?.legalName ?? '').slice(0, 30),
+          CustomerAddress1: (s.shipperAddress1 ?? s.client?.addressLine ?? '').slice(0, 30),
+          CustomerAddress2: (s.shipperAddress2 ?? '').slice(0, 30),
+          CustomerPincode: s.shipperPincode ?? s.client?.pincode ?? '',
+          CustomerMobile: s.shipperContact ?? s.client?.contactPhone ?? '',
+          CustomerGSTNumber: s.consignorGstin ?? s.client?.gstin ?? '',
+          Sender: (s.shipperName ?? s.client?.legalName ?? '').slice(0, 20),
+          isToPayCustomer: false,
+        },
         Consignee: {
-          ConsigneeName: s.consigneeName ?? '',
-          ConsigneeAddress1: s.consigneeAddress ?? '',
+          ConsigneeName: (s.consigneeName ?? '').slice(0, 30),
+          ConsigneeAddress1: (s.consigneeAddress ?? '').slice(0, 30),
+          ConsigneeAddress2: (s.consigneeCity ?? '').slice(0, 30),
           ConsigneePincode: s.destPincode ?? '',
           ConsigneeMobile: s.consigneePhone ?? '',
+          ConsigneeAttention: (s.consigneeName ?? '').slice(0, 30),
         },
-        Shipper: { CustomerName: s.client?.legalName ?? '', CustomerCode: BLUEDART.loginId, OriginArea: s.originZone ?? '' },
         Services: {
-          ProductCode: s.product ?? 'D',
-          PieceCount: String(s.pieceCount ?? 1),
-          ActualWeight: String(s.totalDeadKg ?? 0),
-          DeclaredValue: String(s.declaredValue ?? 0),
+          ProductCode: this.bdProductCode(s),
+          ProductType: String(s.docType ?? '').toUpperCase().includes('DOC') ? 0 : 1, // 0=Docs, 1=Dutiables
+          SubProductCode: this.bdSubProduct(s),
+          PieceCount: Number(s.pieceCount ?? 1),
+          ActualWeight: Number(Number(s.chargeWeight ?? s.totalDeadKg ?? 0).toFixed(2)),
+          DeclaredValue: Number(Number(s.shipmentValue ?? s.declaredValue ?? 0).toFixed(2)),
+          CollactableAmount: Number(codAmount.toFixed(2)),
+          CreditReferenceNo: String(s.awb).slice(0, 20), // must be UNIQUE — our AWB
+          Dimensions: dims,
+          PickupDate: Date.now(), // epoch ms
+          PickupTime: BLUEDART.pickupTime,
+          RegisterPickup: false,
+          PDFOutputNotRequired: false,
+          InvoiceNo: (s.referenceNo ?? '').slice(0, 10),
         },
       },
       Profile: { LoginID: BLUEDART.loginId, LicenceKey: BLUEDART.licKey, Api_type: 'S' },
@@ -120,15 +180,17 @@ export class BluedartService {
     return this.authed('/pickup/v1/RegisterPickup', { method: 'POST', body: JSON.stringify({ request: body, Profile: { LoginID: BLUEDART.loginId, LicenceKey: BLUEDART.licKey } }) });
   }
 
-  /** Pull the latest BlueDart status into the Logimart shipment. */
+  /** Pull the latest BlueDart status into the Logimart shipment. Parses the custawbquery XML
+   *  (<Status>, <StatusDate>) from the tracking response. */
   async syncTracking(awb: string) {
     const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { bdWaybill: true } });
     const track = s?.bdWaybill || awb;
     const r = await this.track(track);
-    const raw = typeof r?.raw === 'string' ? r.raw : '';
-    const m = raw.match(/<Status[^>]*>([^<]+)<\/Status>/i) || raw.match(/<StatusType[^>]*>([^<]+)<\/StatusType>/i);
-    const bdStatus = m ? m[1] : null;
+    const raw = typeof r?.raw === 'string' ? r.raw : (typeof r === 'string' ? r : JSON.stringify(r));
+    const grab = (tag: string) => { const m = raw.match(new RegExp(`<${tag}[^>]*>([^<]+)</${tag}>`, 'i')); return m ? m[1].trim() : null; };
+    const bdStatus = grab('Status') || grab('StatusType');
+    const bdStatusDate = grab('StatusDate');
     if (bdStatus) await this.prisma.shipment.updateMany({ where: { awb }, data: { bdStatus } });
-    return { awb, bdStatus, tracking: r };
+    return { awb, bdStatus, bdStatusDate, tracking: r };
   }
 }
