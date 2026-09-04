@@ -575,6 +575,7 @@ export const api = {
 
   // ---- BlueDart carrier integration ----
   bdStatus: () => request<{ configured: boolean; [k: string]: any }>('/api/v1/bluedart/status'),
+  bdTokenTest: () => request<{ ok: boolean; tokenPreview?: string }>('/api/v1/bluedart/token/test'),
   bdServiceable: (pincode: string) => request<any>(`/api/v1/bluedart/serviceable/${pincode}`),
   bdTrack: (awb: string) => request<any>(`/api/v1/bluedart/track/${awb}`),
   bdHandoff: (awb: string) => request<{ awb: string; bdWaybill: string | null; response: any }>(`/api/v1/bluedart/handoff/${awb}`, { method: 'POST' }),

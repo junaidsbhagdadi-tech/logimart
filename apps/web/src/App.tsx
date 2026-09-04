@@ -22,6 +22,7 @@ import { VendorBills } from './pages/VendorBills';
 import { WalkIn } from './pages/WalkIn';
 import { AwbPrint } from './pages/AwbPrint';
 import { BdLabel } from './pages/BdLabel';
+import { BlueDart } from './pages/BlueDart';
 import { BillWorksheet } from './pages/BillWorksheet';
 import { Pickups } from './pages/Pickups';
 import { Manifests } from './pages/Manifests';
@@ -89,6 +90,7 @@ export function App() {
         <Route path="/walk-in" element={isAdminFin || canMaster ? <WalkIn /> : <Navigate to="/" replace />} />
         <Route path="/shipments/:awb" element={<ShipmentDetail />} />
         <Route path="/shipments/:awb/labels" element={<Labels />} />
+        <Route path="/bluedart" element={user?.role === 'SYS_ADMIN' ? <BlueDart /> : <Navigate to="/" replace />} />
         <Route path="/invoices" element={<Invoices />} />
         <Route path="/sales-mis" element={isAdminFin ? <SalesMis /> : <Navigate to="/" replace />} />
         <Route path="/bill-worksheet" element={isAdminFin ? <BillWorksheet /> : <Navigate to="/" replace />} />
