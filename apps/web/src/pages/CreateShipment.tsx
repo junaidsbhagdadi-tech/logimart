@@ -1003,6 +1003,12 @@ export function CreateShipment() {
                 <label>Forwarding AWB <span className="muted">(vendor's carrier AWB)</span></label>
                 <div className="row" style={{ gap: 6 }}><input style={{ flex: 1 }} value={svc.forwardingAwb} onChange={(e) => setSvc({ ...svc, forwardingAwb: e.target.value })} placeholder="e.g. 58001396353" /><ScanButton title="Scan the forwarding barcode" onScan={(c) => setSvc({ ...svc, forwardingAwb: c })} /></div>
               </div>
+              {/* #14 — enter the shipment AWB right here so the forwarding hand-off is one flow:
+                  vendor → forwarding AWB → AWB No (stays in sync with the Manual AWB field above). */}
+              <div>
+                <label>AWB No <span className="muted">(this shipment — blank = auto)</span></label>
+                <div className="row" style={{ gap: 6 }}><input style={{ flex: 1 }} value={manualAwb} onChange={(e) => setManualAwb(e.target.value)} placeholder="e.g. 2030236" /><ScanButton title="Scan the AWB barcode" onScan={(c) => setManualAwb(c)} /></div>
+              </div>
             </div>
           )}
           <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>Vendor cost isn't captured here — margins come from the uploaded vendor bill.</p>
