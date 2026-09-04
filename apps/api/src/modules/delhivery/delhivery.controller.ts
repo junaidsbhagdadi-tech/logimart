@@ -39,4 +39,11 @@ export class DelhiveryController {
   sync(@Param('awb') awb: string) {
     return this.del.syncTracking(awb);
   }
+
+  /** Cancel a Delhivery shipment (before pickup). */
+  @Post('cancel/:awb')
+  @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  cancel(@Param('awb') awb: string) {
+    return this.del.cancel(awb);
+  }
 }

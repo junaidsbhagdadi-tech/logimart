@@ -586,6 +586,7 @@ export const api = {
   delTrack: (awb: string) => request<any>(`/api/v1/delhivery/track/${awb}`),
   delHandoff: (awb: string) => request<{ awb: string; waybill: string | null; response: any }>(`/api/v1/delhivery/handoff/${awb}`, { method: 'POST' }),
   delSync: (awb: string) => request<{ awb: string; status: string | null }>(`/api/v1/delhivery/sync/${awb}`, { method: 'POST' }),
+  delCancel: (awb: string) => request<{ awb: string; waybill: string | null; response: any }>(`/api/v1/delhivery/cancel/${awb}`, { method: 'POST' }),
 
   // ---- reports ----
   runReport: (type: string, from?: string, to?: string) => {

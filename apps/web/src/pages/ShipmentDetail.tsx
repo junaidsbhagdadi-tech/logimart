@@ -248,6 +248,12 @@ export function ShipmentDetail() {
     try { const r = await api.delHandoff(awb!); setMsg(r.waybill ? `📦 Handed to Delhivery — waybill ${r.waybill}` : 'Hand-off sent (no waybill returned).'); load(); }
     catch (e: any) { setError(e.message); }
   };
+  const cancelDel = async () => {
+    if (!confirm('Cancel this Delhivery shipment (before pickup)?')) return;
+    setError(''); setMsg('');
+    try { const r = await api.delCancel(awb!); setMsg(`🚫 Delhivery shipment cancelled — waybill ${r.waybill}.`); load(); }
+    catch (e: any) { setError(e.message); }
+  };
 
   const submitReweigh = async () => {
     if (!s) return;
@@ -321,6 +327,7 @@ export function ShipmentDetail() {
           {canPod && <button className="secondary" onClick={addComment}>💬 Comment</button>}
           {canAssign && <button className="secondary" onClick={handoffBd}>📦 Hand to BlueDart</button>}
           {canAssign && <button className="secondary" onClick={handoffDel}>📦 Hand to Delhivery</button>}
+          {canAssign && String((s as any).vendor).toUpperCase() === 'DELHIVERY' && (s as any).forwardingAwb && <button className="secondary" onClick={cancelDel}>🚫 Cancel Delhivery</button>}
           {canAssign && s.bdWaybill && <button className="secondary" onClick={trackBd}>🔎 BlueDart track</button>}
           {canReweigh && <button className="secondary" onClick={() => { setReweighMode((v) => !v); setMsg(''); }}>⚖ {reweighMode ? 'Cancel re-weigh' : 'Re-weigh'}</button>}
           {((canEditCharges && !(s as any).invoiced) || (isSysAdmin && (s as any).invoiced)) && <button className="secondary" onClick={openEdit} title={(s as any).invoiced ? 'Super-admin: edit an already-invoiced AWB (does NOT change the raised invoice)' : 'Edit product, consignee, vendor & other details'}>✏️ Edit AWB{(s as any).invoiced ? ' (invoiced)' : ''}</button>}

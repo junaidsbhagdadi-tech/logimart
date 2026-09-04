@@ -113,6 +113,26 @@ export class DelhiveryService {
     return { awb, waybill, response: resp };
   }
 
+  /** Cancel a Delhivery shipment (before pickup). POST /api/p/edit {waybill, cancellation:"true"}. */
+  async cancel(awb: string) {
+    this.ensure();
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, forwardingAwb: true } });
+    const waybill = s?.forwardingAwb;
+    if (!waybill) throw new BadRequestException(`No Delhivery waybill on ${awb} to cancel.`);
+    const res = await fetch(`${DELHIVERY.baseUrl}/api/p/edit`, {
+      method: 'POST',
+      headers: this.headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ waybill, cancellation: 'true' }),
+    });
+    const text = await res.text();
+    let resp: any; try { resp = JSON.parse(text); } catch { resp = { raw: text }; }
+    if (!res.ok) throw new BadRequestException(`Delhivery cancel ${res.status}: ${text.slice(0, 300)}`);
+    const ok = resp?.status === true || /cancel/i.test(String(resp?.remark ?? ''));
+    if (!ok) throw new BadRequestException(`Delhivery did not cancel: ${resp?.remark ?? JSON.stringify(resp).slice(0, 200)}`);
+    if (s?.id) await this.prisma.shipment.update({ where: { id: s.id }, data: { bdStatus: 'CANCELLED (Delhivery)' } });
+    return { awb, waybill, response: resp };
+  }
+
   /** Track a Delhivery waybill. GET /api/v1/packages/json/?waybill=<wb> */
   async track(waybill: string) {
     this.ensure();
