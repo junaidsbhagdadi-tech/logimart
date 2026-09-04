@@ -27,3 +27,6 @@ npm-debug.log*
 
 # docker volumes (if bind-mounted locally)
 .data/
+
+# Vendor API docs (contain live tokens/keys) — keep out of git
+API Dox/

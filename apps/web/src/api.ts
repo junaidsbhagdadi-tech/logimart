@@ -580,6 +580,12 @@ export const api = {
   bdTrack: (awb: string) => request<any>(`/api/v1/bluedart/track/${awb}`),
   bdHandoff: (awb: string) => request<{ awb: string; bdWaybill: string | null; response: any }>(`/api/v1/bluedart/handoff/${awb}`, { method: 'POST' }),
   bdSync: (awb: string) => request<{ awb: string; bdStatus: string | null }>(`/api/v1/bluedart/sync/${awb}`, { method: 'POST' }),
+  // ---- Delhivery carrier integration ----
+  delStatus: () => request<{ configured: boolean; [k: string]: any }>('/api/v1/delhivery/status'),
+  delServiceable: (pincode: string) => request<any>(`/api/v1/delhivery/serviceable/${pincode}`),
+  delTrack: (awb: string) => request<any>(`/api/v1/delhivery/track/${awb}`),
+  delHandoff: (awb: string) => request<{ awb: string; waybill: string | null; response: any }>(`/api/v1/delhivery/handoff/${awb}`, { method: 'POST' }),
+  delSync: (awb: string) => request<{ awb: string; status: string | null }>(`/api/v1/delhivery/sync/${awb}`, { method: 'POST' }),
 
   // ---- reports ----
   runReport: (type: string, from?: string, to?: string) => {
