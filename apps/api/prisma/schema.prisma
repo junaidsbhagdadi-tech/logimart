@@ -129,6 +129,7 @@ model B2bClient {
   isCash          Boolean  @default(false) // cash customer — no invoices generated
   canCheckRates   Boolean  @default(false) // may view rate agreement + estimate cost in their portal
   canViewInvoices Boolean  @default(false) // #22 — may see their invoices in the customer portal (opt-in)
+  defaultVendor   String?   // preferred carrier — auto-fills the vendor at booking (staff can override)
   commissionPct   Decimal  @default(0) @db.Decimal(6, 2) // salesperson commission % for this customer
   // Explicit account grouping: a "child" account points to its parent (head office). A client
   // login may book under any account in its group (the parent + all its children). One level deep.

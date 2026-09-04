@@ -95,6 +95,7 @@ export class CustomersService {
           accountType: dto.accountType ?? undefined,
           billingCycle: dto.billingCycle ?? undefined,
           allowSameGstin: dto.allowSameGstin ?? false,
+          defaultVendor: dto.defaultVendor?.trim() || null,
           creditLimit: this.dec(dto.creditLimit),
           creditDays: Number.isFinite(Number(dto.creditDays)) ? Number(dto.creditDays) : 30,
           isOneTime: dto.isOneTime ?? false,

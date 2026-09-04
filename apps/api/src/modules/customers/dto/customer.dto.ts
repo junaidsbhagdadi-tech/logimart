@@ -40,6 +40,7 @@ export class CreateClientDto {
   @IsOptional() @IsString() accountType?: string; // CREDIT | WALLET | CASH | CARD
   @IsOptional() @IsString() billingCycle?: string; // MONTHLY | FORTNIGHTLY
   @IsOptional() @IsBoolean() allowSameGstin?: boolean;
+  @IsOptional() @IsString() defaultVendor?: string; // preferred carrier, auto-filled at booking
   @IsOptional() @IsNumber() @Min(0) creditLimit?: number;
   @IsOptional() @IsInt() @Min(0) creditDays?: number;
   @IsOptional() @IsBoolean() isOneTime?: boolean;
@@ -93,5 +94,6 @@ export class UpdateClientDto {
   @IsOptional() @IsString() billingCycle?: string;
   @IsOptional() @IsString() accountCode?: string;   // the edit form round-trips this (unchanged); allow it through
   @IsOptional() @IsBoolean() allowSameGstin?: boolean;
+  @IsOptional() @IsString() defaultVendor?: string; // preferred carrier, auto-filled at booking
   @IsOptional() @IsInt() parentAccountId?: number | null; // group under a head-office account; null/0 clears
 }

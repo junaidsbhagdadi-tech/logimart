@@ -12,7 +12,7 @@ const blank = {
   contactEmail: '', email2: '', gstin: '', pan: '', tanNo: '', iecCode: '',
   addressLine: '', pincode: '', city: '', state: '', salesPerson: '', salesPersonMobile: '', salesPersonEmail: '',
   csPerson: '', csPersonMobile: '', csPersonEmail: '',
-  accountType: 'CREDIT', billingCycle: 'MONTHLY', allowSameGstin: false,
+  accountType: 'CREDIT', billingCycle: 'MONTHLY', allowSameGstin: false, defaultVendor: '',
   creditLimit: '', creditDays: '30', isCash: false, canCheckRates: false, canViewInvoices: false, commissionPct: '', parentAccountId: '',
 };
 
@@ -45,8 +45,10 @@ export function Customers() {
 
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [q, setQ] = useState('');
+  const [vendors, setVendors] = useState<{ vendorCode: string; name: string }[]>([]); // #12a default-vendor picker
   const load = () => { api.listClients().then(setClients).catch((e) => setError(e.message)); setSel(new Set()); };
   useEffect(load, []);
+  useEffect(() => { api.listVendors().then((v: any[]) => setVendors(v.filter((x) => x.isActive !== false).map((x) => ({ vendorCode: x.vendorCode, name: x.name })))).catch(() => {}); }, []);
 
   // Configurable customer-code series (super-admin) — CONFIG/CUSTOMER_CODE master { prefix, nextNo, pad }.
   const [codeCfg, setCodeCfg] = useState({ prefix: '', nextNo: '1', pad: '4', active: false });
@@ -163,7 +165,7 @@ export function Customers() {
       salesPerson: (c as any).salesPerson ?? '', salesPersonMobile: (c as any).salesPersonMobile ?? '', salesPersonEmail: (c as any).salesPersonEmail ?? '',
       csPerson: (c as any).csPerson ?? '', csPersonMobile: (c as any).csPersonMobile ?? '', csPersonEmail: (c as any).csPersonEmail ?? '',
       accountType: (c as any).accountType ?? 'CREDIT', billingCycle: (c as any).billingCycle ?? 'MONTHLY',
-      allowSameGstin: !!(c as any).allowSameGstin, creditLimit: String((c as any).creditLimit ?? ''), creditDays: String((c as any).creditDays ?? '30'), isCash: !!(c as any).isCash, canCheckRates: !!(c as any).canCheckRates, canViewInvoices: !!(c as any).canViewInvoices, commissionPct: String((c as any).commissionPct ?? ''),
+      allowSameGstin: !!(c as any).allowSameGstin, defaultVendor: (c as any).defaultVendor ?? '', creditLimit: String((c as any).creditLimit ?? ''), creditDays: String((c as any).creditDays ?? '30'), isCash: !!(c as any).isCash, canCheckRates: !!(c as any).canCheckRates, canViewInvoices: !!(c as any).canViewInvoices, commissionPct: String((c as any).commissionPct ?? ''),
       parentAccountId: (c as any).parentAccountId != null ? String((c as any).parentAccountId) : '',
     });
     setShowAdd(true);
@@ -195,6 +197,7 @@ export function Customers() {
       accountType: form.accountType || undefined,
       billingCycle: form.billingCycle || undefined,
       allowSameGstin: form.allowSameGstin,
+      defaultVendor: form.defaultVendor || undefined,
       canCheckRates: form.canCheckRates,
       canViewInvoices: form.canViewInvoices,
       commissionPct: form.commissionPct ? Number(form.commissionPct) : 0,
@@ -204,16 +207,18 @@ export function Customers() {
       // Parent-account link is only settable on an existing customer (update).
       ...(editing ? { parentAccountId: form.parentAccountId ? +form.parentAccountId : null } : {}),
     };
+    const save = async (p: typeof payload) => (editing ? api.updateClient(editing.id, p) : api.createClient(p)) as Promise<Client>;
+    const done = (c: Client) => { setMsg(editing ? `✓ Updated ${c.legalName}` : `✓ Created ${c.legalName} (${c.accountCode})`); setForm({ ...blank }); setEditing(null); setShowAdd(false); load(); };
     try {
-      if (editing) {
-        const c = await api.updateClient(editing.id, payload) as Client;
-        setMsg(`✓ Updated ${c.legalName}`);
-      } else {
-        const c = await api.createClient(payload) as Client;
-        setMsg(`✓ Created ${c.legalName} (${c.accountCode})`);
-      }
-      setForm({ ...blank }); setEditing(null); setShowAdd(false); load();
-    } catch (e: any) { setError(e.message); }
+      done(await save(payload));
+    } catch (e: any) {
+      // #16 — same-GST second account: the duplicate-GSTIN guard is a blocker; offer to proceed under
+      // the same GST (a branch / sister account) with one confirm instead of forcing a pre-ticked box.
+      if (!payload.allowSameGstin && /already used by/i.test(e?.message || '') && confirm(`${e.message}\n\nAdd this as another account under the same GST?`)) {
+        try { done(await save({ ...payload, allowSameGstin: true })); }
+        catch (e2: any) { setError(e2.message); }
+      } else { setError(e.message); }
+    }
   };
 
   return (
@@ -348,6 +353,12 @@ export function Customers() {
             <div className="row" style={{ marginTop: 18, alignItems: 'center' }}>
               <div><label>Credit limit (₹)</label><input type="number" value={form.creditLimit} onChange={(e) => set('creditLimit', e.target.value)} style={{ width: 160 }} /></div>
               <div><label>Credit days</label><input type="number" value={form.creditDays} onChange={(e) => set('creditDays', e.target.value)} style={{ width: 120 }} /></div>
+              <div><label>Default vendor <span className="muted" style={{ fontSize: 11 }}>(auto-fills at booking)</span></label>
+                <select value={form.defaultVendor} onChange={(e) => set('defaultVendor', e.target.value)} style={{ width: 200 }}>
+                  <option value="">— none (SELF) —</option>
+                  {vendors.map((v) => <option key={v.vendorCode} value={v.vendorCode}>{v.vendorCode} — {v.name}</option>)}
+                </select>
+              </div>
               <button style={{ marginLeft: 'auto' }} disabled={!form.legalName} onClick={save}>{editing ? 'Update Customer' : 'Save Customer'}</button>
             </div>
           </>

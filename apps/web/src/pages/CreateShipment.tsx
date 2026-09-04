@@ -210,6 +210,17 @@ export function CreateShipment() {
   const startFresh = () => { clearDraft(); window.location.reload(); };
 
   useEffect(() => { if (!ownClientId) api.listClients().then(setClients).catch(() => {}); }, [ownClientId]);
+
+  // #12a — prefill the customer's default vendor at booking (treated like a manual pick, so the
+  // rate-based auto-carrier won't override it; staff can still change it).
+  useEffect(() => {
+    if (ownClientId || clientId === '' || vendorTouched) return;
+    const c = clients.find((x) => String(x.id) === String(clientId)) as any;
+    const dv = c?.defaultVendor;
+    if (dv) { setSvc((s) => ({ ...s, vendor: String(dv).toUpperCase() })); setVendorTouched(true); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId, clients]);
+
   // Client logins can't list all clients — fetch just the account(s) they may book under.
   useEffect(() => {
     if (!isClient) return;
