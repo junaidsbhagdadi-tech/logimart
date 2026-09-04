@@ -7,7 +7,7 @@ type Row = {
   awb: string; invoiced?: boolean; bookDate: string; shipperName: string; customerCode: string; customerName: string;
   consigneeName: string; destination: string; product: string; vendor: string; forwardingAwb: string | null;
   actualWeight: number; chargeWeight: number; pieces: number; deliveryVendor: string; status: string;
-  shipmentValue?: number | null; originPincode?: string | null; destPincode?: string | null;
+  shipmentValue?: number | null; originPincode?: string | null; destPincode?: string | null; dimensions?: string;
 };
 
 const COLS: { key: keyof Row; label: string; num?: boolean }[] = [
@@ -27,6 +27,7 @@ const COLS: { key: keyof Row; label: string; num?: boolean }[] = [
   { key: 'actualWeight', label: 'Actual Weight', num: true },
   { key: 'chargeWeight', label: 'Charge Weight', num: true },
   { key: 'pieces', label: 'Pieces', num: true },
+  { key: 'dimensions', label: 'Dimensions (cm)' },
   { key: 'deliveryVendor', label: 'Delivery Vendor' },
 ];
 

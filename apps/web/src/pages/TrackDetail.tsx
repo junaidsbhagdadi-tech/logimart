@@ -105,6 +105,18 @@ export function TrackDetail() {
   useEffect(() => { if (canScan) api.listVendors().then((v) => setVendors(v.filter((x: any) => x.isActive !== false))).catch(() => {}); }, [canScan]);
   const [fwd, setFwd] = useState({ vendor: '', forwardingAwb: '' });
   useEffect(() => { if (d) setFwd({ vendor: (d as any).vendor ?? '', forwardingAwb: d.forwardingAwb ?? '' }); }, [d]);
+
+  // #1 — add-on / expense charges CS logs from the tracker (billed to the customer on the next invoice).
+  const [addons, setAddons] = useState<any[]>([]);
+  const [addForm, setAddForm] = useState({ amount: '', reason: '', serviceCentre: '', mode: '', toBill: true });
+  useEffect(() => { if (d && canScan) api.listAddons(d.awb).then(setAddons).catch(() => setAddons([])); }, [d, canScan]);
+  const addAddon = async () => {
+    if (!d || !(Number(addForm.amount) > 0) || !addForm.reason.trim()) { setError('Enter an amount and a reason for the charge.'); return; }
+    setError(''); setMsg('');
+    try { await api.addAddon(d.awb, { ...addForm, amount: Number(addForm.amount) }); setAddForm({ amount: '', reason: '', serviceCentre: '', mode: '', toBill: true }); setMsg('✓ Add-on charge added.'); api.listAddons(d.awb).then(setAddons); }
+    catch (e: any) { setError(e.message); }
+  };
+  const delAddon = async (id: string) => { if (!confirm('Delete this charge?')) return; try { await api.deleteAddon(id); if (d) api.listAddons(d.awb).then(setAddons); } catch (e: any) { setError(e.message); } };
   const [fwdBusy, setFwdBusy] = useState(false);
   const saveFwd = async () => {
     if (!d) return;
@@ -278,6 +290,35 @@ export function TrackDetail() {
                   <div><label>Forwarding number <span className="muted">(carrier AWB)</span></label><input value={fwd.forwardingAwb} onChange={(e) => setFwd((f) => ({ ...f, forwardingAwb: e.target.value }))} placeholder="e.g. 58001396353" /></div>
                   <div><button onClick={saveFwd} disabled={fwdBusy || (!fwd.vendor && !fwd.forwardingAwb)}>{fwdBusy ? 'Saving…' : '🔀 Save forwarding'}</button></div>
                 </div>
+              </div>
+              <div style={{ borderTop: '1px dashed var(--line, #d7dadf)', marginTop: 14, paddingTop: 12 }}>
+                <h2 style={{ marginBottom: 4, fontSize: 15 }}>➕ Add-on / expense charge</h2>
+                <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Log an ad-hoc expense on this AWB (re-pickup, special handling, etc.). Billed to the customer on the next invoice when "Bill to customer" is ticked.</p>
+                <div className="grid cols-4" style={{ gap: 10, alignItems: 'flex-end' }}>
+                  <div><label>Amount ₹ *</label><input type="number" value={addForm.amount} onChange={(e) => setAddForm((f) => ({ ...f, amount: e.target.value }))} /></div>
+                  <div><label>Reason *</label><input value={addForm.reason} onChange={(e) => setAddForm((f) => ({ ...f, reason: e.target.value }))} placeholder="e.g. Re-pickup / special handling" /></div>
+                  <div><label>Service centre</label><input value={addForm.serviceCentre} onChange={(e) => setAddForm((f) => ({ ...f, serviceCentre: e.target.value }))} placeholder="BOM" /></div>
+                  <div><label>Mode (how paid)</label><input value={addForm.mode} onChange={(e) => setAddForm((f) => ({ ...f, mode: e.target.value }))} placeholder="GPAY / CASH" /></div>
+                </div>
+                <div className="row" style={{ gap: 12, marginTop: 8, alignItems: 'center' }}>
+                  <label className="row" style={{ gap: 6, fontSize: 13, margin: 0 }}><input type="checkbox" checked={addForm.toBill} onChange={(e) => setAddForm((f) => ({ ...f, toBill: e.target.checked }))} style={{ width: 'auto' }} /> Bill to customer</label>
+                  <button onClick={addAddon} disabled={!(Number(addForm.amount) > 0) || !addForm.reason.trim()}>➕ Add charge</button>
+                </div>
+                {addons.length > 0 && (
+                  <table style={{ marginTop: 10, fontSize: 13 }}>
+                    <thead><tr><th>Reason</th><th style={{ textAlign: 'right' }}>Amount</th><th>Bill?</th><th>Svc ctr</th><th>Status</th><th></th></tr></thead>
+                    <tbody>
+                      {addons.map((a) => (
+                        <tr key={a.id}>
+                          <td>{a.reason}</td><td style={{ textAlign: 'right' }}>₹{Number(a.amount).toLocaleString('en-IN')}</td>
+                          <td>{a.toBill ? 'Yes' : 'No'}</td><td>{a.serviceCentre || '—'}</td>
+                          <td>{a.billedInvoiceId ? <span className="badge DELIVERED">billed</span> : <span className="badge CREATED">pending</span>}</td>
+                          <td>{!a.billedInvoiceId && <button className="secondary" style={{ padding: '3px 8px', fontSize: 12 }} onClick={() => delAddon(a.id)}>🗑</button>}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             </div>
           )}

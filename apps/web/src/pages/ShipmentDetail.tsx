@@ -23,6 +23,9 @@ export function ShipmentDetail() {
   const [rw, setRw] = useState<Record<number, string>>({});
   const [rwd, setRwd] = useState<Record<number, { l: string; w: string; h: string }>>({});
   const setDim = (seq: number, k: 'l' | 'w' | 'h', v: string) => setRwd((m) => ({ ...m, [seq]: { ...(m[seq] || { l: '', w: '', h: '' }), [k]: v } }));
+  // #13 — boxes added during re-weigh (arrived with more pieces than booked)
+  const [extra, setExtra] = useState<{ kg: string; l: string; w: string; h: string }[]>([]);
+  const setExtraF = (i: number, k: 'kg' | 'l' | 'w' | 'h', v: string) => setExtra((m) => m.map((b, idx) => idx === i ? { ...b, [k]: v } : b));
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
   const [vendors, setVendors] = useState<any[]>([]);
@@ -242,7 +245,7 @@ export function ShipmentDetail() {
 
   const submitReweigh = async () => {
     if (!s) return;
-    const lines = s.pieces
+    const existing = s.pieces
       .filter((p) => (rw[p.sequenceNo] && +rw[p.sequenceNo] > 0) || rwd[p.sequenceNo])
       .map((p: any) => ({
         sequenceNo: p.sequenceNo,
@@ -251,7 +254,18 @@ export function ShipmentDetail() {
         widthCm: rwd[p.sequenceNo]?.w ? +rwd[p.sequenceNo].w : (p.widthCm ? +p.widthCm : undefined),
         heightCm: rwd[p.sequenceNo]?.h ? +rwd[p.sequenceNo].h : (p.heightCm ? +p.heightCm : undefined),
       }));
-    if (lines.length === 0) { setError('Enter at least one re-weighed box weight or dimension.'); return; }
+    // #13 — boxes added at re-weigh: new sequenceNos beyond the current count; backend creates them.
+    const added = extra
+      .filter((b) => +b.kg > 0)
+      .map((b, i) => ({
+        sequenceNo: s.pieceCount + i + 1,
+        actualKg: +b.kg,
+        lengthCm: b.l ? +b.l : undefined,
+        widthCm: b.w ? +b.w : undefined,
+        heightCm: b.h ? +b.h : undefined,
+      }));
+    const lines = [...existing, ...added];
+    if (lines.length === 0) { setError('Enter at least one re-weighed box weight, dimension, or added box.'); return; }
     setError(''); setMsg('');
     try {
       const res = await api.reweigh(awb!, lines);
@@ -262,7 +276,7 @@ export function ShipmentDetail() {
       } else {
         setMsg(`Re-weigh saved: ${res.bookedChargeableKg}kg → ${res.actualChargeableKg}kg. Freight delta ₹${res.freightDelta} — no note raised.`);
       }
-      setReweighMode(false); setRw({}); setRwd({});
+      setReweighMode(false); setRw({}); setRwd({}); setExtra([]);
       load();
     } catch (e: any) { setError(e.message); }
   };
@@ -627,8 +641,20 @@ export function ShipmentDetail() {
                 <td><span className={`badge ${p.status}`}>{p.status}</span></td>
               </tr>
             ))}
+            {reweighMode && extra.map((b, i) => (
+              <tr key={`x${i}`} style={{ background: 'var(--surface-2, #f6f8fa)' }}>
+                <td colSpan={2}><em>+ new box {s.pieceCount + i + 1}</em></td>
+                <td>—</td><td>—</td>
+                <td><input type="number" step="0.001" style={{ width: 80 }} placeholder="kg" value={b.kg} onChange={(e) => setExtraF(i, 'kg', e.target.value)} /></td>
+                <td><input type="number" style={{ width: 60 }} placeholder="L" value={b.l} onChange={(e) => setExtraF(i, 'l', e.target.value)} /></td>
+                <td><input type="number" style={{ width: 60 }} placeholder="W" value={b.w} onChange={(e) => setExtraF(i, 'w', e.target.value)} /></td>
+                <td><input type="number" style={{ width: 60 }} placeholder="H" value={b.h} onChange={(e) => setExtraF(i, 'h', e.target.value)} /></td>
+                <td><button className="secondary" style={{ padding: '2px 8px', fontSize: 12 }} onClick={() => setExtra((m) => m.filter((_, idx) => idx !== i))}>🗑</button></td>
+              </tr>
+            ))}
           </tbody>
         </table>
+        {reweighMode && <button className="secondary" style={{ marginTop: 8 }} onClick={() => setExtra((m) => [...m, { kg: '', l: '', w: '', h: '' }])}>➕ Add box</button>}
       </div>
     </>
   );

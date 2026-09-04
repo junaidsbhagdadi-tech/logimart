@@ -721,8 +721,22 @@ export class ShipmentsService {
       where: clientId != null ? { clientId } : undefined,
       orderBy: { createdAt: 'desc' },
       take: Math.min(limit, 500),
-      include: { client: { select: { legalName: true, accountCode: true } }, _count: { select: { invoiceLines: true } } },
+      include: {
+        client: { select: { legalName: true, accountCode: true } },
+        _count: { select: { invoiceLines: true } },
+        pieces: { select: { lengthCm: true, widthCm: true, heightCm: true, deadKg: true }, orderBy: { sequenceNo: 'asc' } },
+      },
     });
+    // #3 — compact package-detail string: box dims grouped by size, e.g. "2×40x30x20, 1×55x45x30".
+    const dimsOf = (pieces: { lengthCm: any; widthCm: any; heightCm: any }[]) => {
+      const groups = new Map<string, number>();
+      for (const p of pieces) {
+        const key = [p.lengthCm, p.widthCm, p.heightCm].every((x) => x != null)
+          ? `${Number(p.lengthCm)}x${Number(p.widthCm)}x${Number(p.heightCm)}` : '—';
+        groups.set(key, (groups.get(key) ?? 0) + 1);
+      }
+      return [...groups.entries()].map(([d, n]) => (n > 1 ? `${n}×${d}` : d)).join(', ');
+    };
     return shipments.map((s) => ({
       awb: s.awb,
       invoiced: s._count.invoiceLines > 0,
@@ -738,6 +752,7 @@ export class ShipmentsService {
       actualWeight: Number(s.totalDeadKg),
       chargeWeight: s.chargeWeight != null ? Number(s.chargeWeight) : Math.max(Number(s.totalDeadKg), Number(s.totalVolKg)),
       pieces: s.pieceCount,
+      dimensions: dimsOf(s.pieces), // #3 — package box dimensions (LxWxH cm), grouped by size
       shipmentValue: s.shipmentValue != null ? Number(s.shipmentValue) : (s.declaredValue != null ? Number(s.declaredValue) : null), // #6
       originPincode: s.shipperPincode ?? null, // #6
       destPincode: s.destPincode ?? null,                        // #6
@@ -923,6 +938,30 @@ export class ShipmentsService {
       }
     }
 
+    // #13 — boxes ADDED at re-weigh (shipment arrived with more pieces than booked). A line whose
+    // sequenceNo has no matching piece becomes a new piece; sequence numbers continue after the max.
+    const existingSeqs = new Set(shipment.pieces.map((p) => p.sequenceNo));
+    let maxSeq = shipment.pieces.reduce((m, p) => Math.max(m, p.sequenceNo), 0);
+    for (const l of lines) {
+      if (existingSeqs.has(l.sequenceNo)) continue;
+      maxSeq += 1;
+      const seq = maxSeq;
+      const volKg = this.volKg(l.lengthCm, l.widthCm, l.heightCm, vc.divisor, vc.cft) || 0;
+      const childId = `${shipment.awb}-${String(seq).padStart(3, '0')}`;
+      await this.prisma.shipmentPiece.create({
+        data: {
+          shipmentId: shipment.id, sequenceNo: seq, childId, barcodeValue: childId,
+          deadKg: new Prisma.Decimal(l.actualKg), volKg: new Prisma.Decimal(volKg),
+          ...(l.lengthCm != null ? { lengthCm: new Prisma.Decimal(l.lengthCm) } : {}),
+          ...(l.widthCm != null ? { widthCm: new Prisma.Decimal(l.widthCm) } : {}),
+          ...(l.heightCm != null ? { heightCm: new Prisma.Decimal(l.heightCm) } : {}),
+          reweighKg: new Prisma.Decimal(l.actualKg), reweighVolKg: new Prisma.Decimal(volKg),
+          reweighedAt: now, reweighedById: reweighedById != null ? BigInt(reweighedById) : null,
+        },
+      });
+      reweighed.push({ deadKg: l.actualKg, volKg, lengthCm: l.lengthCm ?? null, widthCm: l.widthCm ?? null, heightCm: l.heightCm ?? null });
+    }
+
     const newCharge = await this.rates.chargesForShipment({ ...shipment, chargeWeight: null }, reweighed as any);
     // Chargeable weight comes from the ENGINE (card-aware, CFT for surface) — not the naive ÷5000 helper.
     const bookedKg = bookedCharge?.chargeableKg ?? this.rates.chargeableKg(shipment.pieces);
@@ -937,6 +976,7 @@ export class ShipmentsService {
         totalDeadKg: new Prisma.Decimal(newTotalDead.toFixed(3)),
         totalVolKg: new Prisma.Decimal(newTotalVol.toFixed(3)),
         chargeWeight: new Prisma.Decimal(Number(actualKg).toFixed(3)),
+        pieceCount: reweighed.length, // #13 — reflect any boxes added at re-weigh
       },
     });
 

@@ -38,19 +38,19 @@ export class ShipmentsController {
 
   // ---- Per-AWB add-on charges ----
   @Get(':awb/addons')
-  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.WAREHOUSE_HANDLER, UserRole.SYS_ADMIN)
   listAddons(@Param('awb') awb: string) {
     return this.shipments.listAddons(awb);
   }
 
   @Post(':awb/addons')
-  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.WAREHOUSE_HANDLER, UserRole.SYS_ADMIN)
   addAddon(@Param('awb') awb: string, @Body() dto: any, @Req() req: any) {
     return this.shipments.addAddon(awb, dto, req.user?.sub ? Number(req.user.sub) : undefined);
   }
 
   @Delete('addons/:id')
-  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.WAREHOUSE_HANDLER, UserRole.SYS_ADMIN)
   removeAddon(@Param('id') id: string) {
     return this.shipments.removeAddon(Number(id));
   }
