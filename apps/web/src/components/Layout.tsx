@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { hasFeature, effectiveGrants } from '../rights';
 import { api } from '../api';
@@ -79,23 +79,20 @@ export function Layout() {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('lm.rail') === '1');
   const toggleRail = () => setCollapsed((c) => { const n = !c; localStorage.setItem('lm.rail', n ? '1' : '0'); return n; });
 
-  // Hover-to-reveal nav: groups open on hover (CSS) and stay open for the section
-  // you're currently in (route-driven) or one you tapped to pin (touch fallback).
-  const loc = useLocation();
-  const [pinned, setPinned] = useState<string | null>(null);
-  const groupHasActiveRoute = (items: Item[]) => items.some((it) =>
-    it.to === '/' ? loc.pathname === '/' : loc.pathname === it.to || loc.pathname.startsWith(it.to + '/'));
+  const [closed, setClosed] = useState<Record<string, boolean>>(() => {
+    try { return JSON.parse(localStorage.getItem('lm.navClosed') || '{}'); } catch { return {}; }
+  });
+  const toggleGroup = (title: string) => setClosed((c) => {
+    const n = { ...c, [title]: !c[title] }; localStorage.setItem('lm.navClosed', JSON.stringify(n)); return n;
+  });
 
-  // Appearance — skin (aurora | calm) × theme (light | dark), remembered per browser.
-  // Applied to <html> so the token blocks in styles.css win; a bootstrap script in
-  // index.html sets the same attributes pre-paint to avoid a flash.
-  const [skin, setSkin] = useState(() => localStorage.getItem('lm.skin') || 'aurora');
+  // Appearance — light / dark theme, remembered per browser. Applied to <html> so the
+  // token blocks in styles.css win; a bootstrap script in index.html sets it pre-paint.
   const [theme, setTheme] = useState(() => localStorage.getItem('lm.theme') || 'light');
   useEffect(() => {
-    const r = document.documentElement;
-    r.setAttribute('data-skin', skin); r.setAttribute('data-theme', theme);
-    localStorage.setItem('lm.skin', skin); localStorage.setItem('lm.theme', theme);
-  }, [skin, theme]);
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('lm.theme', theme);
+  }, [theme]);
 
   const groups: Group[] = isClient ? clientGroups : [
     { title: 'Overview', items: [
@@ -207,11 +204,10 @@ export function Layout() {
             const grants = effectiveGrants(user as any);
             const items = g.items.filter((it) => (grants ? hasFeature(grants, it.to) : it.show !== false));
             if (items.length === 0) return null;
-            const isActive = groupHasActiveRoute(items);
-            const cls = 'nav-group' + (isActive ? ' active' : '') + (pinned === g.title ? ' pinned' : '');
+            const isClosed = !!closed[g.title];
             return (
-              <div key={g.title} className={cls}>
-                <button className="group-head" onClick={() => setPinned((p) => (p === g.title ? null : g.title))} title={g.title}>
+              <div key={g.title} className={isClosed ? 'nav-group closed' : 'nav-group'}>
+                <button className="group-head" onClick={() => toggleGroup(g.title)} title={g.title}>
                   <span>{g.title}</span>
                   <span className="chev">▼</span>
                 </button>
@@ -230,12 +226,8 @@ export function Layout() {
         <div className="userbox">
           {!collapsed && (
             <div className="appearance">
-              <div className="skin-seg">
-                <button className={skin === 'aurora' ? 'on' : ''} onClick={() => setSkin('aurora')} title="Aurora theme">Aurora</button>
-                <button className={skin === 'calm' ? 'on' : ''} onClick={() => setSkin('calm')} title="Calm theme">Calm</button>
-              </div>
               <button className="mode-toggle" onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))} title="Toggle light / dark">
-                {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
+                {theme === 'dark' ? '☀️ Switch to light' : '🌙 Switch to dark'}
               </button>
             </div>
           )}
