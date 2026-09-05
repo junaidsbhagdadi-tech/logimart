@@ -99,6 +99,7 @@ export function BlueDart() {
       </div>
 
       <h2 style={{ margin: '18px 0 4px' }}>Delhivery</h2>
+      {err && <div className="error">{err}</div>}
       <div className="card">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ margin: 0 }}>Configuration</h2>

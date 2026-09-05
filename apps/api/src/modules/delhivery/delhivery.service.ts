@@ -29,10 +29,11 @@ export class DelhiveryService {
     return { Authorization: `Token ${DELHIVERY.token}`, Accept: 'application/json', ...extra };
   }
 
-  /** Pincode serviceability + pre-paid/COD flags. GET /c/api/pin-codes/json/?filter_codes=<pin> */
+  /** Pincode serviceability + pre-paid/COD flags. GET /c/api/pin-codes/json/?token=<t>&filter_codes=<pin>
+   *  (this legacy endpoint authenticates via the token query param, not the Authorization header). */
   async serviceability(pincode: string) {
     this.ensure();
-    const url = `${DELHIVERY.baseUrl}/c/api/pin-codes/json/?filter_codes=${encodeURIComponent(pincode)}`;
+    const url = `${DELHIVERY.baseUrl}/c/api/pin-codes/json/?token=${encodeURIComponent(DELHIVERY.token)}&filter_codes=${encodeURIComponent(pincode)}`;
     const res = await fetch(url, { headers: this.headers() });
     const text = await res.text();
     if (!res.ok) throw new BadRequestException(`Delhivery serviceability ${res.status}: ${text.slice(0, 300)}`);
@@ -133,10 +134,10 @@ export class DelhiveryService {
     return { awb, waybill, response: resp };
   }
 
-  /** Track a Delhivery waybill. GET /api/v1/packages/json/?waybill=<wb> */
+  /** Track a Delhivery waybill. GET /api/v1/packages/json/?token=<t>&waybill=<wb> (token via query too). */
   async track(waybill: string) {
     this.ensure();
-    const url = `${DELHIVERY.baseUrl}/api/v1/packages/json/?waybill=${encodeURIComponent(waybill)}`;
+    const url = `${DELHIVERY.baseUrl}/api/v1/packages/json/?token=${encodeURIComponent(DELHIVERY.token)}&waybill=${encodeURIComponent(waybill)}`;
     const res = await fetch(url, { headers: this.headers() });
     const text = await res.text();
     if (!res.ok) throw new BadRequestException(`Delhivery tracking ${res.status}: ${text.slice(0, 300)}`);
