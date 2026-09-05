@@ -23,6 +23,8 @@ export function MasterData() {
   const [covRows, setCovRows] = useState<ServiceArea[]>([]);
   const [covFilter, setCovFilter] = useState('');
   const [networks, setNetworks] = useState<string[]>([]);
+  const [vendorNames, setVendorNames] = useState<string[]>([]); // for the Network dropdown
+  useEffect(() => { api.listVendors().then((v: any[]) => setVendorNames(v.filter((x) => x.isActive !== false).map((x) => String(x.vendorCode || x.name).toUpperCase()))).catch(() => {}); }, []);
   const [covResult, setCovResult] = useState<{ imported: number; failed: number; errors: { pincode: string; error: string }[] } | null>(null);
   const [covBusy, setCovBusy] = useState(false);
 
@@ -130,8 +132,11 @@ export function MasterData() {
         <div className="grid cols-3">
           <div>
             <label>Network</label>
-            <input list="lm-networks" value={net} onChange={(e) => setNet(e.target.value)} placeholder="SELF or vendor name" />
-            <datalist id="lm-networks"><option value="SELF" />{networks.filter((n) => n !== 'SELF').map((n) => <option key={n} value={n} />)}</datalist>
+            <select value={net} onChange={(e) => setNet(e.target.value)}>
+              <option value="">— select network —</option>
+              <option value="SELF">SELF</option>
+              {Array.from(new Set([...vendorNames, ...networks.filter((n) => n.toUpperCase() !== 'SELF')])).sort().map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
           </div>
         </div>
         <div className="row" style={{ marginTop: 10 }}>

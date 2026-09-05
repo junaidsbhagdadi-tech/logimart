@@ -254,6 +254,13 @@ export function ShipmentDetail() {
     try { const r = await api.delCancel(awb!); setMsg(`🚫 Delhivery shipment cancelled — waybill ${r.waybill}.`); load(); }
     catch (e: any) { setError(e.message); }
   };
+  const voidAwb = async () => {
+    const reason = window.prompt('Void this AWB (wrong entry)? It will be EXCLUDED from billing and cancelled with the carrier if already handed off.\n\nReason:');
+    if (reason === null) return;
+    setError(''); setMsg('');
+    try { const r: any = await api.cancelShipment(awb!, reason || 'Voided (wrong AWB)'); setMsg(`🚫 ${r.awb} voided — not billable.${r.carrier?.length ? ' ' + r.carrier.join('; ') : ''}`); load(); }
+    catch (e: any) { setError(e.message); }
+  };
 
   const submitReweigh = async () => {
     if (!s) return;
@@ -328,6 +335,7 @@ export function ShipmentDetail() {
           {canAssign && <button className="secondary" onClick={handoffBd}>📦 Hand to BlueDart</button>}
           {canAssign && <button className="secondary" onClick={handoffDel}>📦 Hand to Delhivery</button>}
           {canAssign && String((s as any).vendor).toUpperCase() === 'DELHIVERY' && (s as any).forwardingAwb && <button className="secondary" onClick={cancelDel}>🚫 Cancel Delhivery</button>}
+          {canEditCharges && !(s as any).invoiced && String((s as any).statusCode).toUpperCase() !== 'CAN' && <button className="secondary" style={{ color: 'var(--bad, #c0392b)' }} onClick={voidAwb} title="Void a wrong AWB — excluded from billing">🚫 Void AWB</button>}
           {canAssign && s.bdWaybill && <button className="secondary" onClick={trackBd}>🔎 BlueDart track</button>}
           {canReweigh && <button className="secondary" onClick={() => { setReweighMode((v) => !v); setMsg(''); }}>⚖ {reweighMode ? 'Cancel re-weigh' : 'Re-weigh'}</button>}
           {((canEditCharges && !(s as any).invoiced) || (isSysAdmin && (s as any).invoiced)) && <button className="secondary" onClick={openEdit} title={(s as any).invoiced ? 'Super-admin: edit an already-invoiced AWB (does NOT change the raised invoice)' : 'Edit product, consignee, vendor & other details'}>✏️ Edit AWB{(s as any).invoiced ? ' (invoiced)' : ''}</button>}

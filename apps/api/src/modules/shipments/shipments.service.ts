@@ -7,6 +7,7 @@ import { regionFromPincode } from '../../common/regions';
 import { RateService } from '../billing/rate.service';
 import { NotesService } from '../notes/notes.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { DelhiveryService } from '../delhivery/delhivery.service';
 import { CreateShipmentDto } from './dto/create-shipment.dto';
 
 @Injectable()
@@ -16,6 +17,7 @@ export class ShipmentsService {
     private readonly rates: RateService,
     private readonly notes: NotesService,
     private readonly notifications: NotificationsService,
+    private readonly delhivery: DelhiveryService,
   ) {}
 
   /** Volumetric weight in kg from cm dimensions. Uses the customer/product card's divisor and, for
@@ -501,20 +503,39 @@ export class ShipmentsService {
 
   /** Cancel a shipment. A client (clientId set) can cancel only their OWN AWB, and only before it's
    *  dispatched (still MAN/PKD) and not yet invoiced. Staff can cancel any non-invoiced pre-dispatch AWB. */
-  async cancel(awbRaw: string, userId?: bigint, clientId?: number, reason?: string) {
+  async cancel(awbRaw: string, userId?: bigint, clientId?: number, reason?: string, opts?: { isSuper?: boolean }) {
     const awb = String(awbRaw).trim().toUpperCase();
     const s = await this.prisma.shipment.findUnique({
       where: { awb },
-      select: { id: true, clientId: true, statusCode: true, _count: { select: { invoiceLines: true } } },
+      select: { id: true, clientId: true, statusCode: true, vendor: true, forwardingAwb: true, bdWaybill: true, _count: { select: { invoiceLines: true } } },
     });
     if (!s) throw new NotFoundException(`AWB ${awb} not found`);
     if (clientId != null && String(s.clientId) !== String(clientId)) throw new NotFoundException(`AWB ${awb} not found`); // don't leak others' AWBs
-    if (s._count.invoiceLines > 0) throw new ConflictException('This AWB is already invoiced — it cannot be cancelled.');
+    if (s._count.invoiceLines > 0) throw new ConflictException('This AWB is already invoiced — raise a credit note instead of voiding.');
     const cur = String(s.statusCode || 'MAN').toUpperCase();
-    if (!['MAN', 'PKD'].includes(cur)) throw new ConflictException(`AWB is already ${cur} (in transit) — it can no longer be cancelled online. Contact support.`);
-    await this.prisma.shipment.update({ where: { id: s.id }, data: { statusCode: 'CAN', status: 'CANCELLED' as any, statusAt: new Date(), exceptionFlag: reason || 'Cancelled by customer' } });
-    await this.prisma.scanLog.create({ data: { awb, eventType: 'CAN', remark: reason || 'Cancelled', scannedById: userId ?? null } });
-    return { awb, status: 'CAN' };
+    if (cur === 'CAN') return { awb, status: 'CAN', already: true };
+    // Normal cancel is limited to pre-transit (MAN/PKD). A super admin can VOID a wrong AWB at any
+    // stage (never DLD/RTD) — voided AWBs are excluded from billing (invoice.service skips CANCELLED).
+    if (!['MAN', 'PKD'].includes(cur) && !opts?.isSuper) {
+      throw new ConflictException(`AWB is ${cur} (in transit) — only a super admin can void it. Contact support.`);
+    }
+    if (['DLD', 'RTD'].includes(cur)) throw new ConflictException(`AWB is ${cur} (delivered/returned) — it cannot be voided.`);
+
+    // Best-effort: also cancel with the carrier if it was already handed off, so it isn't shipped/charged.
+    const carrierNotes: string[] = [];
+    const vend = String(s.vendor || '').toUpperCase();
+    if (s.forwardingAwb && vend === 'DELHIVERY') {
+      try { await this.delhivery.cancel(awb); carrierNotes.push('Delhivery waybill cancelled'); }
+      catch (e: any) { carrierNotes.push(`Delhivery cancel failed: ${e?.message ?? e}`); }
+    } else if (s.bdWaybill) {
+      // BlueDart has no single waybill-void API; flag for ops to cancel the pickup with BlueDart.
+      carrierNotes.push(`BlueDart waybill ${s.bdWaybill} — cancel the pickup with BlueDart manually`);
+    }
+
+    const flag = [reason || 'Voided (wrong AWB)', ...carrierNotes].join(' · ');
+    await this.prisma.shipment.update({ where: { id: s.id }, data: { statusCode: 'CAN', status: 'CANCELLED' as any, statusAt: new Date(), exceptionFlag: flag } });
+    await this.prisma.scanLog.create({ data: { awb, eventType: 'CAN', remark: flag, scannedById: userId ?? null } });
+    return { awb, status: 'CAN', carrier: carrierNotes };
   }
 
   /**

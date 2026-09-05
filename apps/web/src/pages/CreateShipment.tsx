@@ -724,13 +724,13 @@ export function CreateShipment() {
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
           <h2 style={{ margin: 0 }}>📤 Shipper details <span className="muted" style={{ fontSize: 12, fontWeight: 500 }}>— {pickupElsewhere ? 'enter the pickup address' : 'auto-filled from the customer'}</span></h2>
           <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            {pickupElsewhere && !isClient && warehouses.length > 0 && (
-              <select defaultValue="" onChange={(e) => { applyWarehouse(e.target.value); e.currentTarget.selectedIndex = 0; }} style={{ maxWidth: 220 }} title="Fill from a saved warehouse">
-                <option value="">🏬 Pick a saved warehouse…</option>
+            {pickupElsewhere && warehouses.length > 0 && (
+              <select defaultValue="" onChange={(e) => { applyWarehouse(e.target.value); e.currentTarget.selectedIndex = 0; }} style={{ maxWidth: 220 }} title="Fill from a saved pickup address">
+                <option value="">🏬 Pick a saved address…</option>
                 {warehouses.map((w) => <option key={String(w.id)} value={String(w.id)}>{w.name}{w.city ? ` — ${w.city}` : ''}</option>)}
               </select>
             )}
-            {pickupElsewhere && !isClient && shp.shipperAddress1 && (
+            {pickupElsewhere && shp.shipperAddress1 && (
               <button type="button" className="secondary" disabled={savingWh} onClick={saveWarehouse} title="Save this pickup address to the customer for reuse">{savingWh ? 'Saving…' : '＋ Save as warehouse'}</button>
             )}
             <label className="row" style={{ gap: 6, alignItems: 'center', fontWeight: 600, fontSize: 13, cursor: 'pointer', margin: 0 }}>
