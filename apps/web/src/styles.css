@@ -74,14 +74,14 @@ body {
   text-rendering: optimizeLegibility;
   min-height: 100vh;
 }
-/* soft light-grey wash with the faintest green lift + a faint dot grid */
+/* soft mint-white Aurora ground with a faint teal + green lift and a faint dot grid */
 body::before {
   content: '';
   position: fixed; inset: 0; z-index: -2;
   background:
-    radial-gradient(700px 520px at 100% -10%, rgba(30,68,190,.12), transparent 60%),
-    radial-gradient(680px 680px at -8% 6%, rgba(87,168,58,.07), transparent 58%),
-    linear-gradient(180deg, #dadde2 0%, #cdd1d7 100%);
+    radial-gradient(720px 540px at 100% -10%, rgba(13,154,160,.10), transparent 60%),
+    radial-gradient(680px 680px at -8% 6%, rgba(15,157,88,.06), transparent 58%),
+    linear-gradient(180deg, #f1f8f6 0%, #e6f1ee 100%);
 }
 body::after {
   content: '';
