@@ -20,6 +20,8 @@ export class DelhiveryService {
     return {
       configured: delConfigured(),
       token: DELHIVERY.token ? 'set' : 'missing',
+      tokenLen: DELHIVERY.token.length, // should be 40 for a B2C token — flags stray whitespace
+      tokenTail: DELHIVERY.token ? '…' + DELHIVERY.token.slice(-4) : '', // confirm the right token loaded
       baseUrl: DELHIVERY.baseUrl || 'missing',
       pickupName: DELHIVERY.pickupName || 'missing',
     };

@@ -7,9 +7,10 @@
  * Docs: https://one.delhivery.com/developer-portal/documents
  */
 export const DELHIVERY = {
-  token: process.env.DELHIVERY_API_TOKEN ?? '',
-  baseUrl: (process.env.DELHIVERY_BASE_URL ?? 'https://track.delhivery.com').replace(/\/$/, ''),
-  pickupName: process.env.DELHIVERY_PICKUP_NAME ?? '',
+  // trim() guards against a stray space/newline in the .env value, which makes "Token <t> " 401.
+  token: (process.env.DELHIVERY_API_TOKEN ?? '').trim(),
+  baseUrl: (process.env.DELHIVERY_BASE_URL ?? 'https://track.delhivery.com').trim().replace(/\/$/, ''),
+  pickupName: (process.env.DELHIVERY_PICKUP_NAME ?? '').trim(),
 };
 
 export const delConfigured = () => !!(DELHIVERY.token && DELHIVERY.baseUrl && DELHIVERY.pickupName);
