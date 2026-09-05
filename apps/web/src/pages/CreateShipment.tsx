@@ -57,9 +57,14 @@ export function CreateShipment() {
   const [savingWh, setSavingWh] = useState(false);
   const loadWarehouses = (cid: number | string) => {
     if (!cid) { setWarehouses([]); return; }
+    // contactType is a free-text field on the customer address book, so a whitelist silently
+    // drops pickup points named anything unexpected (a city, "Branch", "Godown"…). Instead show
+    // every saved address as a pickable pickup point EXCEPT ones clearly meant as a delivery/
+    // billing address — consignees are entered fresh per booking, not stored on the customer.
     api.listAddr(String(cid)).then((rows) => setWarehouses((rows || []).filter((r: any) => {
+      if (r.isWarehouse) return true;
       const t = String(r.contactType || '').toUpperCase();
-      return r.isWarehouse || !t || t.includes('SHIP') || t.includes('PICK') || t.includes('WARE');
+      return !/CONSIGNEE|DELIVER|RECEIV|BILL/.test(t);
     }))).catch(() => setWarehouses([]));
   };
   const applyWarehouse = (id: string) => {
