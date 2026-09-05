@@ -388,3 +388,30 @@ tbody tr:hover td { background: var(--sky-soft); }
   .grid.cols-3 { grid-template-columns: 1fr; }
   .main { padding: 18px; }
 }
+
+/* ============ New Shipment (booking) — grouped-card polish (Aurora) ============ */
+.booking-page .card { padding: 18px 20px; margin-bottom: 14px; }
+/* each section gets a clean header divider, whatever its header markup */
+.booking-page .card > h2 {
+  font-size: 14.5px; padding-bottom: 12px; margin: 0 0 16px;
+  border-bottom: 1px solid var(--border); letter-spacing: -.005em;
+}
+.booking-page .card > .row:first-child {
+  border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 16px;
+}
+.booking-page .card > .row:first-child h2 { border-bottom: 0; padding-bottom: 0; margin-bottom: 0; }
+/* uppercase micro-labels + calm filled inputs, mockup-style */
+.booking-page label {
+  text-transform: uppercase; letter-spacing: .045em; font-size: 10.5px; font-weight: 600; color: var(--muted);
+}
+.booking-page input, .booking-page select {
+  border-radius: 10px; background: color-mix(in srgb, var(--surface-2) 70%, var(--card));
+}
+.booking-page input:focus, .booking-page select:focus { background: var(--card); }
+.booking-page .grid { gap: 14px 16px; }
+/* prominent primary action */
+.booking-submit { margin-top: 6px; }
+.booking-submit button {
+  font-family: 'Sora', 'Space Grotesk', sans-serif; font-size: 15px; font-weight: 600;
+  padding: 14px 30px; border-radius: 12px;
+}

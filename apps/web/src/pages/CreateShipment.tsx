@@ -509,9 +509,9 @@ export function CreateShipment() {
   const needEway = Number(c.declaredValue) >= EWB_THRESHOLD;
 
   return (
-    <>
+    <div className="booking-page">
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 style={{ margin: 0 }}>New MPS Shipment</h1>
+        <h1 style={{ margin: 0 }}>New shipment</h1>
         <div className="row" style={{ gap: 8 }}>
           <button type="button" className="secondary" onClick={startFresh} title="Discard everything on this form and start a blank shipment">🧹 Clear form</button>
           <button type="button" className="secondary" onClick={() => nav('/bulk')} title="Bulk import shipments (incl. manually-booked AWBs)">📥 Bulk import</button>
@@ -1019,9 +1019,11 @@ export function CreateShipment() {
         </div>
       )}
 
-      <button style={{ marginTop: 16 }} onClick={submit} disabled={busy || !clientId || destBlocked || pieces.some((p) => !p.deadKg)}>
-        {busy ? 'Creating…' : destBlocked ? 'Destination pincode not serviceable' : `Create AWB + ${pieces.length} child labels`}
-      </button>
-    </>
+      <div className="booking-submit">
+        <button onClick={submit} disabled={busy || !clientId || destBlocked || pieces.some((p) => !p.deadKg)}>
+          {busy ? 'Creating…' : destBlocked ? 'Destination pincode not serviceable' : `Book shipment · ${pieces.length} ${pieces.length === 1 ? 'box' : 'boxes'}`}
+        </button>
+      </div>
+    </div>
   );
 }
