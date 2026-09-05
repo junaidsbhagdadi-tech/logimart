@@ -94,7 +94,8 @@
 * { box-sizing: border-box; }
 body {
   margin: 0;
-  font-family: 'Plus Jakarta Sans', 'Manrope', system-ui, -apple-system, sans-serif;
+  font-family: 'Geist', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  letter-spacing: -0.01em;
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
@@ -244,11 +245,25 @@ label { font-size: 12px; font-weight: 600; color: var(--muted); display: block; 
   content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
   width: 3px; height: 12px; border-radius: 2px; background: var(--brand, #1e44be); opacity: .9;
 }
+.group-head { padding: 10px 12px; border-radius: 9px; }
 .group-head:hover { color: var(--navy-deep, #0f1830); background: var(--sky-soft); transform: none; }
-.group-head .chev { font-size: 9px; opacity: .65; transition: transform .18s; }
-.nav-group.closed .group-head .chev { transform: rotate(-90deg); }
-.nav-group.closed .group-items { display: none; }
-.group-items { display: flex; flex-direction: column; gap: 1px; }
+.group-head .chev { font-size: 9px; opacity: .55; transition: transform .22s ease; }
+.nav-group.active > .group-head { color: var(--navy-deep); }
+.nav-group.active > .group-head > span:first-child::before { opacity: 1; height: 15px; }
+/* hover-to-reveal: a group's items slide open on hover, and stay open for the
+   section you're currently in (.active) or one you tapped to pin (.pinned).
+   Uses max-height for a smooth reveal with the existing multi-child markup. */
+.group-items {
+  display: flex; flex-direction: column; gap: 1px;
+  overflow: hidden; max-height: 0;
+  transition: max-height .26s cubic-bezier(.4, 0, .2, 1);
+}
+.nav-group:hover > .group-items,
+.nav-group.active > .group-items,
+.nav-group.pinned > .group-items { max-height: 520px; }
+.nav-group:hover > .group-head .chev,
+.nav-group.active > .group-head .chev,
+.nav-group.pinned > .group-head .chev { transform: rotate(180deg); }
 .sidebar nav a .ico { width: 18px; text-align: center; flex-shrink: 0; }
 
 /* ---- rail toggle + collapsed (icons-only) mode ---- */
@@ -270,7 +285,7 @@ label { font-size: 12px; font-weight: 600; color: var(--muted); display: block; 
 .sidebar.collapsed nav { padding: 6px 8px 10px; }
 .sidebar.collapsed nav a { justify-content: center; padding: 9px 0; gap: 0; }
 .sidebar.collapsed nav a .lbl { display: none; }
-.sidebar.collapsed .nav-group.closed .group-items { display: flex; }
+.sidebar.collapsed .group-items { max-height: none; overflow: visible; }
 .sidebar.collapsed .userbox { padding: 12px 8px; }
 .sidebar.collapsed .userbox button { font-size: 0; padding: 9px 0; }
 .sidebar.collapsed .userbox button::before { content: '⏻'; font-size: 15px; }
