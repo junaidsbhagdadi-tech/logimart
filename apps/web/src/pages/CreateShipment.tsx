@@ -51,12 +51,16 @@ export function CreateShipment() {
   // Shipper auto-fills from the selected customer's registered details; tick "pickup out of
   // home location" to enter a different pickup address manually.
   const [pickupElsewhere, setPickupElsewhere] = useState(false);
-  // Saved pickup warehouses for the selected customer (CustomerAddress rows flagged isWarehouse).
+  // The customer's saved pickup/shipping addresses (managed under Customers → Customer Address).
+  // Shipper-type / warehouse / untyped rows are pickable at booking (consignee/billing excluded).
   const [warehouses, setWarehouses] = useState<any[]>([]);
   const [savingWh, setSavingWh] = useState(false);
   const loadWarehouses = (cid: number | string) => {
     if (!cid) { setWarehouses([]); return; }
-    api.listAddr(String(cid)).then((rows) => setWarehouses((rows || []).filter((r: any) => r.isWarehouse))).catch(() => setWarehouses([]));
+    api.listAddr(String(cid)).then((rows) => setWarehouses((rows || []).filter((r: any) => {
+      const t = String(r.contactType || '').toUpperCase();
+      return r.isWarehouse || !t || t.includes('SHIP') || t.includes('PICK') || t.includes('WARE');
+    }))).catch(() => setWarehouses([]));
   };
   const applyWarehouse = (id: string) => {
     const w = warehouses.find((x) => String(x.id) === id);
@@ -73,7 +77,7 @@ export function CreateShipment() {
   };
   const saveWarehouse = async () => {
     if (!clientId || !shp.shipperAddress1) return;
-    const label = window.prompt('Save this pickup address as a warehouse for the customer. Name it:', shp.shipperCity || shp.shipperName || 'Warehouse');
+    const label = window.prompt("Save this to the customer's pickup addresses (also editable under Customers → Customer Address). Name it:", shp.shipperCity || shp.shipperName || 'Pickup point');
     if (!label) return;
     setSavingWh(true);
     try {
@@ -725,13 +729,13 @@ export function CreateShipment() {
           <h2 style={{ margin: 0 }}>📤 Shipper details <span className="muted" style={{ fontSize: 12, fontWeight: 500 }}>— {pickupElsewhere ? 'enter the pickup address' : 'auto-filled from the customer'}</span></h2>
           <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             {pickupElsewhere && warehouses.length > 0 && (
-              <select defaultValue="" onChange={(e) => { applyWarehouse(e.target.value); e.currentTarget.selectedIndex = 0; }} style={{ maxWidth: 220 }} title="Fill from a saved pickup address">
-                <option value="">🏬 Pick a saved address…</option>
-                {warehouses.map((w) => <option key={String(w.id)} value={String(w.id)}>{w.name}{w.city ? ` — ${w.city}` : ''}</option>)}
+              <select defaultValue="" onChange={(e) => { applyWarehouse(e.target.value); e.currentTarget.selectedIndex = 0; }} style={{ maxWidth: 260 }} title="Pick from this customer's saved pickup addresses">
+                <option value="">🏬 Pick a saved pickup address…</option>
+                {warehouses.map((w) => <option key={String(w.id)} value={String(w.id)}>{w.name}{w.city ? ` — ${w.city}` : ''}{w.pincode ? ` (${w.pincode})` : ''}</option>)}
               </select>
             )}
             {pickupElsewhere && shp.shipperAddress1 && (
-              <button type="button" className="secondary" disabled={savingWh} onClick={saveWarehouse} title="Save this pickup address to the customer for reuse">{savingWh ? 'Saving…' : '＋ Save as warehouse'}</button>
+              <button type="button" className="secondary" disabled={savingWh} onClick={saveWarehouse} title="Save this to the customer's pickup addresses for reuse">{savingWh ? 'Saving…' : '＋ Save to customer'}</button>
             )}
             <label className="row" style={{ gap: 6, alignItems: 'center', fontWeight: 600, fontSize: 13, cursor: 'pointer', margin: 0 }}>
               <input type="checkbox" style={{ width: 'auto' }} checked={pickupElsewhere}

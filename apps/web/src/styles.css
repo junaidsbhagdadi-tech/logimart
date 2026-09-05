@@ -1,41 +1,41 @@
 :root {
-  /* ExcelEx Express — royal blue primary, green accent, ash-grey ground.
-     (kept the legacy --navy / --sky variable names so the whole cascade holds) */
-  --navy: #17233b;        /* navy-slate ink — headings / text */
-  --navy-deep: #0f1830;
-  --brand: #1e44be;       /* ExcelEx royal blue */
-  --brand-2: #16308f;
-  --brand-light: #16308f;
-  --sky: #1e44be;         /* primary accent = blue (kept name) */
-  --sky-bright: #3e6be0;
-  --sky-soft: #e8edfb;    /* soft blue wash — hovers / focus / selected */
-  /* ExcelEx green accent */
-  --green: #57a83a;
-  --green-2: #3f8a28;
-  --green-soft: #e8f3e2;
+  /* AURORA — airy premium look: teal primary, green accent, soft mint-white ground.
+     (legacy --navy / --sky variable names kept so the whole cascade holds) */
+  --navy: #10242a;        /* deep teal-ink — headings / text */
+  --navy-deep: #0a191e;
+  --brand: #0d9aa0;       /* Aurora teal */
+  --brand-2: #0a7f85;
+  --brand-light: #0a7f85;
+  --sky: #0d9aa0;         /* primary accent = teal (kept name) */
+  --sky-bright: #14b3ba;
+  --sky-soft: #dbf3f1;    /* soft teal wash — hovers / focus / selected */
+  /* green accent */
+  --green: #0f9d58;
+  --green-2: #0c8248;
+  --green-soft: #e0f4ea;
   /* supporting accents */
   --a-blue: #2e86ff;
-  --a-amber: #f0a81e;
-  --a-coral: #f0537a;
+  --a-amber: #e8a11c;
+  --a-coral: #ef5a72;
   --a-violet: #7a5cf0;
-  --a-teal: #12b5a5;
-  --bg: #d7dadf;          /* ash grey */
-  --bg-2: #cdd1d7;
+  --a-teal: #0d9aa0;
+  --bg: #edf6f4;          /* soft mint-white ground */
+  --bg-2: #e3f0ed;
   --card: #ffffff;
   --surface: var(--card);
-  --surface-2: #f1f3f6;   /* neutral wash for table heads / insets */
+  --surface-2: #eef7f5;   /* mint wash for table heads / insets */
   --bg-soft: var(--surface-2);
-  --danger: #c0392b;
-  --text: #17233b;
-  --muted: #5a6576;
-  --faint: #8b95a4;
-  --border: #d7dce2;
-  --ok: #2e9e4f;
-  --warn: #e4930c;
-  --bad: #e23d4b;
-  --radius: 16px;
-  --shadow: 0 1px 2px rgba(23,35,59,.05), 0 10px 28px -12px rgba(23,35,59,.20);
-  --shadow-lg: 0 24px 60px -20px rgba(23,35,59,.34);
+  --danger: #d64550;
+  --text: #12262b;
+  --muted: #4d6a70;
+  --faint: #7f9aa0;
+  --border: #dbebe8;
+  --ok: #0f9d58;
+  --warn: #c98a0a;
+  --bad: #d64550;
+  --radius: 18px;
+  --shadow: 0 1px 2px rgba(14,70,70,.05), 0 12px 32px -14px rgba(13,120,120,.18);
+  --shadow-lg: 0 24px 60px -20px rgba(13,120,120,.30);
 }
 
 * { box-sizing: border-box; }
