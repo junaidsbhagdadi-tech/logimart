@@ -679,23 +679,53 @@ export function CreateShipment() {
                 );
               })}
             </div>
-            {rateCompare && (
-              <div style={{ marginTop: 10 }}>
-                <div className="muted" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>Rate comparison (incl. GST) — cheapest first</div>
-                {rateCompare.length === 0 && <div className="muted" style={{ fontSize: 12 }}>No priced carriers — check the rate cards for this customer × product.</div>}
-                <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-                  {rateCompare.map((o, i) => {
-                    const picked = o.vendor === svc.vendor;
-                    return (
-                      <button key={o.vendor} type="button" className={picked ? '' : 'secondary'} style={{ padding: '6px 12px', fontSize: 12 }}
-                        onClick={() => { setVendorTouched(true); setSvc((s) => ({ ...s, vendor: o.vendor })); }}>
-                        {i === 0 ? '⭐ ' : ''}{vendorLabel(o.vendor)} · ₹{o.total.toLocaleString('en-IN')}{picked ? ' ✓' : ''}
-                      </button>
-                    );
-                  })}
+            {rateCompare && (() => {
+              const tatOf = (v: string) => carrierOptions.find((c) => String(c.network).toUpperCase() === String(v).toUpperCase())?.tatDays ?? null;
+              const tats = rateCompare.map((o) => tatOf(o.vendor)).filter((t): t is number => t != null);
+              const minTat = tats.length ? Math.min(...tats) : null;
+              const cheapest = rateCompare[0];
+              const fastest = minTat != null ? rateCompare.find((o) => tatOf(o.vendor) === minTat) : null;
+              return (
+                <div style={{ marginTop: 10 }}>
+                  <div className="muted" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 6 }}>Rate comparison — cost &amp; transit · pick a carrier</div>
+                  {rateCompare.length === 0 && <div className="muted" style={{ fontSize: 12 }}>No priced carriers — check the rate cards for this customer × product.</div>}
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    {rateCompare.map((o, i) => {
+                      const picked = o.vendor === svc.vendor;
+                      const tat = tatOf(o.vendor);
+                      const isCheap = i === 0;
+                      const isFast = minTat != null && tat === minTat;
+                      return (
+                        <button key={o.vendor} type="button"
+                          onClick={() => { setVendorTouched(true); setSvc((s) => ({ ...s, vendor: o.vendor })); }}
+                          style={{
+                            display: 'grid', gridTemplateColumns: '1fr auto 62px', alignItems: 'center', gap: 12,
+                            padding: '9px 12px', borderRadius: 10, textAlign: 'left', cursor: 'pointer', boxShadow: 'none',
+                            border: `1.5px solid ${picked ? 'var(--brand)' : 'var(--border)'}`,
+                            background: picked ? 'var(--sky-soft)' : 'var(--card)',
+                            color: picked ? 'var(--brand-2)' : 'var(--text)', fontWeight: 500,
+                          }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }}>
+                            {vendorLabel(o.vendor)}
+                            {isCheap && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--green-2)', background: 'var(--green-soft)', padding: '2px 6px', borderRadius: 5 }}>CHEAPEST</span>}
+                            {isFast && !isCheap && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--brand-2)', background: 'var(--sky-soft)', padding: '2px 6px', borderRadius: 5 }}>FASTEST</span>}
+                            {picked && ' ✓'}
+                          </span>
+                          <span style={{ fontFamily: "'Sora', sans-serif", fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>₹{o.total.toLocaleString('en-IN')}</span>
+                          <span className="muted" style={{ fontSize: 12.5, textAlign: 'right' }}>{tat != null ? `${tat} ${tat === 1 ? 'day' : 'days'}` : '—'}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {rateCompare.length > 1 && (
+                    <div className="muted" style={{ fontSize: 11.5, marginTop: 8, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                      {cheapest && <span>💰 Cheapest: <strong style={{ color: 'var(--text)' }}>{vendorLabel(cheapest.vendor)} · ₹{cheapest.total.toLocaleString('en-IN')}</strong></span>}
+                      {fastest && <span>⚡ Fastest: <strong style={{ color: 'var(--text)' }}>{vendorLabel(fastest.vendor)} · {minTat} {minTat === 1 ? 'day' : 'days'}</strong></span>}
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         )}
         {isClient && product && clientEtaDays != null && (
