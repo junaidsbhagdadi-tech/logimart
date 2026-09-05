@@ -86,6 +86,17 @@ export function Layout() {
     const n = { ...c, [title]: !c[title] }; localStorage.setItem('lm.navClosed', JSON.stringify(n)); return n;
   });
 
+  // Appearance — skin (aurora | calm) × theme (light | dark), remembered per browser.
+  // Applied to <html> so the token blocks in styles.css win; a bootstrap script in
+  // index.html sets the same attributes pre-paint to avoid a flash.
+  const [skin, setSkin] = useState(() => localStorage.getItem('lm.skin') || 'aurora');
+  const [theme, setTheme] = useState(() => localStorage.getItem('lm.theme') || 'light');
+  useEffect(() => {
+    const r = document.documentElement;
+    r.setAttribute('data-skin', skin); r.setAttribute('data-theme', theme);
+    localStorage.setItem('lm.skin', skin); localStorage.setItem('lm.theme', theme);
+  }, [skin, theme]);
+
   const groups: Group[] = isClient ? clientGroups : [
     { title: 'Overview', items: [
       { to: '/', icon: '📊', label: 'Dashboard', end: true },
@@ -216,6 +227,17 @@ export function Layout() {
           })}
         </nav>
         <div className="userbox">
+          {!collapsed && (
+            <div className="appearance">
+              <div className="skin-seg">
+                <button className={skin === 'aurora' ? 'on' : ''} onClick={() => setSkin('aurora')} title="Aurora theme">Aurora</button>
+                <button className={skin === 'calm' ? 'on' : ''} onClick={() => setSkin('calm')} title="Calm theme">Calm</button>
+              </div>
+              <button className="mode-toggle" onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))} title="Toggle light / dark">
+                {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
+              </button>
+            </div>
+          )}
           <div className="name">{user?.fullName}</div>
           <div className="role">{user?.role}</div>
           <button className="secondary" onClick={onLogout} title="Logout">Logout</button>
