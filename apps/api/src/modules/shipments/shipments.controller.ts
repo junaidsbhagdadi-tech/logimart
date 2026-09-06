@@ -117,9 +117,9 @@ export class ShipmentsController {
     return this.shipments.findByAwb(awb);
   }
 
-  /** Wrong-entry transfer — reassign the AWB to the correct customer (super admin). */
+  /** Wrong-entry transfer — reassign the AWB to the correct customer (finance/super admin — changes who's billed). */
   @Post(':awb/transfer')
-  @Roles(UserRole.SYS_ADMIN)
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
   transfer(@Param('awb') awb: string, @Body() dto: { clientId: number }) {
     return this.shipments.transfer(awb, Number(dto.clientId));
   }
@@ -147,9 +147,9 @@ export class ShipmentsController {
     return this.shipments.markOfd(awb, BigInt(req.user.sub));
   }
 
-  /** Re-weigh at hub → raises a debit note for any freight delta. */
+  /** Re-weigh → raises a debit note for any freight delta. Finance only (changes billed weight). */
   @Post(':awb/reweigh')
-  @Roles(UserRole.WAREHOUSE_HANDLER, UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
   reweigh(
     @Param('awb') awb: string,
     @Body() dto: { lines: { sequenceNo: number; actualKg: number; lengthCm?: number; widthCm?: number; heightCm?: number }[] },

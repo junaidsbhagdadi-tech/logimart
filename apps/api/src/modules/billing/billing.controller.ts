@@ -14,8 +14,9 @@ export class BillingController {
     private readonly invoices: InvoiceService,
   ) {}
 
-  /** Live rate preview for an AWB. */
+  /** Live rate preview for an AWB — confidential pricing, finance team only. */
   @Get('shipments/:awb/rate-quote')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
   quote(@Param('awb') awb: string) {
     return this.rates.quoteForShipment(awb);
   }

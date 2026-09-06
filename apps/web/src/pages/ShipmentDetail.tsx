@@ -9,7 +9,9 @@ export function ShipmentDetail() {
   const { user } = useAuth();
   const canPod = ['DRIVER', 'HUB_MANAGER', 'SYS_ADMIN'].includes(user?.role || '');
   const canAssign = ['HUB_MANAGER', 'SYS_ADMIN'].includes(user?.role || '');
-  const canReweigh = ['WAREHOUSE_HANDLER', 'HUB_MANAGER', 'FINANCE_EXEC', 'SYS_ADMIN'].includes(user?.role || '');
+  // Confidential billing actions (rate quote, re-weigh, transfer) — finance team only. Ops must not
+  // see pricing or anything that changes chargeable weight / the billed customer.
+  const isFinance = ['FINANCE_EXEC', 'ADMIN', 'SYS_ADMIN'].includes(user?.role || '');
   const canCollect = ['DRIVER', 'HUB_MANAGER', 'FINANCE_EXEC', 'SYS_ADMIN'].includes(user?.role || '');
   const canHandover = ['HUB_MANAGER', 'FINANCE_EXEC', 'SYS_ADMIN'].includes(user?.role || '');
   const canEditCharges = ['HUB_MANAGER', 'FINANCE_EXEC', 'SYS_ADMIN'].includes(user?.role || '');
@@ -321,7 +323,8 @@ export function ShipmentDetail() {
         <div className="row">
           <button className="secondary" onClick={() => window.history.back()}>← Back</button>
           <button className="secondary" onClick={load}>↻ Refresh</button>
-          <button className="secondary" onClick={getQuote}>₹ Rate quote</button>
+          <Link to={`/tracker/${s.awb}`}><button className="secondary" title="Track this shipment — status, pieces & weight">🧭 Track</button></Link>
+          {isFinance && <button className="secondary" onClick={getQuote}>₹ Rate quote</button>}
           <button className="secondary" onClick={generateEway}>🛣 E-way bill</button>
           {canAssign && <button className="secondary" onClick={assignRider}>🧑‍✈️ Assign rider</button>}
           {canPod && (
@@ -337,9 +340,9 @@ export function ShipmentDetail() {
           {canAssign && String((s as any).vendor).toUpperCase() === 'DELHIVERY' && (s as any).forwardingAwb && <button className="secondary" onClick={cancelDel}>🚫 Cancel Delhivery</button>}
           {canEditCharges && !(s as any).invoiced && String((s as any).statusCode).toUpperCase() !== 'CAN' && <button className="secondary" style={{ color: 'var(--bad, #c0392b)' }} onClick={voidAwb} title="Void a wrong AWB — excluded from billing">🚫 Void AWB</button>}
           {canAssign && s.bdWaybill && <button className="secondary" onClick={trackBd}>🔎 BlueDart track</button>}
-          {canReweigh && <button className="secondary" onClick={() => { setReweighMode((v) => !v); setMsg(''); }}>⚖ {reweighMode ? 'Cancel re-weigh' : 'Re-weigh'}</button>}
+          {isFinance && <button className="secondary" onClick={() => { setReweighMode((v) => !v); setMsg(''); }}>⚖ {reweighMode ? 'Cancel re-weigh' : 'Re-weigh'}</button>}
           {((canEditCharges && !(s as any).invoiced) || (isSysAdmin && (s as any).invoiced)) && <button className="secondary" onClick={openEdit} title={(s as any).invoiced ? 'Super-admin: edit an already-invoiced AWB (does NOT change the raised invoice)' : 'Edit product, consignee, vendor & other details'}>✏️ Edit AWB{(s as any).invoiced ? ' (invoiced)' : ''}</button>}
-          {isSysAdmin && <button className="secondary" onClick={() => { setTransferOpen((v) => !v); setMsg(''); setError(''); }} title="Wrong-entry transfer to another customer">🔄 Transfer</button>}
+          {isFinance && <button className="secondary" onClick={() => { setTransferOpen((v) => !v); setMsg(''); setError(''); }} title="Wrong-entry transfer to another customer">🔄 Transfer</button>}
           <Link to={`/shipments/${s.awb}/labels`}><button>🏷 Print labels</button></Link>
           <a href={`/shipments/${s.awb}/bd-label`} target="_blank" rel="noreferrer"><button>🏷 Courier label</button></a>
           <a href={`/shipments/${s.awb}/awb-print`} target="_blank" rel="noreferrer"><button>🖨 Print AWB</button></a>

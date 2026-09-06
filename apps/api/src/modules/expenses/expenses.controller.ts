@@ -1,11 +1,12 @@
 import { Body, Controller, Delete, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
-import { Roles } from '../../common/rbac/roles.decorator';
+import { Roles, Feature } from '../../common/rbac/roles.decorator';
 import { ExpensesService, ExpenseInput } from './expenses.service';
 
 @Controller('api/v1/expenses')
 @UseGuards(RolesGuard)
+@Feature('/expenses')
 export class ExpensesController {
   constructor(private readonly svc: ExpensesService) {}
 

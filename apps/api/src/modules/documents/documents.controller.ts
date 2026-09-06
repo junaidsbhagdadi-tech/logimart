@@ -6,11 +6,12 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
-import { Roles } from '../../common/rbac/roles.decorator';
+import { Roles, Feature } from '../../common/rbac/roles.decorator';
 import { DocumentsService } from './documents.service';
 
 @Controller('api/v1/documents')
 @UseGuards(RolesGuard)
+@Feature('/documents')
 export class DocumentsController {
   constructor(private readonly docs: DocumentsService) {}
 

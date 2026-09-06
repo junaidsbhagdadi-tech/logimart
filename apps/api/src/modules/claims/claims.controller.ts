@@ -1,12 +1,13 @@
 import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
-import { Roles } from '../../common/rbac/roles.decorator';
+import { Roles, Feature } from '../../common/rbac/roles.decorator';
 import { ClaimsService } from './claims.service';
 import { CreateClaimDto, ReviewClaimDto, SettleClaimDto } from './dto/claims.dto';
 
 @Controller('api/v1/claims')
 @UseGuards(RolesGuard)
+@Feature('/claims')
 export class ClaimsController {
   constructor(private readonly claims: ClaimsService) {}
 

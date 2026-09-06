@@ -1,12 +1,13 @@
 import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
-import { Roles } from '../../common/rbac/roles.decorator';
+import { Roles, Feature } from '../../common/rbac/roles.decorator';
 import { NotesService } from './notes.service';
 import { CreateNoteDto } from './dto/notes.dto';
 
 @Controller('api/v1/notes')
 @UseGuards(RolesGuard)
+@Feature('/notes')
 export class NotesController {
   constructor(private readonly notes: NotesService) {}
 

@@ -1,11 +1,12 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
-import { Roles } from '../../common/rbac/roles.decorator';
+import { Roles, Feature } from '../../common/rbac/roles.decorator';
 import { VendorsService } from './vendors.service';
 
 @Controller('api/v1/vendors')
 @UseGuards(RolesGuard)
+@Feature('/vendors')
 @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
 export class VendorsController {
   constructor(private readonly vendors: VendorsService) {}
