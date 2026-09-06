@@ -45,8 +45,25 @@ export class ReportsService {
     const dieselMechanismSet = mechs.some((m) => String((m.attrs as any)?.mode ?? 'FLAT').toUpperCase() === 'DYNAMIC' && Number((m.attrs as any)?.percentage ?? (m.attrs as any)?.baseFsc ?? 0) >= 0);
 
     // 3) Active cards that would price freight with NO fuel (flat 0% and not diesel-indexed).
-    const cards = await p.customerRateCard.findMany({ where: { isActive: true }, select: { fuelPct: true, fuelMode: true } });
-    const zeroFuelActiveCards = cards.filter((c) => Number(c.fuelPct ?? 0) === 0 && String(c.fuelMode ?? 'FLAT').toUpperCase() !== 'DYNAMIC').length;
+    //    Grouped by customer and split surface vs air: a SURFACE card at 0% flat truly bills no fuel
+    //    line (the real problem); an AIR/EXPRESS card at 0% is covered by the air default when that is
+    //    set (green above), so it is flagged separately as lower-priority.
+    const cards = await p.customerRateCard.findMany({
+      where: { isActive: true },
+      select: { fuelPct: true, fuelMode: true, mode: true, product: true, client: { select: { legalName: true, accountCode: true } } },
+    });
+    const zf = cards.filter((c) => Number(c.fuelPct ?? 0) === 0 && String(c.fuelMode ?? 'FLAT').toUpperCase() !== 'DYNAMIC');
+    const zeroFuelActiveCards = zf.length;
+    const zfByClient = new Map<string, { code: string; name: string; surface: number; air: number }>();
+    for (const c of zf) {
+      const code = c.client?.accountCode ?? '—';
+      const g = zfByClient.get(code) ?? { code, name: c.client?.legalName ?? '—', surface: 0, air: 0 };
+      const isSurface = String(c.mode ?? c.product ?? '').toUpperCase().includes('SURFACE');
+      if (isSurface) g.surface += 1; else g.air += 1;
+      zfByClient.set(code, g);
+    }
+    const zfList = [...zfByClient.values()].sort((a, b) => b.surface - a.surface || b.air - a.air || a.name.localeCompare(b.name));
+    const zeroFuelSurfaceCards = zf.filter((c) => String(c.mode ?? c.product ?? '').toUpperCase().includes('SURFACE')).length;
 
     // 4) Active (non-cash) customers with no active rate card → cannot be priced at all.
     const clients = await p.b2bClient.findMany({ where: { isActive: true, isCash: false }, select: { id: true, legalName: true, accountCode: true } });
@@ -55,7 +72,7 @@ export class ReportsService {
 
     return {
       pincodeZoneGaps: { count: pincodeGaps.length, sample: pincodeGaps.slice(0, 50) },
-      fuel: { airDefaultSet, dieselMechanismSet, zeroFuelActiveCards },
+      fuel: { airDefaultSet, dieselMechanismSet, zeroFuelActiveCards, zeroFuelSurfaceCards, zeroFuelCustomers: zfList.length, zeroFuelSample: zfList.slice(0, 100) },
       customersWithoutRateCard: { count: noCard.length, sample: noCard.slice(0, 50).map((c) => ({ code: c.accountCode, name: c.legalName })) },
     };
   }

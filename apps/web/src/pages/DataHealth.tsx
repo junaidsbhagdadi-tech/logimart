@@ -56,9 +56,26 @@ export function DataHealth() {
             {!d.fuel.airDefaultSet && <p className="muted" style={{ fontSize: 12.5 }}>⚠ Air/APEX shipments will bill <strong>no FSC</strong>. Set it in <strong>Masters → ✈️ Air Fuel Surcharge — default %</strong>.</p>}
             {!d.fuel.dieselMechanismSet && <p className="muted" style={{ fontSize: 12.5 }}>⚠ Surface cards on FLAT 0% won't add a diesel surcharge. Configure the diesel mechanism in Masters, or set a flat surface fuel %.</p>}
             {d.fuel.zeroFuelActiveCards > 0 && (
-              <p className="muted" style={{ fontSize: 12.5 }}>
-                <span className="badge AT_HUB">{d.fuel.zeroFuelActiveCards}</span> active rate card(s) are at <strong>0% fuel and not diesel-indexed</strong> — they'll price freight with no fuel line unless the air default above covers them.
-              </p>
+              <>
+                <p className="muted" style={{ fontSize: 12.5 }}>
+                  <span className="badge AT_HUB">{d.fuel.zeroFuelActiveCards}</span> active rate card(s) across <strong>{d.fuel.zeroFuelCustomers}</strong> customer(s) are at <strong>0% fuel and not diesel-indexed</strong>.
+                  {' '}Of these, <span className="badge EXCEPTION">{d.fuel.zeroFuelSurfaceCards}</span> are <strong>surface</strong> cards that truly bill <strong>no fuel line</strong> (fix these); the rest are air/express, covered by the air default above.
+                </p>
+                <table>
+                  <thead><tr><th>Code</th><th>Customer</th><th>Surface (no fuel)</th><th>Air/express</th></tr></thead>
+                  <tbody>{d.fuel.zeroFuelSample.map((c) => (
+                    <tr key={c.code}>
+                      <td className="mono">{c.code}</td>
+                      <td>{c.name}</td>
+                      <td>{c.surface > 0 ? <span className="badge EXCEPTION">{c.surface}</span> : <span className="muted">—</span>}</td>
+                      <td>{c.air > 0 ? <span className="badge AT_HUB">{c.air}</span> : <span className="muted">—</span>}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+                {d.fuel.zeroFuelCustomers > d.fuel.zeroFuelSample.length && (
+                  <p className="muted" style={{ fontSize: 12 }}>…and {d.fuel.zeroFuelCustomers - d.fuel.zeroFuelSample.length} more customer(s).</p>
+                )}
+              </>
             )}
           </div>
 
