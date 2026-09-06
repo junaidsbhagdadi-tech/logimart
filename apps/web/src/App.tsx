@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './auth';
+import { effectiveGrants } from './rights';
 import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
@@ -58,6 +59,13 @@ export function App() {
   const isAdminFin = user?.role === 'FINANCE_EXEC' || user?.role === 'SYS_ADMIN';
   const canMaster = user?.role === 'HUB_MANAGER' || user?.role === 'SYS_ADMIN';
   const canReports = ['HUB_MANAGER', 'FINANCE_EXEC', 'SYS_ADMIN'].includes(user?.role || '');
+  // Route access mirrors the nav + backend: ADMIN/SYS_ADMIN see everything; a user WITH a
+  // department/feature-grant map is governed by that map (so Customer Service reaches Claims etc.);
+  // a plain-role user (no grant map) keeps the role-based fallback. Fixes ADMIN and department users
+  // being redirected away from pages their nav shows and the API allows.
+  const isAdmin = user?.role === 'ADMIN' || user?.role === 'SYS_ADMIN';
+  const grantMap = effectiveGrants(user as any);
+  const gate = (to: string, roleOk: boolean) => isAdmin || (grantMap ? !!grantMap[to] : roleOk);
   if (!user) {
     return (
       <Routes>
@@ -87,13 +95,13 @@ export function App() {
         <Route path="/create" element={<CreateShipment />} />
         <Route path="/awb-list" element={<AwbEntryList />} />
         <Route path="/bulk" element={<BulkBooking />} />
-        <Route path="/walk-in" element={isAdminFin || canMaster ? <WalkIn /> : <Navigate to="/" replace />} />
+        <Route path="/walk-in" element={gate('/walk-in', isAdminFin || canMaster) ? <WalkIn /> : <Navigate to="/" replace />} />
         <Route path="/shipments/:awb" element={<ShipmentDetail />} />
         <Route path="/shipments/:awb/labels" element={<Labels />} />
         <Route path="/bluedart" element={user?.role === 'SYS_ADMIN' ? <BlueDart /> : <Navigate to="/" replace />} />
         <Route path="/invoices" element={<Invoices />} />
-        <Route path="/sales-mis" element={isAdminFin ? <SalesMis /> : <Navigate to="/" replace />} />
-        <Route path="/bill-worksheet" element={isAdminFin ? <BillWorksheet /> : <Navigate to="/" replace />} />
+        <Route path="/sales-mis" element={gate('/sales-mis', isAdminFin) ? <SalesMis /> : <Navigate to="/" replace />} />
+        <Route path="/bill-worksheet" element={gate('/bill-worksheet', isAdminFin) ? <BillWorksheet /> : <Navigate to="/" replace />} />
         <Route path="/invoices/:id" element={<InvoiceDetail />} />
         <Route path="/pickups" element={<Pickups />} />
         <Route path="/manifests" element={<Manifests />} />
@@ -117,34 +125,34 @@ export function App() {
         <Route path="/lm/update-delivery" element={<DeliveryUpdate />} />
         <Route path="/lm/bulk-delivery-update" element={<DeliveryUpdate bulk />} />
         <Route path="/lm/manual-scan" element={<ManualScan />} />
-        <Route path="/customers" element={isAdminFin ? <Customers /> : <Navigate to="/" replace />} />
-        <Route path="/customers/:id/overview" element={isAdminFin ? <Customer360 /> : <Navigate to="/" replace />} />
-        <Route path="/vendors" element={isAdminFin ? <Vendors /> : <Navigate to="/" replace />} />
-        <Route path="/vehicles" element={isAdminFin || canMaster ? <Vehicles /> : <Navigate to="/" replace />} />
-        <Route path="/service-mapping" element={isAdminFin || canMaster ? <ServiceMap /> : <Navigate to="/" replace />} />
-        <Route path="/sales" element={isAdminFin ? <Sales /> : <Navigate to="/" replace />} />
-        <Route path="/ftl-rates" element={isAdminFin ? <FtlRates /> : <Navigate to="/" replace />} />
-        <Route path="/per-box-rates" element={isAdminFin ? <PerBoxRates /> : <Navigate to="/" replace />} />
-        <Route path="/vendor-bills" element={isAdminFin ? <VendorBills /> : <Navigate to="/" replace />} />
-        <Route path="/pincodes" element={canMaster ? <Pincodes /> : <Navigate to="/" replace />} />
+        <Route path="/customers" element={gate('/customers', isAdminFin) ? <Customers /> : <Navigate to="/" replace />} />
+        <Route path="/customers/:id/overview" element={gate('/customers', isAdminFin) ? <Customer360 /> : <Navigate to="/" replace />} />
+        <Route path="/vendors" element={gate('/vendors', isAdminFin) ? <Vendors /> : <Navigate to="/" replace />} />
+        <Route path="/vehicles" element={gate('/vehicles', isAdminFin || canMaster) ? <Vehicles /> : <Navigate to="/" replace />} />
+        <Route path="/service-mapping" element={gate('/service-mapping', isAdminFin || canMaster) ? <ServiceMap /> : <Navigate to="/" replace />} />
+        <Route path="/sales" element={gate('/sales', isAdminFin) ? <Sales /> : <Navigate to="/" replace />} />
+        <Route path="/ftl-rates" element={gate('/ftl-rates', isAdminFin) ? <FtlRates /> : <Navigate to="/" replace />} />
+        <Route path="/per-box-rates" element={gate('/per-box-rates', isAdminFin) ? <PerBoxRates /> : <Navigate to="/" replace />} />
+        <Route path="/vendor-bills" element={gate('/vendor-bills', isAdminFin) ? <VendorBills /> : <Navigate to="/" replace />} />
+        <Route path="/pincodes" element={gate('/pincodes', canMaster) ? <Pincodes /> : <Navigate to="/" replace />} />
         {/* old split routes → merged Pincodes screen (keep stale bookmarks working) */}
         <Route path="/master-data" element={<Navigate to="/pincodes" replace />} />
         <Route path="/zone-uploads" element={<Navigate to="/pincodes" replace />} />
-        <Route path="/tax" element={isAdminFin ? <TaxFiling /> : <Navigate to="/" replace />} />
-        <Route path="/receivables" element={isAdminFin ? <Receivables /> : <Navigate to="/" replace />} />
-        <Route path="/notes" element={isAdminFin ? <Notes /> : <Navigate to="/" replace />} />
-        <Route path="/claims" element={isAdminFin ? <Claims /> : <Navigate to="/" replace />} />
-        <Route path="/expenses" element={isAdminFin ? <ExpenseTracker /> : <Navigate to="/" replace />} />
-        <Route path="/documents" element={isAdminFin ? <Documents /> : <Navigate to="/" replace />} />
-        <Route path="/masters" element={canMaster ? <Masters /> : <Navigate to="/" replace />} />
+        <Route path="/tax" element={gate('/tax', isAdminFin) ? <TaxFiling /> : <Navigate to="/" replace />} />
+        <Route path="/receivables" element={gate('/receivables', isAdminFin) ? <Receivables /> : <Navigate to="/" replace />} />
+        <Route path="/notes" element={gate('/notes', isAdminFin) ? <Notes /> : <Navigate to="/" replace />} />
+        <Route path="/claims" element={gate('/claims', isAdminFin) ? <Claims /> : <Navigate to="/" replace />} />
+        <Route path="/expenses" element={gate('/expenses', isAdminFin) ? <ExpenseTracker /> : <Navigate to="/" replace />} />
+        <Route path="/documents" element={gate('/documents', isAdminFin) ? <Documents /> : <Navigate to="/" replace />} />
+        <Route path="/masters" element={gate('/masters', canMaster) ? <Masters /> : <Navigate to="/" replace />} />
         {/* Standard Charges merged into Masters → Charges (default rate/min per charge). Keep old bookmarks working. */}
         <Route path="/standard-charges" element={<Navigate to="/masters" replace />} />
-        <Route path="/bulk-rate-upload" element={canMaster ? <BulkRateUpload /> : <Navigate to="/" replace />} />
-        <Route path="/green-tax" element={canMaster ? <GreenTax /> : <Navigate to="/" replace />} />
-        <Route path="/reports" element={canReports ? <Reports /> : <Navigate to="/" replace />} />
+        <Route path="/bulk-rate-upload" element={gate('/bulk-rate-upload', canMaster) ? <BulkRateUpload /> : <Navigate to="/" replace />} />
+        <Route path="/green-tax" element={gate('/green-tax', canMaster) ? <GreenTax /> : <Navigate to="/" replace />} />
+        <Route path="/reports" element={gate('/reports', canReports) ? <Reports /> : <Navigate to="/" replace />} />
         <Route path="/audit" element={user?.role === 'SYS_ADMIN' ? <AuditLog /> : <Navigate to="/" replace />} />
         <Route path="/users" element={user?.role === 'SYS_ADMIN' ? <Users /> : <Navigate to="/" replace />} />
-        <Route path="/riders" element={(user?.role === 'SYS_ADMIN' || user?.role === 'HUB_MANAGER') ? <Riders /> : <Navigate to="/" replace />} />
+        <Route path="/riders" element={gate('/riders', user?.role === 'SYS_ADMIN' || user?.role === 'HUB_MANAGER') ? <Riders /> : <Navigate to="/" replace />} />
         <Route path="/feedback" element={user?.role === 'SYS_ADMIN' ? <Feedback /> : <Navigate to="/" replace />} />
         <Route path="/archive" element={user?.role === 'SYS_ADMIN' ? <Archive /> : <Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
