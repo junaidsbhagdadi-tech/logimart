@@ -285,6 +285,11 @@ export const api = {
       user: { id: string; fullName: string; role: string; clientId: string | null; hubId?: string | null; department?: string | null; featureGrants?: string[] | Record<string, 'VIEW' | 'EDIT' | 'DELETE'> | null };
     }>('/api/v1/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   me: () => request<{ id: string; fullName: string; role: string; clientId: string | null; riderCode?: string | null; department?: string | null; featureGrants?: string[] | Record<string, 'VIEW' | 'EDIT' | 'DELETE'> | null }>('/api/v1/auth/me'),
+  dataHealth: () => request<{
+    pincodeZoneGaps: { count: number; sample: { pincode: string; city: string | null; issue: string }[] };
+    fuel: { airDefaultSet: boolean; dieselMechanismSet: boolean; zeroFuelActiveCards: number };
+    customersWithoutRateCard: { count: number; sample: { code: string; name: string }[] };
+  }>('/api/v1/reports/data-health'),
   listShipments: () => request<ShipmentRow[]>('/api/v1/shipments'),
   getShipment: (awb: string) => request<Shipment>(`/api/v1/shipments/${awb}`),
   getLabels: (awb: string) =>

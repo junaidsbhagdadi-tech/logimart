@@ -156,6 +156,7 @@ export function Layout() {
     ] },
     { title: 'Insights & Admin', items: [
       { to: '/reports', icon: '📈', label: 'Reports', show: isAdminFin || canMaster },
+      { to: '/data-health', icon: '🩺', label: 'Data Health', show: isAdminFin || canMaster },
       { to: '/riders', icon: '🛵', label: 'Riders & Drivers', show: canMaster },
       { to: '/users', icon: '⚙️', label: 'Users', show: isSysAdmin },
       { to: '/bluedart', icon: '🚚', label: 'Carrier APIs', show: isSysAdmin },

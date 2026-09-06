@@ -23,6 +23,13 @@ export class ReportsController {
     return this.svc.emailDailyDigest();
   }
 
+  /** Data-completeness check — master-data gaps that break booking/pricing. Declared before :type. */
+  @Get('data-health')
+  @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  dataHealth() {
+    return this.svc.dataHealth();
+  }
+
   @Get(':type')
   @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
   run(@Param('type') type: string, @Query('from') from?: string, @Query('to') to?: string) {

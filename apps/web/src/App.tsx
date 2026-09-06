@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './auth';
 import { effectiveGrants } from './rights';
+import { DataHealth } from './pages/DataHealth';
 import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
@@ -150,6 +151,7 @@ export function App() {
         <Route path="/bulk-rate-upload" element={gate('/bulk-rate-upload', canMaster) ? <BulkRateUpload /> : <Navigate to="/" replace />} />
         <Route path="/green-tax" element={gate('/green-tax', canMaster) ? <GreenTax /> : <Navigate to="/" replace />} />
         <Route path="/reports" element={gate('/reports', canReports) ? <Reports /> : <Navigate to="/" replace />} />
+        <Route path="/data-health" element={gate('/data-health', isAdminFin || canMaster) ? <DataHealth /> : <Navigate to="/" replace />} />
         <Route path="/audit" element={user?.role === 'SYS_ADMIN' ? <AuditLog /> : <Navigate to="/" replace />} />
         <Route path="/users" element={user?.role === 'SYS_ADMIN' ? <Users /> : <Navigate to="/" replace />} />
         <Route path="/riders" element={gate('/riders', user?.role === 'SYS_ADMIN' || user?.role === 'HUB_MANAGER') ? <Riders /> : <Navigate to="/" replace />} />

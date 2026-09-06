@@ -19,6 +19,48 @@ export class ReportsService {
   constructor(private readonly prisma: PrismaService, private readonly notifications: NotificationsService) {}
 
   /**
+   * Data-completeness check — surfaces the master-data gaps that silently break booking/pricing:
+   * destination pincodes shipped to that have no zone (→ "no rate"), missing fuel setup (→ no FSC),
+   * active customers with no rate card, and active cards priced with 0% fuel. Read-only.
+   */
+  async dataHealth() {
+    const p = this.prisma;
+
+    // 1) Pincodes we've actually shipped TO that lack a zone (→ rate falls back to region → "no rate").
+    const dests = await p.shipment.findMany({ where: { destPincode: { not: null } }, select: { destPincode: true }, distinct: ['destPincode'] });
+    const destPins = dests.map((d) => d.destPincode as string).filter(Boolean);
+    const known = await p.pincode.findMany({ where: { pincode: { in: destPins } }, select: { pincode: true, city: true, state: true, surfaceZone: true, apexZone: true } });
+    const kmap = new Map(known.map((k) => [k.pincode, k]));
+    const pincodeGaps: { pincode: string; city: string | null; issue: string }[] = [];
+    for (const pin of destPins) {
+      const k = kmap.get(pin);
+      if (!k) { pincodeGaps.push({ pincode: pin, city: null, issue: 'not in the pincode directory' }); continue; }
+      const miss = [!k.surfaceZone ? 'surface' : null, !k.apexZone ? 'air' : null].filter(Boolean);
+      if (miss.length) pincodeGaps.push({ pincode: pin, city: k.city, issue: `missing ${miss.join(' + ')} zone` });
+    }
+
+    // 2) Fuel setup.
+    const mechs = await p.masterEntry.findMany({ where: { type: 'FUEL_MECHANISM', active: true }, select: { attrs: true } });
+    const airDefaultSet = mechs.some((m) => (m.attrs as any)?.airDefault && Number((m.attrs as any)?.percentage) > 0);
+    const dieselMechanismSet = mechs.some((m) => String((m.attrs as any)?.mode ?? 'FLAT').toUpperCase() === 'DYNAMIC' && Number((m.attrs as any)?.percentage ?? (m.attrs as any)?.baseFsc ?? 0) >= 0);
+
+    // 3) Active cards that would price freight with NO fuel (flat 0% and not diesel-indexed).
+    const cards = await p.customerRateCard.findMany({ where: { isActive: true }, select: { fuelPct: true, fuelMode: true } });
+    const zeroFuelActiveCards = cards.filter((c) => Number(c.fuelPct ?? 0) === 0 && String(c.fuelMode ?? 'FLAT').toUpperCase() !== 'DYNAMIC').length;
+
+    // 4) Active (non-cash) customers with no active rate card → cannot be priced at all.
+    const clients = await p.b2bClient.findMany({ where: { isActive: true, isCash: false }, select: { id: true, legalName: true, accountCode: true } });
+    const carded = new Set((await p.customerRateCard.findMany({ where: { isActive: true }, select: { clientId: true } })).map((c) => String(c.clientId)));
+    const noCard = clients.filter((c) => !carded.has(String(c.id)));
+
+    return {
+      pincodeZoneGaps: { count: pincodeGaps.length, sample: pincodeGaps.slice(0, 50) },
+      fuel: { airDefaultSet, dieselMechanismSet, zeroFuelActiveCards },
+      customersWithoutRateCard: { count: noCard.length, sample: noCard.slice(0, 50).map((c) => ({ code: c.accountCode, name: c.legalName })) },
+    };
+  }
+
+  /**
    * Auto-send the daily NDR + MIS digest every morning. Time is fixed to 08:00 IST (the CronExpression
    * runs in Asia/Kolkata regardless of the server's UTC clock). Skips itself unless recipients are
    * configured (REPORTS_EMAIL / COMPANY_EMAIL) and DIGEST_AUTOSEND isn't set to 'false'.
