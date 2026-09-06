@@ -35,6 +35,7 @@ export class AdminService {
     await del('debitCreditNotes', () => p.debitCreditNote.deleteMany({ where: { clientId: cid } }));
     await del('claims', () => p.claim.deleteMany({ where: { clientId: cid } }));
     await del('invoices', () => p.invoice.deleteMany({ where: { clientId: cid } }));
+    await del('shipmentAddons', () => p.shipmentAddon.deleteMany({ where: { shipmentId: { in: sIds } } }));
     await del('shipmentPieces', () => p.shipmentPiece.deleteMany({ where: { shipmentId: { in: sIds } } }));
     await del('shipments', () => p.shipment.deleteMany({ where: { clientId: cid } }));
     await del('pickups', () => p.pickupRequest.deleteMany({ where: { clientId: cid } }));
@@ -66,6 +67,7 @@ export class AdminService {
     await del('debitCreditNotes', () => p.debitCreditNote.deleteMany({}));
     await del('claims', () => p.claim.deleteMany({}));
     await del('invoices', () => p.invoice.deleteMany({}));
+    await del('shipmentAddons', () => p.shipmentAddon.deleteMany({}));
     await del('shipmentPieces', () => p.shipmentPiece.deleteMany({}));
     await del('shipments', () => p.shipment.deleteMany({}));
     await del('manifests', () => p.manifest.deleteMany({}));
@@ -99,6 +101,7 @@ export class AdminService {
     await del('debitCreditNotes', () => p.debitCreditNote.deleteMany({}));
     await del('claims', () => p.claim.deleteMany({}));
     await del('invoices', () => p.invoice.deleteMany({}));
+    await del('shipmentAddons', () => p.shipmentAddon.deleteMany({}));
     await del('shipmentPieces', () => p.shipmentPiece.deleteMany({}));
     await del('shipments', () => p.shipment.deleteMany({}));
     await del('manifests', () => p.manifest.deleteMany({}));
@@ -147,6 +150,7 @@ export class AdminService {
     await del('debitCreditNotes', () => p.debitCreditNote.deleteMany({}));
     await del('claims', () => p.claim.deleteMany({}));
     await del('invoices', () => p.invoice.deleteMany({}));
+    await del('shipmentAddons', () => p.shipmentAddon.deleteMany({}));
     await del('shipmentPieces', () => p.shipmentPiece.deleteMany({}));
     await del('shipments', () => p.shipment.deleteMany({}));
     await del('manifests', () => p.manifest.deleteMany({}));
