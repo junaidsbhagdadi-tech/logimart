@@ -65,6 +65,15 @@ export function ShipmentDetail() {
     setEditOpen(true); setError(''); setMsg('');
   };
   const setEfield = (k: string, v: string) => setEf((f) => ({ ...f, [k]: v }));
+  // Changing the destination pincode auto-fills consignee city + state from the pincode directory.
+  const lookDestPin = (v: string) => {
+    setEfield('destPincode', v);
+    if (/^\d{6}$/.test(v)) {
+      api.lookupPincode(v)
+        .then((p) => { if (p.known) setEf((f) => ({ ...f, consigneeCity: p.city || f.consigneeCity, consigneeState: p.state || f.consigneeState })); })
+        .catch(() => { /* unknown pincode — leave city/state for manual entry */ });
+    }
+  };
   const saveEdit = async () => {
     if (!awb) return;
     setError(''); setMsg('');
@@ -349,6 +358,22 @@ export function ShipmentDetail() {
         </div>
       </div>
 
+      {/* Sticky at-a-glance summary — stays visible while scrolling the AWB. */}
+      <div className="card" style={{ position: 'sticky', top: 8, zIndex: 6, display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', padding: '10px 16px', marginBottom: 14, boxShadow: 'var(--shadow)' }}>
+        <span className={`badge ${s.status}`}>{s.status}</span>
+        <strong style={{ fontSize: 13.5 }}>
+          {[(s as any).originLocation || (s as any).shipperCity, (s as any).shipperPincode].filter(Boolean).join(' ') || s.originZone}
+          {' → '}
+          {[(s as any).consigneeCity, (s as any).destPincode].filter(Boolean).join(' ') || s.destZone}
+        </strong>
+        <span className="muted" style={{ fontSize: 12 }}>·</span>
+        <span style={{ fontSize: 13 }}>{s.rollup.pieceCount} pcs</span>
+        <span style={{ fontSize: 13 }}>{s.totalDeadKg}kg dead / {s.totalVolKg}kg vol</span>
+        {s.chargeWeight && <span style={{ fontSize: 13 }}>{s.chargeWeight}kg charge</span>}
+        {(s as any).declaredValue != null && <span style={{ fontSize: 13 }}>₹{Number((s as any).declaredValue).toLocaleString('en-IN')} value</span>}
+        <span style={{ fontSize: 12, color: 'var(--muted)', fontFamily: 'monospace' }}>{s.awb}</span>
+      </div>
+
       {error && <div className="error">{error}</div>}
       {msg && <div className="card" style={{ borderLeft: '4px solid var(--brand)' }}>{msg}</div>}
 
@@ -385,7 +410,7 @@ export function ShipmentDetail() {
             <div><label>Consignee name</label><input value={ef.consigneeName} onChange={(e) => setEfield('consigneeName', e.target.value)} /></div>
             <div><label>Consignee phone</label><input value={ef.consigneePhone} onChange={(e) => setEfield('consigneePhone', e.target.value)} /></div>
             <div><label>Consignee GSTIN</label><input value={ef.consigneeGstin} onChange={(e) => setEfield('consigneeGstin', e.target.value.toUpperCase())} /></div>
-            <div><label>Dest pincode</label><input value={ef.destPincode} maxLength={6} onChange={(e) => setEfield('destPincode', e.target.value)} placeholder="re-derives zone/EDD" /></div>
+            <div><label>Dest pincode <span className="muted">(auto city/state)</span></label><input value={ef.destPincode} maxLength={6} onChange={(e) => lookDestPin(e.target.value)} placeholder="re-derives zone/EDD" /></div>
             <div><label>Consignee city</label><input value={ef.consigneeCity} onChange={(e) => setEfield('consigneeCity', e.target.value)} /></div>
             <div><label>Consignee state</label><input value={ef.consigneeState} onChange={(e) => setEfield('consigneeState', e.target.value)} /></div>
             <div><label>Payment term</label>
@@ -516,9 +541,18 @@ export function ShipmentDetail() {
         <div className="grid cols-3">
           <div><label>Status</label><span className={`badge ${s.status}`}>{s.status}</span></div>
           <div><label>Service</label>{modeLabel(s.serviceMode)}{s.product ? ` · ${s.product}` : ''}</div>
-          <div><label>Route</label>{s.originZone} → {s.destZone}</div>
+          <div><label>Route (zones)</label>{s.originZone} → {s.destZone}</div>
+          <div><label>Origin → Destination</label>{[(s as any).originLocation || (s as any).shipperCity, (s as any).shipperPincode].filter(Boolean).join(' ') || '—'} → {[(s as any).consigneeCity, (s as any).destPincode].filter(Boolean).join(' ') || '—'}</div>
           <div><label>Shipper</label>{(s as any).shipperName || (s as any).client?.legalName || '—'}</div>
           <div><label>Consignee</label>{(s as any).consigneeName || '—'}{(s as any).consigneeCity ? ` · ${(s as any).consigneeCity}` : ''}</div>
+          <div><label>Pieces</label>{s.rollup.pieceCount}</div>
+          <div><label>Invoice value</label>{(s as any).declaredValue != null ? `₹${Number((s as any).declaredValue).toLocaleString('en-IN')}` : (s as any).shipmentValue != null ? `₹${Number((s as any).shipmentValue).toLocaleString('en-IN')}` : '—'}</div>
+          <div><label>Dimensions (cm)</label>{(() => {
+            const groups: Record<string, number> = {};
+            ((s.pieces as any[]) || []).forEach((p) => { const d = [p.lengthCm, p.widthCm, p.heightCm]; if (d.every((x) => x != null)) { const k = d.map(Number).join('×'); groups[k] = (groups[k] || 0) + 1; } });
+            const parts = Object.entries(groups).map(([k, c]) => `${c}× ${k}`);
+            return parts.length ? parts.join(', ') : '—';
+          })()}</div>
           {s.expectedDelivery && <div><label>Expected delivery</label>{new Date(s.expectedDelivery).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} <span className="muted" style={{ fontSize: 11 }}>(booking + TAT)</span></div>}
           <div><label>Boxes delivered</label>{s.rollup.delivered} / {s.rollup.pieceCount} {s.rollup.isShort && <span className="badge PARTIAL">SHORT</span>}</div>
           <div><label>Total dead</label>{s.totalDeadKg} kg</div>

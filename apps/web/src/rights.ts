@@ -45,8 +45,9 @@ type AccessUser = { role?: string; department?: string | null; featureGrants?: G
  *  null means "no restriction map applies" — nav falls back to role visibility, rights to FULL. */
 export function effectiveGrants(user: AccessUser): Record<string, Level> | null {
   if (!user) return null;
-  // Super admin + client admin are governed by role, not department.
-  if (user.role === 'SYS_ADMIN' || user.role === 'CLIENT_ADMIN') return null;
+  // ADMIN / super admin / client admin are governed by role, not department — full access (ADMIN
+  // inherits everything server-side, so it must not be frontend-restricted by a stray grant/dept).
+  if (user.role === 'ADMIN' || user.role === 'SYS_ADMIN' || user.role === 'CLIENT_ADMIN') return null;
   return normalizeGrants(user.featureGrants) ?? normalizeGrants(departmentGrants(user.department));
 }
 
@@ -54,7 +55,7 @@ export function effectiveGrants(user: AccessUser): Record<string, Level> | null 
  *  default → role default (full on visible pages). */
 export function rightsForUser(user: AccessUser, to: string): Rights {
   if (!user) return { view: false, edit: false, del: false, level: null };
-  if (user.role === 'SYS_ADMIN' || user.role === 'CLIENT_ADMIN') return FULL;
+  if (user.role === 'ADMIN' || user.role === 'SYS_ADMIN' || user.role === 'CLIENT_ADMIN') return FULL;
   const m = effectiveGrants(user);
   if (!m) return FULL; // no explicit grants and no department → role defaults (unchanged behaviour)
   const lvl = m[to];
