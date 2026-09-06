@@ -96,6 +96,7 @@ export function TrackDetail() {
       const r = await api.lifecycleScan({ awbs: [d.awb], code: scan.code, location: scan.location || undefined, remark: scan.remark || undefined, scanAt: scan.at || undefined });
       if (r.duplicate?.length) setError(`⚠ ${scan.code} is already recorded on ${d.awb} — a scan can't be repeated.`);
       else if (r.locked?.length) setError(`🔒 ${scan.code} is out of sequence / terminal — super-admin only.`);
+      else if (r.needPod?.length) setError(`📷 Upload the delivery POD first (use “replace” on Delivery POD above), then mark Delivered.`);
       else { setMsg(`✓ ${d.awb} updated to ${scan.code}.`); setScan((s) => ({ ...s, remark: '', at: '' })); search(d.awb); }
     } catch (e: any) { setError(e.message); } finally { setScanBusy(false); }
   };

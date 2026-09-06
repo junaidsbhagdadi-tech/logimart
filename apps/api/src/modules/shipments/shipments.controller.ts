@@ -197,9 +197,10 @@ export class ShipmentsController {
     return this.shipments.payAtBooking(awb, dto, BigInt(req.user.sub));
   }
 
-  /** Hand-off to a vendor: record vendor + forwarding (carrier) AWB reference. */
+  /** Hand-off to a vendor: record vendor + forwarding (carrier) AWB reference. WAREHOUSE_HANDLER
+   *  (incl. Customer Service staff) can do it too — an exceptional hand-off from the tracking screen. */
   @Post(':awb/forwarding')
-  @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  @Roles(UserRole.WAREHOUSE_HANDLER, UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
   setForwarding(@Param('awb') awb: string, @Body() dto: { vendor?: string; forwardingAwb?: string }) {
     return this.shipments.setForwarding(awb, dto);
   }

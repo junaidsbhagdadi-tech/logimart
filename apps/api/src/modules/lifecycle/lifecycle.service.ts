@@ -100,7 +100,9 @@ export class LifecycleService {
     if (!CODES.has(code)) throw new BadRequestException(`Unknown status code ${code}.`);
     const awbs = (dto.awbs || []).map((a) => String(a).trim().toUpperCase()).filter(Boolean);
     if (!awbs.length) throw new BadRequestException('No AWB scanned.');
-    if (code === 'DLD' && !dto.podDataUrl) throw new BadRequestException('POD image is mandatory to mark Delivered.');
+    // DLD needs a POD — but a POD already uploaded on the shipment (podUrl) counts, so a manual
+    // "mark delivered" after uploading the POD separately works. Only shipments with neither a fresh
+    // podDataUrl nor an existing POD are held back (reported in `needPod`).
     const isSuper = String(role || '').toUpperCase() === 'SYS_ADMIN';
     // Scan timestamp — the operator can back/forward-date the scan (else now).
     const at = dto.scanAt ? new Date(dto.scanAt) : new Date();
@@ -109,13 +111,15 @@ export class LifecycleService {
     // on the same day — e.g. "BOM-230826". Set only if the shipment isn't already bagged.
     const ymd = (() => { const d = new Date(); return `${String(d.getDate()).padStart(2, '0')}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getFullYear()).slice(2)}`; })();
 
-    const done: string[] = []; const missing: string[] = []; const locked: string[] = []; const duplicate: string[] = [];
+    const done: string[] = []; const missing: string[] = []; const locked: string[] = []; const duplicate: string[] = []; const needPod: string[] = [];
     for (const awb of awbs) {
       const s = await this.prisma.shipment.findUnique({
         where: { awb },
-        select: { id: true, statusCode: true, bagCode: true, destZone: true, consigneeCity: true, destHub: { select: { code: true } } },
+        select: { id: true, statusCode: true, bagCode: true, destZone: true, consigneeCity: true, podUrl: true, destHub: { select: { code: true } } },
       });
       if (!s) { missing.push(awb); continue; }
+      // Delivered needs a POD — either uploaded now, or already on the shipment.
+      if (code === 'DLD' && !dto.podDataUrl && !s.podUrl) { needPod.push(awb); continue; }
       // Never record the same milestone twice for an AWB.
       const already = await this.prisma.scanLog.findFirst({ where: { awb, eventType: code }, select: { id: true } });
       if (already) { duplicate.push(awb); continue; }
@@ -148,7 +152,7 @@ export class LifecycleService {
     }
     // Delivery confirmation email to the customer for AWBs just marked Delivered (best-effort).
     if (code === 'DLD' && done.length) await this.sendDeliveryEmails(done);
-    return { code, updated: done.length, done, missing, locked, duplicate };
+    return { code, updated: done.length, done, missing, locked, duplicate, needPod };
   }
 
   /** Full scan timeline for one AWB (append-only history), oldest → newest, with labels.

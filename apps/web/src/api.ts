@@ -543,7 +543,7 @@ export const api = {
   lifecycleSummary: () => request<{ counts: Record<string, number>; lifecycle: { code: string; label: string; mile: string }[] }>('/api/v1/lifecycle/summary'),
   lifecycleList: (code?: string, limit = 100) => request<any[]>(`/api/v1/lifecycle/list?limit=${limit}${code ? `&code=${code}` : ''}`),
   lifecycleScan: (body: { awbs: string[]; code: string; remark?: string; podDataUrl?: string; bagCode?: string; location?: string; scanAt?: string }) =>
-    request<{ code: string; updated: number; done: string[]; missing: string[]; locked?: string[]; duplicate?: string[] }>('/api/v1/lifecycle/scan', { method: 'POST', body: JSON.stringify(body) }),
+    request<{ code: string; updated: number; done: string[]; missing: string[]; locked?: string[]; duplicate?: string[]; needPod?: string[] }>('/api/v1/lifecycle/scan', { method: 'POST', body: JSON.stringify(body) }),
   setAppointment: (awb: string, body: { date?: string; note?: string }) =>
     request<{ ok: boolean; awb: string; apptDate: string | null; remark: string | null }>(`/api/v1/lifecycle/appointment/${encodeURIComponent(awb)}`, { method: 'POST', body: JSON.stringify(body) }),
   upcomingAppointments: () =>
