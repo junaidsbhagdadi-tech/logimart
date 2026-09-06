@@ -7,7 +7,8 @@
     "node": "20.x"
   },
   "scripts": {
-    "build": "cd apps/api && npm install --include=dev --no-audit --no-fund && npx prisma generate && npx prisma db push --accept-data-loss && npm run build && cd ../web && npm install --include=dev --no-audit --no-fund && npm run build",
+    "build": "(cd apps/api && npm install --include=dev --no-audit --no-fund && npx prisma generate && npx prisma db push --accept-data-loss && npm run build) && (cd apps/web && npm install --include=dev --no-audit --no-fund && npm run build) && node scripts/verify-build.mjs",
+    "verify": "node scripts/verify-build.mjs",
     "start": "cd apps/api && node dist/main.js"
   }
 }

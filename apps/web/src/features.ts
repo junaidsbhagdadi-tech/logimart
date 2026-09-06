@@ -1,5 +1,6 @@
 // Assignable feature catalog (route path = feature key). Super admin grants a subset per user;
 // the sidebar then shows only granted features. Keep roughly in sync with the Layout nav.
+import { DEPARTMENT_DEFAULTS as DEPT_BASE } from './rbac-departments.generated'; // single source of truth (backend-owned)
 export type Feature = { to: string; label: string };
 export type FeatureSection = { section: string; features: Feature[] };
 
@@ -90,42 +91,15 @@ export const DEPARTMENTS: { value: Department; label: string; desc: string }[] =
 export const departmentLabel = (d?: string | null) =>
   DEPARTMENTS.find((x) => x.value === d)?.label ?? '—';
 
-// Compact level maps per department. Anything not listed is hidden for that department.
-const OPERATIONS: Record<string, DeptLevel> = {
-  '/': 'VIEW', '/tracker': 'VIEW', '/pincode-search': 'VIEW',
-  '/create': 'EDIT', '/awb-list': 'EDIT', '/bulk': 'EDIT', '/deliver': 'EDIT', '/pickups': 'EDIT', '/walk-in': 'EDIT',
-  '/fm': 'VIEW', '/fm/pickup-outscan': 'EDIT', '/fm/bulk-pickup-outscan': 'EDIT', '/fm/update-pickup': 'EDIT',
-  '/mm': 'VIEW', '/mm/inscan-shipment': 'EDIT', '/mm/bagging': 'EDIT', '/mm/trips': 'EDIT', '/mm/inscan-trip': 'EDIT',
-  '/lm': 'VIEW', '/lm/inscan-shipment': 'EDIT', '/lm/inscan-trip': 'EDIT', '/lm/delivery-outscan': 'EDIT',
-  '/lm/update-delivery': 'EDIT', '/lm/bulk-delivery-update': 'EDIT', '/lm/manual-scan': 'EDIT',
-  '/reports': 'VIEW',
-};
-const CUSTOMER_SERVICE: Record<string, DeptLevel> = {
-  '/': 'VIEW', '/team-dashboards': 'VIEW', '/tracker': 'VIEW', '/pincode-search': 'VIEW',
-  '/create': 'EDIT', '/awb-list': 'EDIT', '/bulk': 'EDIT', '/pickups': 'EDIT',
-  '/customers': 'EDIT', '/claims': 'EDIT', '/documents': 'EDIT', '/notes': 'VIEW', '/invoices': 'VIEW',
-  '/reports': 'VIEW',
-};
-const FINANCE: Record<string, DeptLevel> = {
-  '/': 'VIEW', '/team-dashboards': 'VIEW', '/tracker': 'VIEW',
-  '/invoices': 'DELETE', '/bill-worksheet': 'EDIT', '/sales-mis': 'VIEW', '/receivables': 'EDIT',
-  '/notes': 'DELETE', '/claims': 'EDIT', '/customers': 'EDIT', '/vendors': 'EDIT', '/vehicles': 'EDIT',
-  '/vendor-bills': 'EDIT', '/documents': 'EDIT', '/expenses': 'EDIT', '/sales': 'VIEW',
-  '/ftl-rates': 'VIEW', '/per-box-rates': 'VIEW', '/tax': 'EDIT', '/reports': 'VIEW',
-};
-const SALES: Record<string, DeptLevel> = {
-  '/': 'VIEW', '/team-dashboards': 'VIEW', '/tracker': 'VIEW', '/pincode-search': 'VIEW',
-  '/create': 'EDIT', '/awb-list': 'VIEW', '/invoices': 'VIEW',
-  '/customers': 'EDIT', '/sales': 'EDIT', '/sales-mis': 'VIEW',
-  '/ftl-rates': 'VIEW', '/per-box-rates': 'VIEW', '/service-mapping': 'VIEW', '/pincodes': 'VIEW',
-  '/reports': 'VIEW',
-};
-// Management sees everything at full level.
+// Per-department level maps come from the CANONICAL backend file (imported above as DEPT_BASE),
+// generated into ./rbac-departments.generated.ts at build — so this can never drift from the API.
+// MANAGEMENT (full access) is derived here and on the backend, so it isn't in the canonical map.
 const MANAGEMENT: Record<string, DeptLevel> = Object.fromEntries(ALL_FEATURES.map((to) => [to, 'DELETE']));
 
 export const DEPARTMENT_DEFAULTS: Record<Department, Record<string, DeptLevel>> = {
-  OPERATIONS, CUSTOMER_SERVICE, FINANCE, SALES, MANAGEMENT,
-};
+  ...(DEPT_BASE as Record<string, Record<string, DeptLevel>>),
+  MANAGEMENT,
+} as Record<Department, Record<string, DeptLevel>>;
 
 /** Default feature grants for a department (or null if unassigned/unknown). */
 export function departmentGrants(dep?: string | null): Record<string, DeptLevel> | null {

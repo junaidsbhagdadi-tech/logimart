@@ -5,41 +5,10 @@
 // department's default map → null (no grant map → fall back to the route's @Roles). Grants are
 // ADDITIVE to @Roles in the guard: a grant can admit a request a role wouldn't, never the reverse.
 
+import { DEPARTMENT_DEFAULTS } from './department-defaults'; // ← single source of truth (see that file)
+
 export type Level = 'VIEW' | 'EDIT' | 'DELETE';
 export const RANK: Record<Level, number> = { VIEW: 1, EDIT: 2, DELETE: 3 };
-
-// Compact level maps per department. Anything not listed is not granted for that department.
-const OPERATIONS: Record<string, Level> = {
-  '/': 'VIEW', '/tracker': 'VIEW', '/pincode-search': 'VIEW',
-  '/create': 'EDIT', '/awb-list': 'EDIT', '/bulk': 'EDIT', '/deliver': 'EDIT', '/pickups': 'EDIT', '/walk-in': 'EDIT',
-  '/fm': 'VIEW', '/fm/pickup-outscan': 'EDIT', '/fm/bulk-pickup-outscan': 'EDIT', '/fm/update-pickup': 'EDIT',
-  '/mm': 'VIEW', '/mm/inscan-shipment': 'EDIT', '/mm/bagging': 'EDIT', '/mm/trips': 'EDIT', '/mm/inscan-trip': 'EDIT',
-  '/lm': 'VIEW', '/lm/inscan-shipment': 'EDIT', '/lm/inscan-trip': 'EDIT', '/lm/delivery-outscan': 'EDIT',
-  '/lm/update-delivery': 'EDIT', '/lm/bulk-delivery-update': 'EDIT', '/lm/manual-scan': 'EDIT',
-  '/reports': 'VIEW',
-};
-const CUSTOMER_SERVICE: Record<string, Level> = {
-  '/': 'VIEW', '/team-dashboards': 'VIEW', '/tracker': 'VIEW', '/pincode-search': 'VIEW',
-  '/create': 'EDIT', '/awb-list': 'EDIT', '/bulk': 'EDIT', '/pickups': 'EDIT',
-  '/customers': 'EDIT', '/claims': 'EDIT', '/documents': 'EDIT', '/notes': 'VIEW', '/invoices': 'VIEW',
-  '/reports': 'VIEW',
-};
-const FINANCE: Record<string, Level> = {
-  '/': 'VIEW', '/team-dashboards': 'VIEW', '/tracker': 'VIEW',
-  '/invoices': 'DELETE', '/bill-worksheet': 'EDIT', '/sales-mis': 'VIEW', '/receivables': 'EDIT',
-  '/notes': 'DELETE', '/claims': 'EDIT', '/customers': 'EDIT', '/vendors': 'EDIT', '/vehicles': 'EDIT',
-  '/vendor-bills': 'EDIT', '/documents': 'EDIT', '/expenses': 'EDIT', '/sales': 'VIEW',
-  '/ftl-rates': 'VIEW', '/per-box-rates': 'VIEW', '/tax': 'EDIT', '/reports': 'VIEW',
-};
-const SALES: Record<string, Level> = {
-  '/': 'VIEW', '/team-dashboards': 'VIEW', '/tracker': 'VIEW', '/pincode-search': 'VIEW',
-  '/create': 'EDIT', '/awb-list': 'VIEW', '/invoices': 'VIEW',
-  '/customers': 'EDIT', '/sales': 'EDIT', '/sales-mis': 'VIEW',
-  '/ftl-rates': 'VIEW', '/per-box-rates': 'VIEW', '/service-mapping': 'VIEW', '/pincodes': 'VIEW',
-  '/reports': 'VIEW',
-};
-
-const DEPARTMENT_DEFAULTS: Record<string, Record<string, Level>> = { OPERATIONS, CUSTOMER_SERVICE, FINANCE, SALES };
 
 /** Normalize either grant shape (legacy string[] = full access, or { route: level } map) to a map. */
 export function normalizeGrants(g: unknown): Record<string, Level> | null {
