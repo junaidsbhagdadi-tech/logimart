@@ -16,7 +16,10 @@ export class VendorsController {
     return this.vendors.create(dto);
   }
 
+  /** Vendor list is readable by ops/scan roles too — they need the names for the hand-off dropdown
+   *  on the tracking screen. Creating/editing vendors stays limited to the class roles above. */
   @Get()
+  @Roles(UserRole.WAREHOUSE_HANDLER, UserRole.DRIVER, UserRole.SALES, UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
   list() {
     return this.vendors.list();
   }
