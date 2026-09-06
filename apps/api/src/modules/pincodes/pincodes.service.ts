@@ -205,35 +205,57 @@ export class PincodesService {
     // ran for minutes and tripped the gateway timeout — the proxy then returned an HTML error page,
     // which the client tried to parse as JSON ("Unexpected token '<'"). Chunked concurrency keeps it
     // well under the timeout while staying gentle on the DB connection pool.
+    // Read a field case-insensitively — the uploaded CSV header may be "Pincode"/"PINCODE"/"pincode",
+    // "TatDays"/"tatdays", "isOda"/"ISODA", etc. Keying only on the exact lowercase name silently
+    // dropped every row of a capital-header file (0 imported).
+    const field = (raw: any, ...names: string[]): any => {
+      for (const n of names) for (const k of Object.keys(raw)) {
+        if (k.toLowerCase() === n.toLowerCase()) { const v = raw[k]; if (v != null && String(v).trim() !== '') return v; }
+      }
+      return undefined;
+    };
     const CHUNK = 25;
-    const doRow = async (raw: typeof rows[number]) => {
-      const pincode = String(raw.pincode ?? '').trim();
-      if (!/^\d{6}$/.test(pincode)) { errors.push({ pincode: pincode || '(blank)', error: 'pincode must be 6 digits' }); return; }
-      const network = String(raw.network || defaultNetwork).trim().toUpperCase() === 'SELF' ? 'SELF' : String(raw.network || defaultNetwork).trim();
-      const isOda = raw.isOda === true || String(raw.isOda ?? '').trim().toLowerCase() === 'true' || String(raw.isOda ?? '').trim() === '1';
-      const tatDays = raw.tatDays != null && String(raw.tatDays).trim() !== '' ? Number(raw.tatDays) : null;
-      const city = raw.city?.toString().trim() || null;
-      const state = raw.state?.toString().trim() || null;
-      const mode = raw.mode?.toString().trim() || null;
+    // Parse + validate every row up front (cheap, no DB). Only the coverage upsert runs per-row;
+    // the base-directory sync is done once as a fast batched createMany afterwards, so a large file
+    // (e.g. 21k pincodes) does ~half the DB round-trips and stays well under the gateway timeout.
+    type Clean = { pincode: string; city: string | null; state: string | null; network: string; mode: string | null; tatDays: number | null; isOda: boolean };
+    const clean: Clean[] = [];
+    for (const raw of rows) {
+      const pincode = String(field(raw, 'pincode') ?? '').trim();
+      if (!/^\d{6}$/.test(pincode)) { errors.push({ pincode: pincode || '(blank)', error: 'pincode must be 6 digits' }); continue; }
+      const netRaw = field(raw, 'network');
+      const network = String(netRaw || defaultNetwork).trim().toUpperCase() === 'SELF' ? 'SELF' : String(netRaw || defaultNetwork).trim();
+      const isOdaRaw = field(raw, 'isOda', 'oda');
+      const isOda = isOdaRaw === true || String(isOdaRaw ?? '').trim().toLowerCase() === 'true' || String(isOdaRaw ?? '').trim() === '1';
+      const tatRaw = field(raw, 'tatDays', 'tat', 'tatdays');
+      const tatDays = tatRaw != null && String(tatRaw).trim() !== '' ? Number(tatRaw) : null;
+      const city = String(field(raw, 'city') ?? '').trim() || null;
+      const state = String(field(raw, 'state') ?? '').trim() || null;
+      const mode = String(field(raw, 'mode') ?? '').trim() || null;
+      clean.push({ pincode, city, state, network, mode, tatDays, isOda });
+    }
+
+    const doRow = async (r: Clean) => {
       try {
         await this.prisma.serviceablePincode.upsert({
-          where: { pincode_network: { pincode, network } },
-          update: { city, state, mode, tatDays, isOda, isActive: true },
-          create: { pincode, network, city, state, mode, tatDays, isOda },
+          where: { pincode_network: { pincode: r.pincode, network: r.network } },
+          update: { city: r.city, state: r.state, mode: r.mode, tatDays: r.tatDays, isOda: r.isOda, isActive: true },
+          create: { pincode: r.pincode, network: r.network, city: r.city, state: r.state, mode: r.mode, tatDays: r.tatDays, isOda: r.isOda },
         });
-        // keep the base directory in sync so booking pincode-lookup resolves
-        if (city && state) {
-          await this.prisma.pincode.upsert({
-            where: { pincode },
-            update: { city, state, isOda: isOda || undefined },
-            create: { pincode, city, state, region: regionFromPincode(pincode) as any, tier: 2, isOda },
-          }).catch(() => undefined);
-        }
         ok++;
-      } catch (e: any) { errors.push({ pincode, error: e.message }); }
+      } catch (e: any) { errors.push({ pincode: r.pincode, error: e.message }); }
     };
-    for (let i = 0; i < rows.length; i += CHUNK) {
-      await Promise.all(rows.slice(i, i + CHUNK).map(doRow));
+    for (let i = 0; i < clean.length; i += CHUNK) {
+      await Promise.all(clean.slice(i, i + CHUNK).map(doRow));
+    }
+
+    // Keep the base directory in sync so booking pincode-lookup resolves — batched insert of any
+    // pincodes not already known (skipDuplicates), one deduped row per pincode.
+    const baseSeen = new Set<string>();
+    const baseRows = clean.filter((r) => r.city && r.state && !baseSeen.has(r.pincode) && baseSeen.add(r.pincode))
+      .map((r) => ({ pincode: r.pincode, city: r.city!, state: r.state!, region: regionFromPincode(r.pincode) as any, tier: 2, isOda: r.isOda }));
+    for (let i = 0; i < baseRows.length; i += 1000) {
+      await this.prisma.pincode.createMany({ data: baseRows.slice(i, i + 1000), skipDuplicates: true }).catch(() => undefined);
     }
     return { imported: ok, failed: errors.length, errors: errors.slice(0, 50) };
   }
