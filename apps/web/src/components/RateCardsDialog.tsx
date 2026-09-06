@@ -178,16 +178,28 @@ function CardView({ card, zones, onEdit, onDelete, onCopyCharges }: { card: any;
     (card.slabs || []).forEach((s: any) => zs.add(s.zone));
     return [...zs];
   }, [card, zones]);
-  // rows keyed by rateType+weight
+  // Distinct ORIGIN zones on this card. An origin×dest matrix upload stores one slab per
+  // (origin, dest); without picking an origin the grid collapses every origin onto one line
+  // (last-write-wins per dest). The selector below scopes the grid to one origin so each
+  // origin→destination rate is actually visible.
+  const origins = useMemo(() => {
+    const set = new Set<string>();
+    (card.slabs || []).forEach((s: any) => { if (s.originZone) set.add(String(s.originZone)); });
+    return [...set].sort();
+  }, [card]);
+  const [origin, setOrigin] = useState<string>(() => origins[0] ?? '');
+  // rows keyed by rateType+weight, scoped to the selected origin (blank-origin slabs are wildcards).
   const rows = useMemo(() => {
     const m = new Map<string, any>();
-    (card.slabs || []).forEach((s: any) => {
-      const k = `${s.rateType}|${s.weight}`;
-      if (!m.has(k)) m.set(k, { rateType: s.rateType, weight: s.weight, rates: {} as Record<string, any> });
-      m.get(k).rates[s.zone] = s.rate;
-    });
+    (card.slabs || [])
+      .filter((s: any) => !origin || !s.originZone || String(s.originZone) === origin)
+      .forEach((s: any) => {
+        const k = `${s.rateType}|${s.weight}`;
+        if (!m.has(k)) m.set(k, { rateType: s.rateType, weight: s.weight, rates: {} as Record<string, any> });
+        m.get(k).rates[s.zone] = s.rate;
+      });
     return [...m.values()].sort((a, b) => a.rateType.localeCompare(b.rateType) || Number(a.weight) - Number(b.weight));
-  }, [card]);
+  }, [card, origin]);
 
   const chips: { k: string; v: string }[] = [];
   chips.push(card.fuelMode === 'DYNAMIC'
@@ -230,6 +242,15 @@ function CardView({ card, zones, onEdit, onDelete, onCopyCharges }: { card: any;
         ))}
       </div>
 
+      {origins.length > 0 && (
+        <div className="row" style={{ gap: 8, alignItems: 'center', margin: '2px 0 10px' }}>
+          <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', margin: 0 }}>Origin zone</label>
+          <select value={origin} onChange={(e) => setOrigin(e.target.value)} style={{ width: 'auto', padding: '4px 10px', fontSize: 12.5 }}>
+            {origins.map((o) => <option key={o} value={o}>{o}</option>)}
+          </select>
+          <span className="muted" style={{ fontSize: 11 }}>— shows this origin → each destination zone{origins.length > 1 ? ` (${origins.length} origins on this card)` : ''}</span>
+        </div>
+      )}
       {rows.length ? (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ fontSize: 13 }}>

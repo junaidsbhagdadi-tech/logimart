@@ -75,6 +75,9 @@ export class CustomersController {
   @Post(':id/addresses')
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
   addAddr(@Param('id') id: string, @Body() d: any) { return this.customers.addAddr(Number(id), d); }
+  @Patch(':id/addresses/:rowId')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  updAddr(@Param('rowId') rowId: string, @Body() d: any) { return this.customers.updAddr(Number(rowId), d); }
   @Delete(':id/addresses/:rowId')
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
   delAddr(@Param('rowId') rowId: string) { return this.customers.delAddr(Number(rowId)); }

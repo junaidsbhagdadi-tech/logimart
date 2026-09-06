@@ -624,6 +624,7 @@ export const api = {
   delVol: (clientId: string, rowId: string) => request(`/api/v1/clients/${clientId}/volumetrics/${rowId}`, { method: 'DELETE' }),
   listAddr: (clientId: string) => request<any[]>(`/api/v1/clients/${clientId}/addresses`),
   addAddr: (clientId: string, body: unknown) => request(`/api/v1/clients/${clientId}/addresses`, { method: 'POST', body: JSON.stringify(body) }),
+  updAddr: (clientId: string, rowId: string, body: unknown) => request(`/api/v1/clients/${clientId}/addresses/${rowId}`, { method: 'PATCH', body: JSON.stringify(body) }),
   delAddr: (clientId: string, rowId: string) => request(`/api/v1/clients/${clientId}/addresses/${rowId}`, { method: 'DELETE' }),
 
   // ---- AWB Entry List ----

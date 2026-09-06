@@ -77,7 +77,7 @@ const CALLS = {
   fuel: { list: api.listFuel, add: api.addFuel, del: api.delFuel },
   charges: { list: api.listCharges, add: api.addCharge, del: api.delCharge },
   vol: { list: api.listVol, add: api.addVol, del: api.delVol },
-  addr: { list: api.listAddr, add: api.addAddr, del: api.delAddr },
+  addr: { list: api.listAddr, add: api.addAddr, del: api.delAddr, upd: api.updAddr },
 };
 
 export function CustomerSubTab({ client, kind }: { client?: Client | null; kind: Kind }) {
@@ -87,6 +87,8 @@ export function CustomerSubTab({ client, kind }: { client?: Client | null; kind:
   const [rows, setRows] = useState<any[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const canEdit = !!(CALLS[kind] as any).upd; // only address rows are editable in place for now
 
   const load = () => {
     if (!clientId) { setRows([]); return; }
@@ -96,12 +98,19 @@ export function CustomerSubTab({ client, kind }: { client?: Client | null; kind:
 
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
 
+  const startEdit = (r: any) => { setEditingId(String(r.id)); setForm({ ...r }); setError(''); };
+  const cancelEdit = () => { setEditingId(null); setForm({}); setError(''); };
+
   const save = async () => {
     setError('');
     if (!clientId) { setError('Select a customer first.'); return; }
     for (const f of cfg.fields) if (f.required && !form[f.key]) { setError(`${f.label.replace(' *', '')} is required.`); return; }
     setBusy(true);
-    try { await CALLS[kind].add(clientId, form); setForm({}); load(); }
+    try {
+      if (editingId && canEdit) { await (CALLS[kind] as any).upd(clientId, editingId, form); setEditingId(null); }
+      else { await CALLS[kind].add(clientId, form); }
+      setForm({}); load();
+    }
     catch (e: any) { setError(e.message); }
     setBusy(false);
   };
@@ -147,17 +156,21 @@ export function CustomerSubTab({ client, kind }: { client?: Client | null; kind:
               </div>
             ))}
           </div>
-          <div className="row" style={{ marginTop: 12 }}>
-            <button onClick={save} disabled={busy}>{busy ? 'Saving…' : '+ Add'}</button>
+          <div className="row" style={{ marginTop: 12, gap: 8 }}>
+            <button onClick={save} disabled={busy}>{busy ? 'Saving…' : editingId ? '✔ Update' : '+ Add'}</button>
+            {editingId && <button className="secondary" onClick={cancelEdit} disabled={busy}>Cancel edit</button>}
           </div>
 
           <table style={{ marginTop: 16 }}>
             <thead><tr>{cfg.cols.map((c) => <th key={c}>{c}</th>)}<th></th></tr></thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id}>
+                <tr key={r.id} style={editingId === String(r.id) ? { background: 'var(--sky-soft)' } : undefined}>
                   {cfg.cols.map((c) => <td key={c}>{fmt(r[c])}</td>)}
-                  <td><button className="secondary" style={{ padding: '3px 9px', fontSize: 12 }} onClick={() => remove(String(r.id))}>✕</button></td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    {canEdit && <button className="secondary" style={{ padding: '3px 9px', fontSize: 12, marginRight: 6 }} onClick={() => startEdit(r)} title="Edit this address (name, contact number, etc.)">✎ Edit</button>}
+                    <button className="secondary" style={{ padding: '3px 9px', fontSize: 12 }} onClick={() => remove(String(r.id))}>✕</button>
+                  </td>
                 </tr>
               ))}
               {rows.length === 0 && <tr><td colSpan={cfg.cols.length + 1} className="muted">No rows for {clientName}.</td></tr>}

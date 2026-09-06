@@ -338,6 +338,16 @@ export class CustomersService {
       isDefault: !!d.isDefault, isWarehouse: !!d.isWarehouse,
     } });
   }
+  /** Edit an existing address — only the fields supplied are changed (e.g. mobile / contact name). */
+  updAddr(rowId: number, d: any) {
+    const data: any = {};
+    for (const k of ['contactType', 'name', 'designation', 'email', 'mobile', 'landline', 'addressLine1', 'addressLine2', 'addressLine3', 'pincode', 'city', 'state', 'country', 'gstNo', 'panNo', 'aadhaarNo', 'iecNo', 'adCode', 'lutNo']) {
+      if (d[k] !== undefined) data[k] = d[k];
+    }
+    if (d.isDefault !== undefined) data.isDefault = !!d.isDefault;
+    if (d.isWarehouse !== undefined) data.isWarehouse = !!d.isWarehouse;
+    return this.prisma.customerAddress.update({ where: { id: BigInt(rowId) }, data });
+  }
   delAddr(rowId: number) { return this.prisma.customerAddress.delete({ where: { id: BigInt(rowId) } }); }
 
   // ============ wallet + walk-in ============
