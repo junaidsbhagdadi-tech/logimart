@@ -661,7 +661,13 @@ export class RateService {
     const emergency = r2(freight * cget('EMERGENCY', 'value', card.emergencyCharge) / 100);
     // Green tax (environmental surcharge): only for DEL/NCR, per the configured direction
     // (inbound = delivered into NCR / outbound = picked up in NCR / both). Applies to all products.
-    const environment = (await this.greenTaxApplies(shipment)) ? r2(cget('ENVIRONMENT', 'value', card.environmentCharge)) : 0;
+    // Accept ANY charge master coded/named "green"/"environment" (not just the literal ENVIRONMENT
+    // code) so a "GREEN TAX" charge is still NCR-gated — the custom-charge loop below skips it, so it
+    // can never leak onto every shipment ungated.
+    const greenRow = chargeRows.find((cm) => /ENVIRON|GREEN/.test((String(cm.code) + ' ' + String((cm as any).name ?? '')).toUpperCase()));
+    const environment = (await this.greenTaxApplies(shipment))
+      ? r2(greenRow ? cget(greenRow.code, 'value', card.environmentCharge) : cget('ENVIRONMENT', 'value', card.environmentCharge))
+      : 0;
     // handling: weight-banded ₹/pcs; OSP: oversize (dim>119cm or pcs>69kg)
     const pcs = pieces.length;
     const bands: any[] = Array.isArray(card.handlingBands) ? card.handlingBands : [];
@@ -716,7 +722,9 @@ export class RateService {
     let fuelableExtra = 0; // custom charges flagged "FSC applicable" — fuel is charged on these too
     for (const cm of chargeRows) {
       const code = cm.code.toUpperCase();
-      if (BUILT_IN.has(code)) continue;
+      // Skip built-ins AND any green/environment charge — the latter is applied above, NCR-gated,
+      // so a "GREEN TAX" custom charge must not leak onto every shipment ungated.
+      if (BUILT_IN.has(code) || /ENVIRON|GREEN/.test(code + ' ' + String((cm as any).name ?? '').toUpperCase())) continue;
       // value: rate-card override → master default (cargo only) → 0. Courier bills only card values.
       const v = cget(cm.code, 'value', 0);
       if (!v) continue;

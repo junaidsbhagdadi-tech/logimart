@@ -201,9 +201,14 @@ export class PincodesService {
   ) {
     let ok = 0;
     const errors: { pincode: string; error: string }[] = [];
-    for (const raw of rows) {
+    // Process in parallel chunks: a fully-sequential loop (2 upserts/row) on a large pincode file
+    // ran for minutes and tripped the gateway timeout — the proxy then returned an HTML error page,
+    // which the client tried to parse as JSON ("Unexpected token '<'"). Chunked concurrency keeps it
+    // well under the timeout while staying gentle on the DB connection pool.
+    const CHUNK = 25;
+    const doRow = async (raw: typeof rows[number]) => {
       const pincode = String(raw.pincode ?? '').trim();
-      if (!/^\d{6}$/.test(pincode)) { errors.push({ pincode: pincode || '(blank)', error: 'pincode must be 6 digits' }); continue; }
+      if (!/^\d{6}$/.test(pincode)) { errors.push({ pincode: pincode || '(blank)', error: 'pincode must be 6 digits' }); return; }
       const network = String(raw.network || defaultNetwork).trim().toUpperCase() === 'SELF' ? 'SELF' : String(raw.network || defaultNetwork).trim();
       const isOda = raw.isOda === true || String(raw.isOda ?? '').trim().toLowerCase() === 'true' || String(raw.isOda ?? '').trim() === '1';
       const tatDays = raw.tatDays != null && String(raw.tatDays).trim() !== '' ? Number(raw.tatDays) : null;
@@ -226,6 +231,9 @@ export class PincodesService {
         }
         ok++;
       } catch (e: any) { errors.push({ pincode, error: e.message }); }
+    };
+    for (let i = 0; i < rows.length; i += CHUNK) {
+      await Promise.all(rows.slice(i, i + CHUNK).map(doRow));
     }
     return { imported: ok, failed: errors.length, errors: errors.slice(0, 50) };
   }
