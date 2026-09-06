@@ -8,19 +8,43 @@ import {
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { UserRole } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
 import { ROLES_KEY, SUPER_ADMIN_ONLY_KEY, FEATURE_KEY } from './roles.decorator';
 import { grantLevelFor, meetsLevel, levelForMethod } from './feature-grants';
 
+type FreshUser = { role: UserRole; department: string | null; featureGrants: unknown; isActive: boolean } | null;
+
 /**
- * Verifies the Bearer JWT, attaches the payload to req.user, and enforces any
- * @Roles(...) restriction declared on the handler.
+ * Verifies the Bearer JWT, then resolves the user's CURRENT role / department / feature grants from
+ * the database (cached briefly) — NOT from the token — so an access change takes effect immediately
+ * without the user re-logging in. Enforces @SuperAdminOnly / @Roles, and admits a request when the
+ * user's department or per-user grant covers the route's @Feature at the level the method needs
+ * (additive to @Roles).
  */
 @Injectable()
 export class RolesGuard implements CanActivate {
+  // Small process cache so we don't hit the DB on every request; access changes apply within the TTL.
+  private static cache = new Map<string, { v: FreshUser; exp: number }>();
+  private static TTL_MS = 15_000;
+
   constructor(
     private readonly reflector: Reflector,
     private readonly jwt: JwtService,
+    private readonly prisma: PrismaService,
   ) {}
+
+  private async freshUser(sub: unknown): Promise<FreshUser> {
+    const id = String(sub ?? '');
+    if (!/^\d+$/.test(id)) return null;
+    const now = Date.now();
+    const hit = RolesGuard.cache.get(id);
+    if (hit && hit.exp > now) return hit.v;
+    const u = await this.prisma.user
+      .findUnique({ where: { id: BigInt(id) }, select: { role: true, department: true, featureGrants: true, isActive: true } })
+      .catch(() => null);
+    RolesGuard.cache.set(id, { v: (u as FreshUser) ?? null, exp: now + RolesGuard.TTL_MS });
+    return (u as FreshUser) ?? null;
+  }
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest();
@@ -32,6 +56,16 @@ export class RolesGuard implements CanActivate {
       req.user = await this.jwt.verifyAsync(auth.slice(7));
     } catch {
       throw new UnauthorizedException('Invalid token');
+    }
+
+    // Override the token's role/department/grants with the live values from the DB so assignments
+    // take effect at once. Deactivated accounts are blocked here regardless of a still-valid token.
+    const fresh = await this.freshUser(req.user.sub);
+    if (fresh) {
+      if (fresh.isActive === false) throw new ForbiddenException('Your account is deactivated.');
+      req.user.role = fresh.role;
+      req.user.department = fresh.department;
+      req.user.featureGrants = fresh.featureGrants;
     }
 
     const role: UserRole = req.user.role;

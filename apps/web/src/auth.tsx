@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { api, setToken, clearToken, getToken } from './api';
 
 interface User {
@@ -26,6 +26,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const raw = localStorage.getItem(USER_KEY);
     return getToken() && raw ? JSON.parse(raw) : null;
   });
+
+  // On load, refresh the profile from the server so role/department/feature-grant changes take
+  // effect after a page refresh — no re-login. A 401 means the session is gone → sign out.
+  useEffect(() => {
+    if (!getToken()) return;
+    api.me()
+      .then((u) => { localStorage.setItem(USER_KEY, JSON.stringify(u)); setUser(u as User); })
+      .catch((e: any) => { if (String(e?.message || '').match(/401|Unauthorized|no longer valid|deactivated/i)) { clearToken(); localStorage.removeItem(USER_KEY); setUser(null); } });
+  }, []);
 
   const login = async (email: string, password: string) => {
     const res = await api.login(email, password);

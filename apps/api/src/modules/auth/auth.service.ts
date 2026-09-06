@@ -32,6 +32,25 @@ export class AuthService {
     return this.issue(user);
   }
 
+  /** Current user's LIVE profile (role / department / feature grants) so the client can refresh
+   *  access on load without re-logging in. Same shape as the login `user`. */
+  async me(userId: number) {
+    const user = await this.prisma.user.findUnique({ where: { id: BigInt(userId) } });
+    if (!user || !user.isActive) throw new UnauthorizedException('Session no longer valid — sign in again.');
+    return {
+      id: user.id.toString(),
+      fullName: user.fullName,
+      role: user.role,
+      clientId: user.clientId?.toString() ?? null,
+      riderCode: user.riderCode ?? null,
+      department: user.department ?? null,
+      featureGrants:
+        Array.isArray(user.featureGrants) || (user.featureGrants && typeof user.featureGrants === 'object')
+          ? (user.featureGrants as any)
+          : null,
+    };
+  }
+
   /** Build the JWT + user summary returned by every login path. */
   private async issue(user: {
     id: bigint; email: string; role: UserRole; clientId: bigint | null; hubId: bigint | null;
