@@ -48,12 +48,14 @@ export function effectiveGrants(user: AccessUser): Record<string, Level> | null 
   // ADMIN / super admin / client admin are governed by role, not department — full access (ADMIN
   // inherits everything server-side, so it must not be frontend-restricted by a stray grant/dept).
   if (user.role === 'ADMIN' || user.role === 'SYS_ADMIN' || user.role === 'CLIENT_ADMIN') return null;
-  // Department default is the BASE; per-user grants layer ON TOP (override per feature). A person
-  // with a stray per-user grant no longer loses their whole department access.
-  const dep = normalizeGrants(departmentGrants(user.department));
+  // A per-user override REPLACES the department default (this is what the Users → 🔑 Features dialog
+  // promises: "None hides it", "Empty + Save hides everything"). The dialog seeds itself from the
+  // department default, so a saved override is a COMPLETE map — setting one feature to None removes
+  // only that feature, never the rest. With no override we fall back to the department default, and
+  // with neither we return null (role defaults / full).
   const explicit = normalizeGrants(user.featureGrants);
-  if (!dep && !explicit) return null; // no restriction map → role defaults (full)
-  return { ...(dep || {}), ...(explicit || {}) };
+  if (explicit) return explicit;
+  return normalizeGrants(departmentGrants(user.department));
 }
 
 /** Resolve a user's rights for a feature. Super/client = full; else explicit grant → department

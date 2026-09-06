@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { Modal } from '../components/Modal';
 import { FEATURE_CATALOG, DEPARTMENTS, departmentLabel } from '../features';
+import { effectiveGrants } from '../rights';
 
 const ROLES = ['SYS_ADMIN', 'ADMIN', 'FINANCE_EXEC', 'SALES', 'HUB_MANAGER', 'WAREHOUSE_HANDLER', 'DRIVER', 'CLIENT_ADMIN'];
 // Friendly labels shown in the dropdowns (enum value stays the same on the wire).
@@ -46,14 +47,13 @@ export function Users() {
   useEffect(load, []);
   useEffect(() => { api.listHubs().then(setHubs).catch(() => {}); }, []);
 
-  // Grants can arrive as a legacy string[] (each = full/DELETE) or a { to: level } map.
+  // Show the user's CURRENT effective access: their explicit override if they have one, otherwise
+  // the department default seeded in. Because an override REPLACES the department (see rights.ts),
+  // seeding here means whatever the admin saves is a COMPLETE map — so setting one feature to None
+  // hides only that feature, and the rest of the department access stays intact.
   const openGrants = (u: any) => {
     setGrantUser(u);
-    const g = u.featureGrants;
-    const m: Record<string, 'VIEW' | 'EDIT' | 'DELETE'> = {};
-    if (Array.isArray(g)) g.forEach((k: string) => { m[k] = 'DELETE'; });
-    else if (g && typeof g === 'object') for (const [k, v] of Object.entries(g)) { const lv = String(v).toUpperCase(); if (['VIEW', 'EDIT', 'DELETE'].includes(lv)) m[k] = lv as any; }
-    setGrants(m);
+    setGrants(effectiveGrants(u) ?? {});
   };
   const setGrant = (to: string, level: '' | 'VIEW' | 'EDIT' | 'DELETE') => setGrants((g) => { const n = { ...g }; if (!level) delete n[to]; else n[to] = level; return n; });
   const saveGrants = async (clear = false) => {

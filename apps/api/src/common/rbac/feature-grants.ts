@@ -24,16 +24,20 @@ export function normalizeGrants(g: unknown): Record<string, Level> | null {
 
 type GrantUser = { department?: string | null; featureGrants?: unknown } | null | undefined;
 
-/** The granted level for a feature. The department default is the BASE; a per-user grant OVERRIDES
- *  it for that one feature. (Previously an explicit grant replaced the whole department map, which
- *  silently wiped a person's department access if they had any per-user grant at all.) MANAGEMENT =
- *  full. null = "no grant covers this" → defer to @Roles. */
+/** The granted level for a feature. A per-user override REPLACES the department default (matches the
+ *  web 🔑 Features dialog + rights.ts: "None hides it"). The dialog seeds itself from the department
+ *  default, so a saved override is a COMPLETE map — a feature the admin set to None is simply absent
+ *  from the override, and therefore not granted here (defers to @Roles). With no override, the
+ *  department default applies. MANAGEMENT = full. null = "no grant covers this" → defer to @Roles.
+ *  (Grants are ADDITIVE to @Roles in the guard, so an absent grant can only fall back to the route's
+ *  own @Roles, never widen access.) */
 export function grantLevelFor(user: GrantUser, feature: string): Level | null {
   if (!user) return null;
   if (user.department === 'MANAGEMENT') return 'DELETE'; // full cross-department access
+  const explicit = normalizeGrants(user.featureGrants); // null when there is no override
+  if (explicit) return explicit[feature] ?? null; // override replaces the department default
   const dep = (user.department && DEPARTMENT_DEFAULTS[user.department]) || null;
-  const explicit = normalizeGrants(user.featureGrants);
-  return (explicit && explicit[feature]) ?? (dep && dep[feature]) ?? null;
+  return (dep && dep[feature]) ?? null;
 }
 
 /** True if a held level satisfies the required level. */
