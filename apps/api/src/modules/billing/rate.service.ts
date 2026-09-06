@@ -316,8 +316,19 @@ export class RateService {
     });
     if (!cards.length) return null;
     const prod = String(shipment.product ?? '').toUpperCase();
+    // Transport family of a product/service — so a shipment booked as ROAD_PTL / SURFACE resolves
+    // to an "SFC" surface card (and never falls through to an AIR card), even though the product
+    // strings differ. Exact product still wins; family is the fallback before "any card".
+    const famOf = (p: any, mode = '') => {
+      const P = String(p ?? '').toUpperCase();
+      if (['DP', 'TDD', 'NDD'].includes(P)) return 'COURIER';
+      if (['SFC', 'SURFACE', 'HUB', 'ROAD_PTL', 'ROAD', 'RAIL', 'FTL'].includes(P) || /ROAD|RAIL|SURFACE/i.test(mode)) return 'SURFACE';
+      return 'AIR';
+    };
+    const shipFam = famOf(prod, String(shipment.serviceMode ?? ''));
     const byProduct = cards.filter((c) => !prod || String(c.product).toUpperCase() === prod);
-    const pool = byProduct.length ? byProduct : cards;
+    const byFamily = cards.filter((c) => famOf(c.product) === shipFam);
+    const pool = byProduct.length ? byProduct : (byFamily.length ? byFamily : cards);
 
     // Canonical network "brand" for a vendor/network string, resolved via the Vendor master so
     // vendor code / name / service variants of the same carrier match (e.g. BLUEDART-SFC ↔ BDR ↔
@@ -922,13 +933,32 @@ export class RateService {
     });
   }
 
+  /** Human reason a lane didn't price — surfaced in the "No rate" error so it's self-diagnosing. */
+  private async rateGapReason(s: any): Promise<string> {
+    const now = new Date();
+    const all = await this.prisma.customerRateCard.findMany({ where: { clientId: s.clientId }, include: { slabs: true } });
+    if (!all.length) return 'this customer has no rate card — add one (👁 Cards) or upload rates';
+    const active = all.filter((c) => c.isActive && c.validFrom <= now && (!c.validTo || c.validTo >= now));
+    if (!active.length) return `the customer has ${all.length} rate card(s) but none are active/valid today — check "active" and the valid-from/valid-to dates`;
+    const norm = (x: any) => String(x ?? '').replace(/[^a-z0-9]/gi, '').toUpperCase();
+    const dz = norm(s.destZone);
+    const withZone = active.filter((c) => c.slabs.some((sl: any) => norm(sl.zone) === dz));
+    if (!withZone.length) {
+      const zones = [...new Set(active.flatMap((c) => c.slabs.map((sl: any) => String(sl.zone))))].filter(Boolean);
+      return `no rate-card slab has destination zone "${s.destZone}" (zones on the card: ${zones.join(', ') || 'none'})`;
+    }
+    const types = [...new Set(withZone.flatMap((c) => c.slabs.filter((sl: any) => norm(sl.zone) === dz).map((sl: any) => String(sl.rateType))))];
+    return `a "${s.destZone}" slab exists (rate type ${types.join('/') || '?'}) but it could not be priced — check the weight bands / rate type on the card`;
+  }
+
   async quoteForShipment(awb: string) {
     const s = await this.prisma.shipment.findUnique({ where: { awb }, include: { pieces: true } });
     if (!s) throw new NotFoundException(`AWB ${awb} not found`);
     const breakup = await this.chargesForShipment(s, s.pieces);
     if (!breakup) {
+      const why = await this.rateGapReason(s).catch(() => '');
       throw new NotFoundException(
-        `No rate for ${s.originZone}->${s.destZone} (${s.serviceMode}${s.ftlVehicleType ? ' ' + s.ftlVehicleType : ''}). Add a Customer Rate slab / rate card / FTL rate, or enter an agreed freight.`,
+        `No rate for ${s.originZone}->${s.destZone} (${s.serviceMode}${s.ftlVehicleType ? ' ' + s.ftlVehicleType : ''})${why ? ' — ' + why : ''}. Or enter an agreed freight.`,
       );
     }
     const gst = r2(breakup.subtotal * 0.18);
