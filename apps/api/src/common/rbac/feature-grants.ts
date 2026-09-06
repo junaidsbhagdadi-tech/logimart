@@ -55,15 +55,16 @@ export function normalizeGrants(g: unknown): Record<string, Level> | null {
 
 type GrantUser = { department?: string | null; featureGrants?: unknown } | null | undefined;
 
-/** The granted level for a feature: explicit per-user grant → department default → null. MANAGEMENT
- *  and an explicit-full (string[]) grant yield DELETE. null = "no grant covers this" (defer to @Roles). */
+/** The granted level for a feature. The department default is the BASE; a per-user grant OVERRIDES
+ *  it for that one feature. (Previously an explicit grant replaced the whole department map, which
+ *  silently wiped a person's department access if they had any per-user grant at all.) MANAGEMENT =
+ *  full. null = "no grant covers this" → defer to @Roles. */
 export function grantLevelFor(user: GrantUser, feature: string): Level | null {
   if (!user) return null;
-  const explicit = normalizeGrants(user.featureGrants);
-  if (explicit) return explicit[feature] ?? null;
   if (user.department === 'MANAGEMENT') return 'DELETE'; // full cross-department access
-  const dep = user.department && DEPARTMENT_DEFAULTS[user.department] ? DEPARTMENT_DEFAULTS[user.department] : null;
-  return dep ? dep[feature] ?? null : null;
+  const dep = (user.department && DEPARTMENT_DEFAULTS[user.department]) || null;
+  const explicit = normalizeGrants(user.featureGrants);
+  return (explicit && explicit[feature]) ?? (dep && dep[feature]) ?? null;
 }
 
 /** True if a held level satisfies the required level. */

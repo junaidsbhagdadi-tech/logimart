@@ -48,7 +48,12 @@ export function effectiveGrants(user: AccessUser): Record<string, Level> | null 
   // ADMIN / super admin / client admin are governed by role, not department — full access (ADMIN
   // inherits everything server-side, so it must not be frontend-restricted by a stray grant/dept).
   if (user.role === 'ADMIN' || user.role === 'SYS_ADMIN' || user.role === 'CLIENT_ADMIN') return null;
-  return normalizeGrants(user.featureGrants) ?? normalizeGrants(departmentGrants(user.department));
+  // Department default is the BASE; per-user grants layer ON TOP (override per feature). A person
+  // with a stray per-user grant no longer loses their whole department access.
+  const dep = normalizeGrants(departmentGrants(user.department));
+  const explicit = normalizeGrants(user.featureGrants);
+  if (!dep && !explicit) return null; // no restriction map → role defaults (full)
+  return { ...(dep || {}), ...(explicit || {}) };
 }
 
 /** Resolve a user's rights for a feature. Super/client = full; else explicit grant → department

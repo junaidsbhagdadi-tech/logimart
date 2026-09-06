@@ -103,7 +103,7 @@ export class RolesGuard implements CanActivate {
     if (!required.includes(role)) {
       throw new ForbiddenException(
         feature
-          ? `You don't have access to this feature at the required level. Ask an admin to grant it, or check your department.`
+          ? `No access to ${feature}. You are role ${role}${req.user.department ? `, department ${req.user.department}` : ' (no department)'}; your granted level is ${grantLevelFor(req.user, feature) ?? 'none'} but this action needs ${levelForMethod(req.method)}. Ask an admin to grant ${feature} at ${levelForMethod(req.method)} or higher.`
           : `Requires role: ${required.join(' | ')}`,
       );
     }
