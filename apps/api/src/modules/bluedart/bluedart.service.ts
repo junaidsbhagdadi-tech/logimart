@@ -63,7 +63,7 @@ export class BluedartService {
   async track(awb: string) {
     this.ensure();
     // TSD tracking URL: handler=tnt, action=custawbquery, awb=awb, numbers=<waybill>, format=xml, scan=1 (all scans).
-    const q = `/tracking/v1?handler=tnt&action=custawbquery&loginid=${encodeURIComponent(BLUEDART.loginId)}&awb=awb&numbers=${encodeURIComponent(awb)}&format=xml&lickey=${encodeURIComponent(BLUEDART.licKey)}&verno=1&scan=1`;
+    const q = `/tracking/v1?handler=tnt&action=custawbquery&loginid=${encodeURIComponent(BLUEDART.loginId)}&awb=awb&numbers=${encodeURIComponent(awb)}&format=xml&lickey=${encodeURIComponent(BLUEDART.trackLicKey)}&verno=1&scan=1`;
     return this.authed(q, { method: 'GET' });
   }
 

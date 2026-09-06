@@ -14,7 +14,10 @@ export const BLUEDART = {
   clientId: process.env.BLUEDART_CLIENT_ID ?? '',
   clientSecret: process.env.BLUEDART_CLIENT_SECRET ?? '',
   loginId: process.env.BLUEDART_LOGINID ?? '',
-  licKey: process.env.BLUEDART_LICKEY ?? '',
+  licKey: process.env.BLUEDART_LICKEY ?? '',                                   // shipping / waybill / pickup / serviceability
+  // Tracking is often a SEPARATE licence key on BlueDart. Set BLUEDART_TRACK_LICKEY if yours differs;
+  // otherwise it falls back to the shipping key above.
+  trackLicKey: process.env.BLUEDART_TRACK_LICKEY || process.env.BLUEDART_LICKEY || '',
   // ---- account-specific shipper defaults for GenerateWayBill (from your BlueDart onboarding) ----
   customerCode: process.env.BLUEDART_CUSTOMER_CODE ?? '', // 6-char BD customer code (falls back to loginId)
   originArea: process.env.BLUEDART_ORIGIN_AREA ?? '',     // 3-char BD origin area code, e.g. BOM/DEL/BLR
