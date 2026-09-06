@@ -114,8 +114,11 @@ export class ShipmentsService {
     const cid = String((dto as any).clientId ?? '').trim();
     const sel = { id: true, isActive: true, isCreditHold: true, legalName: true, outstandingBal: true, creditLimit: true };
     let client = /^\d+$/.test(cid) ? await this.prisma.b2bClient.findUnique({ where: { id: BigInt(cid) }, select: sel }) : null;
-    if (!client && cid) client = await this.prisma.b2bClient.findFirst({ where: { accountCode: cid }, select: sel });
-    if (!client) throw new NotFoundException(`Client not found (id / account code "${cid}") — add the customer (with that account code) first.`);
+    // Account-code match is case-insensitive (bulk sheets vary the case, e.g. "o0020" vs "O0020").
+    if (!client && cid) client = await this.prisma.b2bClient.findFirst({ where: { accountCode: { equals: cid, mode: 'insensitive' } }, select: sel });
+    // …and space-tolerant, in case the sheet cell carries a stray internal space ("O 0020").
+    if (!client && /\s/.test(cid)) client = await this.prisma.b2bClient.findFirst({ where: { accountCode: { equals: cid.replace(/\s+/g, ''), mode: 'insensitive' } }, select: sel });
+    if (!client) throw new NotFoundException(`Customer code "${cid}" not found — check the customer's exact Code (watch for letter "O" vs zero "0"), or add the customer with this code first.`);
     (dto as any).clientId = Number(client.id); // downstream uses the internal id
     // ---- Credit control gate: block booking for inactive / over-limit accounts ----
     if (client.isActive === false) {
