@@ -1,12 +1,13 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
-import { Roles, SuperAdminOnly } from '../../common/rbac/roles.decorator';
+import { Roles, SuperAdminOnly, Feature } from '../../common/rbac/roles.decorator';
 import { CustomersService } from './customers.service';
 import { CreateClientDto, UpdateClientDto } from './dto/customer.dto';
 
 @Controller('api/v1/clients')
 @UseGuards(RolesGuard)
+@Feature('/customers') // department/per-user grant for '/customers' admits these routes (additive to @Roles)
 export class CustomersController {
   constructor(private readonly customers: CustomersService) {}
 

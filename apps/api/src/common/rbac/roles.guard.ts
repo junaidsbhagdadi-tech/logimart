@@ -8,7 +8,8 @@ import {
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { UserRole } from '@prisma/client';
-import { ROLES_KEY, SUPER_ADMIN_ONLY_KEY } from './roles.decorator';
+import { ROLES_KEY, SUPER_ADMIN_ONLY_KEY, FEATURE_KEY } from './roles.decorator';
+import { grantLevelFor, meetsLevel, levelForMethod } from './feature-grants';
 
 /**
  * Verifies the Bearer JWT, attaches the payload to req.user, and enforces any
@@ -48,6 +49,17 @@ export class RolesGuard implements CanActivate {
     // ADMIN inherits all non-super-only access (everything ops/billing/masters).
     if (role === UserRole.ADMIN) return true;
 
+    // Feature-grant access (department / per-user grants) — ADDITIVE to @Roles. If the route is tied
+    // to a feature and the user's grant covers it at the level the HTTP method needs, admit them even
+    // if their role wouldn't. This is what makes "grant a user the Customers feature" actually work.
+    const feature = this.reflector.getAllAndOverride<string>(FEATURE_KEY, [
+      ctx.getHandler(),
+      ctx.getClass(),
+    ]);
+    if (feature && meetsLevel(grantLevelFor(req.user, feature), levelForMethod(req.method))) {
+      return true;
+    }
+
     const required = this.reflector.getAllAndOverride<UserRole[]>(ROLES_KEY, [
       ctx.getHandler(),
       ctx.getClass(),
@@ -55,7 +67,11 @@ export class RolesGuard implements CanActivate {
     if (!required || required.length === 0) return true;
 
     if (!required.includes(role)) {
-      throw new ForbiddenException(`Requires role: ${required.join(' | ')}`);
+      throw new ForbiddenException(
+        feature
+          ? `You don't have access to this feature at the required level. Ask an admin to grant it, or check your department.`
+          : `Requires role: ${required.join(' | ')}`,
+      );
     }
     return true;
   }

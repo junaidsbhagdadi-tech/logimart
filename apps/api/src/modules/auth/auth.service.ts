@@ -43,6 +43,13 @@ export class AuthService {
       role: user.role,
       clientId: user.clientId?.toString() ?? null,
       hubId: user.hubId?.toString() ?? null,
+      // Carried into the token so RolesGuard can honour department / per-user feature grants
+      // server-side (not just in the UI). Users must re-login after an access change to refresh these.
+      department: user.department ?? null,
+      featureGrants:
+        Array.isArray(user.featureGrants) || (user.featureGrants && typeof user.featureGrants === 'object')
+          ? (user.featureGrants as any)
+          : null,
     };
     return {
       accessToken: await this.jwt.signAsync(payload),
