@@ -20,6 +20,7 @@ export function BulkBooking() {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [result, setResult] = useState<{ total: number; created: number; results: { row: number; ok: boolean; awb?: string; error?: string }[] } | null>(null);
 
   const [prodModes, setProdModes] = useState<Record<string, string>>({}); // product code -> transport mode
@@ -33,7 +34,10 @@ export function BulkBooking() {
     }).catch(() => {});
   }, []);
 
-  const rows = useMemo(() => parseCsv(text), [text]);
+  // Guard: an Excel .xlsx pasted/loaded as text is a ZIP ("PK…" + [Content_Types].xml) or shows
+  // replacement chars — parsing it yields garbage rows with empty customer codes. Flag it instead.
+  const binaryPaste = useMemo(() => looksBinary(text), [text]);
+  const rows = useMemo(() => (binaryPaste ? [] : parseCsv(text)), [text, binaryPaste]);
   // group box-rows into shipments by `ref` (blank ref = its own single-box shipment)
   const grouped = useMemo(() => {
     const m = new Map<string, Record<string, string>[]>();
@@ -69,7 +73,34 @@ export function BulkBooking() {
     URL.revokeObjectURL(url);
   };
 
-  const onFile = (f: File | null) => { if (f) f.text().then(setText); };
+  // Accept a real Excel file (.xlsx/.xls) directly — convert its first sheet to CSV with SheetJS —
+  // or a plain .csv. Uploading an .xlsx used to dump its raw ZIP bytes into the box → "customer code
+  // '' not found" on every row; now it just works.
+  const onFile = async (f: File | null) => {
+    if (!f) return;
+    setError(''); setResult(null); setProgress(null);
+    const name = f.name.toLowerCase();
+    try {
+      if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+        const XLSX = await import('xlsx');
+        const wb = XLSX.read(await f.arrayBuffer(), { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        setText(XLSX.utils.sheet_to_csv(ws));
+        return;
+      }
+      const t = await f.text();
+      if (looksBinary(t)) {
+        // A .csv that is actually an .xlsx in disguise (or any binary) — read it as a workbook too.
+        const XLSX = await import('xlsx');
+        const wb = XLSX.read(await f.arrayBuffer(), { type: 'array' });
+        setText(XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]]));
+        return;
+      }
+      setText(t);
+    } catch (e: any) {
+      setError(`Could not read "${f.name}": ${e?.message || e}. Save it as CSV in Excel and try again.`);
+    }
+  };
 
   const submit = async () => {
     setError(''); setResult(null);
@@ -99,7 +130,7 @@ export function BulkBooking() {
         paymentTerm: (first.paymentTerm || '').trim().toUpperCase() === 'TO_PAY' ? 'TO_PAY' : undefined,
         freightToCollect: first.freightToCollect ? Number(first.freightToCollect) : undefined,
         manualFreight: first.agreedFreight && !isNaN(Number(first.agreedFreight)) && Number(first.agreedFreight) > 0 ? Number(first.agreedFreight) : undefined,
-        bookedAt: first.bookedAt ? new Date(first.bookedAt).toISOString() : undefined, // manual booking date+time
+        bookedAt: parseBookedAt(first.bookedAt), // manual booking date+time (DD-MM-YYYY Indian format)
         // One piece per box-row (MPS). A `pcs` column on a row replicates that box N times with the
         // same dims — book the count now, the team edits each box's dims later once the AWB is in hand.
         pieces: grp.flatMap((r) => {
@@ -114,9 +145,23 @@ export function BulkBooking() {
         }),
       };
     });
-    setBusy(true);
-    try { setResult(await api.bulkCreateShipments(dtos)); }
-    catch (e: any) { setError(e.message); }
+    // The server caps each call at 500 rows. Send in chunks under that cap so a whole month books,
+    // aggregating results (with global row numbers) and showing live progress. Booked rows persist
+    // even if a later chunk fails or the user stops — nothing is rolled back.
+    const CHUNK = 200;
+    setBusy(true); setProgress({ done: 0, total: dtos.length });
+    const agg = { total: dtos.length, created: 0, results: [] as { row: number; ok: boolean; awb?: string; error?: string }[] };
+    try {
+      for (let i = 0; i < dtos.length; i += CHUNK) {
+        const part = dtos.slice(i, i + CHUNK);
+        const r = await api.bulkCreateShipments(part);
+        agg.created += r.created;
+        agg.results.push(...r.results.map((rr) => ({ ...rr, row: rr.row + i })));
+        setProgress({ done: Math.min(i + CHUNK, dtos.length), total: dtos.length });
+        setResult({ ...agg }); // live-update as each batch completes
+      }
+    }
+    catch (e: any) { setError(`Stopped after ${agg.results.length} of ${dtos.length}: ${e.message}. Booked rows are saved — re-upload the rest to continue.`); }
     finally { setBusy(false); }
   };
 
@@ -149,8 +194,8 @@ export function BulkBooking() {
         <div className="row">
           <button className="secondary" onClick={downloadTemplate}>⬇ Download CSV template</button>
           <label className="secondary" style={{ padding: '10px 16px', borderRadius: 11, cursor: 'pointer', fontWeight: 600, fontSize: 13, border: '1px solid var(--border)' }}>
-            📎 Upload CSV
-            <input type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={(e) => onFile(e.target.files?.[0] ?? null)} />
+            📎 Upload CSV or Excel
+            <input type="file" accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" style={{ display: 'none' }} onChange={(e) => { onFile(e.target.files?.[0] ?? null); e.target.value = ''; }} />
           </label>
         </div>
         <div className="muted" style={{ fontSize: 12, marginTop: 10 }}>Columns: <code>{cols.join(', ')}</code></div>
@@ -158,12 +203,24 @@ export function BulkBooking() {
 
       <div className="card">
         <h2>Paste / review CSV</h2>
+        {binaryPaste && (
+          <div className="error" style={{ marginBottom: 10 }}>
+            This looks like an <strong>Excel .xlsx file</strong>, not CSV text — that's why every row failed with an empty customer code.
+            Use <strong>📎 Upload CSV or Excel</strong> above to load the .xlsx directly (it's now supported), or in Excel do <em>File → Save As → CSV</em> and paste that.
+          </div>
+        )}
         <textarea rows={8} value={text} onChange={(e) => setText(e.target.value)} placeholder={cols.join(',') + '\n…'}
           style={{ width: '100%', font: '13px monospace', padding: 12, border: '1px solid var(--border)', borderRadius: 11 }} />
         <div className="row" style={{ marginTop: 12, justifyContent: 'space-between', alignItems: 'center' }}>
-          <div className="muted"><strong>{rows.length}</strong> box(es) → <strong>{grouped.length}</strong> shipment(s)</div>
-          <button disabled={busy || grouped.length === 0} onClick={submit}>{busy ? 'Booking…' : `Book ${grouped.length} shipment(s)`}</button>
+          <div className="muted">
+            <strong>{rows.length.toLocaleString()}</strong> box(es) → <strong>{grouped.length.toLocaleString()}</strong> shipment(s)
+            {progress && <> · <strong>{progress.done.toLocaleString()}/{progress.total.toLocaleString()}</strong> processed…</>}
+          </div>
+          <button disabled={busy || grouped.length === 0 || binaryPaste} onClick={submit}>{busy ? `Booking… ${progress ? `${progress.done.toLocaleString()}/${progress.total.toLocaleString()}` : ''}` : `Book ${grouped.length.toLocaleString()} shipment(s)`}</button>
         </div>
+        {grouped.length > 500 && !busy && (
+          <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>Large upload — this books in batches of 200 and can take a while. Keep this tab open; booked rows are saved as each batch finishes.</p>
+        )}
       </div>
 
       {result && (
@@ -185,6 +242,30 @@ export function BulkBooking() {
       )}
     </>
   );
+}
+
+/** Parse a booking date. Indian sheets use DD-MM-YYYY (or DD/MM/YYYY) with an optional HH:MM time —
+ *  JS's native `new Date("15-08-2026")` returns Invalid Date (and "01-08-2026" is misread as US
+ *  MM-DD → wrong month), which silently failed/misdated bulk rows. Parse day-first explicitly and
+ *  fall back to native parsing for ISO (YYYY-MM-DD) inputs. Returns an ISO string, or undefined. */
+function parseBookedAt(s?: string): string | undefined {
+  const v = (s || '').trim();
+  if (!v) return undefined;
+  const m = v.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:[ T](\d{1,2}):(\d{2}))?/);
+  if (m) {
+    const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]), Number(m[4] ?? 0), Number(m[5] ?? 0));
+    return isNaN(d.getTime()) ? undefined : d.toISOString();
+  }
+  const d = new Date(v); // ISO (YYYY-MM-DD…) or other natively-parseable formats
+  return isNaN(d.getTime()) ? undefined : d.toISOString();
+}
+
+/** True when the text is really a binary file (an Excel .xlsx is a ZIP starting "PK") rather than
+ *  CSV — parsing it would yield garbage rows with empty codes, so we block + explain instead. */
+function looksBinary(text: string): boolean {
+  if (!text) return false;
+  const head = text.slice(0, 2000);
+  return head.startsWith('PK\x03\x04') || head.includes('[Content_Types].xml') || /�|\x00/.test(head);
 }
 
 /** Minimal CSV parser: header row + comma-separated values, honouring "quoted" fields. */
