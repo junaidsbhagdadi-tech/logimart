@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
-import { Roles, SuperAdminOnly } from '../../common/rbac/roles.decorator';
+import { Roles, SuperAdminOnly, Feature } from '../../common/rbac/roles.decorator';
 import { ShipmentsService } from './shipments.service';
 import { LabelsService } from '../labels/labels.service';
 import { CreateShipmentDto } from './dto/create-shipment.dto';
@@ -15,6 +15,7 @@ export class ShipmentsController {
   ) {}
 
   @Post()
+  @Feature('/create') // a user granted the '/create' (New Shipment) feature can book, additive to @Roles
   @Roles(UserRole.CLIENT_ADMIN, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
   async create(@Body() dto: CreateShipmentDto, @Req() req: any) {
     // A client may only book under an account it owns (its own, or a same-GSTIN sibling).
@@ -26,6 +27,7 @@ export class ShipmentsController {
 
   /** Bulk booking — create up to 500 shipments from an uploaded sheet. */
   @Post('bulk')
+  @Feature('/bulk') // a user granted the '/bulk' (Bulk Booking) feature can bulk-book, additive to @Roles
   @Roles(UserRole.CLIENT_ADMIN, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
   async bulk(@Body() dto: { rows: CreateShipmentDto[] }, @Req() req: any) {
     let rows = (dto.rows || []).slice(0, 500);

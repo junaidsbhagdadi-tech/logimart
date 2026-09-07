@@ -38,11 +38,16 @@ export function BulkBooking() {
   // replacement chars — parsing it yields garbage rows with empty customer codes. Flag it instead.
   const binaryPaste = useMemo(() => looksBinary(text), [text]);
   const rows = useMemo(() => (binaryPaste ? [] : parseCsv(text)), [text, binaryPaste]);
-  // group box-rows into shipments by `ref` (blank ref = its own single-box shipment)
+  // Group box-rows into shipments. The AWB is the shipment identity — rows sharing an awb are boxes
+  // of one MPS shipment; distinct awbs are distinct shipments. Only fall back to `ref` when the awb
+  // is blank (auto-generated), then to a per-row key. (Keying on `ref` alone was wrong: `ref` here is
+  // a booking-BATCH id shared by thousands of unrelated AWBs, which merged them into giant shipments
+  // with absurd summed weights.)
   const grouped = useMemo(() => {
     const m = new Map<string, Record<string, string>[]>();
     rows.forEach((r, i) => {
-      const key = r.ref && r.ref.trim() ? r.ref.trim() : `__row${i}`;
+      const key = r.awb && r.awb.trim() ? `awb:${r.awb.trim()}`
+        : (r.ref && r.ref.trim() ? `ref:${r.ref.trim()}` : `__row${i}`);
       const arr = m.get(key) ?? [];
       arr.push(r);
       m.set(key, arr);
@@ -131,12 +136,14 @@ export function BulkBooking() {
         freightToCollect: first.freightToCollect ? Number(first.freightToCollect) : undefined,
         manualFreight: first.agreedFreight && !isNaN(Number(first.agreedFreight)) && Number(first.agreedFreight) > 0 ? Number(first.agreedFreight) : undefined,
         bookedAt: parseBookedAt(first.bookedAt), // manual booking date+time (DD-MM-YYYY Indian format)
-        // One piece per box-row (MPS). A `pcs` column on a row replicates that box N times with the
-        // same dims — book the count now, the team edits each box's dims later once the AWB is in hand.
+        // `pcs` = number of pieces for the row; `deadKg` = the row's TOTAL dead weight, split evenly
+        // across those pieces (so chargeable weight ≈ deadKg, not deadKg × pcs). Dims are per-piece
+        // (usually a placeholder here; the team refines each box once the AWB is in hand).
         pieces: grp.flatMap((r) => {
           const n = Math.max(1, Math.floor(Number(r.pcs) || 1));
+          const total = Number(r.deadKg) || 0.5 * n; // 0.5 kg/piece default when weight is blank
           const box = {
-            deadKg: Number(r.deadKg) || 0.5,
+            deadKg: total / n,
             lengthCm: r.lengthCm ? Number(r.lengthCm) : undefined,
             widthCm: r.widthCm ? Number(r.widthCm) : undefined,
             heightCm: r.heightCm ? Number(r.heightCm) : undefined,
