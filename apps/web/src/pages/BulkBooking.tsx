@@ -152,10 +152,13 @@ export function BulkBooking() {
         }),
       };
     });
-    // The server caps each call at 500 rows. Send in chunks under that cap so a whole month books,
-    // aggregating results (with global row numbers) and showing live progress. Booked rows persist
-    // even if a later chunk fails or the user stops — nothing is rolled back.
-    const CHUNK = 200;
+    // Booking runs the rate engine per row (~1-1.5s each), so keep each request SMALL — a large
+    // batch exceeds nginx's 300s proxy timeout and comes back as an HTML error page (not JSON). Send
+    // in small chunks with a short breather between them so the box doesn't pile up. Booked rows
+    // persist (nothing is rolled back), and AWBs are unique — so if it stops, just click Book again
+    // to resume: already-booked AWBs are skipped as "already exists".
+    const CHUNK = 40;
+    const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
     setBusy(true); setProgress({ done: 0, total: dtos.length });
     const agg = { total: dtos.length, created: 0, results: [] as { row: number; ok: boolean; awb?: string; error?: string }[] };
     try {
@@ -166,9 +169,16 @@ export function BulkBooking() {
         agg.results.push(...r.results.map((rr) => ({ ...rr, row: rr.row + i })));
         setProgress({ done: Math.min(i + CHUNK, dtos.length), total: dtos.length });
         setResult({ ...agg }); // live-update as each batch completes
+        await sleep(250); // let the API breathe between batches
       }
     }
-    catch (e: any) { setError(`Stopped after ${agg.results.length} of ${dtos.length}: ${e.message}. Booked rows are saved — re-upload the rest to continue.`); }
+    catch (e: any) {
+      const raw = String(e?.message || e);
+      const msg = /<html|not valid JSON|Unexpected token/i.test(raw)
+        ? 'the server timed out on a batch (booking is heavy)'
+        : raw;
+      setError(`Stopped after ${agg.created} booked of ${dtos.length}: ${msg}. Booked rows are saved — click Book again to resume (already-booked AWBs are skipped automatically).`);
+    }
     finally { setBusy(false); }
   };
 
