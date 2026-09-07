@@ -1365,3 +1365,45 @@ model PerBoxSlab {
   @@index([cardId])
   @@map("per_box_slabs")
 }
+
+// ============================ BULK BOOKING JOBS (background) ============================
+
+/// A background bulk-booking run. The web uploads shipment rows into a job, then a server-side
+/// processor books them one at a time (each row runs the full rate engine, ~1-1.5s), updating
+/// progress here. This decouples big uploads from the HTTP request so there is no proxy timeout and
+/// the user can close the tab. Jobs left RUNNING by a restart auto-resume their PENDING rows.
+model BulkBookingJob {
+  id          BigInt   @id @default(autoincrement())
+  createdById BigInt?                              // User who started it (id only, no FK)
+  clientId    BigInt?                              // CLIENT_ADMIN account scope, if any
+  isClient    Boolean  @default(false)
+  status      String   @default("PENDING")         // PENDING | RUNNING | DONE | CANCELLED
+  total       Int      @default(0)
+  processed   Int      @default(0)
+  succeeded   Int      @default(0)
+  failed      Int      @default(0)
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  createdAt   DateTime @default(now())
+
+  rows BulkBookingJobRow[]
+
+  @@index([status])
+  @@index([createdById, createdAt])
+  @@map("bulk_booking_jobs")
+}
+
+/// One shipment row queued in a bulk-booking job. `payload` is the CreateShipmentDto built by the web.
+model BulkBookingJobRow {
+  id      BigInt         @id @default(autoincrement())
+  jobId   BigInt
+  job     BulkBookingJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  idx     Int
+  payload Json
+  status  String         @default("PENDING")       // PENDING | OK | FAILED
+  awb     String?
+  error   String?
+
+  @@index([jobId, status, idx])
+  @@map("bulk_booking_job_rows")
+}

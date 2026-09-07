@@ -3,6 +3,7 @@ import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles, SuperAdminOnly, Feature } from '../../common/rbac/roles.decorator';
 import { ShipmentsService } from './shipments.service';
+import { BulkBookingService } from './bulk-booking.service';
 import { LabelsService } from '../labels/labels.service';
 import { CreateShipmentDto } from './dto/create-shipment.dto';
 
@@ -11,6 +12,7 @@ import { CreateShipmentDto } from './dto/create-shipment.dto';
 export class ShipmentsController {
   constructor(
     private readonly shipments: ShipmentsService,
+    private readonly bulkJobs: BulkBookingService,
     private readonly labels: LabelsService,
   ) {}
 
@@ -36,6 +38,67 @@ export class ShipmentsController {
       rows = rows.map((r) => ({ ...r, clientId: r.clientId != null && allowed.has(String(r.clientId)) ? Number(r.clientId) : Number(req.user.clientId) }));
     }
     return this.shipments.bulkCreate(rows);
+  }
+
+  // ---- Background bulk-booking jobs (large uploads: no request timeout, resumable) ----
+  // Declared before the ':awb' routes so 'bulk-jobs' is not captured as an AWB.
+
+  /** Create an empty job; the web then appends rows and starts it. */
+  @Post('bulk-jobs')
+  @Feature('/bulk')
+  @Roles(UserRole.CLIENT_ADMIN, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  async createBulkJob(@Req() req: any) {
+    const isClient = req.user.role === UserRole.CLIENT_ADMIN;
+    return this.bulkJobs.createJob({
+      createdById: req.user.sub != null ? BigInt(req.user.sub) : null,
+      clientId: isClient && req.user.clientId != null ? BigInt(req.user.clientId) : null,
+      isClient,
+    });
+  }
+
+  /** Append a chunk of rows to a job (the web uploads the file in small chunks). */
+  @Post('bulk-jobs/:id/rows')
+  @Feature('/bulk')
+  @Roles(UserRole.CLIENT_ADMIN, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  async appendBulkJobRows(@Param('id') id: string, @Body() dto: { rows: CreateShipmentDto[] }, @Req() req: any) {
+    let rows = dto.rows || [];
+    if (req.user.role === UserRole.CLIENT_ADMIN) {
+      const allowed = await this.shipments.bookableAccountIds(req.user.clientId);
+      rows = rows.map((r) => ({ ...r, clientId: r.clientId != null && allowed.has(String(r.clientId)) ? Number(r.clientId) : Number(req.user.clientId) }));
+    }
+    return this.bulkJobs.appendRows(BigInt(id), rows);
+  }
+
+  /** Kick off background processing. */
+  @Post('bulk-jobs/:id/start')
+  @Feature('/bulk')
+  @Roles(UserRole.CLIENT_ADMIN, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  async startBulkJob(@Param('id') id: string) {
+    return this.bulkJobs.start(BigInt(id));
+  }
+
+  @Post('bulk-jobs/:id/cancel')
+  @Feature('/bulk')
+  @Roles(UserRole.CLIENT_ADMIN, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  async cancelBulkJob(@Param('id') id: string) {
+    return this.bulkJobs.cancel(BigInt(id));
+  }
+
+  /** Recent jobs for the current user (admins see all). */
+  @Get('bulk-jobs')
+  @Feature('/bulk')
+  @Roles(UserRole.CLIENT_ADMIN, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  async listBulkJobs(@Req() req: any) {
+    const isSuper = req.user.role === UserRole.SYS_ADMIN || req.user.role === UserRole.ADMIN;
+    return this.bulkJobs.recent(req.user.sub != null ? BigInt(req.user.sub) : null, isSuper);
+  }
+
+  /** Live progress of one job (polled by the web). */
+  @Get('bulk-jobs/:id')
+  @Feature('/bulk')
+  @Roles(UserRole.CLIENT_ADMIN, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  async getBulkJob(@Param('id') id: string) {
+    return this.bulkJobs.progress(BigInt(id));
   }
 
   // ---- Per-AWB add-on charges ----

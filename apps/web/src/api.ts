@@ -49,6 +49,17 @@ export interface Piece {
   volKg: string;
   status: string;
 }
+export interface BulkJob {
+  id: string;
+  status: 'PENDING' | 'RUNNING' | 'DONE' | 'CANCELLED';
+  total: number;
+  processed: number;
+  succeeded: number;
+  failed: number;
+  startedAt: string | null;
+  finishedAt: string | null;
+  createdAt: string;
+}
 export interface Shipment {
   awb: string;
   serviceMode: string;
@@ -307,6 +318,20 @@ export const api = {
       '/api/v1/shipments/bulk',
       { method: 'POST', body: JSON.stringify({ rows }) },
     ),
+
+  // ---- background bulk-booking jobs (large uploads) ----
+  createBulkJob: () =>
+    request<{ id: string; status: string; total: number }>('/api/v1/shipments/bulk-jobs', { method: 'POST' }),
+  appendBulkJobRows: (id: string, rows: unknown[]) =>
+    request<{ total: number }>(`/api/v1/shipments/bulk-jobs/${id}/rows`, { method: 'POST', body: JSON.stringify({ rows }) }),
+  startBulkJob: (id: string) =>
+    request<{ ok: boolean }>(`/api/v1/shipments/bulk-jobs/${id}/start`, { method: 'POST' }),
+  cancelBulkJob: (id: string) =>
+    request<{ ok: boolean }>(`/api/v1/shipments/bulk-jobs/${id}/cancel`, { method: 'POST' }),
+  listBulkJobs: () =>
+    request<BulkJob[]>('/api/v1/shipments/bulk-jobs'),
+  getBulkJob: (id: string) =>
+    request<BulkJob & { failures: { idx: number; awb?: string | null; error?: string | null }[] }>(`/api/v1/shipments/bulk-jobs/${id}`),
 
   // ---- ground ops ----
   uploadPod: async (file: File, kind = 'pod_stamp') => {

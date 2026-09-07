@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { api } from '../api';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { api, type BulkJob } from '../api';
 import { useAuth } from '../auth';
 import { mapMode } from '../productMode';
 
@@ -20,10 +19,19 @@ export function BulkBooking() {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
-  const [result, setResult] = useState<{ total: number; created: number; results: { row: number; ok: boolean; awb?: string; error?: string }[] } | null>(null);
+  const [uploadPct, setUploadPct] = useState<number | null>(null); // 0-100 while sending rows to the server
+  const [job, setJob] = useState<(BulkJob & { failures?: { idx: number; awb?: string | null; error?: string | null }[] }) | null>(null);
+  const [recent, setRecent] = useState<BulkJob[]>([]);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [prodModes, setProdModes] = useState<Record<string, string>>({}); // product code -> transport mode
+
+  const loadRecent = () => api.listBulkJobs().then((js) => {
+    setRecent(js);
+    // If a job is still running (e.g. we came back to the page), resume watching it.
+    const active = js.find((j) => j.status === 'RUNNING' || j.status === 'PENDING');
+    if (active && !job) watchJob(active.id);
+  }).catch(() => {});
 
   useEffect(() => {
     api.listHubs().then((hs) => { if (hs[0]) setHubIds([Number(hs[0].id), Number((hs[1] ?? hs[0]).id)]); }).catch(() => {});
@@ -32,7 +40,25 @@ export function BulkBooking() {
       r.forEach((x) => { m[x.code.toUpperCase()] = mapMode((x.attrs as any)?.service || (x.attrs as any)?.mode || (x.attrs as any)?.serviceMode || (x.attrs as any)?.groupType); });
       setProdModes(m);
     }).catch(() => {});
+    loadRecent();
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Poll a job's progress every 2.5s until it finishes; safe to leave and come back to the page.
+  const watchJob = (id: string) => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    const tick = () => api.getBulkJob(id).then((j) => {
+      if (!j) return;
+      setJob(j);
+      if (j.status === 'DONE' || j.status === 'CANCELLED') {
+        if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+        loadRecent();
+      }
+    }).catch(() => {});
+    tick();
+    pollRef.current = setInterval(tick, 2500);
+  };
 
   // Guard: an Excel .xlsx pasted/loaded as text is a ZIP ("PK…" + [Content_Types].xml) or shows
   // replacement chars — parsing it yields garbage rows with empty customer codes. Flag it instead.
@@ -83,7 +109,7 @@ export function BulkBooking() {
   // '' not found" on every row; now it just works.
   const onFile = async (f: File | null) => {
     if (!f) return;
-    setError(''); setResult(null); setProgress(null);
+    setError(''); setJob(null);
     const name = f.name.toLowerCase();
     try {
       if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
@@ -108,7 +134,7 @@ export function BulkBooking() {
   };
 
   const submit = async () => {
-    setError(''); setResult(null);
+    setError('');
     if (grouped.length === 0) { setError('No rows found. Paste CSV or upload a file.'); return; }
     const dtos = grouped.map((grp) => {
       const first = grp[0];
@@ -116,7 +142,9 @@ export function BulkBooking() {
       // derive the transport mode from the product (master mapping first, then keyword)
       const serviceMode = prodModes[prodCode.toUpperCase()] || mapMode(prodCode) || 'ROAD_PTL';
       return {
-        clientId: ownClientId ?? Number(first.clientId),
+        // Send the raw customer CODE (the API resolves code or internal id, case-insensitively).
+        // Never Number() it — an alphabetic code like "O0020" would become NaN → null → "not found".
+        clientId: ownClientId ?? (first.clientId || '').trim(),
         manualAwb: first.awb || undefined, // pre-assigned AWB for a manually-booked shipment
         product: prodCode || undefined,
         serviceMode,
@@ -152,33 +180,23 @@ export function BulkBooking() {
         }),
       };
     });
-    // Booking runs the rate engine per row (~1-1.5s each), so keep each request SMALL — a large
-    // batch exceeds nginx's 300s proxy timeout and comes back as an HTML error page (not JSON). Send
-    // in small chunks with a short breather between them so the box doesn't pile up. Booked rows
-    // persist (nothing is rolled back), and AWBs are unique — so if it stops, just click Book again
-    // to resume: already-booked AWBs are skipped as "already exists".
-    const CHUNK = 40;
-    const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
-    setBusy(true); setProgress({ done: 0, total: dtos.length });
-    const agg = { total: dtos.length, created: 0, results: [] as { row: number; ok: boolean; awb?: string; error?: string }[] };
+    // Hand the whole batch to a BACKGROUND JOB: upload the rows in small chunks (fast inserts, no
+    // pricing → no timeout), then start server-side processing. Booking then runs on the server row by
+    // row (each ~1-1.5s through the rate engine) with no HTTP request held open, so you can close the
+    // tab. This page polls progress. AWBs are unique, so re-running a file skips already-booked ones.
+    const UPLOAD_CHUNK = 300;
+    setBusy(true); setUploadPct(0); setJob(null);
     try {
-      for (let i = 0; i < dtos.length; i += CHUNK) {
-        const part = dtos.slice(i, i + CHUNK);
-        const r = await api.bulkCreateShipments(part);
-        agg.created += r.created;
-        agg.results.push(...r.results.map((rr) => ({ ...rr, row: rr.row + i })));
-        setProgress({ done: Math.min(i + CHUNK, dtos.length), total: dtos.length });
-        setResult({ ...agg }); // live-update as each batch completes
-        await sleep(250); // let the API breathe between batches
+      const created = await api.createBulkJob();
+      for (let i = 0; i < dtos.length; i += UPLOAD_CHUNK) {
+        await api.appendBulkJobRows(created.id, dtos.slice(i, i + UPLOAD_CHUNK));
+        setUploadPct(Math.round((Math.min(i + UPLOAD_CHUNK, dtos.length) / dtos.length) * 100));
       }
+      await api.startBulkJob(created.id);
+      setUploadPct(null);
+      watchJob(created.id);
     }
-    catch (e: any) {
-      const raw = String(e?.message || e);
-      const msg = /<html|not valid JSON|Unexpected token/i.test(raw)
-        ? 'the server timed out on a batch (booking is heavy)'
-        : raw;
-      setError(`Stopped after ${agg.created} booked of ${dtos.length}: ${msg}. Booked rows are saved — click Book again to resume (already-booked AWBs are skipped automatically).`);
-    }
+    catch (e: any) { setError(String(e?.message || e)); setUploadPct(null); }
     finally { setBusy(false); }
   };
 
@@ -190,16 +208,16 @@ export function BulkBooking() {
       <div className="card">
         <h2>How it works</h2>
         <p className="muted" style={{ marginTop: -6 }}>
-          Fill <strong>one box per row</strong> in Excel, save as CSV, then upload or paste below. For a multi-box
-          shipment (MPS), give every box the <strong>same <code>ref</code></strong> — they book under one AWB, each
-          box carrying its own weight + dimensions (L×W×H cm). A blank <code>ref</code> = a single-box shipment.
-          Fill <code>awb</code> to import a <strong>manually-booked</strong> shipment with its existing AWB; leave it blank to auto-generate.
-          The <code>product</code> column sets the service / transport mode (same as the booking form).
-          E-way bills auto-generate when invoice value ≥ ₹50,000.
+          Fill <strong>one box per row</strong> in Excel, save as CSV, then upload or paste below. Each <strong>distinct
+          <code>awb</code> is one shipment</strong>; rows that share the same <code>awb</code> are boxes of one multi-box
+          shipment (MPS), each carrying its own weight + dimensions (L×W×H cm). Fill <code>awb</code> to import a
+          <strong> manually-booked</strong> shipment with its existing AWB; leave it blank to auto-generate (then rows
+          sharing the same <code>ref</code> group into one AWB). The <code>product</code> column sets the service /
+          transport mode (same as the booking form). E-way bills auto-generate when invoice value ≥ ₹50,000.
         </p>
         <p className="muted" style={{ marginTop: 6, fontSize: 12.5 }}>
-          <strong><code>pcs</code></strong> = number of boxes for that row — put a count with one set of dims and it creates that many identical boxes (upload the same dims for all, the team edits each box's dims later once the AWB is in hand). Leave <code>pcs</code> blank/1 for one box per row (still combine rows by <code>ref</code> for mixed-size MPS).
-          <strong> <code>bookedAt</code></strong> = manual booking date &amp; time (e.g. <code>2026-09-01 10:30</code>); blank = now.
+          <strong><code>pcs</code></strong> = number of pieces for that row and <strong><code>deadKg</code> = the row's TOTAL weight</strong> (split evenly across the pieces — so chargeable weight ≈ <code>deadKg</code>, not <code>deadKg</code>×<code>pcs</code>). Leave <code>pcs</code> blank/1 for a single box.
+          <strong> <code>bookedAt</code></strong> = manual booking date (DD-MM-YYYY, e.g. <code>15-08-2026</code>, optional time <code>15-08-2026 10:30</code>); blank = now.
         </p>
         <p className="muted" style={{ marginTop: 6, fontSize: 12.5 }}>
           <strong><code>vendor</code></strong> (e.g. BDR, DLY) picks the <strong>vendor rate card</strong> so pricing matches the assigned carrier — blank = SELF.
@@ -231,26 +249,61 @@ export function BulkBooking() {
         <div className="row" style={{ marginTop: 12, justifyContent: 'space-between', alignItems: 'center' }}>
           <div className="muted">
             <strong>{rows.length.toLocaleString()}</strong> box(es) → <strong>{grouped.length.toLocaleString()}</strong> shipment(s)
-            {progress && <> · <strong>{progress.done.toLocaleString()}/{progress.total.toLocaleString()}</strong> processed…</>}
+            {uploadPct !== null && <> · uploading <strong>{uploadPct}%</strong>…</>}
           </div>
-          <button disabled={busy || grouped.length === 0 || binaryPaste} onClick={submit}>{busy ? `Booking… ${progress ? `${progress.done.toLocaleString()}/${progress.total.toLocaleString()}` : ''}` : `Book ${grouped.length.toLocaleString()} shipment(s)`}</button>
+          <button disabled={busy || grouped.length === 0 || binaryPaste} onClick={submit}>{busy ? (uploadPct !== null ? `Uploading ${uploadPct}%…` : 'Starting…') : `Book ${grouped.length.toLocaleString()} shipment(s)`}</button>
         </div>
-        {grouped.length > 500 && !busy && (
-          <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>Large upload — this books in batches of 200 and can take a while. Keep this tab open; booked rows are saved as each batch finishes.</p>
-        )}
+        <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>Booking runs in the background on the server — once it starts you can <strong>close this tab</strong> and come back later; progress is saved. AWBs are unique, so re-uploading a file skips shipments already booked.</p>
       </div>
 
-      {result && (
+      {job && (
         <div className="card">
-          <h2>Result — {result.created}/{result.total} created</h2>
+          <h2 style={{ marginBottom: 6 }}>
+            Booking {job.status === 'DONE' ? 'complete' : job.status === 'CANCELLED' ? 'cancelled' : 'in progress'}
+            {' '}<span className={`badge ${job.status === 'DONE' ? 'DELIVERED' : job.status === 'CANCELLED' ? 'EXCEPTION' : 'AT_HUB'}`}>{job.status}</span>
+          </h2>
+          {/* progress bar */}
+          <div style={{ height: 10, borderRadius: 6, background: 'var(--border)', overflow: 'hidden', margin: '6px 0 8px' }}>
+            <div style={{ height: '100%', width: `${job.total ? Math.round((job.processed / job.total) * 100) : 0}%`, background: 'var(--accent, #0891b2)', transition: 'width .3s' }} />
+          </div>
+          <div className="muted" style={{ fontSize: 13 }}>
+            <strong>{job.processed.toLocaleString()}</strong> of <strong>{job.total.toLocaleString()}</strong> processed
+            {' · '}<span className="badge DELIVERED">{job.succeeded.toLocaleString()} booked</span>
+            {job.failed > 0 && <> <span className="badge EXCEPTION">{job.failed.toLocaleString()} failed</span></>}
+            {(job.status === 'RUNNING' || job.status === 'PENDING') && <> · <button className="secondary" style={{ padding: '2px 10px', fontSize: 12 }} onClick={() => api.cancelBulkJob(job.id).then(() => watchJob(job.id))}>Stop</button></>}
+          </div>
+          {(job.status === 'RUNNING' || job.status === 'PENDING') && (
+            <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>Each shipment is priced through the rate engine (~1–1.5s), so a big file takes a while. You can close this tab — it keeps booking on the server.</p>
+          )}
+          {job.failures && job.failures.length > 0 && (
+            <>
+              <h3 style={{ margin: '12px 0 4px', fontSize: 14 }}>Failed rows {job.failed > job.failures.length ? `(first ${job.failures.length} of ${job.failed})` : `(${job.failed})`}</h3>
+              <table>
+                <thead><tr><th>Row</th><th>AWB</th><th>Error</th></tr></thead>
+                <tbody>{job.failures.map((f) => (
+                  <tr key={f.idx}><td>{f.idx + 1}</td><td className="mono">{f.awb || '—'}</td><td><span className="muted">{f.error}</span></td></tr>
+                ))}</tbody>
+              </table>
+              {job.status === 'DONE' && <p className="muted" style={{ fontSize: 12 }}>Fix these in the sheet and re-upload — already-booked AWBs are skipped automatically.</p>}
+            </>
+          )}
+        </div>
+      )}
+
+      {recent.length > 0 && (
+        <div className="card">
+          <h2 style={{ marginBottom: 6 }}>Recent bulk jobs</h2>
           <table>
-            <thead><tr><th>Row</th><th>Status</th><th>AWB / error</th></tr></thead>
+            <thead><tr><th>Started</th><th>Status</th><th>Progress</th><th>Booked</th><th>Failed</th><th></th></tr></thead>
             <tbody>
-              {result.results.map((r) => (
-                <tr key={r.row}>
-                  <td>{r.row}</td>
-                  <td>{r.ok ? <span className="badge DELIVERED">OK</span> : <span className="badge EXCEPTION">FAILED</span>}</td>
-                  <td>{r.ok ? <Link to={`/shipments/${r.awb}`}><strong>{r.awb}</strong></Link> : <span className="muted">{r.error}</span>}</td>
+              {recent.map((j) => (
+                <tr key={j.id}>
+                  <td>{new Date(j.createdAt).toLocaleString('en-IN')}</td>
+                  <td><span className={`badge ${j.status === 'DONE' ? 'DELIVERED' : j.status === 'CANCELLED' ? 'EXCEPTION' : 'AT_HUB'}`}>{j.status}</span></td>
+                  <td>{j.processed.toLocaleString()}/{j.total.toLocaleString()}</td>
+                  <td>{j.succeeded.toLocaleString()}</td>
+                  <td>{j.failed > 0 ? <span className="badge EXCEPTION">{j.failed.toLocaleString()}</span> : '0'}</td>
+                  <td><button className="secondary" style={{ padding: '2px 10px', fontSize: 12 }} onClick={() => watchJob(j.id)}>View</button></td>
                 </tr>
               ))}
             </tbody>
