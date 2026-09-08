@@ -21,6 +21,9 @@ export function ShipmentDetail() {
   const [edited, setEdited] = useState<Record<string, string>>({});
   const [adhoc, setAdhoc] = useState<{ head: string; amount: string }[]>([]);
   const [podFile, setPodFile] = useState<File | null>(null);
+  const [docs, setDocs] = useState<any[]>([]);
+  const [docFile, setDocFile] = useState<File | null>(null);
+  const [docBusy, setDocBusy] = useState(false);
   const [reweighMode, setReweighMode] = useState(false);
   const [rw, setRw] = useState<Record<number, string>>({});
   const [rwd, setRwd] = useState<Record<number, { l: string; w: string; h: string }>>({});
@@ -99,6 +102,19 @@ export function ShipmentDetail() {
     if (canEditCharges) api.listAddons(awb).then(setAddons).catch(() => {});
   };
   useEffect(load, [awb]);
+
+  // ---- shipment attachments (PDF / JPG), via the shared Documents store (entityType='shipment') ----
+  const loadDocs = () => { const id = (s as any)?.id; if (id) api.listDocuments('shipment', String(id)).then(setDocs).catch(() => {}); };
+  useEffect(loadDocs, [(s as any)?.id]);
+  const uploadDoc = async () => {
+    const id = (s as any)?.id;
+    if (!docFile || !id) return;
+    setDocBusy(true); setError(''); setMsg('');
+    try { await api.uploadDocument(docFile, { entityType: 'shipment', entityId: String(id), docType: 'other', label: docFile.name }); setDocFile(null); setMsg(`Attached ${docFile.name}`); loadDocs(); }
+    catch (e: any) { setError(e.message); }
+    finally { setDocBusy(false); }
+  };
+  const removeDoc = async (id: string) => { if (!confirm('Remove this attachment?')) return; try { await api.deleteDocument(id); loadDocs(); } catch (e: any) { setError(e.message); } };
 
   const addAddon = async () => {
     if (!awb || !(Number(addForm.amount) > 0)) { setError('Enter an add-on amount greater than zero.'); return; }
@@ -714,6 +730,34 @@ export function ShipmentDetail() {
           </tbody>
         </table>
         {reweighMode && <button className="secondary" style={{ marginTop: 8 }} onClick={() => setExtra((m) => [...m, { kg: '', l: '', w: '', h: '' }])}>➕ Add box</button>}
+      </div>
+
+      {/* Attachments — invoices, LR/POD scans, e-way bills, photos (PDF or JPG/PNG) */}
+      <div className="card">
+        <h2 style={{ marginBottom: 4 }}>📎 Attachments</h2>
+        <p className="muted" style={{ marginTop: 0, fontSize: 12.5 }}>Attach shipment documents — invoices, LR / POD scans, e-way bills, photos. PDF or image (JPG / PNG), up to 12 MB.</p>
+        <div className="row" style={{ gap: 8, alignItems: 'center', marginBottom: 10 }}>
+          <input type="file" accept="application/pdf,image/*" onChange={(e) => setDocFile(e.target.files?.[0] ?? null)} />
+          <button disabled={!docFile || docBusy} onClick={uploadDoc}>{docBusy ? 'Uploading…' : 'Upload'}</button>
+        </div>
+        {docs.length === 0 ? <p className="muted" style={{ fontSize: 13 }}>No attachments yet.</p> : (
+          <table>
+            <thead><tr><th>File</th><th>Type</th><th>Uploaded</th><th></th></tr></thead>
+            <tbody>
+              {docs.map((d) => (
+                <tr key={d.id}>
+                  <td>{d.label ?? d.docType ?? 'file'}</td>
+                  <td><span className="badge">{String(d.mimeType || '').includes('pdf') ? 'PDF' : 'IMG'}</span></td>
+                  <td className="muted" style={{ fontSize: 12 }}>{String(d.createdAt).slice(0, 10)}</td>
+                  <td className="row" style={{ gap: 6 }}>
+                    <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={async () => { try { const u = await api.openDocument(d.url); const a = document.createElement('a'); a.href = u; a.target = '_blank'; a.rel = 'noreferrer'; a.click(); setTimeout(() => URL.revokeObjectURL(u), 60000); } catch (e: any) { setError(e.message); } }}>View</button>
+                    <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => removeDoc(d.id)}>Delete</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </>
   );

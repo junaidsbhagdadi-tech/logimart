@@ -843,6 +843,16 @@ export const api = {
     return data;
   },
   deleteDocument: (id: string) => request(`/api/v1/documents/${id}`, { method: 'DELETE' }),
+  // The /file endpoint is auth-gated, so a plain <a href> gets 401 — fetch it WITH the token and
+  // return an object URL to open. Caller should revokeObjectURL after use.
+  openDocument: async (url: string) => {
+    const token = getToken();
+    const res = await fetch(url.startsWith('http') ? url : `${BASE}${url}`, {
+      headers: { ...(token ? { authorization: `Bearer ${token}` } : {}) },
+    });
+    if (!res.ok) throw new Error(`Could not open file (${res.status})`);
+    return URL.createObjectURL(await res.blob());
+  },
 
   // ---- audit log (admin) ----
   auditLog: (params: { entity?: string; limit?: number } = {}) => {
