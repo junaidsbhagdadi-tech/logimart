@@ -364,6 +364,10 @@ export class RateService {
     const wantDynamic = surface && String(card.fuelMode ?? 'FLAT').toUpperCase() === 'DYNAMIC';
     // FLAT: an explicit % on the card wins outright.
     if (!wantDynamic) { const flat = Number(card.fuelPct ?? 0); if (flat > 0) return flat; }
+    // A SURFACE card on FLAT mode uses ONLY its own % (0 = no fuel). It must NEVER inherit the FLAT
+    // air/DP default mechanism — that leak billed the AIR fuel surcharge on 0%-fuel surface shipments.
+    // Give surface a fuel line by setting the card to DYNAMIC (diesel-indexed) or a flat surface %.
+    if (surface && !wantDynamic) return Number(card.fuelPct ?? 0);
     const mechs = await this.prisma.masterEntry.findMany({ where: { type: 'FUEL_MECHANISM', active: true } });
     const isDyn = (m: any) => String((m.attrs as any)?.mode ?? 'FLAT').toUpperCase() === 'DYNAMIC';
     // An explicitly-linked mechanism wins only if it matches the required family (keeps air off diesel).
