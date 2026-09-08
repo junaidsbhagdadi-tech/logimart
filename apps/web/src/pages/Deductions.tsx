@@ -64,6 +64,20 @@ export function Deductions() {
     if (remark === null) return;
     try { await api.rejectDeduction(r.id, { remark: remark || undefined }); setMsg(`Deduction for ${r.awb} rejected`); load(); } catch (e: any) { setError(e.message); }
   };
+  // Attach a pic / email screenshot as a file — stored inline as a data URI in the `attachment` field
+  // (same as a pasted link, just a file). Keep it reasonably sized.
+  const onAttachFile = (f: File | null) => {
+    if (!f) return;
+    if (f.size > 5 * 1024 * 1024) { setError('Attachment too large (max 5 MB). Compress the image or paste a link instead.'); return; }
+    const r = new FileReader();
+    r.onload = () => set('attachment', String(r.result));
+    r.readAsDataURL(f);
+  };
+  const openAttachment = (att: string) => {
+    if (att.startsWith('data:')) {
+      fetch(att).then((r) => r.blob()).then((b) => { const u = URL.createObjectURL(b); window.open(u, '_blank'); setTimeout(() => URL.revokeObjectURL(u), 60000); }).catch(() => {});
+    } else { window.open(att, '_blank'); }
+  };
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const missing = COLS.filter((c) => c.req && !String(form[c.key] ?? '').trim()).map((c) => c.label);
@@ -158,8 +172,8 @@ export function Deductions() {
                 {COLS.map((c) => (
                   <td key={c.key} style={{ whiteSpace: 'nowrap' }}>
                     {c.key === 'status' ? statusBadge(r.status)
-                      : c.key === 'attachment' && r.attachment && /^https?:\/\//.test(r.attachment)
-                      ? <a href={r.attachment} target="_blank" rel="noreferrer">🔗 view</a>
+                      : c.key === 'attachment' && r.attachment && /^(https?:|data:)/.test(r.attachment)
+                      ? <button className="secondary" style={{ padding: '1px 8px', fontSize: 12 }} onClick={() => openAttachment(r.attachment)}>📎 view</button>
                       : c.key === 'amount' ? <strong>{cell(r, c)}</strong> : cell(r, c)}
                   </td>
                 ))}
@@ -195,8 +209,16 @@ export function Deductions() {
                 <label style={{ fontSize: 12 }}>{c.label} {c.req ? <span style={{ color: 'var(--danger, #c0392b)' }}>*</span> : <span className="muted">(opt)</span>}</label>
                 {c.key === 'status'
                   ? <select value={form.status || 'ongoing'} onChange={(e) => set('status', e.target.value)}>{STATUS_OPTS.map((o) => <option key={o} value={o}>{o}</option>)}</select>
+                  : c.key === 'attachment'
+                  ? <div>
+                      <input type="text" value={form.attachment?.startsWith('data:') ? '' : form.attachment} onChange={(e) => set('attachment', e.target.value)} placeholder="paste a link, or upload a file →" />
+                      <div className="row" style={{ gap: 8, marginTop: 6, alignItems: 'center' }}>
+                        <input type="file" accept="image/*,.pdf" onChange={(e) => { onAttachFile(e.target.files?.[0] ?? null); e.currentTarget.value = ''; }} style={{ fontSize: 12 }} />
+                        {form.attachment?.startsWith('data:') && <><span className="badge DELIVERED" style={{ fontSize: 11 }}>📎 file attached</span><button type="button" className="secondary" style={{ padding: '1px 7px', fontSize: 11 }} onClick={() => set('attachment', '')}>✕</button></>}
+                      </div>
+                    </div>
                   : <input type={c.date ? 'date' : c.num ? 'number' : 'text'} value={form[c.key]} onChange={(e) => set(c.key, e.target.value)}
-                      placeholder={c.key === 'awb' ? 'enter AWB — auto-fills the rest' : c.key === 'attachment' ? 'link to pic / email' : ''}
+                      placeholder={c.key === 'awb' ? 'enter AWB — auto-fills the rest' : ''}
                       onBlur={c.key === 'awb' ? (e) => fetchAwb(e.target.value) : undefined}
                       onKeyDown={c.key === 'awb' ? (e) => { if (e.key === 'Enter') { e.preventDefault(); fetchAwb((e.target as HTMLInputElement).value); } } : undefined} />}
                 {c.key === 'awb' && lookupMsg && <div className="muted" style={{ fontSize: 11, marginTop: 3, color: lookupMsg.startsWith('✓') ? 'var(--ok, #16a34a)' : 'var(--muted)' }}>{lookupMsg}</div>}

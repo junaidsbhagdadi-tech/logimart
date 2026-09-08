@@ -140,8 +140,18 @@ export class BillingController {
   /** Bill-working export (per-AWB charge breakdown) for a client — matches the bill sheet. */
   @Get('billing/bill-worksheet')
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
-  billWorksheet(@Query('clientId') clientId: string, @Query('from') from?: string, @Query('to') to?: string) {
-    return this.invoices.billWorksheet(Number(clientId), from, to);
+  billWorksheet(
+    @Query('clientId') clientId?: string,
+    @Query('clientIds') clientIds?: string,
+    @Query('all') all?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    // all=1 → every billable customer; clientIds=comma list → several; clientId → one.
+    const ids: number[] | 'all' = all === '1'
+      ? 'all'
+      : (clientIds ? clientIds.split(',').map(Number).filter((n) => !isNaN(n)) : (clientId ? [Number(clientId)] : []));
+    return this.invoices.billWorksheet(ids, from, to);
   }
 
   /** Head-wise charge breakup of billed AWBs (freight/fuel/fov/oda/…) for Excel export. */

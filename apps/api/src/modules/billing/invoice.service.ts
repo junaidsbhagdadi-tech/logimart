@@ -454,28 +454,43 @@ export class InvoiceService {
    * "Customer bill working" sheet columns exactly (59 cols). Charges come from the
    * live rate engine; unrated AWBs show zeros.
    */
-  async billWorksheet(clientId: number, from?: string, to?: string) {
-    const client = await this.prisma.b2bClient.findUnique({ where: { id: BigInt(clientId) } });
-    if (!client) throw new NotFoundException('Client not found');
-    // Cash / Wallet (prepaid) customers are settled at booking — never part of the billing run.
-    if (client.isCash || client.accountType === 'WALLET') {
-      return { columns: BILL_COLUMNS, client: { accountCode: client.accountCode, legalName: client.legalName }, count: 0, rows: [] };
+  /**
+   * Per-AWB bill working sheet for ONE customer, SEVERAL, or ALL (clientIds = 'all'). Cash/Wallet
+   * (prepaid, settled at booking) customers are always excluded. Each row is tagged with its own
+   * customer, so a multi/all sheet is a single combined table. Heavy (rate engine per AWB), so the
+   * shipment set is capped — narrow the date range or customer set if it truncates.
+   */
+  async billWorksheet(clientIds: number[] | 'all', from?: string, to?: string) {
+    const CAP = 2500;
+    const clientWhere: any = clientIds === 'all' ? {} : { id: { in: clientIds.map((n) => BigInt(n)) } };
+    // Only billable customers (exclude cash/wallet — they never appear on the billing run).
+    const billable = await this.prisma.b2bClient.findMany({
+      where: { ...clientWhere, isCash: false, NOT: { accountType: 'WALLET' } },
+      select: { id: true, accountCode: true, legalName: true, gstin: true },
+    });
+    if (!billable.length) {
+      return { columns: BILL_COLUMNS, client: { accountCode: '', legalName: clientIds === 'all' ? 'All customers' : 'No billable customer selected' }, count: 0, rows: [], truncated: false };
     }
-    const where: any = { clientId: client.id };
+    const byId = new Map(billable.map((c) => [String(c.id), c]));
+    const where: any = { clientId: { in: billable.map((c) => c.id) } };
     if (from || to) where.createdAt = { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) };
     const shipments = await this.prisma.shipment.findMany({
-      where, orderBy: { createdAt: 'asc' }, take: 5000,
+      where, orderBy: { createdAt: 'asc' }, take: CAP + 1,
       include: { pieces: { select: { status: true, deadKg: true, volKg: true, lengthCm: true, widthCm: true, heightCm: true } } },
     });
+    const truncated = shipments.length > CAP;
+    const list = truncated ? shipments.slice(0, CAP) : shipments;
 
     const carrierState = COMPANY.stateCode;
-    const clientState = client.gstin && client.gstin.length >= 2 ? client.gstin.slice(0, 2) : null;
-    const intraState = clientState ? clientState === carrierState : true;
     const vendorCode = (v?: string | null) => (v && String(v).toUpperCase().startsWith('BLUEDART') ? 'BDR' : (v || 'SELF'));
     const d10 = (dt: any) => (dt ? new Date(dt).toISOString().slice(0, 10) : '');
 
     const rows: Record<string, any>[] = [];
-    for (const s of shipments) {
+    for (const s of list) {
+      const client = byId.get(String(s.clientId));
+      if (!client) continue; // shipment's client isn't billable (shouldn't happen given the filter)
+      const clientState = client.gstin && client.gstin.length >= 2 ? client.gstin.slice(0, 2) : null;
+      const intraState = clientState ? clientState === carrierState : true;
       const b: any = (await this.rates.chargesForShipment(s, s.pieces)) || {};
       const num = (x: any) => +(Number(x ?? 0)).toFixed(2);
       const reverseProd = ['TAPEX', 'TOSFC', 'TODP'].includes(String(s.product ?? '').toUpperCase());
@@ -502,7 +517,11 @@ export class InvoiceService {
         KKCessCGST: intraState ? +(gst / 2).toFixed(2) : 0, TotalSales: +(sub + gst).toFixed(2),
       });
     }
-    return { columns: BILL_COLUMNS, client: { accountCode: client.accountCode, legalName: client.legalName }, count: rows.length, rows };
+    // Header label: the one customer's name for a single pick, else a summary of the set.
+    const label = clientIds !== 'all' && clientIds.length === 1
+      ? { accountCode: byId.get(String(clientIds[0]))?.accountCode ?? '', legalName: byId.get(String(clientIds[0]))?.legalName ?? '' }
+      : { accountCode: '', legalName: clientIds === 'all' ? `All customers (${billable.length})` : `${billable.length} customers` };
+    return { columns: BILL_COLUMNS, client: label, count: rows.length, rows, truncated };
   }
 
   /**

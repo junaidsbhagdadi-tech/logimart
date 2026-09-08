@@ -5,19 +5,24 @@ import { api, Client } from '../api';
  *  format exactly, viewable + exportable to Excel. */
 export function BillWorksheet() {
   const [clients, setClients] = useState<Client[]>([]);
-  const [clientId, setClientId] = useState('');
+  const [clientIds, setClientIds] = useState<string[]>([]); // one or several selected
+  const [allCustomers, setAllCustomers] = useState(false);  // ignore the picker, run for everyone
+  const [q, setQ] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const [data, setData] = useState<{ columns: { header: string; key: string }[]; client: any; count: number; rows: Record<string, any>[] } | null>(null);
+  const [data, setData] = useState<{ columns: { header: string; key: string }[]; client: any; count: number; rows: Record<string, any>[]; truncated?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
   useEffect(() => { api.listClients().then(setClients).catch(() => {}); }, []);
 
+  const shown = clients.filter((c) => { const s = q.trim().toLowerCase(); return !s || `${c.accountCode} ${c.legalName}`.toLowerCase().includes(s); });
+  const toggleClient = (id: string) => setClientIds((ids) => ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]);
+
   const run = async () => {
-    if (!clientId) { setErr('Select a customer.'); return; }
+    if (!allCustomers && clientIds.length === 0) { setErr('Select at least one customer, or tick “All customers”.'); return; }
     setErr(''); setBusy(true); setData(null);
-    try { setData(await api.billWorksheet(clientId, from || undefined, to || undefined)); }
+    try { setData(await api.billWorksheet(allCustomers ? 'all' : clientIds, from || undefined, to || undefined)); }
     catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
 
@@ -29,11 +34,12 @@ export function BillWorksheet() {
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Bill working');
-    XLSX.writeFile(wb, `Bill-working-${data.client.accountCode}-${to || 'all'}.xlsx`);
+    const tag = (data.client.accountCode || data.client.legalName || 'customers').replace(/[^A-Za-z0-9]+/g, '-');
+    XLSX.writeFile(wb, `Bill-working-${tag}-${to || 'all'}.xlsx`);
   };
 
   // Show the charge columns compactly in the on-screen preview (full set exports to Excel).
-  const preview = ['AWBNo', 'BookingDate', 'ProductCode', 'ZoneCode', 'ChargeWeight', 'Freight', 'FuelSurcharge', 'EXTRA DELIVERY LOCATION', 'FREIGHT ON VALUE', 'APPOINTMENT DELIVERY', 'TotalSales'];
+  const preview = ['CustomerCode', 'AWBNo', 'BookingDate', 'ProductCode', 'ZoneCode', 'ChargeWeight', 'Freight', 'FuelSurcharge', 'EXTRA DELIVERY LOCATION', 'FREIGHT ON VALUE', 'APPOINTMENT DELIVERY', 'TotalSales'];
 
   return (
     <>
@@ -42,13 +48,30 @@ export function BillWorksheet() {
       {err && <div className="error">{err}</div>}
 
       <div className="card">
-        <div className="grid cols-4" style={{ gap: 12, alignItems: 'flex-end' }}>
-          <div>
-            <label>Customer *</label>
-            <select value={clientId} onChange={(e) => setClientId(e.target.value)}>
-              <option value="">Select customer</option>
-              {clients.map((c) => <option key={c.id} value={c.id}>{c.accountCode} — {c.legalName}</option>)}
-            </select>
+        <div className="row" style={{ gap: 16, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 340px', minWidth: 300 }}>
+            <label className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>Customer(s) {!allCustomers && <span className="muted">— {clientIds.length ? `${clientIds.length} selected` : 'pick one or many'}</span>}</span>
+              <label className="row" style={{ gap: 6, fontWeight: 600, fontSize: 13 }}>
+                <input type="checkbox" style={{ width: 'auto' }} checked={allCustomers} onChange={(e) => setAllCustomers(e.target.checked)} /> All customers
+              </label>
+            </label>
+            {!allCustomers && (
+              <>
+                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="🔍 filter customers…" style={{ marginBottom: 6 }} />
+                <div style={{ maxHeight: 190, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, padding: 6 }}>
+                  {clientIds.length > 0 && <button className="secondary" style={{ padding: '1px 8px', fontSize: 11, marginBottom: 4 }} onClick={() => setClientIds([])}>clear ({clientIds.length})</button>}
+                  {shown.map((c) => (
+                    <label key={c.id} className="row" style={{ gap: 8, alignItems: 'center', fontSize: 13, padding: '2px 4px' }}>
+                      <input type="checkbox" style={{ width: 'auto' }} checked={clientIds.includes(String(c.id))} onChange={() => toggleClient(String(c.id))} />
+                      <span className="mono" style={{ fontSize: 12 }}>{c.accountCode}</span> — {c.legalName}
+                    </label>
+                  ))}
+                  {shown.length === 0 && <div className="muted" style={{ fontSize: 12, padding: 4 }}>No match.</div>}
+                </div>
+              </>
+            )}
+            {allCustomers && <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>Runs for every billable customer (cash / wallet excluded). Large — use a date range; it caps at 2,500 AWBs.</div>}
           </div>
           <div><label>From <span className="muted">(opt.)</span></label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
           <div><label>To <span className="muted">(opt.)</span></label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
@@ -62,6 +85,7 @@ export function BillWorksheet() {
       {data && (
         <div className="card">
           <h2>{data.client.legalName} — {data.count} AWB(s)</h2>
+          {data.truncated && <div className="card" style={{ borderLeft: '4px solid var(--warn, #d97706)', fontSize: 13, marginBottom: 10 }}>⚠ Capped at 2,500 AWBs — narrow the date range or pick fewer customers to see everything.</div>}
           {!data.rows.length ? <p className="muted">No shipments in range.</p> : (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ fontSize: 13 }}>

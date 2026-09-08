@@ -389,9 +389,12 @@ export const api = {
     request<{ ok: boolean; awb: string; overrides: Record<string, number> | null }>(`/api/v1/shipments/${awb}/charge-overrides`, { method: 'POST', body: JSON.stringify({ overrides }) }),
   transferShipment: (awb: string, clientId: string | number) =>
     request<{ awb: string; transferredTo: { id: string; legalName: string; accountCode: string } }>(`/api/v1/shipments/${awb}/transfer`, { method: 'POST', body: JSON.stringify({ clientId }) }),
-  billWorksheet: (clientId: string | number, from?: string, to?: string) =>
-    request<{ columns: { header: string; key: string }[]; client: { accountCode: string; legalName: string }; count: number; rows: Record<string, any>[] }>(
-      `/api/v1/billing/bill-worksheet?clientId=${clientId}${from ? `&from=${from}` : ''}${to ? `&to=${to}` : ''}`),
+  // Pass a single id, an array of ids, or 'all'.
+  billWorksheet: (target: string | number | (string | number)[] | 'all', from?: string, to?: string) => {
+    const q = target === 'all' ? 'all=1' : Array.isArray(target) ? `clientIds=${target.join(',')}` : `clientId=${target}`;
+    return request<{ columns: { header: string; key: string }[]; client: { accountCode: string; legalName: string }; count: number; rows: Record<string, any>[]; truncated?: boolean }>(
+      `/api/v1/billing/bill-worksheet?${q}${from ? `&from=${from}` : ''}${to ? `&to=${to}` : ''}`);
+  },
   chargeBreakup: (clientId?: string | number, from?: string, to?: string) =>
     request<{
       client: { legalName: string; accountCode: string; gstin: string | null } | null;
