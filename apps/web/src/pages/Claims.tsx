@@ -5,6 +5,7 @@ import { useAuth } from '../auth';
 
 // Customer Service raises claims; only Finance + SuperAdmin (and Admin) approve/settle/reject them.
 const CAN_APPROVE = new Set(['FINANCE_EXEC', 'SYS_ADMIN', 'ADMIN']);
+const MAX_CLAIM_FILES = 15; // supporting pics / email comms per claim
 const TYPES = ['damage', 'loss', 'shortage', 'delay'];
 const STATUS_BADGE: Record<string, string> = {
   open: 'PARTIAL', under_review: 'PARTIAL', approved: 'DELIVERED',
@@ -27,10 +28,10 @@ export function Claims() {
 
   const addFiles = async (files: FileList | null) => {
     if (!files) return;
-    const arr = await Promise.all(Array.from(files).slice(0, 8).map((f) => new Promise<{ name: string; dataUrl: string }>((res) => {
+    const arr = await Promise.all(Array.from(files).slice(0, MAX_CLAIM_FILES).map((f) => new Promise<{ name: string; dataUrl: string }>((res) => {
       const r = new FileReader(); r.onload = () => res({ name: f.name, dataUrl: String(r.result) }); r.readAsDataURL(f);
     })));
-    setForm((f) => ({ ...f, attachments: [...f.attachments, ...arr].slice(0, 8) }));
+    setForm((f) => ({ ...f, attachments: [...f.attachments, ...arr].slice(0, MAX_CLAIM_FILES) }));
   };
 
   const create = async () => {
@@ -92,7 +93,7 @@ export function Claims() {
           <div><label>Declared value ₹</label><input type="number" value={form.declaredValue} onChange={(e) => setForm({ ...form, declaredValue: e.target.value })} /></div>
           <div style={{ gridColumn: 'span 2' }}><label>Description</label><input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
           <div style={{ gridColumn: 'span 2' }}>
-            <label>Attachments <span className="muted">(photos / email screenshots — up to 8)</span></label>
+            <label>Attachments <span className="muted">(photos / email screenshots — up to {MAX_CLAIM_FILES})</span></label>
             <input type="file" accept="image/*,.pdf" multiple onChange={(e) => { addFiles(e.target.files); e.currentTarget.value = ''; }} />
             {form.attachments.length > 0 && (
               <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
