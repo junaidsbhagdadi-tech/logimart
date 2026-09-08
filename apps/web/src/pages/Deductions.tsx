@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { Modal } from '../components/Modal';
+import { useAuth } from '../auth';
+
+// Finance + SuperAdmin (and Admin) approve deductions; everyone else (Customer Service) only posts.
+const CAN_APPROVE = new Set(['FINANCE_EXEC', 'SYS_ADMIN', 'ADMIN']);
+const statusBadge = (s?: string) => {
+  const v = String(s || '').toLowerCase();
+  const cls = v === 'approved' ? 'DELIVERED' : v === 'rejected' ? 'EXCEPTION' : v === 'pending' ? 'AT_HUB' : '';
+  return <span className={`badge ${cls}`}>{v || '—'}</span>;
+};
 
 // Monthly deduction detail — columns mirror the ops sheet. req = mandatory, else optional.
 const COLS: { key: string; label: string; req: boolean; date?: boolean; num?: boolean }[] = [
@@ -19,7 +28,7 @@ const COLS: { key: string; label: string; req: boolean; date?: boolean; num?: bo
   { key: 'status', label: 'Claim status', req: false },
   { key: 'remark', label: 'Remark', req: false },
 ];
-const STATUS_OPTS = ['ongoing', 'closed', 'rejected', 'disputed'];
+const STATUS_OPTS = ['pending', 'approved', 'rejected', 'closed', 'disputed'];
 const blank: Record<string, string> = Object.fromEntries(COLS.map((c) => [c.key, '']));
 const d10 = (v: any) => (v ? new Date(v).toLocaleDateString('en-GB') : '');
 const isoDate = (v: any) => { const d = new Date(v); return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10); };
@@ -37,8 +46,24 @@ export function Deductions() {
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
 
+  const { user } = useAuth();
+  const canApprove = CAN_APPROVE.has(String((user as any)?.role || ''));
+
   const load = () => { api.listDeductions(month || undefined).then(setRows).catch((e) => setError(e.message)); };
   useEffect(load, [month]);
+
+  const approve = async (r: any) => {
+    const input = prompt(`Approve deduction for ${r.awb}.\nApproved amount (vendor accepted) — blank = full ₹${Number(r.amount).toLocaleString('en-IN')}:`, r.amount != null ? String(r.amount) : '');
+    if (input === null) return; // cancelled
+    const amt = input.trim() === '' ? undefined : Number(input);
+    if (amt !== undefined && isNaN(amt)) { setError('Enter a valid amount.'); return; }
+    try { await api.approveDeduction(r.id, { approvedAmount: amt }); setMsg(`✓ Approved deduction for ${r.awb}`); load(); } catch (e: any) { setError(e.message); }
+  };
+  const reject = async (r: any) => {
+    const remark = prompt(`Reject deduction for ${r.awb}. Reason (optional):`, '');
+    if (remark === null) return;
+    try { await api.rejectDeduction(r.id, { remark: remark || undefined }); setMsg(`Deduction for ${r.awb} rejected`); load(); } catch (e: any) { setError(e.message); }
+  };
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const missing = COLS.filter((c) => c.req && !String(form[c.key] ?? '').trim()).map((c) => c.label);
@@ -132,14 +157,27 @@ export function Deductions() {
               <tr key={r.id}>
                 {COLS.map((c) => (
                   <td key={c.key} style={{ whiteSpace: 'nowrap' }}>
-                    {c.key === 'attachment' && r.attachment && /^https?:\/\//.test(r.attachment)
+                    {c.key === 'status' ? statusBadge(r.status)
+                      : c.key === 'attachment' && r.attachment && /^https?:\/\//.test(r.attachment)
                       ? <a href={r.attachment} target="_blank" rel="noreferrer">🔗 view</a>
                       : c.key === 'amount' ? <strong>{cell(r, c)}</strong> : cell(r, c)}
                   </td>
                 ))}
                 <td style={{ whiteSpace: 'nowrap' }}>
-                  <button className="secondary" style={{ padding: '2px 8px', fontSize: 12, marginRight: 4 }} title="Edit" onClick={() => openEdit(r)}>✏️</button>
-                  <button className="secondary" style={{ padding: '2px 8px', fontSize: 12 }} title="Delete" onClick={() => del(r)}>🗑</button>
+                  {canApprove ? (
+                    <>
+                      {String(r.status).toLowerCase() === 'pending' && (
+                        <>
+                          <button style={{ padding: '2px 8px', fontSize: 12, marginRight: 4 }} title="Approve" onClick={() => approve(r)}>✓ Approve</button>
+                          <button className="secondary" style={{ padding: '2px 8px', fontSize: 12, marginRight: 4 }} title="Reject" onClick={() => reject(r)}>✕ Reject</button>
+                        </>
+                      )}
+                      <button className="secondary" style={{ padding: '2px 8px', fontSize: 12, marginRight: 4 }} title="Edit" onClick={() => openEdit(r)}>✏️</button>
+                      <button className="secondary" style={{ padding: '2px 8px', fontSize: 12 }} title="Delete" onClick={() => del(r)}>🗑</button>
+                    </>
+                  ) : (
+                    <span className="muted" style={{ fontSize: 12 }}>{String(r.status).toLowerCase() === 'pending' ? 'awaiting approval' : '—'}</span>
+                  )}
                 </td>
               </tr>
             ))}

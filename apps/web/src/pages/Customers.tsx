@@ -45,6 +45,7 @@ export function Customers() {
 
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [q, setQ] = useState('');
+  const [cashOnly, setCashOnly] = useState(false); // filter to only CASH (not-billed) customers
   const [vendors, setVendors] = useState<{ vendorCode: string; name: string }[]>([]); // #12a default-vendor picker
   const load = () => { api.listClients().then(setClients).catch((e) => setError(e.message)); setSel(new Set()); };
   useEffect(load, []);
@@ -74,11 +75,13 @@ export function Customers() {
 
   // Search across code / name / GSTIN / PAN / city / contact.
   const filtered = clients.filter((c) => {
+    if (cashOnly && !(c as any).isCash) return false; // "Cash only" filter — parks the non-billed accounts
     const s = q.trim().toLowerCase();
     if (!s) return true;
     return [c.accountCode, c.legalName, c.gstin, c.pan, c.city, (c as any).contactPhone, (c as any).contactEmail]
       .some((v) => String(v ?? '').toLowerCase().includes(s));
   });
+  const cashCount = clients.filter((c) => (c as any).isCash).length;
 
   const toggleSel = (id: string) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const allSelected = filtered.length > 0 && filtered.every((c) => sel.has(String(c.id)));
@@ -394,10 +397,13 @@ export function Customers() {
 
       <div className="card">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-          <h2 style={{ margin: 0 }}>Customers ({q.trim() ? `${filtered.length} of ${clients.length}` : clients.length})</h2>
-          <div style={{ position: 'relative', minWidth: 260 }}>
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="🔍 Search name, code, GSTIN, PAN, city…" style={{ width: '100%', padding: '9px 30px 9px 12px' }} />
-            {q && <button className="secondary" title="Clear" onClick={() => setQ('')} style={{ position: 'absolute', right: 4, top: 4, padding: '2px 8px', fontSize: 13 }}>✕</button>}
+          <h2 style={{ margin: 0 }}>Customers ({q.trim() || cashOnly ? `${filtered.length} of ${clients.length}` : clients.length})</h2>
+          <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+            <button className={cashOnly ? '' : 'secondary'} title="Show only cash (not-billed) customers" onClick={() => setCashOnly((v) => !v)} style={{ padding: '7px 12px', fontSize: 13, whiteSpace: 'nowrap' }}>💵 Cash only{cashCount ? ` (${cashCount})` : ''}</button>
+            <div style={{ position: 'relative', minWidth: 260 }}>
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="🔍 Search name, code, GSTIN, PAN, city…" style={{ width: '100%', padding: '9px 30px 9px 12px' }} />
+              {q && <button className="secondary" title="Clear" onClick={() => setQ('')} style={{ position: 'absolute', right: 4, top: 4, padding: '2px 8px', fontSize: 13 }}>✕</button>}
+            </div>
           </div>
         </div>
         {sel.size > 0 && (

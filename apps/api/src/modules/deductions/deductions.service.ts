@@ -88,12 +88,35 @@ export class DeductionsService {
         amount: new Prisma.Decimal(Number(dto.amount) || 0),
         attachment: dto.attachment?.trim() || null,
         customerCode: dto.customerCode?.trim()?.toUpperCase() || null,
-        approvedAmount: dto.approvedAmount != null && !isNaN(Number(dto.approvedAmount)) ? new Prisma.Decimal(Number(dto.approvedAmount)) : null,
-        status: dto.status?.trim() || 'ongoing',
+        // Posted deductions start PENDING and carry no approved amount — only Finance/SuperAdmin
+        // set the approved amount via approve(). This is the CS-posts → Finance-approves gate.
+        approvedAmount: null,
+        status: 'pending',
         remark: dto.remark?.trim() || null,
         periodMonth: period,
         createdById: userId != null ? BigInt(userId) : null,
       },
+    });
+  }
+
+  /** Finance / SuperAdmin approves a posted deduction, recording the amount the vendor accepted. */
+  async approve(id: number, approvedAmount?: number, remark?: string) {
+    const row = await this.prisma.vendorDeduction.findUnique({ where: { id: BigInt(id) }, select: { id: true, amount: true } });
+    if (!row) throw new NotFoundException('Deduction not found');
+    const amt = approvedAmount != null && !isNaN(Number(approvedAmount)) ? Number(approvedAmount) : Number(row.amount);
+    return this.prisma.vendorDeduction.update({
+      where: { id: BigInt(id) },
+      data: { status: 'approved', approvedAmount: new Prisma.Decimal(amt), ...(remark != null ? { remark: String(remark).trim() || null } : {}) },
+    });
+  }
+
+  /** Finance / SuperAdmin rejects a posted deduction. */
+  async reject(id: number, remark?: string) {
+    const row = await this.prisma.vendorDeduction.findUnique({ where: { id: BigInt(id) }, select: { id: true } });
+    if (!row) throw new NotFoundException('Deduction not found');
+    return this.prisma.vendorDeduction.update({
+      where: { id: BigInt(id) },
+      data: { status: 'rejected', ...(remark != null ? { remark: String(remark).trim() || null } : {}) },
     });
   }
 

@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { Deductions } from './Deductions';
+import { useAuth } from '../auth';
 
+// Customer Service raises claims; only Finance + SuperAdmin (and Admin) approve/settle/reject them.
+const CAN_APPROVE = new Set(['FINANCE_EXEC', 'SYS_ADMIN', 'ADMIN']);
 const TYPES = ['damage', 'loss', 'shortage', 'delay'];
 const STATUS_BADGE: Record<string, string> = {
   open: 'PARTIAL', under_review: 'PARTIAL', approved: 'DELIVERED',
@@ -16,6 +19,8 @@ export function Claims() {
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
   const [tab, setTab] = useState<'claims' | 'deductions'>('claims');
+  const { user } = useAuth();
+  const canApprove = CAN_APPROVE.has(String((user as any)?.role || ''));
 
   const load = () => { api.listClaims().then(setRows).catch((e) => setError(e.message)); };
   useEffect(load, []);
@@ -115,11 +120,13 @@ export function Claims() {
                 <td><span className={`badge ${STATUS_BADGE[c.status] ?? ''}`}>{c.status.replace(/_/g, ' ')}</span></td>
                 <td>
                   {!['settled', 'rejected', 'closed'].includes(c.status) && (
-                    <div className="row" style={{ gap: 6 }}>
-                      {c.status === 'open' && <button className="secondary" onClick={() => review(c.id, 'under_review')}>Review</button>}
-                      <button onClick={() => settle(c.id)}>Settle</button>
-                      <button className="secondary" onClick={() => review(c.id, 'rejected')}>Reject</button>
-                    </div>
+                    canApprove ? (
+                      <div className="row" style={{ gap: 6 }}>
+                        {c.status === 'open' && <button className="secondary" onClick={() => review(c.id, 'under_review')}>Review</button>}
+                        <button onClick={() => settle(c.id)}>Approve &amp; settle</button>
+                        <button className="secondary" onClick={() => review(c.id, 'rejected')}>Reject</button>
+                      </div>
+                    ) : <span className="muted" style={{ fontSize: 11 }}>awaiting Finance approval</span>
                   )}
                   {c.status === 'settled' && <span className="muted" style={{ fontSize: 11 }}>{c.resolution}</span>}
                 </td>
