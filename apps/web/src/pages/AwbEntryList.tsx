@@ -43,8 +43,16 @@ export function AwbEntryList() {
   const [msg, setMsg] = useState('');
   const [sel, setSel] = useState<Set<string>>(new Set());
 
-  const load = () => { api.awbList(300).then(setRows).catch((e) => setError(e.message)); setSel(new Set()); };
-  useEffect(load, []);
+  const load = (search?: string) => { api.awbList(300, search).then(setRows).catch((e) => setError(e.message)); setSel(new Set()); };
+  // The AWB filter searches the WHOLE database (server-side), so any AWB is findable — not just the
+  // latest 300 loaded. Debounced; other column filters still narrow the returned set client-side.
+  useEffect(() => {
+    const term = (filters.awb || '').trim();
+    if (!term) { load(); return; }
+    const t = setTimeout(() => load(term), 350);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.awb]);
 
   const clearAll = async () => {
     if (!confirm('⚠ Delete ALL shipments and their invoices/scans from the LIVE database?\n\nThis KEEPS customers, vendors, rate cards, charges and masters — but every shipment + invoice is permanently removed and the AWB counter resets.\n\nContinue?')) return;
@@ -108,7 +116,7 @@ export function AwbEntryList() {
       <div className="card" style={{ padding: 16 }}>
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
           <div className="row" style={{ gap: 8 }}>
-            <button className="secondary" onClick={load} title="Refresh">⟳ Refresh</button>
+            <button className="secondary" onClick={() => load((filters.awb || '').trim() || undefined)} title="Refresh">⟳ Refresh</button>
             {Object.values(filters).some(Boolean) && <button className="secondary" onClick={() => setFilters({})}>Clear filters</button>}
             <button className="secondary" onClick={exportXls} disabled={!filtered.length} title="Download the filtered list to Excel">⬇ Excel</button>
           </div>

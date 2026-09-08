@@ -170,11 +170,12 @@ export class ShipmentsController {
     return this.shipments.list(clientId, limit ? Number(limit) : 50);
   }
 
-  /** AWB Entry List (Xpresion-style flat grid). Declared before ':awb'. */
+  /** AWB Entry List (Xpresion-style flat grid). Declared before ':awb'. `search` matches any AWB
+   *  across all shipments (not just the latest page). */
   @Get('awb-list')
-  awbList(@Req() req: any, @Query('limit') limit?: string) {
+  awbList(@Req() req: any, @Query('limit') limit?: string, @Query('search') search?: string) {
     const clientId = req.user.role === UserRole.CLIENT_ADMIN ? BigInt(req.user.clientId) : undefined;
-    return this.shipments.awbList(clientId, limit ? Number(limit) : 300);
+    return this.shipments.awbList(clientId, limit ? Number(limit) : 300, search);
   }
 
   @Get(':awb')

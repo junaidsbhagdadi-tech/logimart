@@ -740,9 +740,22 @@ export class ShipmentsService {
 
   /** Recent shipments, optionally scoped to a single client, with light rollup. */
   /** Xpresion-style AWB Entry List rows (flat, filter/grid-friendly). */
-  async awbList(clientId: bigint | undefined, limit: number) {
+  async awbList(clientId: bigint | undefined, limit: number, search?: string) {
+    const s = (search ?? '').trim();
+    // A search matches ACROSS ALL shipments (not just the latest page) so any AWB is findable —
+    // by our AWB, the carrier's forwarding/BlueDart waybill, the customer reference, or consignee.
+    const where: any = clientId != null ? { clientId } : {};
+    if (s) {
+      where.OR = [
+        { awb: { contains: s, mode: 'insensitive' } },
+        { forwardingAwb: { contains: s, mode: 'insensitive' } },
+        { bdWaybill: { contains: s, mode: 'insensitive' } },
+        { referenceNo: { contains: s, mode: 'insensitive' } },
+        { consigneeName: { contains: s, mode: 'insensitive' } },
+      ];
+    }
     const shipments = await this.prisma.shipment.findMany({
-      where: clientId != null ? { clientId } : undefined,
+      where,
       orderBy: { createdAt: 'desc' },
       take: Math.min(limit, 500),
       include: {
