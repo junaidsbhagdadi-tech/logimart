@@ -167,7 +167,7 @@ export function Customers() {
       addressLine: (c as any).addressLine ?? '', pincode: (c as any).pincode ?? '', city: (c as any).city ?? '', state: (c as any).state ?? '',
       salesPerson: (c as any).salesPerson ?? '', salesPersonMobile: (c as any).salesPersonMobile ?? '', salesPersonEmail: (c as any).salesPersonEmail ?? '',
       csPerson: (c as any).csPerson ?? '', csPersonMobile: (c as any).csPersonMobile ?? '', csPersonEmail: (c as any).csPersonEmail ?? '',
-      accountType: (c as any).accountType ?? 'CREDIT', billingCycle: (c as any).billingCycle ?? 'MONTHLY',
+      accountType: (c as any).isCash ? 'CASH' : ((c as any).accountType ?? 'CREDIT'), billingCycle: (c as any).billingCycle ?? 'MONTHLY',
       allowSameGstin: !!(c as any).allowSameGstin, defaultVendor: (c as any).defaultVendor ?? '', creditLimit: String((c as any).creditLimit ?? ''), creditDays: String((c as any).creditDays ?? '30'), isCash: !!(c as any).isCash, canCheckRates: !!(c as any).canCheckRates, canViewInvoices: !!(c as any).canViewInvoices, commissionPct: String((c as any).commissionPct ?? ''),
       parentAccountId: (c as any).parentAccountId != null ? String((c as any).parentAccountId) : '',
     });
@@ -204,7 +204,7 @@ export function Customers() {
       canCheckRates: form.canCheckRates,
       canViewInvoices: form.canViewInvoices,
       commissionPct: form.commissionPct ? Number(form.commissionPct) : 0,
-      isCash: form.accountType === 'WALLET' ? false : form.isCash,
+      isCash: form.accountType === 'CASH', // Cash account = not billed (out of P&L); other types are billed
       creditLimit: form.creditLimit ? +form.creditLimit : 0,
       creditDays: form.creditDays ? +form.creditDays : 30,
       // Parent-account link is only settable on an existing customer (update).
@@ -309,11 +309,13 @@ export function Customers() {
 
             <div style={{ marginTop: 16 }}>
               <label>Account Type</label>
-              <div className="row" style={{ gap: 10 }}>
-                <button type="button" className={form.accountType === 'CREDIT' ? '' : 'secondary'} onClick={() => set('accountType', 'CREDIT')}>Credit Account<div style={{ fontSize: 11, fontWeight: 400 }}>Post-paid — invoice each cycle</div></button>
-                <button type="button" className={form.accountType === 'WALLET' ? '' : 'secondary'} onClick={() => set('accountType', 'WALLET')}>Wallet Account<div style={{ fontSize: 11, fontWeight: 400 }}>Pre-paid — balance deducted</div></button>
-                <button type="button" className={form.accountType === 'CARD' ? '' : 'secondary'} onClick={() => set('accountType', 'CARD')}>Card Account<div style={{ fontSize: 11, fontWeight: 400 }}>Paid by card — post-paid</div></button>
+              <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
+                <button type="button" className={form.accountType === 'CREDIT' ? '' : 'secondary'} onClick={() => setForm((f) => ({ ...f, accountType: 'CREDIT', isCash: false }))}>Credit Account<div style={{ fontSize: 11, fontWeight: 400 }}>Post-paid — invoice each cycle</div></button>
+                <button type="button" className={form.accountType === 'WALLET' ? '' : 'secondary'} onClick={() => setForm((f) => ({ ...f, accountType: 'WALLET', isCash: false }))}>Wallet Account<div style={{ fontSize: 11, fontWeight: 400 }}>Pre-paid — balance deducted</div></button>
+                <button type="button" className={form.accountType === 'CARD' ? '' : 'secondary'} onClick={() => setForm((f) => ({ ...f, accountType: 'CARD', isCash: false }))}>Card Account<div style={{ fontSize: 11, fontWeight: 400 }}>Paid by card — post-paid</div></button>
+                <button type="button" className={form.accountType === 'CASH' ? '' : 'secondary'} onClick={() => setForm((f) => ({ ...f, accountType: 'CASH', isCash: true }))}>💵 Cash Account<div style={{ fontSize: 11, fontWeight: 400 }}>Not billed — cash collected, out of P&amp;L</div></button>
               </div>
+              {form.accountType === 'CASH' && <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>Cash customers keep their rate cards (to price the cash amount) but are <strong>never invoiced</strong> and don't appear in receivables / P&amp;L. Find them via the <strong>💵 Cash only</strong> filter on the customer list.</div>}
             </div>
 
             <div style={{ marginTop: 16 }}>

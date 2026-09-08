@@ -15,8 +15,21 @@ fi
 echo "==> Pull latest (skip if you rsynced the code)"
 git pull --ff-only || true
 
+# Give the API's tsc build enough heap — the 2GB droplet OOMs the nest build otherwise, which used
+# to leave apps/api/dist/main.js missing and could wedge pm2 in a crash-loop. Prevents the root cause.
+export NODE_OPTIONS="--max-old-space-size=1792"
+
 echo "==> Build (installs deps, prisma generate + db push, builds API + web portal)"
+# npm run build ends with scripts/verify-build.mjs, which exits non-zero if a build artifact is
+# missing. Combined with `set -e`, a failed/OOM build ABORTS HERE — before any restart — so the
+# currently-running app keeps serving and the site never 502s on a broken build.
 npm run build
+
+# Belt-and-suspenders: never restart unless both entry artifacts are actually on disk.
+if [ ! -f apps/api/dist/main.js ] || [ ! -f apps/web/dist/index.html ]; then
+  echo "ERROR: build artifacts missing after build — NOT restarting; previous version stays live."
+  exit 1
+fi
 
 echo "==> Start / restart under pm2"
 if pm2 describe logimart >/dev/null 2>&1; then
