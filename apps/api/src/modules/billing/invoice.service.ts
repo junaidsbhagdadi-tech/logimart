@@ -12,7 +12,7 @@ const GST_RATE = 0.18; // India GST
 const BILL_COLUMNS: { header: string; key: string }[] = [
   'AWBNo', 'BookingDate', 'CustomerCode', 'CustomerName', 'Invoice_No', 'Invoice_Date', 'Cust_Invoice_No', 'Cust_Invoice_Date',
   'Shipment_Value', 'COD_Amount', 'AddField7', 'Vendor_InvoiceNo', 'Shipper', 'ManifestNo', 'VendorCode', 'ProductCode',
-  'Origin', 'PaymentType', 'Pieces', 'ChargeWeight', 'Forwarding_AWB', 'Consignee_Name', 'Consignee_Pin', 'DestinationName',
+  'Origin', 'PaymentType', 'Pieces', ['Actual Weight', 'ActualWeight'] as any, ['Charge Weight', 'ChargeWeight'] as any, 'Forwarding_AWB', 'Consignee_Name', 'Consignee_Pin', 'DestinationName',
   'ZoneCode', 'DomIntl', ['Origin', 'Origin_2'] as any, 'Content', 'Instruction', 'ContractCustomer', 'Description', 'EntryLocked',
   'Freight', 'AIRWAYBILL CHARGES', 'Emergency Sit. Surhrg.', 'ENVIRONMENTAL SURCHARGE', 'EXTRA DELIVERY LOCATION', 'TDD', 'NDD',
   'FREIGHT ON VALUE', 'OVER SIZE PCS', 'PICKUP CHARGES', 'TOPAY CHARGES', 'VALUABLE CARGO HANDLING CHARGE', 'CHEQUE/DD ON DELIVERY',
@@ -502,7 +502,7 @@ export class InvoiceService {
         Shipment_Value: num(s.shipmentValue ?? s.declaredValue), COD_Amount: 0, AddField7: '', Vendor_InvoiceNo: '',
         Shipper: s.shipperName ?? '', ManifestNo: '', VendorCode: vendorCode(s.vendor), ProductCode: s.product ?? '',
         Origin: s.originZone ?? '', PaymentType: s.paymentTerm === 'TO_PAY' ? 'T' : 'R', Pieces: s.pieceCount,
-        ChargeWeight: num(b.chargeableKg), Forwarding_AWB: s.awb, Consignee_Name: s.consigneeName ?? '',
+        ActualWeight: num(s.totalDeadKg), ChargeWeight: num(b.chargeableKg), Forwarding_AWB: s.awb, Consignee_Name: s.consigneeName ?? '',
         Consignee_Pin: s.destPincode ?? '', DestinationName: s.consigneeCity ?? '', ZoneCode: s.destZone ?? '',
         DomIntl: 'D', Origin_2: s.originZone ?? '', Content: s.goodsDesc ?? '', Instruction: '', ContractCustomer: 'Y',
         Description: '', EntryLocked: 'Unlocked',

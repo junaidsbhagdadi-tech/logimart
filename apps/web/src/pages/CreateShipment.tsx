@@ -6,8 +6,10 @@ import { mapMode, modeLabel } from '../productMode';
 import { expandCity } from '../lib/cityCodes';
 import { ScanButton } from '../components/BarcodeScanner';
 
-interface PieceForm { deadKg: string; lengthCm: string; widthCm: string; heightCm: string; }
-const blank: PieceForm = { deadKg: '', lengthCm: '', widthCm: '', heightCm: '' };
+interface PieceForm { deadKg: string; lengthCm: string; widthCm: string; heightCm: string; count: string; }
+const blank: PieceForm = { deadKg: '', lengthCm: '', widthCm: '', heightCm: '', count: '1' };
+// How many boxes a row represents (identical boxes: same weight + size). Blank/0 → 1.
+const pcOf = (p: { count?: string }) => Math.max(1, Math.floor(Number(p.count) || 1));
 
 const VOL_DIVISOR = 5000; // air default; surface uses the card's divisor + CFT (fetched per booking)
 
@@ -168,8 +170,8 @@ export function CreateShipment() {
     if (!clientId || !product || !destPin) return;
     setRcBusy(true); setRateCompare(null);
     try {
-      const totalDead = pieces.reduce((s, p) => s + (Number(p.deadKg) || 0), 0) || 0.5;
-      const r = await api.carrierRates({ clientId, product, originPincode: originPin || undefined, destPincode: destPin, deadKg: totalDead, pcs: pieces.length, declaredValue: Number(svc.shipmentValue) || undefined });
+      const totalDead = pieces.reduce((s, p) => s + (Number(p.deadKg) || 0) * pcOf(p), 0) || 0.5;
+      const r = await api.carrierRates({ clientId, product, originPincode: originPin || undefined, destPincode: destPin, deadKg: totalDead, pcs: pieces.reduce((s, p) => s + pcOf(p), 0), declaredValue: Number(svc.shipmentValue) || undefined });
       setRateCompare(r.options.map((o) => ({ vendor: o.vendor, total: o.total, freight: o.freight })));
     } catch { setRateCompare([]); }
     finally { setRcBusy(false); }
@@ -204,7 +206,7 @@ export function CreateShipment() {
         if (d.paymentTerm) setPaymentTerm(d.paymentTerm); if (d.freightToCollect != null) setFreightToCollect(d.freightToCollect);
         if (d.isDod != null) setIsDod(d.isDod); if (d.dodInstrument) setDodInstrument(d.dodInstrument); if (d.dodAmount != null) setDodAmount(d.dodAmount);
         if (d.manualFreight != null) setManualFreight(d.manualFreight); if (d.manualAwb != null) setManualAwb(d.manualAwb);
-        if (Array.isArray(d.pieces) && d.pieces.length) setPieces(d.pieces);
+        if (Array.isArray(d.pieces) && d.pieces.length) setPieces(d.pieces.map((p: any) => ({ ...blank, ...p })));
         if (d.pickupElsewhere != null) setPickupElsewhere(d.pickupElsewhere);
         setDraftRestored(true);
       }
@@ -447,12 +449,16 @@ export function CreateShipment() {
         isDod,
         dodInstrument: isDod ? dodInstrument : undefined,
         dodAmount: isDod && dodAmount ? +dodAmount : undefined,
-        pieces: pieces.map((p) => ({
-          deadKg: +p.deadKg,
-          lengthCm: p.lengthCm ? +p.lengthCm : undefined,
-          widthCm: p.widthCm ? +p.widthCm : undefined,
-          heightCm: p.heightCm ? +p.heightCm : undefined,
-        })),
+        // Expand each row into its Pcs identical boxes (same weight + dims).
+        pieces: pieces.flatMap((p) => {
+          const box = {
+            deadKg: +p.deadKg,
+            lengthCm: p.lengthCm ? +p.lengthCm : undefined,
+            widthCm: p.widthCm ? +p.widthCm : undefined,
+            heightCm: p.heightCm ? +p.heightCm : undefined,
+          };
+          return Array.from({ length: pcOf(p) }, () => ({ ...box }));
+        }),
       });
       clearDraft(); // booked successfully — drop the saved draft
       nav(`/shipments/${res.awb}`);
@@ -491,8 +497,9 @@ export function CreateShipment() {
   };
   const volLabel = volCfg.cft > 0 ? `÷${volCfg.divisor}×${volCfg.cft} CFT` : `÷${volCfg.divisor}`;
 
-  const totalDead = pieces.reduce((s, p) => s + (+p.deadKg || 0), 0);
-  const totalVol = pieces.reduce((s, p) => s + boxVol(p), 0);
+  const totalPcs = pieces.reduce((s, p) => s + pcOf(p), 0); // a row can stand for several identical boxes
+  const totalDead = pieces.reduce((s, p) => s + (+p.deadKg || 0) * pcOf(p), 0);
+  const totalVol = pieces.reduce((s, p) => s + boxVol(p) * pcOf(p), 0);
   // Charge weight auto-calculates from the boxes (max of actual dead vs volumetric); editable to override.
   useEffect(() => {
     if (cwTouched) return;
@@ -502,6 +509,25 @@ export function CreateShipment() {
   // Auto-pick the carrier from Service Mapping by chargeable weight (+ single-piece), unless the
   // operator has manually chosen a vendor.
   const chargeableKg = chargeWeight ? +chargeWeight : Math.max(totalDead, totalVol);
+  // Vendor access: a customer may be restricted to specific carriers (Customers → Vendor access).
+  // Empty allow-list = every vendor. SELF (own network) is always bookable so a restriction can
+  // never leave the operator with nothing to pick.
+  const selClient: any = clients.find((x) => String(x.id) === String(clientId));
+  const allowedVendorCodes: string[] = Array.isArray(selClient?.allowedVendors) ? selClient.allowedVendors : [];
+  const vendorAllowed = (network: string) => {
+    if (!allowedVendorCodes.length) return true;
+    const norm = (s: string) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const prefix = norm(String(network || '').split('-')[0]);
+    if (!prefix || prefix === 'SELF') return true;
+    return allowedVendorCodes.some((code) => {
+      const c = norm(code);
+      if (!c) return false;
+      if (prefix === c || prefix.startsWith(c) || c.startsWith(prefix)) return true;
+      const v = vendors.find((x) => norm(x.vendorCode) === c);
+      const vn = v ? norm(v.name) : '';
+      return !!vn && (vn === prefix || vn.startsWith(prefix) || prefix.startsWith(vn));
+    });
+  };
   useEffect(() => {
     if (!chargeableKg || chargeableKg <= 0) { setAutoCarrier(null); return; }
     let cancelled = false;
@@ -671,7 +697,7 @@ export function CreateShipment() {
               <button type="button" className="secondary" style={{ padding: '3px 10px', fontSize: 11 }} disabled={rcBusy || !product || !destPin} onClick={compareRates} title="Price every carrier for this booking, cheapest first">{rcBusy ? 'Pricing…' : '₹ Compare rates'}</button>
             </div>
             <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-              {carrierOptions.map((o) => {
+              {carrierOptions.filter((o) => vendorAllowed(o.network)).map((o) => {
                 const picked = o.network === svc.vendor;
                 return (
                   <button key={o.network} type="button"
@@ -695,7 +721,7 @@ export function CreateShipment() {
                   <div className="muted" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 6 }}>Rate comparison — cost &amp; transit · pick a carrier</div>
                   {rateCompare.length === 0 && <div className="muted" style={{ fontSize: 12 }}>No priced carriers — check the rate cards for this customer × product.</div>}
                   <div style={{ display: 'grid', gap: 6 }}>
-                    {rateCompare.map((o, i) => {
+                    {rateCompare.filter((o) => vendorAllowed(o.vendor)).map((o, i) => {
                       const picked = o.vendor === svc.vendor;
                       const tat = tatOf(o.vendor);
                       const isCheap = i === 0;
@@ -977,28 +1003,30 @@ export function CreateShipment() {
       </div>
 
       <div className="card">
-        <h2>Boxes ({pieces.length}) — each becomes a child label</h2>
+        <h2>Boxes ({totalPcs}) — each becomes a child label</h2>
+        <p className="muted" style={{ marginTop: -8, fontSize: 12.5 }}>One row per box size. If several boxes are the <strong>same size and weight</strong>, set <strong>Pcs</strong> and one row books them all.</p>
         <table>
           <thead>
-            <tr><th>#</th><th>Actual (dead) kg</th><th>L (cm)</th><th>W (cm)</th><th>H (cm)</th><th>Vol kg ({volLabel})</th><th></th></tr>
+            <tr><th>#</th><th>Pcs</th><th>Actual (dead) kg</th><th>L (cm)</th><th>W (cm)</th><th>H (cm)</th><th>Vol kg ({volLabel})</th><th></th></tr>
           </thead>
           <tbody>
             {pieces.map((p, i) => (
               <tr key={i}>
                 <td>{i + 1}</td>
+                <td><input type="number" min="1" step="1" style={{ width: 60 }} value={p.count} onChange={(e) => update(i, 'count', e.target.value)} /></td>
                 <td><input value={p.deadKg} onChange={(e) => update(i, 'deadKg', e.target.value)} /></td>
                 <td><input value={p.lengthCm} onChange={(e) => update(i, 'lengthCm', e.target.value)} /></td>
                 <td><input value={p.widthCm} onChange={(e) => update(i, 'widthCm', e.target.value)} /></td>
                 <td><input value={p.heightCm} onChange={(e) => update(i, 'heightCm', e.target.value)} /></td>
-                <td><strong>{boxVol(p) || '—'}</strong></td>
+                <td><strong>{boxVol(p) ? (boxVol(p) * pcOf(p)).toFixed(3) : '—'}</strong></td>
                 <td>{pieces.length > 1 && <button className="secondary" onClick={() => removePiece(i)}>✕</button>}</td>
               </tr>
             ))}
           </tbody>
         </table>
         <div className="row" style={{ marginTop: 12, justifyContent: 'space-between' }}>
-          <button className="secondary" onClick={addPiece}>+ Add box</button>
-          <div className="muted">Totals: dead <strong>{totalDead.toFixed(2)}</strong> kg · vol <strong>{totalVol.toFixed(2)}</strong> kg</div>
+          <button className="secondary" onClick={addPiece}>+ Add box size</button>
+          <div className="muted"><strong>{totalPcs}</strong> box(es) · dead <strong>{totalDead.toFixed(2)}</strong> kg · vol <strong>{totalVol.toFixed(2)}</strong> kg</div>
         </div>
       </div>
       </>)}

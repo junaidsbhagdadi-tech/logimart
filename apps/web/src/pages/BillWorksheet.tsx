@@ -39,7 +39,7 @@ export function BillWorksheet() {
   };
 
   // Show the charge columns compactly in the on-screen preview (full set exports to Excel).
-  const preview = ['CustomerCode', 'AWBNo', 'BookingDate', 'ProductCode', 'ZoneCode', 'ChargeWeight', 'Freight', 'FuelSurcharge', 'EXTRA DELIVERY LOCATION', 'FREIGHT ON VALUE', 'APPOINTMENT DELIVERY', 'TotalSales'];
+  const preview = ['CustomerCode', 'AWBNo', 'BookingDate', 'ProductCode', 'ZoneCode', 'ActualWeight', 'ChargeWeight', 'Freight', 'FuelSurcharge', 'EXTRA DELIVERY LOCATION', 'FREIGHT ON VALUE', 'APPOINTMENT DELIVERY', 'TotalSales'];
 
   return (
     <>

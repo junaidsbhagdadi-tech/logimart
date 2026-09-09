@@ -1,4 +1,4 @@
-import { IsBoolean, IsEmail, IsInt, IsISO8601, IsNumber, IsOptional, IsString, Min, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsEmail, IsInt, IsISO8601, IsNumber, IsOptional, IsString, Min, MinLength } from 'class-validator';
 
 /** Xpresion "Personal Information" parity — most fields optional. */
 export class CreateClientDto {
@@ -41,6 +41,7 @@ export class CreateClientDto {
   @IsOptional() @IsString() billingCycle?: string; // MONTHLY | FORTNIGHTLY
   @IsOptional() @IsBoolean() allowSameGstin?: boolean;
   @IsOptional() @IsString() defaultVendor?: string; // preferred carrier, auto-filled at booking
+  @IsOptional() @IsArray() @IsString({ each: true }) allowedVendors?: string[]; // vendor codes this customer may use (empty = all)
   @IsOptional() @IsNumber() @Min(0) creditLimit?: number;
   @IsOptional() @IsInt() @Min(0) creditDays?: number;
   @IsOptional() @IsBoolean() isOneTime?: boolean;
@@ -95,5 +96,6 @@ export class UpdateClientDto {
   @IsOptional() @IsString() accountCode?: string;   // the edit form round-trips this (unchanged); allow it through
   @IsOptional() @IsBoolean() allowSameGstin?: boolean;
   @IsOptional() @IsString() defaultVendor?: string; // preferred carrier, auto-filled at booking
+  @IsOptional() @IsArray() @IsString({ each: true }) allowedVendors?: string[]; // vendor codes this customer may use (empty = all)
   @IsOptional() @IsInt() parentAccountId?: number | null; // group under a head-office account; null/0 clears
 }

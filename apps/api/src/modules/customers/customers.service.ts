@@ -96,6 +96,7 @@ export class CustomersService {
           billingCycle: dto.billingCycle ?? undefined,
           allowSameGstin: dto.allowSameGstin ?? false,
           defaultVendor: dto.defaultVendor?.trim() || null,
+          allowedVendors: dto.allowedVendors ? dto.allowedVendors.map((v) => String(v).trim().toUpperCase()).filter(Boolean) : undefined,
           creditLimit: this.dec(dto.creditLimit),
           creditDays: Number.isFinite(Number(dto.creditDays)) ? Number(dto.creditDays) : 30,
           isOneTime: dto.isOneTime ?? false,
@@ -239,6 +240,8 @@ export class CustomersService {
         startDate: startDate ? new Date(startDate) : undefined,
         dobAadhaar: dobAadhaar ? new Date(dobAadhaar) : undefined,
         creditLimit: creditLimit != null ? new Prisma.Decimal(creditLimit) : undefined,
+        // Normalize the vendor allow-list (uppercase codes); undefined = leave unchanged.
+        allowedVendors: (rest as any).allowedVendors ? (rest as any).allowedVendors.map((v: any) => String(v).trim().toUpperCase()).filter(Boolean) : undefined,
       },
     });
   }

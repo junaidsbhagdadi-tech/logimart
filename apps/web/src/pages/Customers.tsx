@@ -14,6 +14,7 @@ const blank = {
   csPerson: '', csPersonMobile: '', csPersonEmail: '',
   accountType: 'CREDIT', billingCycle: 'MONTHLY', allowSameGstin: false, defaultVendor: '',
   creditLimit: '', creditDays: '30', isCash: false, canCheckRates: false, canViewInvoices: false, commissionPct: '', parentAccountId: '',
+  allowedVendors: [] as string[], // vendor codes this customer may use (empty = all)
 };
 
 const TABS = ['Personal Information', 'Fuel Surcharges', 'Other Charges', 'Customer Volumetric', 'Customer Address'] as const;
@@ -168,7 +169,7 @@ export function Customers() {
       salesPerson: (c as any).salesPerson ?? '', salesPersonMobile: (c as any).salesPersonMobile ?? '', salesPersonEmail: (c as any).salesPersonEmail ?? '',
       csPerson: (c as any).csPerson ?? '', csPersonMobile: (c as any).csPersonMobile ?? '', csPersonEmail: (c as any).csPersonEmail ?? '',
       accountType: (c as any).isCash ? 'CASH' : ((c as any).accountType ?? 'CREDIT'), billingCycle: (c as any).billingCycle ?? 'MONTHLY',
-      allowSameGstin: !!(c as any).allowSameGstin, defaultVendor: (c as any).defaultVendor ?? '', creditLimit: String((c as any).creditLimit ?? ''), creditDays: String((c as any).creditDays ?? '30'), isCash: !!(c as any).isCash, canCheckRates: !!(c as any).canCheckRates, canViewInvoices: !!(c as any).canViewInvoices, commissionPct: String((c as any).commissionPct ?? ''),
+      allowSameGstin: !!(c as any).allowSameGstin, defaultVendor: (c as any).defaultVendor ?? '', creditLimit: String((c as any).creditLimit ?? ''), creditDays: String((c as any).creditDays ?? '30'), isCash: !!(c as any).isCash, canCheckRates: !!(c as any).canCheckRates, canViewInvoices: !!(c as any).canViewInvoices, commissionPct: String((c as any).commissionPct ?? ''), allowedVendors: Array.isArray((c as any).allowedVendors) ? (c as any).allowedVendors : [],
       parentAccountId: (c as any).parentAccountId != null ? String((c as any).parentAccountId) : '',
     });
     setShowAdd(true);
@@ -201,6 +202,7 @@ export function Customers() {
       billingCycle: form.billingCycle || undefined,
       allowSameGstin: form.allowSameGstin,
       defaultVendor: form.defaultVendor || undefined,
+      allowedVendors: form.allowedVendors,
       canCheckRates: form.canCheckRates,
       canViewInvoices: form.canViewInvoices,
       commissionPct: form.commissionPct ? Number(form.commissionPct) : 0,
@@ -363,6 +365,21 @@ export function Customers() {
                   <option value="">— none (SELF) —</option>
                   {vendors.map((v) => <option key={v.vendorCode} value={v.vendorCode}>{v.vendorCode} — {v.name}</option>)}
                 </select>
+              </div>
+              <div style={{ flexBasis: '100%' }}>
+                <label>Vendor access <span className="muted" style={{ fontSize: 11 }}>(carriers this customer may be booked on — <strong>none ticked = all vendors allowed</strong>)</span></label>
+                <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                  {vendors.map((v) => {
+                    const on = form.allowedVendors.includes(v.vendorCode);
+                    return (
+                      <label key={v.vendorCode} className="row" style={{ gap: 6, alignItems: 'center', fontSize: 13, border: '1px solid var(--border)', borderRadius: 8, padding: '3px 9px', background: on ? 'var(--surface-2, #eef2f6)' : 'transparent' }}>
+                        <input type="checkbox" style={{ width: 'auto' }} checked={on} onChange={() => setForm((f) => ({ ...f, allowedVendors: on ? f.allowedVendors.filter((x) => x !== v.vendorCode) : [...f.allowedVendors, v.vendorCode] }))} />
+                        {v.vendorCode} — {v.name}
+                      </label>
+                    );
+                  })}
+                  {vendors.length === 0 && <span className="muted" style={{ fontSize: 12 }}>No vendors yet — add them under Vendors.</span>}
+                </div>
               </div>
               <button style={{ marginLeft: 'auto' }} disabled={!form.legalName} onClick={save}>{editing ? 'Update Customer' : 'Save Customer'}</button>
             </div>
