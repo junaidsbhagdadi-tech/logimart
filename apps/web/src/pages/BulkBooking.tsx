@@ -184,10 +184,13 @@ export function BulkBooking() {
     // pricing → no timeout), then start server-side processing. Booking then runs on the server row by
     // row (each ~1-1.5s through the rate engine) with no HTTP request held open, so you can close the
     // tab. This page polls progress. AWBs are unique, so re-running a file skips already-booked ones.
-    const UPLOAD_CHUNK = 300;
+    // Upload rows in SMALL chunks so a batch's JSON body stays well under the proxy body limit — a
+    // large chunk (esp. rows with many pieces) was exceeding it, getting a 413, and stopping midway.
+    const UPLOAD_CHUNK = 100;
     setBusy(true); setUploadPct(0); setJob(null);
+    let created: { id: string } | null = null;
     try {
-      const created = await api.createBulkJob();
+      created = await api.createBulkJob();
       for (let i = 0; i < dtos.length; i += UPLOAD_CHUNK) {
         await api.appendBulkJobRows(created.id, dtos.slice(i, i + UPLOAD_CHUNK));
         setUploadPct(Math.round((Math.min(i + UPLOAD_CHUNK, dtos.length) / dtos.length) * 100));
@@ -196,7 +199,12 @@ export function BulkBooking() {
       setUploadPct(null);
       watchJob(created.id);
     }
-    catch (e: any) { setError(String(e?.message || e)); setUploadPct(null); }
+    catch (e: any) {
+      // If some rows uploaded before the error, still start the job so they book (don't lose them).
+      if (created) { try { await api.startBulkJob(created.id); watchJob(created.id); } catch { /* ignore */ } }
+      setError(`Upload interrupted: ${String(e?.message || e)}. Rows uploaded so far will still book — re-upload the file to add the rest (already-booked AWBs are skipped).`);
+      setUploadPct(null);
+    }
     finally { setBusy(false); }
   };
 

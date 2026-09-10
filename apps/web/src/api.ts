@@ -26,7 +26,15 @@ async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
     },
   });
   const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
+  // The server may return a NON-JSON body on some errors (e.g. an nginx 413/502/504 HTML page).
+  // Parsing that used to throw a cryptic SyntaxError that crashed the caller — surface a clean error.
+  let data: any = null;
+  try { data = text ? JSON.parse(text) : null; }
+  catch {
+    if (res.status === 413) throw new ApiError(413, 'That upload batch was too large — it was rejected. Try a smaller file/upload.');
+    if (!res.ok) throw new ApiError(res.status || 502, `Server error (${res.status || 'network'}). Please retry.`);
+    throw new ApiError(502, 'Unexpected response from the server. Please retry.');
+  }
   // Expired/invalid session: clear it and bounce to login (only if we sent a token).
   if (res.status === 401 && token) {
     clearToken();
