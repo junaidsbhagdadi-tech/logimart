@@ -31,6 +31,57 @@ export class VendorsService {
     return { ok: true };
   }
 
+  // ---- CS contact directory: every vendor's contacts in one searchable list ----
+  async allContacts(search?: string) {
+    const s = (search ?? '').trim();
+    const rows = await this.prisma.vendorContact.findMany({
+      where: s ? { OR: [
+        { location: { contains: s, mode: 'insensitive' } },
+        { product: { contains: s, mode: 'insensitive' } },
+        { personName: { contains: s, mode: 'insensitive' } },
+        { phone: { contains: s, mode: 'insensitive' } },
+        { email: { contains: s, mode: 'insensitive' } },
+        { role: { contains: s, mode: 'insensitive' } },
+        { vendor: { is: { name: { contains: s, mode: 'insensitive' } } } },
+      ] } : undefined,
+      include: { vendor: { select: { name: true, vendorCode: true } } },
+      orderBy: [{ vendorId: 'asc' }, { location: 'asc' }, { personName: 'asc' }],
+      take: 3000,
+    });
+    return rows.map((r) => ({
+      id: String(r.id), vendorId: String(r.vendorId), vendorName: r.vendor?.name ?? '', vendorCode: r.vendor?.vendorCode ?? '',
+      location: r.location, product: r.product, personName: r.personName, phone: r.phone, email: r.email, role: r.role,
+    }));
+  }
+
+  /** Bulk-add contacts (e.g. a Gmail-contacts CSV). Each row resolves its vendor by code or name. */
+  async bulkAddContacts(rows: any[]) {
+    const list = Array.isArray(rows) ? rows : [];
+    const vendors = await this.prisma.vendor.findMany({ select: { id: true, name: true, vendorCode: true } });
+    const norm = (s: any) => String(s ?? '').trim().toUpperCase();
+    const findVendor = (v: any) => {
+      const n = norm(v);
+      if (!n) return null;
+      return vendors.find((x) => norm(x.vendorCode) === n || norm(x.name) === n)
+        || vendors.find((x) => norm(x.name).includes(n) && n.length >= 3) || null;
+    };
+    const results: { ok: boolean; personName?: string; error?: string }[] = [];
+    for (const r of list) {
+      const vend = findVendor(r.vendor ?? r.vendorCode ?? r.vendorName);
+      if (!vend) { results.push({ ok: false, personName: r.personName, error: `vendor "${r.vendor ?? r.vendorName ?? ''}" not found` }); continue; }
+      if (!String(r.location || '').trim() || !String(r.personName || '').trim()) { results.push({ ok: false, personName: r.personName, error: 'location + person name required' }); continue; }
+      try {
+        await this.prisma.vendorContact.create({ data: {
+          vendorId: vend.id, location: norm(r.location), product: r.product?.toString().trim() || null,
+          personName: String(r.personName).trim(), phone: r.phone != null ? String(r.phone).trim() : null,
+          email: r.email?.toString().trim() || null, role: r.role?.toString().trim() || null,
+        } });
+        results.push({ ok: true, personName: r.personName });
+      } catch (e: any) { results.push({ ok: false, personName: r.personName, error: e.message }); }
+    }
+    return { total: list.length, created: results.filter((r) => r.ok).length, results };
+  }
+
   private vendorData(dto: any) {
     return {
       name: dto.name,

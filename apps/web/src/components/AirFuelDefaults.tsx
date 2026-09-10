@@ -13,6 +13,7 @@ export function AirFuelDefaults({ onSaved }: { onSaved?: () => void }) {
   const [mode, setMode] = useState<'ALL' | 'VENDOR'>('ALL');
   const [allPct, setAllPct] = useState('');
   const [perVendor, setPerVendor] = useState<Record<string, string>>({});
+  const [fromDate, setFromDate] = useState(''); // effective date for this fuel % (blank = always)
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -30,6 +31,8 @@ export function AirFuelDefaults({ onSaved }: { onSaved?: () => void }) {
       const net = String((a.attrs as any)?.network ?? '').trim().toUpperCase();
       const pct = String((a.attrs as any)?.percentage ?? '');
       if (net) perV[net] = pct; else all = pct;
+      const fd = (a.attrs as any)?.fromDate;
+      if (fd) setFromDate(String(fd).slice(0, 10));
     }
     if (Object.keys(perV).length) { setMode('VENDOR'); setPerVendor(perV); } else { setMode('ALL'); setAllPct(all); }
   };
@@ -42,14 +45,14 @@ export function AirFuelDefaults({ onSaved }: { onSaved?: () => void }) {
       const keep = new Set<string>();
       if (mode === 'ALL') {
         if (allPct === '') throw new Error('Enter an air fuel %.');
-        await api.saveMaster('FUEL_MECHANISM', { code: ALL_CODE, name: 'Air Fuel (all vendors)', attrs: { mode: 'FLAT', percentage: Number(allPct), isDefault: true, airDefault: true, network: '' } });
+        await api.saveMaster('FUEL_MECHANISM', { code: ALL_CODE, name: 'Air Fuel (all vendors)', attrs: { mode: 'FLAT', percentage: Number(allPct), isDefault: true, airDefault: true, network: '', ...(fromDate ? { fromDate } : {}) } });
         keep.add(ALL_CODE);
       } else {
         for (const t of targets) {
           const pct = perVendor[t.code];
           if (pct === undefined || pct === '') continue;
           const code = `${ALL_CODE}_${t.code}`;
-          await api.saveMaster('FUEL_MECHANISM', { code, name: `Air Fuel — ${t.name}`, attrs: { mode: 'FLAT', percentage: Number(pct), isDefault: true, airDefault: true, network: t.code } });
+          await api.saveMaster('FUEL_MECHANISM', { code, name: `Air Fuel — ${t.name}`, attrs: { mode: 'FLAT', percentage: Number(pct), isDefault: true, airDefault: true, network: t.code, ...(fromDate ? { fromDate } : {}) } });
           keep.add(code);
         }
         if (!keep.size) throw new Error('Enter at least one network’s air fuel %.');
@@ -68,9 +71,13 @@ export function AirFuelDefaults({ onSaved }: { onSaved?: () => void }) {
       </p>
       {err && <div className="error">{err}</div>}
       {msg && <div className="muted" style={{ color: 'var(--ok)', fontWeight: 700 }}>{msg}</div>}
-      <div className="row" style={{ gap: 8, margin: '10px 0' }}>
+      <div className="row" style={{ gap: 8, margin: '10px 0', alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <button className={mode === 'ALL' ? '' : 'secondary'} onClick={() => setMode('ALL')} style={{ padding: '6px 14px' }}>Same for all</button>
         <button className={mode === 'VENDOR' ? '' : 'secondary'} onClick={() => setMode('VENDOR')} style={{ padding: '6px 14px' }}>Variable per vendor</button>
+        <div style={{ marginLeft: 'auto' }}>
+          <label style={{ fontSize: 12 }}>Effective from <span className="muted">(optional)</span></label>
+          <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} style={{ width: 170 }} />
+        </div>
       </div>
       {mode === 'ALL' ? (
         <div style={{ maxWidth: 220 }}>
@@ -82,7 +89,7 @@ export function AirFuelDefaults({ onSaved }: { onSaved?: () => void }) {
           {targets.map((t) => (
             <div key={t.code}>
               <label style={{ fontSize: 12 }}>{t.name} <span className="muted">({t.code})</span></label>
-              <input type="number" value={perVendor[t.code] ?? ''} onChange={(e) => setPerVendor((p) => ({ ...p, [t.code]: e.target.value }))} placeholder="% (blank = 0)" />
+              <input type="number" value={perVendor[t.code] ?? ''} onChange={(e) => setPerVendor((p) => ({ ...p, [t.code]: e.target.value }))} placeholder="% · 0 = no fuel · blank = inherit" />
             </div>
           ))}
         </div>

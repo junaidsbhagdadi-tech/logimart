@@ -725,6 +725,8 @@ export const api = {
   listVendorContacts: (vendorId: string | number) => request<any[]>(`/api/v1/vendors/${vendorId}/contacts`),
   addVendorContact: (vendorId: string | number, body: any) => request<any>(`/api/v1/vendors/${vendorId}/contacts`, { method: 'POST', body: JSON.stringify(body) }),
   deleteVendorContact: (cid: string | number) => request<{ ok: boolean }>(`/api/v1/vendors/contacts/${cid}`, { method: 'DELETE' }),
+  contactDirectory: (search?: string) => request<any[]>(`/api/v1/vendors/contact-directory${search ? `?search=${encodeURIComponent(search)}` : ''}`),
+  bulkContacts: (rows: unknown[]) => request<{ total: number; created: number; results: { ok: boolean; personName?: string; error?: string }[] }>(`/api/v1/vendors/contact-directory/bulk`, { method: 'POST', body: JSON.stringify({ rows }) }),
 
   // ---- vendors ----
   listVendors: () => request<any[]>('/api/v1/vendors'),

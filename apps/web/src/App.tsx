@@ -41,6 +41,7 @@ import { TaxFiling } from './pages/TaxFiling';
 import { Notes } from './pages/Notes';
 import { Claims } from './pages/Claims';
 import { Documents } from './pages/Documents';
+import { ContactDirectory } from './pages/ContactDirectory';
 import { ExpenseTracker } from './pages/ExpenseTracker';
 import { PerBoxRates } from './pages/PerBoxRates';
 import { Receivables } from './pages/Receivables';
@@ -129,6 +130,7 @@ export function App() {
         <Route path="/customers" element={gate('/customers', isAdminFin) ? <Customers /> : <Navigate to="/" replace />} />
         <Route path="/customers/:id/overview" element={gate('/customers', isAdminFin) ? <Customer360 /> : <Navigate to="/" replace />} />
         <Route path="/vendors" element={gate('/vendors', isAdminFin) ? <Vendors /> : <Navigate to="/" replace />} />
+        <Route path="/contact-directory" element={gate('/contact-directory', isAdminFin) ? <ContactDirectory /> : <Navigate to="/" replace />} />
         <Route path="/vehicles" element={gate('/vehicles', isAdminFin || canMaster) ? <Vehicles /> : <Navigate to="/" replace />} />
         <Route path="/service-mapping" element={gate('/service-mapping', isAdminFin || canMaster) ? <ServiceMap /> : <Navigate to="/" replace />} />
         <Route path="/sales" element={gate('/sales', isAdminFin) ? <Sales /> : <Navigate to="/" replace />} />

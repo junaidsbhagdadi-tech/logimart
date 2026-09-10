@@ -25,7 +25,7 @@ export const DEPARTMENT_DEFAULTS: Record<string, Record<string, DeptLevel>> = {
     '/': 'VIEW', '/team-dashboards': 'VIEW', '/tracker': 'VIEW', '/pincode-search': 'VIEW',
     '/create': 'EDIT', '/awb-list': 'EDIT', '/bulk': 'EDIT', '/pickups': 'EDIT',
     '/customers': 'EDIT', '/claims': 'EDIT', '/documents': 'EDIT', '/notes': 'VIEW', '/invoices': 'VIEW',
-    '/reports': 'VIEW',
+    '/reports': 'VIEW', '/contact-directory': 'EDIT',
   },
   FINANCE: {
     '/': 'VIEW', '/team-dashboards': 'VIEW', '/tracker': 'VIEW',

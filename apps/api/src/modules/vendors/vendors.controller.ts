@@ -52,6 +52,20 @@ export class VendorsController {
     return this.vendors.delMapping(Number(id));
   }
 
+  // ---- CS contact directory (all vendors' contacts, searchable) — declared before ':id/contacts'.
+  // Customer Service (WAREHOUSE_HANDLER) can use it too, on top of the class roles. ----
+  @Get('contact-directory')
+  @Roles(UserRole.WAREHOUSE_HANDLER, UserRole.SALES, UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  contactDirectory(@Query('search') search?: string) {
+    return this.vendors.allContacts(search);
+  }
+
+  @Post('contact-directory/bulk')
+  @Roles(UserRole.WAREHOUSE_HANDLER, UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  bulkContacts(@Body() dto: { rows: any[] }) {
+    return this.vendors.bulkAddContacts(dto?.rows ?? []);
+  }
+
   // ---- vendor branch/location contacts ----
   @Get(':id/contacts')
   listContacts(@Param('id') id: string) {
@@ -59,11 +73,13 @@ export class VendorsController {
   }
 
   @Post(':id/contacts')
+  @Roles(UserRole.WAREHOUSE_HANDLER, UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
   addContact(@Param('id') id: string, @Body() dto: any) {
     return this.vendors.addContact(Number(id), dto);
   }
 
   @Delete('contacts/:cid')
+  @Roles(UserRole.WAREHOUSE_HANDLER, UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
   removeContact(@Param('cid') cid: string) {
     return this.vendors.removeContact(Number(cid));
   }

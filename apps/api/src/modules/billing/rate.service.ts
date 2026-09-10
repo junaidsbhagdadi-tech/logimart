@@ -375,10 +375,24 @@ export class RateService {
     // Otherwise inherit the default mechanism of the SAME family — DYNAMIC (diesel/Surface) or FLAT
     // (air/Express/DP) — with a network-specific default beating the all-vendors one. This is why a
     // Surface card follows the diesel mechanism automatically (base % + diesel rise) without per-card linking.
-    const net = String(card.network ?? 'SELF').toUpperCase();
+    // Match the card's network to a network-specific air/DSC default; the vendor-specific one WINS
+    // over the all-vendors (SELF) default. Robust match (strip case/punctuation, allow prefix) so a
+    // card network like "BLUEDART" pairs with a "BLUEDART"/"BDR"-coded default instead of silently
+    // falling back to SELF. A default may carry `fromDate` — only ones effective on `asOf` apply, and
+    // the latest effective one wins (so a fuel % can be dated).
+    const norm = (s: any) => String(s ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const net = norm(card.network ?? 'SELF') || 'SELF';
+    const effective = (x: any) => { const fd = (x.attrs as any)?.fromDate; return !fd || !asOf || new Date(fd) <= asOf; };
+    const byDateDesc = (a: any, b: any) => new Date((b.attrs as any)?.fromDate ?? 0).getTime() - new Date((a.attrs as any)?.fromDate ?? 0).getTime();
+    const latest = (list: any[]) => {
+      if (!list.length) return undefined;
+      const eff = list.filter(effective).sort(byDateDesc);
+      return eff[0] ?? [...list].sort(byDateDesc)[0]; // none effective yet → still use one (never drop the default)
+    };
     const defaults = mechs.filter((x) => (x.attrs as any)?.isDefault && isDyn(x) === wantDynamic);
-    const m = defaults.find((x) => String((x.attrs as any)?.network ?? '').trim().toUpperCase() === net)
-           || defaults.find((x) => !String((x.attrs as any)?.network ?? '').trim());
+    const vendorMatch = (x: any) => { const dn = norm((x.attrs as any)?.network); return !!dn && net !== 'SELF' && (dn === net || dn.startsWith(net) || net.startsWith(dn)); };
+    const allVendors = (x: any) => { const dn = norm((x.attrs as any)?.network); return !dn || dn === 'SELF'; };
+    const m = latest(defaults.filter(vendorMatch)) || latest(defaults.filter(allVendors));
     return m ? this.pctFromMechanism(m, asOf) : 0;
   }
 
@@ -647,7 +661,11 @@ export class RateService {
     // To-Pay / reverse-pickup charge: applies when freight is collected at delivery (TO_PAY) OR the
     // product is a reverse pickup (TAPEX / TOSFC / TODP), which inherently carries the reverse charge.
     const isReverse = ['TAPEX', 'TOSFC', 'TODP'].includes(prod) || /REVERSE/.test(prod);
-    const topay = (shipment.paymentTerm === 'TO_PAY' || isReverse) ? r2(cget('TOPAY', 'value', card.topayCharge)) : 0;
+    // To-Pay / reverse-pickup charge now supports a flat value AND/OR a per-kg rate with a minimum
+    // (like ODA): charge = max(flat + perKg × chargeable, min).
+    const topay = (shipment.paymentTerm === 'TO_PAY' || isReverse)
+      ? r2(Math.max(cget('TOPAY', 'value', card.topayCharge) + cget('TOPAY', 'perKg', 0) * chargeableKg, cget('TOPAY', 'min', 0)))
+      : 0;
     // DOD (Draft/Demand on Delivery): handling charge when a DD/cheque is collected at delivery.
     // Bills as max(% of the DOD amount, flat min) — configure via Charges master (code DOD) or the card.
     const dodAmt = Number(shipment.dodAmount ?? 0);

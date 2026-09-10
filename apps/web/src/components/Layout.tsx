@@ -143,6 +143,7 @@ export function Layout() {
       { to: '/vendor-bills', icon: '🚚', label: 'Vendor Bills & P&L', show: isAdminFin },
       { to: '/expenses', icon: '💸', label: 'Expense Tracker', show: isAdminFin },
       { to: '/documents', icon: '📁', label: 'Documents', show: isAdminFin },
+      { to: '/contact-directory', icon: '📇', label: 'Contact Directory', show: isAdminFin || isOps },
       { to: '/sales', icon: '📈', label: 'Sales', show: isAdminFin || isSales },
     ] },
     { title: 'Masters & Setup', items: [
