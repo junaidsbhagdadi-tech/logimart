@@ -39,6 +39,13 @@ export function BulkRateUpload() {
       const byCode = new Map(clients.map((c) => [String(c.accountCode).toUpperCase(), c]));
       const res: Result[] = [];
       for (const b of blocks) {
+        // A product block left BLANK in the template parses to zero slabs. Skip it — otherwise it
+        // would overwrite (and wipe) an existing card for that product (e.g. uploading only DP was
+        // deleting the customer's Apex / Surface rates).
+        if (!Array.isArray(b.slabs) || b.slabs.length === 0) {
+          res.push({ customer: b.customerCode, product: b.product, vendor: b.vendor, slabs: 0, ok: false, error: 'skipped — no rates filled (existing card kept)' });
+          continue;
+        }
         const client = byCode.get(b.customerCode.toUpperCase());
         if (!client) { res.push({ customer: b.customerCode, product: b.product, vendor: b.vendor, slabs: b.slabs.length, ok: false, error: 'customer code not found' }); continue; }
         try {

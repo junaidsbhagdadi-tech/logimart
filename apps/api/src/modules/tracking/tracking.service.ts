@@ -81,7 +81,9 @@ export class TrackingService {
       status: s.status,
       statusCode: s.statusCode ?? 'MAN',
       currentLabel: labelOf(String(s.statusCode ?? 'MAN')),
-      destination: s.destHub?.name ?? s.consigneeCity ?? s.destZone,
+      // Prefer the real place (city/pincode) over the internal zone code (AHD/BHW) for origin & dest.
+      origin: (s as any).shipperCity ?? (s as any).originLocation ?? (s as any).shipperPincode ?? s.originZone,
+      destination: (s as any).consigneeCity ?? (s as any).destPincode ?? s.destHub?.name ?? s.destZone,
       pieceCount: s.pieceCount,
       delivered,
       isShort: delivered > 0 && delivered < s.pieceCount,

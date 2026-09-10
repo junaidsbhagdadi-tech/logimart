@@ -229,7 +229,9 @@ export class ShipmentsService {
         shipperContact: dto.shipperContact || null,
         shipperAddress1: dto.shipperAddress1 || null,
         shipperAddress2: dto.shipperAddress2 || null,
-        shipperPincode: dto.shipperPincode || null,
+        // Store the origin pincode: prefer the shipper's, else the `originPincode` (bulk upload sends
+        // originPincode, which was only used to derive the zone and was never saved → origin blank).
+        shipperPincode: dto.shipperPincode || dto.originPincode || null,
         shipperCity: dto.shipperCity || null,
         shipperState: dto.shipperState || null,
         shipperPhone: dto.shipperPhone || null,
@@ -700,6 +702,7 @@ export class ShipmentsService {
     str('goodsDesc', dto.goodsDesc);
     str('hsnCode', dto.hsnCode);
     str('shipperName', dto.shipperName);
+    str('shipperCity', dto.shipperCity);
     str('referenceNo', dto.referenceNo);
     str('service', dto.service);
     upper('product', dto.product);
@@ -730,7 +733,9 @@ export class ShipmentsService {
       const destZone = this.productZone(destPin, newProduct, s.serviceMode, newDestPin ?? undefined, s.destZone) || s.destZone;
       data.originZone = originZone;
       data.destZone = destZone;
-      if (destPin && (destPin.isOda || (destPin.edl && String(destPin.edl).toUpperCase() !== 'REGULAR'))) data.isOda = true;
+      // Recompute ODA from the NEW destination — set true OR false. (Previously only ever set true, so
+      // changing an ODA pincode back to a normal one left isOda stuck on and the ODA charge stayed.)
+      data.isOda = !!(destPin && (destPin.isOda || (destPin.edl && String(destPin.edl).toUpperCase() !== 'REGULAR')));
       data.expectedDelivery = await this.expectedDeliveryFor(newProduct ?? undefined, s.serviceMode, originZone, destZone, data.vendor ?? s.vendor ?? undefined);
     }
 

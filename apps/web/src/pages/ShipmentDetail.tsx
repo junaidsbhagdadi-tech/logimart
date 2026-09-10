@@ -61,6 +61,7 @@ export function ShipmentDetail() {
       consigneeName: (s as any).consigneeName ?? '', consigneePhone: (s as any).consigneePhone ?? '',
       consigneeCity: (s as any).consigneeCity ?? '', consigneeState: (s as any).consigneeState ?? '',
       destPincode: (s as any).destPincode ?? '', consigneeGstin: (s as any).consigneeGstin ?? '',
+      shipperPincode: (s as any).shipperPincode ?? '', shipperCity: (s as any).shipperCity ?? '',
       goodsDesc: (s as any).goodsDesc ?? '', referenceNo: (s as any).referenceNo ?? '',
       shipmentValue: (s as any).shipmentValue != null ? String((s as any).shipmentValue) : '',
       chargeWeight: (s as any).chargeWeight != null ? String((s as any).chargeWeight) : '',
@@ -426,6 +427,8 @@ export function ShipmentDetail() {
             <div><label>Consignee name</label><input value={ef.consigneeName} onChange={(e) => setEfield('consigneeName', e.target.value)} /></div>
             <div><label>Consignee phone</label><input value={ef.consigneePhone} onChange={(e) => setEfield('consigneePhone', e.target.value)} /></div>
             <div><label>Consignee GSTIN</label><input value={ef.consigneeGstin} onChange={(e) => setEfield('consigneeGstin', e.target.value.toUpperCase())} /></div>
+            <div><label>Origin pincode <span className="muted">(pickup)</span></label><input value={ef.shipperPincode ?? ''} maxLength={6} onChange={(e) => setEfield('shipperPincode', e.target.value)} placeholder="re-derives origin zone" /></div>
+            <div><label>Origin city</label><input value={ef.shipperCity ?? ''} onChange={(e) => setEfield('shipperCity', e.target.value)} /></div>
             <div><label>Dest pincode <span className="muted">(auto city/state)</span></label><input value={ef.destPincode} maxLength={6} onChange={(e) => lookDestPin(e.target.value)} placeholder="re-derives zone/EDD" /></div>
             <div><label>Consignee city</label><input value={ef.consigneeCity} onChange={(e) => setEfield('consigneeCity', e.target.value)} /></div>
             <div><label>Consignee state</label><input value={ef.consigneeState} onChange={(e) => setEfield('consigneeState', e.target.value)} /></div>

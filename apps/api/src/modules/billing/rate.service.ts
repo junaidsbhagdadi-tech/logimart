@@ -746,9 +746,9 @@ export class RateService {
       if (amt > 0) { customLines.push({ head: cm.name, amount: amt }); customTotal += amt; if ((cm.attrs as any)?.applyFuel) fuelableExtra += amt; }
     }
     // Charges marked "FSC applicable" add to the fuel-surcharge base.
-    // Fuel surcharge is charged on freight + ODA/EDL + the AWB (airwaybill) charge + FOV, plus any
-    // "FSC applicable" custom charges. (Per ops: FSC applies on the AWB charge and FOV too.)
-    const fuelBaseExtra = fuelableExtra + oda + awb + fov;
+    // Fuel surcharge is charged on freight + ODA/EDL + the AWB (airwaybill) charge + FOV + the
+    // reverse-pickup charge (reverse products), plus any "FSC applicable" custom charges.
+    const fuelBaseExtra = fuelableExtra + oda + awb + fov + (isReverse ? topay : 0);
     if (fuelBaseExtra > 0 && fuelPct > 0) fuel = r2(fuel + (fuelBaseExtra * fuelPct) / 100);
 
     const lines: { code: string; head: string; amount: number }[] = [{ code: 'FREIGHT', head: `Freight (${priceBasis})`, amount: freight }];
