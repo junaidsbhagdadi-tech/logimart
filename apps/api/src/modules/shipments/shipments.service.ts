@@ -530,7 +530,7 @@ export class ShipmentsService {
     const carrierNotes: string[] = [];
     const vend = String(s.vendor || '').toUpperCase();
     if (s.forwardingAwb && vend === 'DELHIVERY') {
-      try { await this.delhivery.cancel(awb); carrierNotes.push('Delhivery waybill cancelled'); }
+      try { await this.delhivery.cancelLr(awb); carrierNotes.push('Delhivery LR cancelled'); }
       catch (e: any) { carrierNotes.push(`Delhivery cancel failed: ${e?.message ?? e}`); }
     } else if (s.bdWaybill) {
       // BlueDart has no single waybill-void API; flag for ops to cancel the pickup with BlueDart.

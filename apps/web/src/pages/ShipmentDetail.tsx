@@ -271,15 +271,15 @@ export function ShipmentDetail() {
     catch (e: any) { setError(e.message); }
   };
   const handoffDel = async () => {
-    if (!confirm('Hand this shipment off to Delhivery (create shipment)?')) return;
+    if (!confirm('Hand this shipment off to Delhivery (creates the LR)?')) return;
     setError(''); setMsg('');
-    try { const r = await api.delHandoff(awb!); setMsg(r.waybill ? `📦 Handed to Delhivery — waybill ${r.waybill}` : 'Hand-off sent (no waybill returned).'); load(); }
+    try { const r = await api.delHandoff(awb!); setMsg(r.lrn ? `📦 Handed to Delhivery — LR ${r.lrn}` : `Hand-off submitted${r.jobId ? ` (job ${r.jobId}) — LR pending, click sync shortly` : ''}.`); load(); }
     catch (e: any) { setError(e.message); }
   };
   const cancelDel = async () => {
     if (!confirm('Cancel this Delhivery shipment (before pickup)?')) return;
     setError(''); setMsg('');
-    try { const r = await api.delCancel(awb!); setMsg(`🚫 Delhivery shipment cancelled — waybill ${r.waybill}.`); load(); }
+    try { const r = await api.delCancel(awb!); setMsg(`🚫 Delhivery LR cancelled${r.lrn ? ` — ${r.lrn}` : ''}.`); load(); }
     catch (e: any) { setError(e.message); }
   };
   const voidAwb = async () => {

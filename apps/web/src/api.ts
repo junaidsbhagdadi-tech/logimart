@@ -622,13 +622,16 @@ export const api = {
   bdTrack: (awb: string) => request<any>(`/api/v1/bluedart/track/${awb}`),
   bdHandoff: (awb: string) => request<{ awb: string; bdWaybill: string | null; response: any }>(`/api/v1/bluedart/handoff/${awb}`, { method: 'POST' }),
   bdSync: (awb: string) => request<{ awb: string; bdStatus: string | null }>(`/api/v1/bluedart/sync/${awb}`, { method: 'POST' }),
-  // ---- Delhivery carrier integration ----
+  // ---- Delhivery B2B / LTL carrier integration ----
   delStatus: () => request<{ configured: boolean; [k: string]: any }>('/api/v1/delhivery/status'),
-  delServiceable: (pincode: string) => request<any>(`/api/v1/delhivery/serviceable/${pincode}`),
-  delTrack: (awb: string) => request<any>(`/api/v1/delhivery/track/${awb}`),
-  delHandoff: (awb: string) => request<{ awb: string; waybill: string | null; response: any }>(`/api/v1/delhivery/handoff/${awb}`, { method: 'POST' }),
-  delSync: (awb: string) => request<{ awb: string; status: string | null }>(`/api/v1/delhivery/sync/${awb}`, { method: 'POST' }),
-  delCancel: (awb: string) => request<{ awb: string; waybill: string | null; response: any }>(`/api/v1/delhivery/cancel/${awb}`, { method: 'POST' }),
+  delServiceable: (pincode: string, weight?: number) => request<any>(`/api/v1/delhivery/serviceable/${pincode}${weight ? `?weight=${weight}` : ''}`),
+  delTat: (origin: string, dest: string, mot: 'S' | 'A' = 'S') => request<any>(`/api/v1/delhivery/tat?origin=${encodeURIComponent(origin)}&dest=${encodeURIComponent(dest)}&mot=${mot}`),
+  delFreight: (body: unknown) => request<any>('/api/v1/delhivery/freight', { method: 'POST', body: JSON.stringify(body) }),
+  delHandoff: (awb: string, pickupName?: string) => request<{ awb: string; lrn: string | null; jobId: string | null; response: any }>(`/api/v1/delhivery/handoff/${awb}`, { method: 'POST', body: JSON.stringify(pickupName ? { pickupName } : {}) }),
+  delSync: (awb: string) => request<{ awb: string; lrn: string | null; status: string | null }>(`/api/v1/delhivery/sync/${awb}`, { method: 'POST' }),
+  delLabel: (awb: string) => request<any>(`/api/v1/delhivery/label/${awb}`),
+  delCancel: (awb: string) => request<{ awb: string; lrn: string | null; response: any }>(`/api/v1/delhivery/cancel/${awb}`, { method: 'POST' }),
+  delPickup: (body: { warehouse?: string; date: string; startTime?: string; packages?: number }) => request<any>('/api/v1/delhivery/pickup', { method: 'POST', body: JSON.stringify(body) }),
 
   // ---- reports ----
   runReport: (type: string, from?: string, to?: string) => {

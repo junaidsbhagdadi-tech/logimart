@@ -17,8 +17,9 @@ export function BlueDart() {
   const [dStatus, setDStatus] = useState<{ configured: boolean; [k: string]: any } | null>(null);
   const [dPin, setDPin] = useState('');
   const [dSvc, setDSvc] = useState<any>(null);
-  const [dAwb, setDAwb] = useState('');
-  const [dTrack, setDTrack] = useState<any>(null);
+  const [dOrigin, setDOrigin] = useState('');
+  const [dDest, setDDest] = useState('');
+  const [dTat, setDTat] = useState<any>(null);
 
   const load = () => {
     api.bdStatus().then(setStatus).catch((e) => setErr(e.message));
@@ -26,7 +27,7 @@ export function BlueDart() {
   };
   useEffect(load, []);
   const dCheckSvc = async () => { setErr(''); setDSvc(null); if (!dPin.trim()) return; setBusy('dsvc'); try { setDSvc(await api.delServiceable(dPin.trim())); } catch (e: any) { setErr(e.message); } finally { setBusy(''); } };
-  const dCheckTrack = async () => { setErr(''); setDTrack(null); if (!dAwb.trim()) return; setBusy('dtrack'); try { setDTrack(await api.delTrack(dAwb.trim())); } catch (e: any) { setErr(e.message); } finally { setBusy(''); } };
+  const dCheckTat = async () => { setErr(''); setDTat(null); if (!dOrigin.trim() || !dDest.trim()) return; setBusy('dtat'); try { setDTat(await api.delTat(dOrigin.trim(), dDest.trim())); } catch (e: any) { setErr(e.message); } finally { setBusy(''); } };
 
   const testToken = async () => {
     setErr(''); setTokenMsg(''); setBusy('token');
@@ -107,14 +108,14 @@ export function BlueDart() {
         </div>
         {dStatus ? (
           <div className="row" style={{ gap: 16, flexWrap: 'wrap', marginTop: 8 }}>
-            {['token', 'baseUrl', 'pickupName'].map((v) => (
-              <span key={v} style={{ fontSize: 13 }}><span className="muted">{v}:</span> {(dStatus[v] === 'set' || (v !== 'token' && dStatus[v] && dStatus[v] !== 'missing')) ? <b style={{ color: 'var(--ok)' }}>{v === 'token' ? 'set' : dStatus[v]}</b> : <b style={{ color: 'var(--bad, #c0392b)' }}>missing</b>}</span>
+            {['username', 'password', 'baseUrl', 'pickupName', 'env'].map((v) => (
+              <span key={v} style={{ fontSize: 13 }}><span className="muted">{v}:</span> {(dStatus[v] && dStatus[v] !== 'missing') ? <b style={{ color: 'var(--ok)' }}>{dStatus[v]}</b> : <b style={{ color: 'var(--bad, #c0392b)' }}>missing</b>}</span>
             ))}
           </div>
         ) : <p className="muted">Loading…</p>}
         {dStatus && !dStatus.configured && (
-          <p className="muted" style={{ fontSize: 12.5, marginTop: 10 }}>Set on the droplet <code>.env</code> and restart:
-            <code style={{ display: 'block', marginTop: 6, whiteSpace: 'pre', fontSize: 12 }}>{`DELHIVERY_API_TOKEN=…\nDELHIVERY_BASE_URL=https://track.delhivery.com\nDELHIVERY_PICKUP_NAME=LOGIMARTTECHNOLOGIESLTDB2C`}</code>
+          <p className="muted" style={{ fontSize: 12.5, marginTop: 10 }}>B2B / LTL API. Set on the droplet <code>.env</code> and restart:
+            <code style={{ display: 'block', marginTop: 6, whiteSpace: 'pre', fontSize: 12 }}>{`DELHIVERY_USERNAME=…\nDELHIVERY_PASSWORD=…\nDELHIVERY_BASE_URL=https://ltl-clients-api.delhivery.com   # or ...-dev for staging\nDELHIVERY_PICKUP_NAME=your_registered_warehouse_name`}</code>
           </p>
         )}
       </div>
@@ -128,12 +129,13 @@ export function BlueDart() {
           {dSvc && <pre style={{ marginTop: 10, maxHeight: 300, overflow: 'auto', background: 'var(--bg-soft, #f1f3f6)', padding: 10, borderRadius: 8, fontSize: 12 }}>{JSON.stringify(dSvc, null, 2)}</pre>}
         </div>
         <div className="card">
-          <h2 style={{ marginTop: 0 }}>Track a Delhivery waybill</h2>
+          <h2 style={{ marginTop: 0 }}>Expected TAT (origin → dest)</h2>
           <div className="row" style={{ gap: 8 }}>
-            <input value={dAwb} onChange={(e) => setDAwb(e.target.value)} placeholder="Delhivery waybill no." style={{ width: 200 }} />
-            <button onClick={dCheckTrack} disabled={busy === 'dtrack' || !dStatus?.configured}>{busy === 'dtrack' ? 'Tracking…' : 'Track'}</button>
+            <input value={dOrigin} onChange={(e) => setDOrigin(e.target.value)} placeholder="origin PIN" style={{ width: 120 }} />
+            <input value={dDest} onChange={(e) => setDDest(e.target.value)} placeholder="dest PIN" style={{ width: 120 }} />
+            <button onClick={dCheckTat} disabled={busy === 'dtat' || !dStatus?.configured}>{busy === 'dtat' ? 'Checking…' : 'Get TAT'}</button>
           </div>
-          {dTrack && <pre style={{ marginTop: 10, maxHeight: 300, overflow: 'auto', background: 'var(--bg-soft, #f1f3f6)', padding: 10, borderRadius: 8, fontSize: 12 }}>{JSON.stringify(dTrack, null, 2)}</pre>}
+          {dTat && <pre style={{ marginTop: 10, maxHeight: 300, overflow: 'auto', background: 'var(--bg-soft, #f1f3f6)', padding: 10, borderRadius: 8, fontSize: 12 }}>{JSON.stringify(dTat, null, 2)}</pre>}
         </div>
       </div>
     </>

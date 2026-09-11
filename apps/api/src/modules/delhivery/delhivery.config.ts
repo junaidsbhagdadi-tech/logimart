@@ -1,16 +1,17 @@
 /**
- * Delhivery B2C integration config — all from env/secrets, never hardcoded.
+ * Delhivery B2B / LTL integration config — all from env/secrets, never hardcoded.
  * Set on the host (.env), git-ignored:
- *   DELHIVERY_API_TOKEN     the API token (Authorization: Token <token>) — SECRET
- *   DELHIVERY_BASE_URL      https://track.delhivery.com (prod) | https://staging-express.delhivery.com (staging)
- *   DELHIVERY_PICKUP_NAME   registered pickup/warehouse name, e.g. LOGIMARTTECHNOLOGIESLTDB2C
- * Docs: https://one.delhivery.com/developer-portal/documents
+ *   DELHIVERY_USERNAME     UMS login username (SECRET)
+ *   DELHIVERY_PASSWORD     UMS login password (SECRET) — exchanged at /ums/login for a Bearer token
+ *   DELHIVERY_BASE_URL     https://ltl-clients-api.delhivery.com (prod) | https://ltl-clients-api-dev.delhivery.com (staging)
+ *   DELHIVERY_PICKUP_NAME  registered client-warehouse name (used as the manifest pickup location)
+ * Docs: https://one.delhivery.com/developer-portal/document/b2b
  */
 export const DELHIVERY = {
-  // trim() guards against a stray space/newline in the .env value, which makes "Token <t> " 401.
-  token: (process.env.DELHIVERY_API_TOKEN ?? '').trim(),
-  baseUrl: (process.env.DELHIVERY_BASE_URL ?? 'https://track.delhivery.com').trim().replace(/\/$/, ''),
+  baseUrl: (process.env.DELHIVERY_BASE_URL ?? 'https://ltl-clients-api.delhivery.com').trim().replace(/\/$/, ''),
+  username: (process.env.DELHIVERY_USERNAME ?? '').trim(),
+  password: (process.env.DELHIVERY_PASSWORD ?? '').trim(),
   pickupName: (process.env.DELHIVERY_PICKUP_NAME ?? '').trim(),
 };
 
-export const delConfigured = () => !!(DELHIVERY.token && DELHIVERY.baseUrl && DELHIVERY.pickupName);
+export const delConfigured = () => !!(DELHIVERY.baseUrl && DELHIVERY.username && DELHIVERY.password);
