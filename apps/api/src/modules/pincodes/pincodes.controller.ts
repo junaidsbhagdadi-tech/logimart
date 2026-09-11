@@ -80,8 +80,8 @@ export class PincodesController {
 
   /** Which networks/products serve a pincode (fastest TAT first) — used by booking auto-pick. */
   @Get('service-options/:pincode')
-  serviceOptions(@Param('pincode') pincode: string) {
-    return this.pincodes.serviceOptions(pincode);
+  serviceOptions(@Param('pincode') pincode: string, @Query('origin') origin?: string) {
+    return this.pincodes.serviceOptions(pincode, origin);
   }
 
   /** Accurate origin→destination lane TAT (zone matrix), per mode. */

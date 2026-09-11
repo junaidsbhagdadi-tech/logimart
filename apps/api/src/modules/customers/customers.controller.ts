@@ -69,14 +69,16 @@ export class CustomersController {
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
   delVol(@Param('rowId') rowId: string) { return this.customers.delVol(Number(rowId)); }
 
+  // Pickup addresses / warehouses: CS (WAREHOUSE_HANDLER) + Ops (HUB_MANAGER) manage these too, so
+  // they can save a pickup point as a reusable warehouse straight from the booking screen.
   @Get(':id/addresses')
-  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.WAREHOUSE_HANDLER, UserRole.SALES, UserRole.SYS_ADMIN)
   listAddr(@Param('id') id: string) { return this.customers.listAddr(Number(id)); }
   @Post(':id/addresses')
-  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.WAREHOUSE_HANDLER, UserRole.SYS_ADMIN)
   addAddr(@Param('id') id: string, @Body() d: any) { return this.customers.addAddr(Number(id), d); }
   @Patch(':id/addresses/:rowId')
-  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.WAREHOUSE_HANDLER, UserRole.SYS_ADMIN)
   updAddr(@Param('rowId') rowId: string, @Body() d: any) { return this.customers.updAddr(Number(rowId), d); }
   @Delete(':id/addresses/:rowId')
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)

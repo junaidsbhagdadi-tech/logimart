@@ -355,7 +355,8 @@ export function CreateShipment() {
       // auto-fetch city + state from the pincode master (expand city code → full name)
       if (info) setC((prev) => ({ ...prev, consigneeCity: info.city ? expandCity(info.city) : prev.consigneeCity, consigneeState: info.state ?? prev.consigneeState }));
       // which carriers serve this pincode? (shown as chips + ETA; vendor stays SELF unless staff pick one)
-      const opts = await api.serviceOptions(p).catch(() => []);
+      // Pass the origin so a missing per-vendor TAT is filled from the ZONE_TAT matrix.
+      const opts = await api.serviceOptions(p, /^\d{6}$/.test(originPin) ? originPin : undefined).catch(() => []);
       setSvcOptions(opts);
       // ODA is a property of the destination area — auto-set it from the pincode directory OR any
       // serving network flagged ODA (not just whichever carrier happens to be fastest).
@@ -795,8 +796,8 @@ export function CreateShipment() {
                 {warehouses.map((w) => <option key={String(w.id)} value={String(w.id)}>{w.name}{w.city ? ` — ${w.city}` : ''}{w.pincode ? ` (${w.pincode})` : ''}</option>)}
               </select>
             )}
-            {pickupElsewhere && shp.shipperAddress1 && (
-              <button type="button" className="secondary" disabled={savingWh} onClick={saveWarehouse} title="Save this to the customer's pickup addresses for reuse">{savingWh ? 'Saving…' : '＋ Save to customer'}</button>
+            {pickupElsewhere && (
+              <button type="button" className="secondary" disabled={savingWh || !shp.shipperAddress1} onClick={saveWarehouse} title={shp.shipperAddress1 ? 'Save this pickup point as a reusable warehouse for this customer' : 'Enter the pickup address first, then save it as a warehouse'}>{savingWh ? 'Saving…' : '🏬 Save as warehouse'}</button>
             )}
             <label className="row" style={{ gap: 6, alignItems: 'center', fontWeight: 600, fontSize: 13, cursor: 'pointer', margin: 0 }}>
               <input type="checkbox" style={{ width: 'auto' }} checked={pickupElsewhere}

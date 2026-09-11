@@ -543,7 +543,7 @@ export const api = {
   createPincode: (body: { pincode: string; city: string; state: string; region: string; tier: number; isOda?: boolean }) =>
     request('/api/v1/pincodes', { method: 'POST', body: JSON.stringify(body) }),
   // ---- serviceability coverage (SELF network / vendor-wise) ----
-  serviceOptions: (pincode: string) => request<{ network: string; mode: string | null; tatDays: number | null; isOda: boolean; city: string | null }[]>(`/api/v1/pincodes/service-options/${pincode}`),
+  serviceOptions: (pincode: string, origin?: string) => request<{ network: string; mode: string | null; tatDays: number | null; isOda: boolean; city: string | null }[]>(`/api/v1/pincodes/service-options/${pincode}${origin ? `?origin=${encodeURIComponent(origin)}` : ''}`),
   laneTat: (origin: string, dest: string) => request<{
     origin: { pincode: string; city: string | null; state: string | null; region: string | null; isOda: boolean; known: boolean };
     dest: { pincode: string; city: string | null; state: string | null; region: string | null; isOda: boolean; known: boolean };

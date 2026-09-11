@@ -360,6 +360,9 @@ export class RateService {
    *             can share one fuel % set once in Masters.
    */
   private async cardFuelPct(card: any, surface: boolean, asOf?: Date): Promise<number> {
+    // fuelMode 'NA' = NO fuel on this card, full stop — never inherit the master default. (Distinct
+    // from a blank/0 flat %, which DOES inherit the master air/DSC default.)
+    if (String(card.fuelMode ?? '').toUpperCase() === 'NA') return 0;
     // DSC (diesel-indexed) applies ONLY to surface products; air / express / DP always use flat FSC.
     const wantDynamic = surface && String(card.fuelMode ?? 'FLAT').toUpperCase() === 'DYNAMIC';
     // FLAT: an explicit % on the card wins outright.

@@ -108,7 +108,10 @@ export function Deductions() {
     setError(''); setMsg('');
     if (missing.length) { setError('Missing mandatory: ' + missing.join(', ')); return; }
     try {
-      const body = { ...form, amount: form.amount ? +form.amount : 0 };
+      // Blank numeric fields must be omitted (undefined), not sent as '' — the API's @IsNumber
+      // validation rejects an empty string (this was the "approvedAmount must be a number" error).
+      const num = (v: any) => (v === '' || v == null ? undefined : Number(v));
+      const body = { ...form, amount: num(form.amount) ?? 0, approvedAmount: num(form.approvedAmount) };
       if (editId) { await api.updateDeduction(editId, body); setMsg('✓ Deduction updated'); }
       else { await api.createDeduction(body); setMsg('✓ Deduction added'); }
       setForm({ ...blank }); setAdding(false); setEditId(null); load();

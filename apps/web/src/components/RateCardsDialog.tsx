@@ -202,7 +202,9 @@ function CardView({ card, zones, onEdit, onDelete, onCopyCharges }: { card: any;
   }, [card, origin]);
 
   const chips: { k: string; v: string }[] = [];
-  chips.push(card.fuelMode === 'DYNAMIC'
+  chips.push(String(card.fuelMode).toUpperCase() === 'NA'
+    ? { k: 'Fuel', v: 'NA (none)' }
+    : card.fuelMode === 'DYNAMIC'
     ? { k: 'Diesel', v: `Indexed${card.fuelMechanism ? ` (${card.fuelMechanism})` : ''}` }
     : { k: 'Fuel', v: `${num(card.fuelPct)}%` });
   if (num(card.fovPct) || num(card.fovMin)) chips.push({ k: 'FOV', v: `${num(card.fovPct)}%${num(card.fovMin) ? ` · min ${money(card.fovMin)}` : ''}` });
@@ -617,17 +619,19 @@ function RateCardEditor({ owner, card, products, zones, vendors, mechs, chargeMa
         <div style={{ marginBottom: 8 }}><strong style={{ fontSize: 13 }}>⛽ {fuelLabel}</strong> <span className="muted" style={{ fontSize: 11 }}>auto from product mode ({productMode(h.product) || h.mode || '—'}) — FSC for Air/Express/DP, DSC for Surface/Train</span></div>
         <div className="row" style={{ gap: 14, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div><label style={{ fontSize: 12 }}>{isSurfaceMode ? 'DSC' : 'FSC'} mode <span className="muted">(auto)</span></label>
-            <select value={h.fuelMode} onChange={(e) => set('fuelMode', e.target.value)}><option>FLAT</option><option>DYNAMIC</option></select>
+            <select value={h.fuelMode} onChange={(e) => set('fuelMode', e.target.value)}><option>FLAT</option><option>DYNAMIC</option><option value="NA">NA (no fuel)</option></select>
           </div>
-          {h.fuelMode === 'FLAT'
-            ? <div><label style={{ fontSize: 12 }}>FSC % <span className="muted">(flat — Air/Express/DP · blank → inherit master default)</span></label><input type="number" value={h.fuelPct} onChange={(e) => set('fuelPct', e.target.value)} placeholder="inherit" style={{ width: 120 }} /></div>
+          {h.fuelMode === 'NA'
+            ? <div style={{ fontSize: 12, color: 'var(--muted)', paddingBottom: 6 }}>No fuel surcharge is charged on this card (does not inherit the master default).</div>
+            : h.fuelMode === 'FLAT'
+            ? <div><label style={{ fontSize: 12 }}>FSC % <span className="muted">(flat — blank / 0 → inherit master default · set NA above for no fuel)</span></label><input type="number" value={h.fuelPct} onChange={(e) => set('fuelPct', e.target.value)} placeholder="inherit" style={{ width: 120 }} /></div>
             : <div><label style={{ fontSize: 12 }}>Diesel surcharge mechanism <span className="muted">(Surface/Train · blank → default)</span></label>
                 <select value={h.fuelMechanism} onChange={(e) => set('fuelMechanism', e.target.value)}>
                   <option value="">Inherit default diesel mechanism</option>
                   {mechs.map((m) => <option key={m.code} value={m.code}>{m.code} — {m.name}</option>)}
                 </select>
               </div>}
-          <span className="muted" style={{ fontSize: 11 }}>FLAT = fixed fuel % (Air/Express/DP) · DYNAMIC = diesel-indexed surcharge (Surface/Train).</span>
+          <span className="muted" style={{ fontSize: 11 }}>FLAT = fixed % (blank/0 inherits master) · DYNAMIC = diesel-indexed · NA = no fuel at all.</span>
         </div>
       </div>
 

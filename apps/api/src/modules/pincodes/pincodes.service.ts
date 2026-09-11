@@ -160,7 +160,7 @@ export class PincodesService {
     };
   }
 
-  async serviceOptions(pincode: string) {
+  async serviceOptions(pincode: string, originPincode?: string) {
     const rows = await this.prisma.serviceablePincode.findMany({
       where: { pincode: pincode.trim(), isActive: true },
       orderBy: [{ tatDays: 'asc' }],
@@ -169,7 +169,33 @@ export class PincodesService {
     for (const r of rows) {
       if (!byNet.has(r.network)) byNet.set(r.network, { network: r.network, mode: r.mode, tatDays: r.tatDays, isOda: r.isOda, city: r.city });
     }
-    return Array.from(byNet.values()).sort((a, b) => (a.tatDays ?? 9999) - (b.tatDays ?? 9999));
+    let list = Array.from(byNet.values());
+    // Fill any MISSING per-vendor TAT from the ZONE_TAT matrix (code <VENDOR>__<MODE> → SELF__<MODE>
+    // → legacy <MODE>) when we know the origin — so a matrix update shows even if the serviceable row
+    // has no tatDays. Existing row TATs are kept.
+    if (originPincode && list.some((x) => x.tatDays == null)) {
+      const [o, d] = await Promise.all([
+        this.prisma.pincode.findUnique({ where: { pincode: String(originPincode).trim() } }),
+        this.prisma.pincode.findUnique({ where: { pincode: pincode.trim() } }),
+      ]);
+      const norm = (z: any) => (z ? String(z).replace(/\s+/g, '').toUpperCase() : null);
+      const zoneFor = (p: any, mm: string) => norm(mm === 'SURFACE' ? p?.surfaceZone : p?.apexZone) || norm(p?.region);
+      const tatEntries = await this.prisma.masterEntry.findMany({ where: { type: 'ZONE_TAT' } });
+      const tatMap = new Map(tatEntries.map((e) => [e.code.toUpperCase(), (e.attrs as any)?.matrix]));
+      const matrixTat = (network: string, mode: string): number | null => {
+        const mm = /AIR|APEX|EXP/i.test(mode) ? 'APEX' : 'SURFACE';
+        const oz = zoneFor(o, mm), dz = zoneFor(d, mm);
+        if (!oz || !dz) return null;
+        const netU = String(network || 'SELF').replace(/\s+/g, '').toUpperCase();
+        for (const code of [`${netU}__${mm}`, `SELF__${mm}`, mm]) {
+          const m = Number(tatMap.get(code)?.[oz]?.[dz]);
+          if (m > 0) return m;
+        }
+        return null;
+      };
+      list = list.map((x) => ({ ...x, tatDays: x.tatDays ?? matrixTat(x.network, x.mode || '') }));
+    }
+    return list.sort((a, b) => (a.tatDays ?? 9999) - (b.tatDays ?? 9999));
   }
 
   /** Coverage list, optionally filtered to one network (SELF or a vendor). */
