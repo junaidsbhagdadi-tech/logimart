@@ -107,6 +107,29 @@ export class BluedartService {
     return { awb, bdWaybill, token: result?.TokenNumber ?? null, labelBase64: result?.AWBPrintContent ?? null, response: resp };
   }
 
+  /** Cancel a BlueDart waybill — only valid BEFORE the shipment is manifested/in-scanned (TSD CancelWaybill).
+   *  Accepts our AWB (resolves the stored bdWaybill) or a BlueDart waybill number directly. */
+  async cancelWaybill(awb: string) {
+    this.ensure();
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, bdWaybill: true } });
+    const bd = s?.bdWaybill || awb;
+    const resp = await this.authed('/waybill/v1/CancelWaybill', {
+      method: 'POST',
+      body: JSON.stringify({ Request: { AWBNo: bd }, Profile: { LoginID: BLUEDART.loginId, LicenceKey: BLUEDART.licKey, Api_type: 'S' } }),
+    });
+    // Response wrapped in CancelWaybillResult{ AWBNo, IsError, Status[]{StatusCode,StatusInformation} }.
+    const result = resp?.CancelWaybillResult ?? resp;
+    if (result?.IsError === true || result?.isError === true) {
+      const msg = (result?.Status ?? result?.status ?? [])
+        .map((x: any) => x?.StatusInformation ?? x?.statusInformation ?? x?.StatusCode)
+        .filter(Boolean).join('; ');
+      throw new BadRequestException(`BlueDart cancel failed: ${msg || JSON.stringify(result).slice(0, 300)}`);
+    }
+    if (s) await this.prisma.shipment.update({ where: { id: s.id }, data: { bdStatus: 'CANCELLED' } });
+    const message = (result?.Status ?? []).map((x: any) => x?.StatusInformation).filter(Boolean).join('; ');
+    return { awb, bdWaybill: bd, cancelled: true, message };
+  }
+
   /** Logimart product/service → BlueDart ProductCode (A=Apex/air, D=Domestic Priority/surface). */
   private bdProductCode(s: any): string {
     const p = String(s.product ?? '').toUpperCase();

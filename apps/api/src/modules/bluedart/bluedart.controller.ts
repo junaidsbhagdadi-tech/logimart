@@ -49,6 +49,13 @@ export class BluedartController {
     return this.bd.syncTracking(awb);
   }
 
+  /** Cancel a BlueDart waybill (before manifest/in-scan). */
+  @Post('cancel/:awb')
+  @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  cancel(@Param('awb') awb: string) {
+    return this.bd.cancelWaybill(awb);
+  }
+
   @Post('pickup')
   @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
   pickup(@Body() body: any) {

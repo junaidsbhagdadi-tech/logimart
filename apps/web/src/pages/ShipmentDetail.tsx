@@ -270,6 +270,12 @@ export function ShipmentDetail() {
     try { const r = await api.bdSync(awb!); setMsg(r.bdStatus ? `🔎 BlueDart status: ${r.bdStatus}` : 'BlueDart tracking pulled.'); load(); }
     catch (e: any) { setError(e.message); }
   };
+  const cancelBd = async () => {
+    if (!confirm('Cancel this BlueDart waybill? (Only works before the shipment is manifested / in-scanned.)')) return;
+    setError(''); setMsg('');
+    try { const r = await api.bdCancel(awb!); setMsg(`🚫 BlueDart waybill cancelled${r.bdWaybill ? ` — ${r.bdWaybill}` : ''}.`); load(); }
+    catch (e: any) { setError(e.message); }
+  };
   const handoffDel = async () => {
     if (!confirm('Hand this shipment off to Delhivery (creates the LR)?')) return;
     setError(''); setMsg('');
@@ -366,6 +372,7 @@ export function ShipmentDetail() {
           {canAssign && String((s as any).vendor).toUpperCase() === 'DELHIVERY' && (s as any).forwardingAwb && <button className="secondary" onClick={cancelDel}>🚫 Cancel Delhivery</button>}
           {canEditCharges && !(s as any).invoiced && String((s as any).statusCode).toUpperCase() !== 'CAN' && <button className="secondary" style={{ color: 'var(--bad, #c0392b)' }} onClick={voidAwb} title="Void a wrong AWB — excluded from billing">🚫 Void AWB</button>}
           {canAssign && s.bdWaybill && <button className="secondary" onClick={trackBd}>🔎 BlueDart track</button>}
+          {canAssign && s.bdWaybill && String((s as any).statusCode).toUpperCase() !== 'CAN' && <button className="secondary" onClick={cancelBd}>🚫 Cancel BlueDart</button>}
           {isFinance && <button className="secondary" onClick={() => { setReweighMode((v) => !v); setMsg(''); }}>⚖ {reweighMode ? 'Cancel re-weigh' : 'Re-weigh'}</button>}
           {((canEditCharges && !(s as any).invoiced) || (isSysAdmin && (s as any).invoiced)) && <button className="secondary" onClick={openEdit} title={(s as any).invoiced ? 'Super-admin: edit an already-invoiced AWB (does NOT change the raised invoice)' : 'Edit product, consignee, vendor & other details'}>✏️ Edit AWB{(s as any).invoiced ? ' (invoiced)' : ''}</button>}
           {isFinance && <button className="secondary" onClick={() => { setTransferOpen((v) => !v); setMsg(''); setError(''); }} title="Wrong-entry transfer to another customer">🔄 Transfer</button>}
