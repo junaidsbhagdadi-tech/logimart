@@ -546,6 +546,8 @@ model Shipment {
   bdLabel        String?   @db.Text  // BlueDart official AWB print (AWBPrintContent, base64) captured at hand-off
   bdScans        String?   @db.Text  // BlueDart scan history (JSON array) parsed from custawbquery, for the tracking timeline
   bdSyncedAt     DateTime? // last time auto-sync pulled BlueDart tracking
+  bdPickupToken  String?   // BlueDart pickup registration token number
+  bdPickupAt     DateTime? // when the BlueDart pickup was scheduled
 
   manifestId     BigInt?   // trip/manifest this consignment is attached to
   deliveryRiderId BigInt?  // rider assigned for last-mile delivery

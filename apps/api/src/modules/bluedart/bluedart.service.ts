@@ -268,10 +268,56 @@ export class BluedartService implements OnModuleInit {
     };
   }
 
-  /** Register a pickup with BlueDart (RegisterPickup). Request shape finalized on UAT. */
+  /** Raw RegisterPickup pass-through (advanced/manual use). */
   async registerPickup(body: any) {
     this.ensure();
-    return this.authed('/pickup/v1/RegisterPickup', { method: 'POST', body: JSON.stringify({ request: body, Profile: { LoginID: BLUEDART.loginId, LicenceKey: BLUEDART.licKey } }) });
+    return this.authed('/pickup/v1/RegisterPickup', { method: 'POST', body: JSON.stringify({ Request: body, Profile: { LoginID: BLUEDART.loginId, LicenceKey: BLUEDART.licKey, Api_type: 'S' } }) });
+  }
+
+  /** Schedule a BlueDart pickup for a Logimart shipment (RegisterPickup) — maps the shipper's
+   *  address/pincode/contact from the shipment. dto: { date?, time?, remarks? }. */
+  async schedulePickup(awb: string, dto: { date?: string; time?: string; remarks?: string } = {}) {
+    this.ensure();
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, include: { client: true } }) as any;
+    if (!s) throw new BadRequestException(`AWB ${awb} not found`);
+    const pin = s.shipperPincode ?? s.client?.pincode ?? '';
+    const areaCode = await this.originAreaFor(pin);
+    const phone = String(s.shipperContact ?? s.client?.contactPhone ?? '').replace(/\D/g, '');
+    const when = dto.date ? new Date(dto.date) : new Date();
+    // ShipmentPickupTime is "HH:MM"; BLUEDART_PICKUP_TIME is stored HHMM.
+    const time = dto.time || String(BLUEDART.pickupTime || '1600').replace(/^(\d{2})(\d{2})$/, '$1:$2');
+    const request = {
+      ProductCode: this.bdProductCode(s),
+      AreaCode: areaCode,
+      CustomerCode: BLUEDART.customerCode || BLUEDART.loginId,
+      CustomerName: String(s.shipperName ?? s.client?.legalName ?? '').slice(0, 30),
+      CustomerAddress1: String(s.shipperAddress1 ?? s.client?.addressLine ?? '').slice(0, 30),
+      CustomerAddress2: String(s.shipperAddress2 ?? '').slice(0, 30),
+      CustomerAddress3: String(s.shipperCity ?? '').slice(0, 30),
+      ContactPersonName: String(s.shipperName ?? s.client?.legalName ?? '').slice(0, 30),
+      CustomerPincode: String(pin),
+      CustomerTelephoneNumber: phone,
+      MobileTelNo: phone,
+      ShipmentPickupDate: `/Date(${when.getTime()})/`,
+      ShipmentPickupTime: time,
+      Remarks: String(dto.remarks ?? '').slice(0, 60),
+      NumberofPieces: Number(s.pieceCount ?? 1),
+      WeightofShipment: Number(Number(s.chargeWeight ?? s.totalDeadKg ?? 1).toFixed(2)),
+    };
+    const resp = await this.authed('/pickup/v1/RegisterPickup', {
+      method: 'POST',
+      body: JSON.stringify({ Request: request, Profile: { LoginID: BLUEDART.loginId, LicenceKey: BLUEDART.licKey, Api_type: 'S' } }),
+    });
+    const result = resp?.RegisterPickupResult ?? resp;
+    if (result?.IsError === true || result?.isError === true) {
+      const msg = (result?.Status ?? result?.status ?? [])
+        .map((x: any) => x?.StatusInformation ?? x?.statusInformation ?? x?.StatusCode)
+        .filter(Boolean).join('; ');
+      throw new BadRequestException(`BlueDart pickup failed: ${msg || JSON.stringify(result).slice(0, 300)}`);
+    }
+    const token = result?.TokenNumber ?? result?.tokenNumber ?? null;
+    if (token) await this.prisma.shipment.update({ where: { id: s.id }, data: { bdPickupToken: String(token), bdPickupAt: when } });
+    return { awb, token, pickupDate: when, response: resp };
   }
 
   /** Parse the custawbquery XML into a flat scan list (newest first), plus the current status. */

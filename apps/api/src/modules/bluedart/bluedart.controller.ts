@@ -68,4 +68,11 @@ export class BluedartController {
   pickup(@Body() body: any) {
     return this.bd.registerPickup(body);
   }
+
+  /** Schedule a BlueDart pickup for a shipment (maps the shipper address from the shipment). */
+  @Post('pickup/:awb')
+  @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  schedulePickup(@Param('awb') awb: string, @Body() body: { date?: string; time?: string; remarks?: string }) {
+    return this.bd.schedulePickup(awb, body || {});
+  }
 }
