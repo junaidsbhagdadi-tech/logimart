@@ -87,19 +87,24 @@ export class BluedartService {
     if (!s) throw new BadRequestException(`AWB ${awb} not found`);
     const payload = this.mapWaybill(s);
     const resp = await this.authed('/waybill/v1/GenerateWayBill', { method: 'POST', body: JSON.stringify(payload) });
-    // TSD WayBillGenerationResponse: AWBNo, IsError, Status[]{StatusCode,StatusInformation}, TokenNumber…
-    if (resp?.IsError === true || resp?.isError === true) {
-      const msg = (resp?.Status ?? resp?.status ?? []).map((x: any) => x?.StatusInformation ?? x?.statusInformation).filter(Boolean).join('; ');
-      throw new BadRequestException(`BlueDart rejected the waybill: ${msg || JSON.stringify(resp).slice(0, 300)}`);
+    // APIGEE wraps the TSD WayBillGenerationResponse in GenerateWayBillResult{ AWBNo, IsError,
+    // Status[]{StatusCode,StatusInformation}, TokenNumber, AWBPrintContent }. Unwrap it for both
+    // the success AWB and the error message (verified live: /Date(ms)/ pickup, numeric fields).
+    const result = resp?.GenerateWayBillResult ?? resp;
+    if (result?.IsError === true || result?.isError === true) {
+      const msg = (result?.Status ?? result?.status ?? [])
+        .map((x: any) => x?.StatusInformation ?? x?.statusInformation ?? x?.StatusCode)
+        .filter(Boolean).join('; ');
+      throw new BadRequestException(`BlueDart rejected the waybill: ${msg || JSON.stringify(result).slice(0, 300)}`);
     }
-    const bdWaybill = resp?.AWBNo || resp?.awbNo || resp?.GenerateWayBillResult?.AWBNo || null;
+    const bdWaybill = result?.AWBNo || result?.awbNo || null;
     if (bdWaybill) {
       await this.prisma.shipment.update({
         where: { id: s.id },
         data: { bdWaybill, forwardingAwb: (s as any).forwardingAwb ?? bdWaybill, vendor: (s as any).vendor ?? 'BLUEDART', bdHandedAt: new Date() },
       });
     }
-    return { awb, bdWaybill, token: resp?.TokenNumber ?? null, labelBase64: resp?.AWBPrintContent ?? null, response: resp };
+    return { awb, bdWaybill, token: result?.TokenNumber ?? null, labelBase64: result?.AWBPrintContent ?? null, response: resp };
   }
 
   /** Logimart product/service → BlueDart ProductCode (A=Apex/air, D=Domestic Priority/surface). */
@@ -163,7 +168,7 @@ export class BluedartService {
           CollactableAmount: Number(codAmount.toFixed(2)),
           CreditReferenceNo: String(s.awb).slice(0, 20), // must be UNIQUE — our AWB
           Dimensions: dims,
-          PickupDate: Date.now(), // epoch ms
+          PickupDate: `/Date(${Date.now()})/`, // BlueDart wants the .NET epoch STRING, not a raw number (verified live — raw number → HTTP 500)
           PickupTime: BLUEDART.pickupTime,
           RegisterPickup: false,
           PDFOutputNotRequired: false,
