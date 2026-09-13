@@ -76,6 +76,20 @@ export class BluedartService {
     });
   }
 
+  /** Resolve a pincode's BlueDart origin area code (e.g. DEL/BOM/BLR) from serviceability's AreaCode.
+   *  Falls back to the configured BLUEDART_ORIGIN_AREA if the lookup fails or returns nothing. */
+  private async originAreaFor(pincode?: string | null): Promise<string> {
+    if (pincode) {
+      try {
+        const svc = await this.serviceability(String(pincode).trim());
+        const res = svc?.GetServicesforPincodeResult ?? svc;
+        const area = res?.AreaCode ?? res?.areaCode;
+        if (area) return String(area).toUpperCase();
+      } catch { /* fall through to the configured default */ }
+    }
+    return BLUEDART.originArea;
+  }
+
   /**
    * Hand off a Logimart shipment to BlueDart (GenerateWayBill). The full request has
    * ~40 fields; mapWaybill() is the Logimart→BlueDart mapping, finalized field-by-field
@@ -85,7 +99,10 @@ export class BluedartService {
     this.ensure();
     const s = await this.prisma.shipment.findUnique({ where: { awb }, include: { client: true, pieces: true } });
     if (!s) throw new BadRequestException(`AWB ${awb} not found`);
-    const payload = this.mapWaybill(s);
+    // OriginArea must be the pickup pincode's BlueDart area code (e.g. DEL/BOM/BLR) — a fixed default
+    // gives "InvalidAreaScNotInRegion" for any out-of-area origin. Derive it from serviceability's AreaCode.
+    const originArea = await this.originAreaFor((s as any).shipperPincode ?? (s as any).client?.pincode);
+    const payload = this.mapWaybill(s, originArea);
     const resp = await this.authed('/waybill/v1/GenerateWayBill', { method: 'POST', body: JSON.stringify(payload) });
     // APIGEE wraps the TSD WayBillGenerationResponse in GenerateWayBillResult{ AWBNo, IsError,
     // Status[]{StatusCode,StatusInformation}, TokenNumber, AWBPrintContent }. Unwrap it for both
@@ -146,7 +163,7 @@ export class BluedartService {
   }
 
   /** Map Logimart shipment → BlueDart GenerateWayBill request (TSD v2.7). */
-  private mapWaybill(s: any) {
+  private mapWaybill(s: any, originArea?: string) {
     // Dimensions grouped by identical box size, with a Count per size (TSD Dimension object).
     const dimGroups = new Map<string, { Length: number; Breadth: number; Height: number; Count: number }>();
     for (const p of s.pieces ?? []) {
@@ -162,7 +179,7 @@ export class BluedartService {
     return {
       Request: {
         Shipper: {
-          OriginArea: BLUEDART.originArea || String(s.originZone ?? '').slice(0, 3).toUpperCase(),
+          OriginArea: originArea || BLUEDART.originArea || String(s.originZone ?? '').slice(0, 3).toUpperCase(),
           CustomerCode: BLUEDART.customerCode || BLUEDART.loginId,
           CustomerName: (s.shipperName ?? s.client?.legalName ?? '').slice(0, 30),
           CustomerAddress1: (s.shipperAddress1 ?? s.client?.addressLine ?? '').slice(0, 30),
