@@ -18,6 +18,10 @@ export const BLUEDART = {
   // Tracking is often a SEPARATE licence key on BlueDart. Set BLUEDART_TRACK_LICKEY if yours differs;
   // otherwise it falls back to the shipping key above.
   trackLicKey: process.env.BLUEDART_TRACK_LICKEY || process.env.BLUEDART_LICKEY || '',
+  // Tracking can also be a DIFFERENT BlueDart LOGIN than shipping — some accounts are entitled for
+  // tracking on one login (e.g. BOM27377) and for shipping/waybill on another (e.g. BOM89102).
+  // Set BLUEDART_TRACK_LOGINID when they differ; otherwise it falls back to the shipping login.
+  trackLoginId: process.env.BLUEDART_TRACK_LOGINID || process.env.BLUEDART_LOGINID || '',
   // ---- account-specific shipper defaults for GenerateWayBill (from your BlueDart onboarding) ----
   customerCode: process.env.BLUEDART_CUSTOMER_CODE ?? '', // 6-char BD customer code (falls back to loginId)
   originArea: process.env.BLUEDART_ORIGIN_AREA ?? '',     // 3-char BD origin area code, e.g. BOM/DEL/BLR
