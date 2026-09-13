@@ -24,8 +24,12 @@ export function BdLabel() {
   const carrier = m.vendor && m.vendor !== 'SELF' ? m.vendor : m.carrier.brand;
   const carrierLine = `${carrier} — ${modeLabel(m.serviceMode)}`;
   const wgt = (m.totalDeadKg || 0).toFixed(2);
-  const org = [m.originCity, m.originZone].filter(Boolean).join(' / ') || m.originZone || '—';
-  const dst = [m.consigneeCity, m.destZone].filter(Boolean).join(' / ') || m.destZone || '—';
+  // Once handed to BlueDart, the label carries BlueDart's AWB + area/service-centre route codes.
+  const bdNo = m.bdWaybill || m.awb;
+  const org = m.bdRouteOrg || [m.originCity, m.originZone].filter(Boolean).join(' / ') || m.originZone || '—';
+  const dst = m.bdRouteDst || [m.consigneeCity, m.destZone].filter(Boolean).join(' / ') || m.destZone || '—';
+  const senderLine = [m.accountCode || m.consignor.name, m.senderPincode].filter(Boolean).join(' — ');
+  const cmdty = Array.from({ length: m.pieceCount || 1 }, () => `${m.goodsDesc || 'GOODS'} -`).join(', ');
   const invVal = money(m.shipmentValue);
 
   // group boxes by identical dimensions so the box-details table stays compact
@@ -64,14 +68,13 @@ export function BdLabel() {
         </div>
 
         <div className="bd-barcode">
-          <Barcode value={m.barcode} />
-          <div className="bd-awbno">{m.awb}</div>
+          <Barcode value={bdNo} />
+          <div className="bd-awbno">{bdNo}</div>
         </div>
 
         <div className="bd-row">
           <span className="bd-lab">SENDER</span>
-          <b>{m.accountCode || m.consignor.name}</b>
-          {m.senderPincode ? <span className="bd-pin">{m.senderPincode}</span> : null}
+          <b>{senderLine}</b>
         </div>
 
         <div className="bd-row bd-sub">
@@ -90,7 +93,7 @@ export function BdLabel() {
           </div>
         </div>
 
-        <div className="bd-cmdty">CMDTY: {m.goodsDesc || 'GOODS'}</div>
+        <div className="bd-cmdty">CMDTY: {cmdty}</div>
       </section>
 
       {/* ============ Part 2 — box-details slip ============ */}
@@ -98,7 +101,7 @@ export function BdLabel() {
         <div className="bd-head">{carrierLine}</div>
 
         <div className="bd-strip">
-          <span>AWB: <b>{m.awb}</b></span>
+          <span>AWB: <b>{bdNo}</b></span>
           <span>{dt(m.createdAt)}</span>
           <span>BOX DETAILS</span>
         </div>
@@ -148,7 +151,7 @@ export function BdLabel() {
           <span>Receiver: <b>{m.consignee.name}</b> {m.destPincode || ''}</span>
         </div>
         <div className="bd-row bd-sub">
-          <span>Sender: <b>{m.accountCode || m.consignor.name}</b> {m.senderPincode || ''}</span>
+          <span>Sender: <b>{senderLine}</b></span>
         </div>
       </section>
 

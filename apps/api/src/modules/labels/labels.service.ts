@@ -54,6 +54,10 @@ export class LabelsService {
       destPincode: shipment.destPincode ?? null,
       consigneePhone: shipment.consigneePhone ?? null,
       vendor: shipment.vendor ?? 'SELF',
+      // BlueDart hand-off details — the label prints the carrier's AWB + area/SC route when present.
+      bdWaybill: (shipment as any).bdWaybill ?? null,
+      bdRouteOrg: (shipment as any).bdRouteOrg ?? null,
+      bdRouteDst: (shipment as any).bdRouteDst ?? null,
       product: shipment.product ?? null,
       referenceNo: shipment.referenceNo ?? shipment.lrNumber ?? null,
       shipmentValue: shipment.shipmentValue ? Number(shipment.shipmentValue) : (shipment.declaredValue ? Number(shipment.declaredValue) : null),

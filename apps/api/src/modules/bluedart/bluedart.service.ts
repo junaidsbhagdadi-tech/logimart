@@ -115,18 +115,24 @@ export class BluedartService implements OnModuleInit {
     });
   }
 
-  /** Resolve a pincode's BlueDart origin area code (e.g. DEL/BOM/BLR) from serviceability's AreaCode.
-   *  Falls back to the configured BLUEDART_ORIGIN_AREA if the lookup fails or returns nothing. */
-  private async originAreaFor(pincode?: string | null): Promise<string> {
+  /** Resolve a pincode's BlueDart area + service-centre codes from serviceability (AreaCode/ServiceCenterCode).
+   *  `label` is "AREA / SC" (e.g. "BOM / SAK") for the shipping label. */
+  private async areaInfoFor(pincode?: string | null): Promise<{ area: string; sc: string; label: string }> {
     if (pincode) {
       try {
         const svc = await this.serviceability(String(pincode).trim());
         const res = svc?.GetServicesforPincodeResult ?? svc;
-        const area = res?.AreaCode ?? res?.areaCode;
-        if (area) return String(area).toUpperCase();
+        const area = String(res?.AreaCode ?? res?.areaCode ?? '').toUpperCase();
+        const sc = String(res?.ServiceCenterCode ?? res?.serviceCenterCode ?? '').toUpperCase();
+        if (area || sc) return { area: area || BLUEDART.originArea, sc, label: [area, sc].filter(Boolean).join(' / ') };
       } catch { /* fall through to the configured default */ }
     }
-    return BLUEDART.originArea;
+    return { area: BLUEDART.originArea, sc: '', label: BLUEDART.originArea };
+  }
+
+  /** Origin area code for the waybill OriginArea field. */
+  private async originAreaFor(pincode?: string | null): Promise<string> {
+    return (await this.areaInfoFor(pincode)).area;
   }
 
   /**
@@ -140,8 +146,10 @@ export class BluedartService implements OnModuleInit {
     if (!s) throw new BadRequestException(`AWB ${awb} not found`);
     // OriginArea must be the pickup pincode's BlueDart area code (e.g. DEL/BOM/BLR) — a fixed default
     // gives "InvalidAreaScNotInRegion" for any out-of-area origin. Derive it from serviceability's AreaCode.
-    const originArea = await this.originAreaFor((s as any).shipperPincode ?? (s as any).client?.pincode);
-    const payload = this.mapWaybill(s, originArea);
+    // Also capture origin+dest "AREA / SC" codes for the shipping label (ORG/DST line).
+    const org = await this.areaInfoFor((s as any).shipperPincode ?? (s as any).client?.pincode);
+    const dst = await this.areaInfoFor((s as any).destPincode);
+    const payload = this.mapWaybill(s, org.area);
     const resp = await this.authed('/waybill/v1/GenerateWayBill', { method: 'POST', body: JSON.stringify(payload) });
     // APIGEE wraps the TSD WayBillGenerationResponse in GenerateWayBillResult{ AWBNo, IsError,
     // Status[]{StatusCode,StatusInformation}, TokenNumber, AWBPrintContent }. Unwrap it for both
@@ -160,7 +168,7 @@ export class BluedartService implements OnModuleInit {
         where: { id: s.id },
         // Capture BlueDart's official AWB print (base64) — GenerateWayBill is the only place it's
         // returned (can't re-generate: CreditReferenceNo must be unique), so store it now.
-        data: { bdWaybill, forwardingAwb: (s as any).forwardingAwb ?? bdWaybill, vendor: (s as any).vendor ?? 'BLUEDART', bdHandedAt: new Date(), ...(label ? { bdLabel: label } : {}) },
+        data: { bdWaybill, forwardingAwb: (s as any).forwardingAwb ?? bdWaybill, vendor: (s as any).vendor ?? 'BLUEDART', bdHandedAt: new Date(), ...(label ? { bdLabel: label } : {}), ...(org.label ? { bdRouteOrg: org.label } : {}), ...(dst.label ? { bdRouteDst: dst.label } : {}) },
       });
     }
     return { awb, bdWaybill, token: result?.TokenNumber ?? null, labelBase64: label, response: resp };

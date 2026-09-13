@@ -165,6 +165,9 @@ export interface MasterLabel {
   destPincode?: string | null;
   consigneePhone?: string | null;
   vendor?: string;
+  bdWaybill?: string | null;
+  bdRouteOrg?: string | null;
+  bdRouteDst?: string | null;
   product?: string | null;
   referenceNo?: string | null;
   shipmentValue?: number | null;

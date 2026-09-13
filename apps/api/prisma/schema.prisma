@@ -548,6 +548,8 @@ model Shipment {
   bdSyncedAt     DateTime? // last time auto-sync pulled BlueDart tracking
   bdPickupToken  String?   // BlueDart pickup registration token number
   bdPickupAt     DateTime? // when the BlueDart pickup was scheduled
+  bdRouteOrg     String?   // BlueDart origin "AREA / SERVICECENTRE" (e.g. BOM / SAK) for the label
+  bdRouteDst     String?   // BlueDart destination "AREA / SERVICECENTRE" (e.g. ABA / AMY) for the label
 
   manifestId     BigInt?   // trip/manifest this consignment is attached to
   deliveryRiderId BigInt?  // rider assigned for last-mile delivery
