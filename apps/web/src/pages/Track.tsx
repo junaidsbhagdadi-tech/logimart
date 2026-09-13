@@ -65,7 +65,11 @@ export function Track() {
                   <div key={i} style={{ position: 'relative', paddingBottom: i === result.timeline.length - 1 ? 0 : 16 }}>
                     <span style={{ position: 'absolute', left: -18, top: 3, width: 10, height: 10, borderRadius: '50%', background: i === result.timeline.length - 1 ? 'var(--brand)' : 'var(--ok, #16a34a)' }} />
                     {i !== result.timeline.length - 1 && <span style={{ position: 'absolute', left: -14, top: 13, bottom: 0, width: 2, background: 'var(--border)' }} />}
-                    <div style={{ fontWeight: 700, fontSize: 13 }}>{t.label}</div>
+                    <div style={{ fontWeight: 700, fontSize: 13 }}>
+                      {t.label}
+                      {(t as any).carrier && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: 'var(--brand)', border: '1px solid var(--brand)', borderRadius: 4, padding: '1px 5px' }}>{(t as any).carrier}</span>}
+                    </div>
+                    {(t as any).location && <div className="muted" style={{ fontSize: 12 }}>📍 {(t as any).location}</div>}
                     <div className="muted" style={{ fontSize: 12 }}>{new Date(t.at).toLocaleString('en-IN')}</div>
                   </div>
                 ))}

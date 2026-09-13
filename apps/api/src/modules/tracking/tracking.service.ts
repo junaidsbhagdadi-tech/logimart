@@ -63,9 +63,31 @@ export class TrackingService {
 
     // Public timeline = the milestone scan history (scanLog), excluding internal events (e.g. BAG).
     const logs = await this.prisma.scanLog.findMany({ where: { awb }, orderBy: { scanAt: 'asc' } });
-    const timeline = logs
+    const ourTimeline = logs
       .filter((l) => CODES.has(l.eventType))
-      .map((l) => ({ checkpoint: l.eventType, label: labelOf(l.eventType), at: l.scanAt }));
+      .map((l) => ({ checkpoint: l.eventType, label: labelOf(l.eventType), at: l.scanAt as Date, location: null as string | null, carrier: null as string | null }));
+
+    // Merge auto-synced BlueDart carrier scans (Shipment.bdScans) into the public timeline.
+    const parseBdAt = (date?: string | null, time?: string | null): Date | null => {
+      if (!date) return null;
+      const d = String(date).replace(/-/g, ' ').trim(); // "30-Jan-2023" -> "30 Jan 2023"
+      const digits = String(time || '').replace(/\D/g, '');
+      const hh = digits.length >= 3 ? Number(digits.slice(0, digits.length - 2)) : 0;
+      const mm = digits.length >= 3 ? Number(digits.slice(-2)) : 0;
+      const dt = new Date(`${d} ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`);
+      return isNaN(dt.getTime()) ? null : dt;
+    };
+    const bdTimeline: typeof ourTimeline = [];
+    if ((s as any).bdScans) {
+      try {
+        for (const sc of JSON.parse((s as any).bdScans) as any[]) {
+          const at = parseBdAt(sc?.date, sc?.time);
+          if (!at) continue;
+          bdTimeline.push({ checkpoint: 'BDC', label: sc?.scan || sc?.type || 'Carrier scan', at, location: sc?.location ?? null, carrier: 'BlueDart' });
+        }
+      } catch { /* ignore malformed cache */ }
+    }
+    const timeline = [...ourTimeline, ...bdTimeline].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 
     const delivered = s.pieces.filter((p) => p.status === 'DELIVERED').length;
     // EDD fallback for legacy shipments booked before the promise date was stored.
