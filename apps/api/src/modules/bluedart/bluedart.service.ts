@@ -1,10 +1,49 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BLUEDART, bdConfigured } from './bluedart.config';
 
 @Injectable()
-export class BluedartService {
+export class BluedartService implements OnModuleInit {
+  private readonly logger = new Logger('BlueDart');
+  private autoSyncing = false;
   constructor(private readonly prisma: PrismaService) {}
+
+  /** Periodically pull BlueDart tracking for open (handed-off, not-yet-delivered) shipments,
+   *  so the tracking timeline stays live without anyone clicking. Interval-based (single pm2 instance);
+   *  set BLUEDART_SYNC_INTERVAL_MIN=0 to disable. */
+  onModuleInit() {
+    if (!bdConfigured()) return;
+    const mins = Number(process.env.BLUEDART_SYNC_INTERVAL_MIN ?? 15);
+    if (!(mins > 0)) return;
+    const timer = setInterval(() => this.autoSync().catch((e) => this.logger.warn(`auto-sync: ${e?.message || e}`)), mins * 60_000);
+    (timer as any).unref?.();
+    setTimeout(() => this.autoSync().catch(() => {}), 60_000); // first pass a minute after boot
+    this.logger.log(`BlueDart tracking auto-sync every ${mins} min.`);
+  }
+
+  /** One auto-sync pass: sync recent, non-terminal BlueDart shipments (throttled, best-effort). */
+  async autoSync() {
+    if (this.autoSyncing || !bdConfigured()) return;
+    this.autoSyncing = true;
+    try {
+      const since = new Date(Date.now() - 30 * 864e5); // handed off within the last 30 days
+      const rows = await this.prisma.shipment.findMany({
+        where: { bdWaybill: { not: null }, bdHandedAt: { gte: since } },
+        select: { awb: true, bdStatus: true },
+        orderBy: { bdSyncedAt: 'asc' }, take: 300,
+      });
+      const terminal = (st?: string | null) => !!st && /deliv|dlvd|\bdl\b|cancel|rto|returned to origin/i.test(st);
+      const open = rows.filter((r) => !terminal(r.bdStatus));
+      let synced = 0;
+      for (const r of open) {
+        try { await this.syncTracking(r.awb); synced++; } catch { /* keep going */ }
+        await new Promise((res) => setTimeout(res, 400)); // gentle on the carrier API
+      }
+      if (synced) this.logger.log(`Auto-synced ${synced}/${open.length} BlueDart shipment(s).`);
+    } finally {
+      this.autoSyncing = false;
+    }
+  }
 
   private ensure() {
     if (!bdConfigured()) {
@@ -235,17 +274,38 @@ export class BluedartService {
     return this.authed('/pickup/v1/RegisterPickup', { method: 'POST', body: JSON.stringify({ request: body, Profile: { LoginID: BLUEDART.loginId, LicenceKey: BLUEDART.licKey } }) });
   }
 
-  /** Pull the latest BlueDart status into the Logimart shipment. Parses the custawbquery XML
-   *  (<Status>, <StatusDate>) from the tracking response. */
+  /** Parse the custawbquery XML into a flat scan list (newest first), plus the current status. */
+  private parseScans(raw: string) {
+    const grab = (xml: string, tag: string) => { const m = xml.match(new RegExp(`<${tag}[^>]*>([^<]*)</${tag}>`, 'i')); return m ? m[1].trim() : null; };
+    const scans: { scan: string | null; type: string | null; date: string | null; time: string | null; location: string | null; locationCode: string | null }[] = [];
+    const re = /<ScanDetail[^>]*>([\s\S]*?)<\/ScanDetail>/gi;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(raw))) {
+      const x = m[1];
+      scans.push({
+        scan: grab(x, 'Scan'), type: grab(x, 'ScanType'),
+        date: grab(x, 'ScanDate'), time: grab(x, 'ScanTime'),
+        location: grab(x, 'ScannedLocation'), locationCode: grab(x, 'ScannedLocationCode'),
+      });
+    }
+    // BlueDart lists scans newest-first; the top one is the current status.
+    const bdStatus = scans[0]?.scan || grab(raw, 'Status') || grab(raw, 'StatusType');
+    const bdStatusDate = scans[0]?.date || grab(raw, 'StatusDate');
+    return { scans, bdStatus, bdStatusDate };
+  }
+
+  /** Pull BlueDart tracking into the Logimart shipment — stores the current status and the full
+   *  scan history (JSON) parsed from the custawbquery XML. */
   async syncTracking(awb: string) {
     const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { bdWaybill: true } });
     const track = s?.bdWaybill || awb;
     const r = await this.track(track);
     const raw = typeof r?.raw === 'string' ? r.raw : (typeof r === 'string' ? r : JSON.stringify(r));
-    const grab = (tag: string) => { const m = raw.match(new RegExp(`<${tag}[^>]*>([^<]+)</${tag}>`, 'i')); return m ? m[1].trim() : null; };
-    const bdStatus = grab('Status') || grab('StatusType');
-    const bdStatusDate = grab('StatusDate');
-    if (bdStatus) await this.prisma.shipment.updateMany({ where: { awb }, data: { bdStatus } });
-    return { awb, bdStatus, bdStatusDate, tracking: r };
+    const { scans, bdStatus, bdStatusDate } = this.parseScans(raw);
+    await this.prisma.shipment.updateMany({
+      where: { awb },
+      data: { ...(bdStatus ? { bdStatus } : {}), ...(scans.length ? { bdScans: JSON.stringify(scans) } : {}), bdSyncedAt: new Date() },
+    });
+    return { awb, bdStatus, bdStatusDate, scans, tracking: r };
   }
 }
