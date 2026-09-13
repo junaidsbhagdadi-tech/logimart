@@ -115,13 +115,23 @@ export class BluedartService {
       throw new BadRequestException(`BlueDart rejected the waybill: ${msg || JSON.stringify(result).slice(0, 300)}`);
     }
     const bdWaybill = result?.AWBNo || result?.awbNo || null;
+    const label = result?.AWBPrintContent ?? result?.awbPrintContent ?? null;
     if (bdWaybill) {
       await this.prisma.shipment.update({
         where: { id: s.id },
-        data: { bdWaybill, forwardingAwb: (s as any).forwardingAwb ?? bdWaybill, vendor: (s as any).vendor ?? 'BLUEDART', bdHandedAt: new Date() },
+        // Capture BlueDart's official AWB print (base64) — GenerateWayBill is the only place it's
+        // returned (can't re-generate: CreditReferenceNo must be unique), so store it now.
+        data: { bdWaybill, forwardingAwb: (s as any).forwardingAwb ?? bdWaybill, vendor: (s as any).vendor ?? 'BLUEDART', bdHandedAt: new Date(), ...(label ? { bdLabel: label } : {}) },
       });
     }
-    return { awb, bdWaybill, token: result?.TokenNumber ?? null, labelBase64: result?.AWBPrintContent ?? null, response: resp };
+    return { awb, bdWaybill, token: result?.TokenNumber ?? null, labelBase64: label, response: resp };
+  }
+
+  /** Return the stored BlueDart official AWB print (base64) for a shipment. */
+  async label(awb: string) {
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { bdWaybill: true, bdLabel: true } });
+    if (!s?.bdLabel) throw new BadRequestException(`No BlueDart label stored for ${awb} — hand it off to BlueDart first.`);
+    return { awb, bdWaybill: s.bdWaybill, label: s.bdLabel };
   }
 
   /** Cancel a BlueDart waybill — only valid BEFORE the shipment is manifested/in-scanned (TSD CancelWaybill).

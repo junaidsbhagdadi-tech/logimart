@@ -373,6 +373,7 @@ export function ShipmentDetail() {
           {canEditCharges && !(s as any).invoiced && String((s as any).statusCode).toUpperCase() !== 'CAN' && <button className="secondary" style={{ color: 'var(--bad, #c0392b)' }} onClick={voidAwb} title="Void a wrong AWB — excluded from billing">🚫 Void AWB</button>}
           {canAssign && s.bdWaybill && <button className="secondary" onClick={trackBd}>🔎 BlueDart track</button>}
           {canAssign && s.bdWaybill && String((s as any).statusCode).toUpperCase() !== 'CAN' && <button className="secondary" onClick={cancelBd}>🚫 Cancel BlueDart</button>}
+          {s.bdWaybill && <a href={`/shipments/${s.awb}/bd-awb`} target="_blank" rel="noreferrer"><button className="secondary">🖨 BlueDart AWB</button></a>}
           {isFinance && <button className="secondary" onClick={() => { setReweighMode((v) => !v); setMsg(''); }}>⚖ {reweighMode ? 'Cancel re-weigh' : 'Re-weigh'}</button>}
           {((canEditCharges && !(s as any).invoiced) || (isSysAdmin && (s as any).invoiced)) && <button className="secondary" onClick={openEdit} title={(s as any).invoiced ? 'Super-admin: edit an already-invoiced AWB (does NOT change the raised invoice)' : 'Edit product, consignee, vendor & other details'}>✏️ Edit AWB{(s as any).invoiced ? ' (invoiced)' : ''}</button>}
           {isFinance && <button className="secondary" onClick={() => { setTransferOpen((v) => !v); setMsg(''); setError(''); }} title="Wrong-entry transfer to another customer">🔄 Transfer</button>}

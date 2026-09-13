@@ -543,6 +543,7 @@ model Shipment {
   bdWaybill      String?   // BlueDart waybill (AWB) number returned on hand-off
   bdStatus       String?   // last BlueDart status pulled via tracking
   bdHandedAt     DateTime?
+  bdLabel        String?   @db.Text  // BlueDart official AWB print (AWBPrintContent, base64) captured at hand-off
 
   manifestId     BigInt?   // trip/manifest this consignment is attached to
   deliveryRiderId BigInt?  // rider assigned for last-mile delivery

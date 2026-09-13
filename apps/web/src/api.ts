@@ -623,6 +623,7 @@ export const api = {
   bdHandoff: (awb: string) => request<{ awb: string; bdWaybill: string | null; response: any }>(`/api/v1/bluedart/handoff/${awb}`, { method: 'POST' }),
   bdSync: (awb: string) => request<{ awb: string; bdStatus: string | null }>(`/api/v1/bluedart/sync/${awb}`, { method: 'POST' }),
   bdCancel: (awb: string) => request<{ awb: string; bdWaybill: string; cancelled: boolean; message: string }>(`/api/v1/bluedart/cancel/${awb}`, { method: 'POST' }),
+  bdLabelPrint: (awb: string) => request<{ awb: string; bdWaybill: string | null; label: string }>(`/api/v1/bluedart/label/${awb}`),
   // ---- Delhivery B2B / LTL carrier integration ----
   delStatus: () => request<{ configured: boolean; [k: string]: any }>('/api/v1/delhivery/status'),
   delServiceable: (pincode: string, weight?: number) => request<any>(`/api/v1/delhivery/serviceable/${pincode}${weight ? `?weight=${weight}` : ''}`),

@@ -56,6 +56,13 @@ export class BluedartController {
     return this.bd.cancelWaybill(awb);
   }
 
+  /** BlueDart official AWB print (base64) captured at hand-off. */
+  @Get('label/:awb')
+  @Roles(UserRole.CLIENT_ADMIN, UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  label(@Param('awb') awb: string) {
+    return this.bd.label(awb);
+  }
+
   @Post('pickup')
   @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
   pickup(@Body() body: any) {
