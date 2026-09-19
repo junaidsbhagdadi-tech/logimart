@@ -95,7 +95,8 @@ export class RateCardsService {
       awbCharge: dec(num(d.awbCharge)),
       emergencyCharge: dec(num(d.emergencyCharge)),
       environmentCharge: dec(num(d.environmentCharge)),
-      fuelMode: (d.fuelMode || 'FLAT').toUpperCase() === 'DYNAMIC' ? 'DYNAMIC' : 'FLAT',
+      // FLAT (fixed %/inherit master), DYNAMIC (diesel-indexed), or NA (no fuel at all — never inherit).
+      fuelMode: (() => { const fm = String(d.fuelMode || 'FLAT').toUpperCase(); return fm === 'DYNAMIC' ? 'DYNAMIC' : fm === 'NA' ? 'NA' : 'FLAT'; })(),
       fuelPct: dec(num(d.fuelPct)),
       fuelMechanism: d.fuelMechanism || null,
       fovPct: dec(num(d.fovPct)),

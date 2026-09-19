@@ -359,7 +359,7 @@ export class RateService {
    *             the one the card references, else the one flagged default — so every air card
    *             can share one fuel % set once in Masters.
    */
-  private async cardFuelPct(card: any, surface: boolean, asOf?: Date): Promise<number> {
+  private async cardFuelPct(card: any, surface: boolean, asOf?: Date, vendor?: string): Promise<number> {
     // fuelMode 'NA' = NO fuel on this card, full stop — never inherit the master default. (Distinct
     // from a blank/0 flat %, which DOES inherit the master air/DSC default.)
     if (String(card.fuelMode ?? '').toUpperCase() === 'NA') return 0;
@@ -385,6 +385,11 @@ export class RateService {
     // the latest effective one wins (so a fuel % can be dated).
     const norm = (s: any) => String(s ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
     const net = norm(card.network ?? 'SELF') || 'SELF';
+    // Match the master vendor default on the shipment's ACTUAL forwarding vendor first — so a SELF /
+    // all-networks card with a blank/0 flat % still bills the VENDOR's master fuel when the AWB is
+    // forwarded — falling back to the card's own network when there's no vendor.
+    const vend = norm(vendor);
+    const matchKey = vend && vend !== 'SELF' ? vend : net;
     const effective = (x: any) => { const fd = (x.attrs as any)?.fromDate; return !fd || !asOf || new Date(fd) <= asOf; };
     const byDateDesc = (a: any, b: any) => new Date((b.attrs as any)?.fromDate ?? 0).getTime() - new Date((a.attrs as any)?.fromDate ?? 0).getTime();
     const latest = (list: any[]) => {
@@ -393,7 +398,7 @@ export class RateService {
       return eff[0] ?? [...list].sort(byDateDesc)[0]; // none effective yet → still use one (never drop the default)
     };
     const defaults = mechs.filter((x) => (x.attrs as any)?.isDefault && isDyn(x) === wantDynamic);
-    const vendorMatch = (x: any) => { const dn = norm((x.attrs as any)?.network); return !!dn && net !== 'SELF' && (dn === net || dn.startsWith(net) || net.startsWith(dn)); };
+    const vendorMatch = (x: any) => { const dn = norm((x.attrs as any)?.network); return !!dn && matchKey !== 'SELF' && (dn === matchKey || dn.startsWith(matchKey) || matchKey.startsWith(dn)); };
     const allVendors = (x: any) => { const dn = norm((x.attrs as any)?.network); return !dn || dn === 'SELF'; };
     const m = latest(defaults.filter(vendorMatch)) || latest(defaults.filter(allVendors));
     return m ? this.pctFromMechanism(m, asOf) : 0;
@@ -608,7 +613,7 @@ export class RateService {
     const useDsc = surface && String(card.fuelMode ?? 'FLAT').toUpperCase() === 'DYNAMIC';
     // Price DSC on the diesel rate EFFECTIVE when the shipment was booked (honours price effective-dates).
     const bookedAt = shipment.createdAt ? new Date(shipment.createdAt) : undefined;
-    const fuelPct = await this.cardFuelPct(card, surface, bookedAt);
+    const fuelPct = await this.cardFuelPct(card, surface, bookedAt, shipment.vendor);
     let fuel = r2(freight * (fuelPct / 100));
     const invVal = Number(shipment.shipmentValue ?? shipment.declaredValue ?? 0);
     // Accessorial DEFAULTS live on the CHARGE master (rate/min/perKg per code); a value on the
