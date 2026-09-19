@@ -26,9 +26,17 @@ export class BluedartService implements OnModuleInit {
     if (this.autoSyncing || !bdConfigured()) return;
     this.autoSyncing = true;
     try {
-      const since = new Date(Date.now() - 30 * 864e5); // handed off within the last 30 days
+      const since = new Date(Date.now() - 30 * 864e5); // booked within the last 30 days
+      // Cover BOTH ways a shipment carries a BlueDart AWB: our API hand-off (bdWaybill) AND ops
+      // recording the carrier AWB manually via "Forward to vendor" (forwardingAwb, vendor BDR/BLUEDART).
       const rows = await this.prisma.shipment.findMany({
-        where: { bdWaybill: { not: null }, bdHandedAt: { gte: since } },
+        where: {
+          createdAt: { gte: since },
+          OR: [
+            { bdWaybill: { not: null } },
+            { AND: [{ forwardingAwb: { not: null } }, { OR: [{ vendor: { startsWith: 'BLUE', mode: 'insensitive' } }, { vendor: { equals: 'BDR', mode: 'insensitive' } }] }] },
+          ],
+        },
         select: { awb: true, bdStatus: true },
         orderBy: { bdSyncedAt: 'asc' }, take: 300,
       });
@@ -351,8 +359,9 @@ export class BluedartService implements OnModuleInit {
   /** Pull BlueDart tracking into the Logimart shipment — stores the current status and the full
    *  scan history (JSON) parsed from the custawbquery XML. */
   async syncTracking(awb: string) {
-    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { bdWaybill: true } });
-    const track = s?.bdWaybill || awb;
+    // Track by our API waybill, else the manually-recorded carrier AWB (forwardingAwb), else the raw arg.
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { bdWaybill: true, forwardingAwb: true } });
+    const track = s?.bdWaybill || (s as any)?.forwardingAwb || awb;
     const r = await this.track(track);
     const raw = typeof r?.raw === 'string' ? r.raw : (typeof r === 'string' ? r : JSON.stringify(r));
     const { scans, bdStatus, bdStatusDate } = this.parseScans(raw);

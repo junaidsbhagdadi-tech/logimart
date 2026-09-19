@@ -380,7 +380,7 @@ export function ShipmentDetail() {
           {canAssign && <button className="secondary" onClick={handoffDel}>📦 Hand to Delhivery</button>}
           {canAssign && String((s as any).vendor).toUpperCase() === 'DELHIVERY' && (s as any).forwardingAwb && <button className="secondary" onClick={cancelDel}>🚫 Cancel Delhivery</button>}
           {canEditCharges && !(s as any).invoiced && String((s as any).statusCode).toUpperCase() !== 'CAN' && <button className="secondary" style={{ color: 'var(--bad, #c0392b)' }} onClick={voidAwb} title="Void a wrong AWB — excluded from billing">🚫 Void AWB</button>}
-          {canAssign && s.bdWaybill && <button className="secondary" onClick={trackBd}>🔎 BlueDart track</button>}
+          {canAssign && (s.bdWaybill || (/BLUE|BDR/i.test(String((s as any).vendor || '')) && (s as any).forwardingAwb)) && <button className="secondary" onClick={trackBd}>🔎 BlueDart track</button>}
           {canAssign && s.bdWaybill && String((s as any).statusCode).toUpperCase() !== 'CAN' && <button className="secondary" onClick={cancelBd}>🚫 Cancel BlueDart</button>}
           {s.bdWaybill && <a href={`/shipments/${s.awb}/bd-awb`} target="_blank" rel="noreferrer"><button className="secondary">🖨 BlueDart AWB</button></a>}
           {canAssign && s.bdWaybill && String((s as any).statusCode).toUpperCase() !== 'CAN' && <button className="secondary" onClick={pickupBd}>📅 BlueDart pickup</button>}
