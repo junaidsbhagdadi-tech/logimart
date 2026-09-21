@@ -42,7 +42,15 @@ export class ExpensesService {
       byCategory[r.category] = +((byCategory[r.category] || 0) + a).toFixed(2);
       if (r.branch) byBranch[r.branch] = +((byBranch[r.branch] || 0) + a).toFixed(2);
     }
-    return { count: rows.length, total: +total.toFixed(2), byCategory, byBranch, rows };
+    // All-time available balance per branch = Σ company-funded − Σ spent (float remaining, not date-scoped).
+    const grouped = await this.prisma.expense.groupBy({ by: ['branch'], _sum: { amount: true, companyAmount: true } });
+    const balanceByBranch: Record<string, { funded: number; spent: number; balance: number }> = {};
+    for (const g of grouped) {
+      if (!g.branch) continue;
+      const funded = Number(g._sum.companyAmount ?? 0), spent = Number(g._sum.amount ?? 0);
+      balanceByBranch[g.branch] = { funded: +funded.toFixed(2), spent: +spent.toFixed(2), balance: +(funded - spent).toFixed(2) };
+    }
+    return { count: rows.length, total: +total.toFixed(2), byCategory, byBranch, balanceByBranch, rows };
   }
 
   async remove(id: number) {

@@ -168,6 +168,7 @@ export class ReportsService {
       case 'NOT_INSCAN': return this.notInscan(range);
       case 'RUNSHEET_NOT_POD': return this.runsheetNotPod(range);
       case 'BILLING': return this.billing(range);
+      case 'EXTRA_EXPENSE': return this.extraExpense(range);
       case 'ACTION_LOG': return this.actionLog(range);
       case 'LOGIN_LOG': return this.loginLog(range);
       case 'MISSING_AWB': return this.missingAwb(range);
@@ -190,6 +191,40 @@ export class ReportsService {
       { metric: 'Created (not yet moved)', value: m['CREATED'] || 0 },
     ];
     return { columns: [{ key: 'metric', label: 'Metric' }, { key: 'value', label: 'Value' }], rows };
+  }
+
+  /** AWB-wise extra expenses (ShipmentAddon add-on charges captured on the shipment screen). */
+  private async extraExpense(range: any): Promise<Report> {
+    const rows: any[] = await this.prisma.shipmentAddon.findMany({
+      where: { createdAt: range },
+      include: { shipment: { select: { awb: true, client: { select: { legalName: true, accountCode: true } } } } },
+      orderBy: { createdAt: 'desc' }, take: 5000,
+    });
+    let total = 0;
+    const out = rows.map((r) => {
+      const amt = Number(r.amount) || 0; total += amt;
+      return {
+        date: r.createdAt.toISOString().slice(0, 10),
+        awb: r.shipment?.awb ?? '—',
+        customer: r.shipment?.client?.legalName ?? '—',
+        reason: r.reason ?? '',
+        serviceCentre: r.serviceCentre ?? '',
+        route: [r.fromLoc, r.toLoc].filter(Boolean).join(' → '),
+        mode: r.mode ?? '',
+        amount: amt.toFixed(2),
+        toBill: r.toBill ? 'Yes' : 'No',
+      };
+    });
+    out.push({ date: '', awb: '', customer: '', reason: '', serviceCentre: '', route: '', mode: 'TOTAL', amount: total.toFixed(2), toBill: '' });
+    return {
+      columns: [
+        { key: 'date', label: 'Date' }, { key: 'awb', label: 'AWB' }, { key: 'customer', label: 'Customer' },
+        { key: 'reason', label: 'Reason' }, { key: 'serviceCentre', label: 'Service centre' },
+        { key: 'route', label: 'From → To' }, { key: 'mode', label: 'Mode' },
+        { key: 'amount', label: 'Amount ₹' }, { key: 'toBill', label: 'Bill to customer' },
+      ],
+      rows: out,
+    };
   }
 
   private async daily(range: any): Promise<Report> {

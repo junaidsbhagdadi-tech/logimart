@@ -7,7 +7,7 @@ const money = (n: number) => '₹' + (Number(n) || 0).toLocaleString('en-IN', { 
 const today = () => new Date().toISOString().slice(0, 10);
 
 export function ExpenseTracker() {
-  const [data, setData] = useState<{ count: number; total: number; byCategory: Record<string, number>; byBranch: Record<string, number>; rows: any[] } | null>(null);
+  const [data, setData] = useState<{ count: number; total: number; byCategory: Record<string, number>; byBranch: Record<string, number>; balanceByBranch?: Record<string, { funded: number; spent: number; balance: number }>; rows: any[] } | null>(null);
   const [filters, setFilters] = useState({ from: '', to: '', branch: '', category: '' });
   const [form, setForm] = useState({ date: today(), mode: 'CASH', category: 'Vehicle', remark: '', amount: '', companyAmount: '', paidBy: '', paidTo: '', branch: '' });
   const [err, setErr] = useState('');
@@ -78,6 +78,27 @@ export function ExpenseTracker() {
             <div className="card" style={{ borderLeft: '4px solid var(--brand)' }}><div className="muted">Total spent</div><div style={{ fontSize: 24, fontWeight: 800 }}>{money(data.total)}</div></div>
             <div className="card"><div className="muted">Top categories</div><div style={{ fontSize: 12.5, marginTop: 4 }}>{Object.entries(data.byCategory).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => <div key={k} className="row" style={{ justifyContent: 'space-between' }}><span>{k}</span><strong>{money(v)}</strong></div>)}</div></div>
           </div>
+          {/* Branch-wise available balance = company-funded − spent (all-time float remaining). */}
+          {data.balanceByBranch && Object.keys(data.balanceByBranch).length > 0 && (
+            <div className="card">
+              <strong>Branch balance <span className="muted" style={{ fontSize: 11, fontWeight: 400 }}>— available = company-funded − spent (all-time, not affected by the date filter)</span></strong>
+              <div style={{ overflowX: 'auto', marginTop: 8 }}>
+                <table style={{ fontSize: 13 }}>
+                  <thead><tr><th>Branch</th><th style={{ textAlign: 'right' }}>Funded</th><th style={{ textAlign: 'right' }}>Spent</th><th style={{ textAlign: 'right' }}>Available</th></tr></thead>
+                  <tbody>
+                    {Object.entries(data.balanceByBranch).sort((a, b) => b[1].balance - a[1].balance).map(([b, v]) => (
+                      <tr key={b}>
+                        <td><strong>{b}</strong></td>
+                        <td style={{ textAlign: 'right' }}>{money(v.funded)}</td>
+                        <td style={{ textAlign: 'right' }}>{money(v.spent)}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 700, color: v.balance < 0 ? 'var(--bad, #c0392b)' : 'var(--ok, #16a34a)' }}>{money(v.balance)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
           <div className="card">
             <div style={{ overflowX: 'auto' }}>
               <table style={{ fontSize: 13 }}>

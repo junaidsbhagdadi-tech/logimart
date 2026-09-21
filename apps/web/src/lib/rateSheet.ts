@@ -433,6 +433,40 @@ export function exportRateCardsXlsx(clientName: string, cards: any[]): void {
   XLSX.writeFile(wb, `ratecards-${clientName.replace(/[^a-z0-9]+/gi, '_')}.xlsx`);
 }
 
+/** Customer-facing rate sheet as a printable page → browser "Save as PDF" (no PDF dependency). */
+export function printRateCardsPdf(clientName: string, cards: any[]): void {
+  const esc = (v: any) => String(v ?? '').replace(/[&<>]/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' } as any)[m]);
+  const cardHtml = (c: any) => {
+    const CJ: Record<string, any> = c.charges || {};
+    const accRows = Object.entries(CJ)
+      .map(([code, cfg]: any) => ({ code, value: cfg?.value ?? '', min: cfg?.min ?? '', perKg: cfg?.perKg ?? '' }))
+      .filter((r) => r.value !== '' || r.min !== '' || r.perKg !== '');
+    const zoneSet = new Set<string>(); (c.slabs || []).forEach((s: any) => zoneSet.add(s.zone));
+    const zonesArr = [...zoneSet];
+    const rowMap = new Map<string, any>();
+    (c.slabs || []).forEach((s: any) => {
+      const k = `${s.rateType}|${s.weight}`;
+      if (!rowMap.has(k)) rowMap.set(k, { rateType: s.rateType, weight: s.weight, rates: {} as Record<string, any> });
+      rowMap.get(k).rates[s.zone] = s.rate;
+    });
+    const slabRows = [...rowMap.values()];
+    const fsc = c.fuelMode === 'NA' ? 'No fuel' : c.fuelMode === 'DYNAMIC' ? `Diesel-indexed${c.fuelMechanism ? ` (${c.fuelMechanism})` : ''}` : `${num(c.fuelPct)}%`;
+    return `<section class="card"><h3>${esc(c.network)} · ${esc(c.product)}${c.mode ? ` · ${esc(c.mode)}` : ''}</h3>`
+      + `<div class="meta">FSC: <b>${esc(fsc)}</b> · Min freight: <b>₹${num(c.minFreight)}</b> · Vol÷: <b>${num(c.volumetricDivisor)}</b>${c.cft ? ` · CFT: <b>${num(c.cft)}</b>` : ''}</div>`
+      + (slabRows.length ? `<table><thead><tr><th>Slab</th><th>Weight/unit</th>${zonesArr.map((z) => `<th>${esc(z)}</th>`).join('')}</tr></thead><tbody>${slabRows.map((r) => `<tr><td>${esc(r.rateType)}</td><td>${esc(r.weight)}</td>${zonesArr.map((z) => `<td>${esc(r.rates[z] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '<p class="muted">No slab rates.</p>')
+      + (accRows.length ? `<table class="acc"><thead><tr><th>Charge</th><th>Value</th><th>Min</th><th>₹/kg</th></tr></thead><tbody>${accRows.map((r) => `<tr><td>${esc(r.code)}</td><td>${esc(r.value)}</td><td>${esc(r.min)}</td><td>${esc(r.perKg)}</td></tr>`).join('')}</tbody></table>` : '')
+      + `</section>`;
+  };
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Rate cards — ${esc(clientName)}</title>`
+    + `<style>body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:24px;font-size:12px}h1{font-size:18px;margin:0 0 2px}.sub{color:#666;margin:0 0 16px}section.card{border:1px solid #ccc;border-radius:6px;padding:12px;margin-bottom:14px;page-break-inside:avoid}h3{margin:0 0 6px;font-size:14px}.meta{color:#333;margin-bottom:8px}table{border-collapse:collapse;width:100%;margin-top:6px}th,td{border:1px solid #ccc;padding:4px 6px;text-align:center}th{background:#f0f0f0}table.acc{max-width:420px}.muted{color:#888}@media print{body{margin:10mm}}</style></head>`
+    + `<body><h1>Rate Card — ${esc(clientName)}</h1><p class="sub">Generated ${new Date().toLocaleDateString('en-GB')} · ${cards.length} card(s)</p>`
+    + cards.map(cardHtml).join('')
+    + `<script>window.onload=function(){setTimeout(function(){window.print();},250);};<\/script></body></html>`;
+  const w = window.open('', '_blank');
+  if (!w) { alert('Allow pop-ups to print / save the rate sheet as PDF.'); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+}
+
 /**
  * Export a customer's rate cards in the SAME layout the bulk uploader reads (Customer Code · Vendor ·
  * Product · Origin\Dest · N1…NE3), filled with each card's ₹/kg matrix — so you can export, tweak the

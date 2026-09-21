@@ -31,6 +31,7 @@ const REPORTS: { group: string; items: { key: string; label: string; noDate?: bo
   ] },
   { group: 'AWB / Finance', items: [
     { key: 'BILLING', label: 'Billing Report' },
+    { key: 'EXTRA_EXPENSE', label: 'Extra Expense (AWB-wise)' },
     { key: 'MISSING_AWB', label: 'Missing AWB' },
     { key: 'INVOICE', label: 'Invoice Report', noDate: true },
     { key: 'VOID', label: 'Void Report' },
