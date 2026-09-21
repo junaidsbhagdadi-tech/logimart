@@ -1,11 +1,21 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateClientDto, UpdateClientDto } from './dto/customer.dto';
 
 @Injectable()
 export class CustomersService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /** Generate (or rotate) a customer's external-API key (x-api-key for /api/ext/*). */
+  async generateApiKey(id: number) {
+    const c = await this.prisma.b2bClient.findUnique({ where: { id: BigInt(id) }, select: { id: true } });
+    if (!c) throw new NotFoundException('Customer not found');
+    const apiKey = 'lm_' + randomBytes(24).toString('hex');
+    await this.prisma.b2bClient.update({ where: { id: c.id }, data: { apiKey } });
+    return { apiKey };
+  }
 
   /** Account code from the legal-name initials + a sequence, if not supplied. */
   private async nextAccountCode(legalName: string): Promise<string> {

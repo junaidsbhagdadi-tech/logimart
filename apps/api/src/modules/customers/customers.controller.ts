@@ -39,6 +39,11 @@ export class CustomersController {
   }
 
   // ---- sub-tabs (declared before ':id' catch-all is fine — these have extra segments) ----
+  /** Generate (or rotate) the customer's external-API key. Returns the key once — store it safely. */
+  @Post(':id/api-key')
+  @Roles(UserRole.SYS_ADMIN)
+  apiKey(@Param('id') id: string) { return this.customers.generateApiKey(Number(id)); }
+
   @Get(':id/fuel-surcharges')
   @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
   listFuel(@Param('id') id: string) { return this.customers.listFuel(Number(id)); }

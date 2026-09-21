@@ -127,6 +127,7 @@ model B2bClient {
   isActive        Boolean  @default(true)
   isOneTime       Boolean  @default(false) // walk-in / ad-hoc, non-contract
   isCash          Boolean  @default(false) // cash customer — no invoices generated
+  apiKey          String?  @unique // customer-facing API key (x-api-key) for the external tracking/rate API
   canCheckRates   Boolean  @default(false) // may view rate agreement + estimate cost in their portal
   canViewInvoices Boolean  @default(false) // #22 — may see their invoices in the customer portal (opt-in)
   defaultVendor   String?   // preferred carrier — auto-fills the vendor at booking (staff can override)

@@ -16,6 +16,7 @@ import { BillingModule } from './modules/billing/billing.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ComplianceModule } from './modules/compliance/compliance.module';
 import { TrackingModule } from './modules/tracking/tracking.module';
+import { ExternalModule } from './modules/external/external.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { RateCardsModule } from './modules/ratecards/ratecards.module';
 import { VendorBillsModule } from './modules/vendorbills/vendorbills.module';
@@ -112,6 +113,7 @@ const webDist = join(__dirname, '..', '..', 'web', 'dist');
     DocumentsModule,
     AuditModule,
     ExpensesModule,
+    ExternalModule,
   ],
   controllers: [AppController],
   providers: [{ provide: APP_INTERCEPTOR, useClass: AuditInterceptor }],

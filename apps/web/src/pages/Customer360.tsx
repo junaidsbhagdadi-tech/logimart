@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api';
+import { useAuth } from '../auth';
 
 const inr = (n: any) => '₹' + Number(n ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
 const inr2 = (n: any) => '₹' + Number(n ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -12,10 +13,18 @@ const STATUS_CLS: Record<string, string> = { PAID: 'DELIVERED', 'PART-PAID': 'PA
 export function Customer360() {
   const { id } = useParams();
   const nav = useNavigate();
+  const { user } = useAuth();
+  const isSuper = user?.role === 'SYS_ADMIN';
   const [d, setD] = useState<any>(null);
   const [error, setError] = useState('');
 
   useEffect(() => { if (id) api.customerOverview(id).then(setD).catch((e) => setError(e.message)); }, [id]);
+
+  const genKey = async () => {
+    if (!confirm('Generate a new external-API key for this customer? Any existing key stops working.')) return;
+    try { const r = await api.genCustomerApiKey(id!); window.prompt('API key — copy it now (shown once). Send in the x-api-key header to /api/ext/v1/*', r.apiKey); }
+    catch (e: any) { setError(e.message); }
+  };
 
   if (error) return <div className="error" style={{ margin: 20 }}>{error}</div>;
   if (!d) return <p className="muted" style={{ margin: 20 }}>Loading customer 360…</p>;
@@ -52,6 +61,7 @@ export function Customer360() {
             <button className="secondary" onClick={() => nav('/customers')}>✎ Edit</button>
             <Link to={`/invoices`}><button className="secondary">🧾 Invoices</button></Link>
             <Link to={`/create`}><button className="secondary">＋ New Shipment</button></Link>
+            {isSuper && <button className="secondary" onClick={genKey} title="Generate the customer's external-API key">🔑 API key</button>}
             <Link to={`/invoices`}><button>🧾 Generate Invoice</button></Link>
           </div>
         </div>
