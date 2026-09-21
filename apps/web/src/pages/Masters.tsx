@@ -5,7 +5,7 @@ import { AirFuelDefaults } from '../components/AirFuelDefaults';
 import { GreenTax } from './GreenTax';
 import { Surcharges } from './Surcharges';
 
-type Field = { key: string; label: string; type?: 'text' | 'number' | 'select' | 'checkbox'; options?: string[]; attr?: boolean };
+type Field = { key: string; label: string; type?: 'text' | 'number' | 'select' | 'checkbox' | 'date'; options?: string[]; attr?: boolean };
 type MasterDef = { key: string; label: string; icon: string; fields: Field[] };
 
 const F = (key: string, label: string, extra: Partial<Field> = {}): Field => ({ key, label, type: 'text', ...extra });
