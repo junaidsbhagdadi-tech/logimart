@@ -388,6 +388,7 @@ export const api = {
   payAtBooking: (awb: string, amount: number, method: 'CASH' | 'WALLET') =>
     request<{ awb: string; method: string; amount: number; walletBalance: number | null; customer: string; accountCode: string; collectedAt: string; message: string }>(
       `/api/v1/shipments/${awb}/pay`, { method: 'POST', body: JSON.stringify({ amount, method }) }),
+  cashReceipt: (awb: string) => request<any>(`/api/v1/shipments/${awb}/cash-receipt`),
   // ---- wallet + walk-in ----
   ensureWalkin: () => request<any>('/api/v1/clients/walkin', { method: 'POST' }),
   getWallet: (id: string | number) => request<{ clientId: string; legalName: string; accountType: string; walletBalance: number }>(`/api/v1/clients/${id}/wallet`),

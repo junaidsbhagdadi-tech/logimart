@@ -263,6 +263,13 @@ export class ShipmentsController {
     return this.shipments.payAtBooking(awb, dto, BigInt(req.user.sub));
   }
 
+  /** Re-view / reprint a counter (cash/wallet) receipt for an already-paid shipment. */
+  @Get(':awb/cash-receipt')
+  @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  cashReceipt(@Param('awb') awb: string) {
+    return this.shipments.cashReceipt(awb);
+  }
+
   /** Hand-off to a vendor: record vendor + forwarding (carrier) AWB reference. WAREHOUSE_HANDLER
    *  (incl. Customer Service staff) can do it too — an exceptional hand-off from the tracking screen. */
   @Post(':awb/forwarding')

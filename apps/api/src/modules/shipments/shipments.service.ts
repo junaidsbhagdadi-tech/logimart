@@ -646,6 +646,30 @@ export class ShipmentsService {
     return { awb, method, amount, walletBalance, customer: s.client.legalName, accountCode: s.client.accountCode, collectedAt: new Date(), message: `₹${amount} collected via ${method} for ${awb}.` };
   }
 
+  /** Re-view / reprint a cash-or-wallet counter receipt for an already-paid shipment. */
+  async cashReceipt(awb: string) {
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, include: { client: true } });
+    if (!s) throw new NotFoundException(`AWB ${awb} not found`);
+    if (!s.freightCollectedAt) throw new NotFoundException(`No counter payment recorded for ${awb}.`);
+    const method = String((s.client as any)?.accountType).toUpperCase() === 'WALLET' ? 'WALLET' : 'CASH';
+    return {
+      awb: s.awb,
+      at: s.freightCollectedAt,
+      sender: (s as any).shipperName ?? s.client?.legalName ?? null,
+      senderGstin: (s as any).consignorGstin ?? s.client?.gstin ?? null,
+      consignee: (s as any).consigneeName ?? null,
+      consigneeGstin: (s as any).consigneeGstin ?? null,
+      destCity: (s as any).consigneeCity ?? null,
+      destPincode: (s as any).destPincode ?? null,
+      product: s.product,
+      deadKg: Number((s as any).totalDeadKg ?? 0),
+      pieces: s.pieceCount,
+      amount: (s as any).freightCollected != null ? Number((s as any).freightCollected) : null,
+      method,
+      customer: s.client?.legalName ?? null,
+    };
+  }
+
   /**
    * Hand-off to a vendor: record which vendor carried the shipment + the vendor/carrier AWB
    * (forwarding AWB) as a reference. Links our AWB to the carrier's — used by vendor-bill P&L

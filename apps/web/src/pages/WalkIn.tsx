@@ -44,6 +44,13 @@ export function WalkIn() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [receipt, setReceipt] = useState<any>(null);
+  const [reprintAwb, setReprintAwb] = useState('');
+  const reprint = async () => {
+    const a = reprintAwb.trim(); if (!a) return;
+    setErr('');
+    try { const r: any = await api.cashReceipt(a); setReceipt({ ...r, at: r.at ? new Date(r.at).toLocaleString('en-IN') : '' }); }
+    catch (e: any) { setErr(e.message); }
+  };
 
   useEffect(() => {
     api.listClients().then(setClients).catch(() => {});
@@ -145,6 +152,13 @@ export function WalkIn() {
       <h1>🧾 Walk-in Counter</h1>
       <p className="muted" style={{ marginTop: -14 }}>Quick-book a counter shipment (full shipper/consignee details), take cash or wallet payment, print a receipt.</p>
       {err && <div className="error">{err}</div>}
+
+      {/* Reprint a past counter receipt by AWB */}
+      <div className="card" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span className="muted" style={{ fontSize: 12 }}>Reprint a past receipt:</span>
+        <input value={reprintAwb} onChange={(e) => setReprintAwb(e.target.value)} placeholder="AWB no." style={{ width: 180 }} onKeyDown={(e) => { if (e.key === 'Enter') reprint(); }} />
+        <button className="secondary" onClick={reprint}>🔎 View receipt</button>
+      </div>
 
       {/* payment mode */}
       <div className="card">
@@ -268,6 +282,16 @@ function Receipt({ r, onClose }: { r: any; onClose: () => void }) {
               <tr><td className="muted">GST</td><td style={{ textAlign: 'right' }}>{money(r.quote.gst)}</td></tr>
             </tbody></table>
           )}
+          {/* Flat/agreed amount (no rate quote) — show the GST component of the collected cash (18% incl). */}
+          {!r.quote && r.amount != null && (() => {
+            const gross = Number(r.amount) || 0; const taxable = gross / 1.18; const gst = gross - taxable;
+            return (
+              <table style={{ width: '100%', fontSize: 12, marginTop: 8, borderTop: '1px dashed #999', paddingTop: 4 }}><tbody>
+                <tr><td className="muted">Freight (taxable)</td><td style={{ textAlign: 'right' }}>{money(taxable)}</td></tr>
+                <tr><td className="muted">GST @ 18% (incl.)</td><td style={{ textAlign: 'right' }}>{money(gst)}</td></tr>
+              </tbody></table>
+            );
+          })()}
           <div style={{ borderTop: '1px solid #333', marginTop: 8, paddingTop: 8, display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: 15 }}>
             {r.amount == null
               ? <><span>FREIGHT</span><span>{r.agreedText || 'As Agreed'}</span></>
