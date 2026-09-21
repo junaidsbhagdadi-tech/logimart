@@ -646,18 +646,20 @@ function RateCardEditor({ owner, card, products, zones, vendors, mechs, chargeMa
             {chargeDefs.map((c) => {
               const code = String(c.code).toUpperCase();
               // Fixed rules override the master baseOn: Emergency = % of freight, Appointment = ₹/kg + min.
-              const isEmergency = code === 'EMERGENCY', isAppt = code === 'APPT', isOda = code === 'ODA';
+              const isEmergency = code === 'EMERGENCY', isAppt = code === 'APPT', isOda = code === 'ODA', isTopay = code === 'TOPAY';
               const base = baseOf(c); const pct = isEmergency || base === 'FREIGHT' || base.includes('VALUE');
               const unit = isEmergency ? '% of freight' : isAppt ? '₹/kg' : pct ? '%' : base.includes('WEIGHT') ? '₹/kg' : '₹';
-              const showMin = isOda || isAppt || base.includes('VALUE');
+              // ODA and To-Pay both bill as flat + ₹/kg with a min.
+              const flatPerKg = isOda || isTopay;
+              const showMin = isOda || isAppt || isTopay || base.includes('VALUE');
               return (
                 <div key={c.code}>
-                  <label style={{ fontSize: 12 }}>{isOda ? `ODA — ${c.name}` : c.name} <span className="muted">({isOda ? 'flat + ₹/kg, min' : unit})</span></label>
-                  <input type="number" step="0.001" value={chg[c.code]?.value ?? ''} onChange={(e) => setCharge(c.code, 'value', e.target.value)} placeholder={isOda ? 'flat ₹' : isAppt ? '₹/kg' : '0'} />
+                  <label style={{ fontSize: 12 }}>{isOda ? `ODA — ${c.name}` : c.name} <span className="muted">({flatPerKg ? 'flat + ₹/kg, min' : unit})</span></label>
+                  <input type="number" step="0.001" value={chg[c.code]?.value ?? ''} onChange={(e) => setCharge(c.code, 'value', e.target.value)} placeholder={flatPerKg ? 'flat ₹' : isAppt ? '₹/kg' : '0'} />
                   {showMin && (
                     <input type="number" style={{ marginTop: 4 }} value={chg[c.code]?.min ?? ''} onChange={(e) => setCharge(c.code, 'min', e.target.value)} placeholder="min ₹ (opt)" />
                   )}
-                  {isOda && (
+                  {flatPerKg && (
                     <input type="number" style={{ marginTop: 4 }} value={chg[c.code]?.perKg ?? ''} onChange={(e) => setCharge(c.code, 'perKg', e.target.value)} placeholder="₹/kg (opt)" />
                   )}
                 </div>

@@ -62,6 +62,8 @@ const MASTERS: MasterDef[] = [
     F('pctPerStep', 'Add %  (DYNAMIC — e.g. 1)', { attr: true, type: 'number' }),
     F('stepRupee', 'for every ₹ rise  (DYNAMIC — e.g. 0.50)', { attr: true, type: 'number' }),
     F('maxPct', 'Max % cap  (DYNAMIC — e.g. 50)', { attr: true, type: 'number' }),
+    F('baseFuelPrice', 'Base diesel ₹/L for the Base DSC %  (DYNAMIC — e.g. 98.33)', { attr: true, type: 'number' }),
+    F('fromDate', 'Effective from (start date — this % applies to shipments booked on/after)', { attr: true, type: 'date' }),
   ] },
   { key: 'CHARGE', label: 'Charges', icon: '💱', fields: [
     F('code', 'Charge code'), F('name', 'Charge name'),
@@ -304,7 +306,7 @@ export function Masters() {
                   {f.options!.map((o) => <option key={o} value={o}>{typeKey === 'CHARGE' && f.key === 'baseOn' ? baseOnLabel(o) : typeKey === 'FUEL_MECHANISM' && f.key === 'mode' ? fuelModeLabel(o) : o}</option>)}
                 </select>
               ) : (
-                <input type={f.type === 'number' ? 'number' : 'text'} value={val(f)} disabled={editing && f.key === 'code'} onChange={(e) => setVal(f, e.target.value)} />
+                <input type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'} value={val(f)} disabled={editing && f.key === 'code'} onChange={(e) => setVal(f, e.target.value)} />
               )}
             </div>
           ))}
