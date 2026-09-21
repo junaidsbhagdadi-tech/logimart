@@ -13,6 +13,7 @@ export function Pickups() {
   const isClient = user?.role === 'CLIENT_ADMIN';
   const isOps = ['HUB_MANAGER', 'SYS_ADMIN'].includes(user?.role || '');
   const [rows, setRows] = useState<any[]>([]);
+  const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'yesterday'>('all'); // #I — see yesterday's pickups
   const [riders, setRiders] = useState<any[]>([]);
   const [form, setForm] = useState({ ...blank });
   const [error, setError] = useState('');
@@ -66,6 +67,12 @@ export function Pickups() {
   // Ops staff need the rider list to assign pickups by name (not a raw user id).
   useEffect(() => { if (isOps) api.listRiders().then((r) => setRiders(r.filter((x: any) => x.isActive !== false))).catch(() => {}); }, [isOps]);
   const riderLabel = (id: any) => { const r = riders.find((x) => String(x.id) === String(id)); return r ? `${r.riderCode} · ${r.fullName}` : (id != null ? `#${id}` : '—'); };
+  // Date filter — pickups are shown newest-first regardless; this lets ops see just today's or
+  // yesterday's generated pickups (feedback #I).
+  const dayKey = (d: any) => { const x = new Date(d); return `${x.getFullYear()}-${x.getMonth()}-${x.getDate()}`; };
+  const todayKey = dayKey(new Date());
+  const yesterdayKey = dayKey(new Date(Date.now() - 864e5));
+  const visibleRows = rows.filter((p) => dateFilter === 'all' || (dateFilter === 'today' ? dayKey(p.createdAt) === todayKey : dayKey(p.createdAt) === yesterdayKey));
 
   const set = (k: keyof typeof blank, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -169,12 +176,19 @@ export function Pickups() {
       )}
 
       <div className="card">
+        <div className="row" style={{ gap: 6, marginBottom: 10, alignItems: 'center' }}>
+          <span className="muted" style={{ fontSize: 12 }}>Show:</span>
+          {(['all', 'today', 'yesterday'] as const).map((k) => (
+            <button key={k} className={dateFilter === k ? '' : 'secondary'} style={{ padding: '4px 12px', textTransform: 'capitalize' }} onClick={() => setDateFilter(k)}>{k}</button>
+          ))}
+          <span className="muted" style={{ fontSize: 12, marginLeft: 'auto' }}>{visibleRows.length} pickup(s)</span>
+        </div>
         <table>
-          <thead><tr><th>#</th><th>Address</th><th>City</th><th>Boxes</th><th>Status</th>{isOps && <th>Rider</th>}{isOps && <th></th>}</tr></thead>
+          <thead><tr><th>#</th><th>Date</th><th>Address</th><th>City</th><th>Boxes</th><th>Status</th>{isOps && <th>Rider</th>}{isOps && <th></th>}</tr></thead>
           <tbody>
-            {rows.map((p) => (
+            {visibleRows.map((p) => (
               <tr key={p.id}>
-                <td>{p.id}</td><td>{p.pickupAddress}</td><td>{p.city ?? '—'}</td><td>{p.estPieces}</td>
+                <td>{p.id}</td><td style={{ whiteSpace: 'nowrap' }}>{p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-GB') : '—'}</td><td>{p.pickupAddress}</td><td>{p.city ?? '—'}</td><td>{p.estPieces}</td>
                 <td><span className={`badge ${p.status}`}>{p.status}</span></td>
                 {isOps && <td>{p.status === 'ASSIGNED' || p.status === 'PICKED' ? riderLabel(p.assignedRiderId) : '—'}</td>}
                 {isOps && (
@@ -188,7 +202,7 @@ export function Pickups() {
                 )}
               </tr>
             ))}
-            {rows.length === 0 && <tr><td colSpan={7} className="muted">No pickup requests.</td></tr>}
+            {visibleRows.length === 0 && <tr><td colSpan={8} className="muted">{rows.length ? `No pickups for ${dateFilter}.` : 'No pickup requests.'}</td></tr>}
           </tbody>
         </table>
       </div>

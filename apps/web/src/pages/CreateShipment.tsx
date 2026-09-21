@@ -575,6 +575,23 @@ export function CreateShipment() {
         ))}
       </div>
 
+      {/* UAT feedback — the key AWB-entry fields on top: vendor · forwarding no · AWB no · booking date.
+          Bound to the same state as the tab inputs below, so they stay in sync. */}
+      {!isClient && (
+        <div className="card" style={{ marginTop: 14, background: 'var(--bg-soft, #f6f8fa)' }}>
+          <div className="grid cols-4" style={{ gap: 12 }}>
+            <div>
+              <label>Vendor <span className="muted">(SELF or code)</span></label>
+              <input list="lm-top-vendors" value={svc.vendor} placeholder="SELF or vendor code" onChange={(e) => { setVendorTouched(true); setSvc({ ...svc, vendor: e.target.value.toUpperCase() }); }} />
+              <datalist id="lm-top-vendors">{vendors.map((v) => <option key={v.id} value={(v.vendorCode || v.name).toUpperCase()}>{v.vendorCode} — {v.name}</option>)}</datalist>
+            </div>
+            <div><label>Forwarding No <span className="muted">(vendor AWB)</span></label><div className="row" style={{ gap: 6 }}><input style={{ flex: 1 }} value={svc.forwardingAwb} onChange={(e) => setSvc({ ...svc, forwardingAwb: e.target.value })} placeholder="carrier AWB / LR" /><ScanButton title="Scan the forwarding barcode" onScan={(cd) => setSvc({ ...svc, forwardingAwb: cd })} /></div></div>
+            <div><label>AWB No <span className="muted">(blank = auto)</span></label><div className="row" style={{ gap: 6 }}><input style={{ flex: 1 }} value={manualAwb} onChange={(e) => setManualAwb(e.target.value)} placeholder="e.g. 2030236" /><ScanButton title="Scan the AWB barcode" onScan={(cd) => setManualAwb(cd)} /></div></div>
+            <div><label>Booking date &amp; time <span className="muted">(blank = now)</span></label><input type="datetime-local" value={svc.bookedAt} onChange={(e) => setSvc({ ...svc, bookedAt: e.target.value })} /></div>
+          </div>
+        </div>
+      )}
+
       {entryTab === 'AWB' && (<>
       <div className="card" style={{ marginTop: 14 }}>
         <h2>Booking</h2>
