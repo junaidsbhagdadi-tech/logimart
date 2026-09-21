@@ -543,6 +543,37 @@ export class ShipmentsService {
     return { awb, status: 'CAN', carrier: carrierNotes };
   }
 
+  /** Void several AWBs at once — runs the same guarded cancel() per AWB, collecting per-AWB results. */
+  async bulkCancel(awbs: string[], userId?: bigint, clientId?: number, reason?: string, opts?: { isSuper?: boolean }) {
+    const list = [...new Set((awbs || []).map((a) => String(a).trim().toUpperCase()).filter(Boolean))];
+    const results: { awb: string; ok: boolean; status?: string; error?: string }[] = [];
+    for (const awb of list) {
+      try { const r = await this.cancel(awb, userId, clientId, reason, opts); results.push({ awb, ok: true, status: r.status }); }
+      catch (e: any) { results.push({ awb, ok: false, error: e?.message ?? String(e) }); }
+    }
+    return { total: list.length, voided: results.filter((r) => r.ok).length, results };
+  }
+
+  /** Change the booking date (createdAt) on several AWBs — for wrong-date corrections. Blocks
+   *  already-invoiced AWBs (a date change would move their billing period). */
+  async bulkChangeDate(awbs: string[], newDate: string, clientId?: number) {
+    const when = new Date(newDate);
+    if (isNaN(when.getTime())) throw new ConflictException('Invalid date.');
+    const list = [...new Set((awbs || []).map((a) => String(a).trim().toUpperCase()).filter(Boolean))];
+    const results: { awb: string; ok: boolean; error?: string }[] = [];
+    for (const awb of list) {
+      try {
+        const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, clientId: true, _count: { select: { invoiceLines: true } } } });
+        if (!s) throw new NotFoundException(`AWB ${awb} not found`);
+        if (clientId != null && String(s.clientId) !== String(clientId)) throw new NotFoundException(`AWB ${awb} not found`);
+        if (s._count.invoiceLines > 0) throw new ConflictException('already invoiced — cannot change its date');
+        await this.prisma.shipment.update({ where: { id: s.id }, data: { createdAt: when } });
+        results.push({ awb, ok: true });
+      } catch (e: any) { results.push({ awb, ok: false, error: e?.message ?? String(e) }); }
+    }
+    return { total: list.length, changed: results.filter((r) => r.ok).length, date: when, results };
+  }
+
   /**
    * DOD — record that the cheque/DD was collected from the consignee.
    * This is the delivery gate: POD is blocked (see PodsService) until this is set.

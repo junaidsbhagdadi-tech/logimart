@@ -36,6 +36,7 @@ const PAGE = 10;
 export function AwbEntryList() {
   const { user } = useAuth();
   const isSuper = user?.role === 'SYS_ADMIN';
+  const isOps = ['HUB_MANAGER', 'SYS_ADMIN'].includes(user?.role || ''); // bulk void / date-change
   const [rows, setRows] = useState<Row[]>([]);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [page, setPage] = useState(0);
@@ -95,6 +96,32 @@ export function AwbEntryList() {
     try { const r = await api.bulkDeleteShipments(awbs); setMsg(`✓ Deleted ${r.deleted} shipment(s).`); load(); }
     catch (e: any) { setError(e.message); }
   };
+  // Bulk VOID — reversible-in-spirit (excluded from billing, record kept); safer than hard-delete.
+  const voidSelected = async () => {
+    if (sel.size === 0) return;
+    const awbs = Array.from(sel);
+    const reason = window.prompt(`Void ${awbs.length} AWB(s)? They'll be marked cancelled and excluded from billing (the record is kept). Reason:`, 'Bulk void (wrong entry)');
+    if (reason === null) return;
+    setError(''); setMsg('Voiding…');
+    try {
+      const r = await api.bulkCancelAwbs(awbs, reason || undefined);
+      const failed = r.results.filter((x) => !x.ok);
+      setMsg(`✓ Voided ${r.voided}/${r.total}.${failed.length ? ' Skipped: ' + failed.slice(0, 6).map((f) => `${f.awb} (${f.error})`).join('; ') : ''}`); load();
+    } catch (e: any) { setError(e.message); }
+  };
+  // Bulk booking-date change — corrects a wrong booking date (blocks invoiced AWBs server-side).
+  const changeDateSelected = async () => {
+    if (sel.size === 0) return;
+    const awbs = Array.from(sel);
+    const date = window.prompt(`Change the booking date of ${awbs.length} AWB(s) to (YYYY-MM-DD):`, new Date().toISOString().slice(0, 10));
+    if (!date) return;
+    setError(''); setMsg('Updating…');
+    try {
+      const r = await api.bulkDateAwbs(awbs, date);
+      const failed = r.results.filter((x) => !x.ok);
+      setMsg(`✓ Changed ${r.changed}/${r.total} to ${date}.${failed.length ? ' Skipped: ' + failed.slice(0, 6).map((f) => `${f.awb} (${f.error})`).join('; ') : ''}`); load();
+    } catch (e: any) { setError(e.message); }
+  };
 
   // Excel export of the CURRENTLY FILTERED rows (not just the visible page).
   const exportXls = async () => {
@@ -121,7 +148,9 @@ export function AwbEntryList() {
             <button className="secondary" onClick={exportXls} disabled={!filtered.length} title="Download the filtered list to Excel">⬇ Excel</button>
           </div>
           <div className="row" style={{ gap: 8 }}>
-            {isSuper && sel.size > 0 && <button style={{ background: 'var(--bad, #c0392b)', color: '#fff' }} title="Delete the selected shipments" onClick={deleteSelected}>🗑 Delete {sel.size} selected</button>}
+            {isOps && sel.size > 0 && <button className="secondary" title="Void the selected AWBs — excluded from billing, record kept (reversible)" onClick={voidSelected}>🚫 Void {sel.size}</button>}
+            {isOps && sel.size > 0 && <button className="secondary" title="Change the booking date of the selected AWBs" onClick={changeDateSelected}>📅 Change date {sel.size}</button>}
+            {isSuper && sel.size > 0 && <button style={{ background: 'var(--bad, #c0392b)', color: '#fff' }} title="Permanently delete the selected shipments" onClick={deleteSelected}>🗑 Delete {sel.size}</button>}
             {isSuper && <button className="secondary" style={{ color: 'var(--danger, #c0392b)' }} title="Delete ALL shipments + invoices (keeps config)" onClick={clearAll}>🧹 Clear test shipments</button>}
             <Link to="/bulk"><button className="secondary" title="Bulk import shipments from Excel">📥 Excel import</button></Link>
             <Link to="/create"><button>➕ New Shipment</button></Link>
@@ -132,11 +161,11 @@ export function AwbEntryList() {
           <table>
             <thead>
               <tr>
-                {isSuper && <th style={{ width: 32 }}><input type="checkbox" checked={allSelected} onChange={toggleSelAll} style={{ width: 'auto' }} title="Select all (filtered)" /></th>}
+                {isOps && <th style={{ width: 32 }}><input type="checkbox" checked={allSelected} onChange={toggleSelAll} style={{ width: 'auto' }} title="Select all (filtered)" /></th>}
                 {COLS.map((c) => <th key={c.key}>{c.label}</th>)}<th>Action</th>
               </tr>
               <tr>
-                {isSuper && <th></th>}
+                {isOps && <th></th>}
                 {COLS.map((c) => (
                   <th key={c.key} style={{ padding: 4 }}>
                     <input value={filters[c.key] || ''} onChange={(e) => setFilter(c.key, e.target.value)} placeholder={c.label}
@@ -149,7 +178,7 @@ export function AwbEntryList() {
             <tbody>
               {slice.map((r) => (
                 <tr key={r.awb} style={sel.has(r.awb) ? { background: 'var(--bg-soft, #f2f4f7)' } : undefined}>
-                  {isSuper && <td><input type="checkbox" checked={sel.has(r.awb)} onChange={() => toggleSel(r.awb)} style={{ width: 'auto' }} /></td>}
+                  {isOps && <td><input type="checkbox" checked={sel.has(r.awb)} onChange={() => toggleSel(r.awb)} style={{ width: 'auto' }} /></td>}
                   <td><Link to={`/shipments/${r.awb}`}><strong>{r.awb}</strong></Link>{r.invoiced && <span title="Invoiced — locked for editing" style={{ marginLeft: 6 }}>🔒</span>}</td>
                   <td>{fmtDate(r.bookDate)}</td>
                   <td>{r.shipperName}</td>
@@ -170,7 +199,7 @@ export function AwbEntryList() {
                   <td><Link to={`/shipments/${r.awb}`} className="muted" style={{ fontSize: 12 }}>open →</Link></td>
                 </tr>
               ))}
-              {slice.length === 0 && <tr><td colSpan={COLS.length + (isSuper ? 2 : 1)} className="muted">No entries match.</td></tr>}
+              {slice.length === 0 && <tr><td colSpan={COLS.length + (isOps ? 2 : 1)} className="muted">No entries match.</td></tr>}
             </tbody>
           </table>
         </div>

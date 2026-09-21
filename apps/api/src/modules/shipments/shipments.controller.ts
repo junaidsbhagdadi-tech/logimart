@@ -199,6 +199,20 @@ export class ShipmentsController {
     return this.shipments.cancel(awb, req.user.sub ? BigInt(req.user.sub) : undefined, clientId, dto?.reason, { isSuper: req.user?.role === UserRole.SYS_ADMIN });
   }
 
+  /** Bulk void — void several AWBs at once (each guarded like the single void). */
+  @Post('bulk-cancel')
+  @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  bulkCancel(@Body() dto: { awbs: string[]; reason?: string }, @Req() req: any) {
+    return this.shipments.bulkCancel(dto?.awbs || [], req.user.sub ? BigInt(req.user.sub) : undefined, undefined, dto?.reason, { isSuper: req.user?.role === UserRole.SYS_ADMIN });
+  }
+
+  /** Bulk booking-date change — correct the booking date (createdAt) on several AWBs (not invoiced). */
+  @Post('bulk-date')
+  @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  bulkDate(@Body() dto: { awbs: string[]; date: string }) {
+    return this.shipments.bulkChangeDate(dto?.awbs || [], dto?.date);
+  }
+
   /** Assign a rider for last-mile delivery. */
   @Post(':awb/assign-delivery')
   @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)

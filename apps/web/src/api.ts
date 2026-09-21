@@ -430,6 +430,10 @@ export const api = {
   portalAccounts: () => request<any[]>('/api/v1/portal/accounts'),
   cancelShipment: (awb: string, reason?: string) =>
     request<{ awb: string; status: string }>(`/api/v1/shipments/${awb}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  bulkCancelAwbs: (awbs: string[], reason?: string) =>
+    request<{ total: number; voided: number; results: { awb: string; ok: boolean; error?: string }[] }>(`/api/v1/shipments/bulk-cancel`, { method: 'POST', body: JSON.stringify({ awbs, reason }) }),
+  bulkDateAwbs: (awbs: string[], date: string) =>
+    request<{ total: number; changed: number; results: { awb: string; ok: boolean; error?: string }[] }>(`/api/v1/shipments/bulk-date`, { method: 'POST', body: JSON.stringify({ awbs, date }) }),
   listInvoices: () => request<Invoice[]>('/api/v1/billing/invoices'),
   getInvoice: (id: string) => request<Invoice>(`/api/v1/billing/invoices/${id}`),
   csDashboard: (from?: string, to?: string) =>
