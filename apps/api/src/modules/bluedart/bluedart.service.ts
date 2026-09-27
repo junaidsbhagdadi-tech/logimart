@@ -236,12 +236,16 @@ export class BluedartService implements OnModuleInit {
     return miss;
   }
 
-  /** Logimart product/service → BlueDart ProductCode (A=Apex/air, D=Domestic Priority/surface). */
+  /** Logimart product/service → BlueDart ProductCode. Verified against live tracking:
+   *  A = Dart Apex (air), E = Surface/Ground (Surfaceline), D = Domestic Priority (air express).
+   *  Override per product with BLUEDART_PRODUCT_MAP (e.g. "SFC:E,DP:D,APEX:A"). */
   private bdProductCode(s: any): string {
     const p = String(s.product ?? '').toUpperCase();
     if (BLUEDART.productMap[p]) return BLUEDART.productMap[p];
-    const air = /AIR|EXP|APEX/i.test(String(s.serviceMode ?? '') + p);
-    return air ? 'A' : 'D';
+    const sm = String(s.serviceMode ?? '');
+    if (/AIR|APEX/i.test(sm + p)) return 'A';           // Dart Apex (air)
+    if (/\bDP\b|TDD|NDD|PRIORITY/i.test(p)) return 'D'; // Domestic Priority (air express / courier)
+    return 'E';                                          // Surface / Ground (was wrongly 'D')
   }
 
   /** BlueDart→Logimart pay-mode → SubProductCode: P=Prepaid, C=COD, A=FOD(To-Pay), D=DOD. */
