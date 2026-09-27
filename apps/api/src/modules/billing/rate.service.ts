@@ -159,6 +159,35 @@ export class RateService {
     return null;
   }
 
+  /** Freight+fuel cost estimate per vendor — priced off each vendor's OWN cost card (ownerVendorId)
+   *  for the lane — so carrier comparison shows ALL vendors, not just the customer's carded networks. */
+  async vendorCostOptions(opts: { product: string; originZone: string; destZone: string; kg: number; bookedAt?: Date }) {
+    const now = new Date();
+    const cards = await this.prisma.customerRateCard.findMany({
+      where: { ownerVendorId: { not: null }, isActive: true, product: { equals: opts.product, mode: 'insensitive' }, validFrom: { lte: now }, OR: [{ validTo: null }, { validTo: { gte: now } }] },
+      include: { slabs: true, ownerVendor: { select: { vendorCode: true, name: true } } },
+    });
+    const norm = (x: any) => String(x ?? '').replace(/[^a-z0-9]/gi, '').toUpperCase();
+    const eq = (a: any, b: any) => !a || (b != null && norm(a) === norm(b));
+    const out: { vendor: string; freight: number; subtotal: number; gst: number; total: number; basis?: string }[] = [];
+    for (const c of cards as any[]) {
+      const kg = Math.max(Number(opts.kg) || 0.5, Number(c.minChargeableKg ?? 0));
+      const exact = (c.slabs || []).filter((s: any) => eq(s.zone, opts.destZone) && eq(s.originZone, opts.originZone));
+      const laneSlabs = exact.length ? exact : (c.slabs || []).filter((s: any) => eq(s.zone, opts.destZone));
+      const priced = laneSlabs.length ? this.priceSlabs(laneSlabs, kg) : null;
+      if (!priced) continue;
+      const freight = r2(Math.max(priced.freight, Number(c.minFreight ?? 0)));
+      const surface = /SURFACE|RAIL|TRAIN|ROAD/i.test(String(c.mode ?? ''));
+      const fuelPct = await this.cardFuelPct(c, surface, opts.bookedAt, c.ownerVendor?.vendorCode);
+      const fuel = r2(freight * fuelPct / 100);
+      const subtotal = r2(freight + fuel);
+      const gst = +(subtotal * 0.18).toFixed(2);
+      const vendor = String(c.ownerVendor?.vendorCode || c.ownerVendor?.name || 'VENDOR').toUpperCase();
+      out.push({ vendor, freight, subtotal, gst, total: +(subtotal + gst).toFixed(2), basis: priced.basis });
+    }
+    return out;
+  }
+
   /** Current diesel price (₹/L) — the variable behind dynamic fuel surcharges. */
   /** Diesel price EFFECTIVE ON a date (the latest price whose effectiveFrom ≤ asOf). Omit asOf
    *  for the current price. This makes DSC honour price effective-dates — a shipment is priced on

@@ -173,27 +173,42 @@ export class PincodesService {
     // Fill any MISSING per-vendor TAT from the ZONE_TAT matrix (code <VENDOR>__<MODE> → SELF__<MODE>
     // → legacy <MODE>) when we know the origin — so a matrix update shows even if the serviceable row
     // has no tatDays. Existing row TATs are kept.
-    if (originPincode && list.some((x) => x.tatDays == null)) {
+    // The uploaded ZONE_TAT matrix is AUTHORITATIVE for lane TAT — when we know the origin, a matrix
+    // value overrides the coverage-row tatDays (and fills any that are null). Matched per vendor.
+    if (originPincode) {
       const [o, d] = await Promise.all([
         this.prisma.pincode.findUnique({ where: { pincode: String(originPincode).trim() } }),
         this.prisma.pincode.findUnique({ where: { pincode: pincode.trim() } }),
       ]);
-      const norm = (z: any) => (z ? String(z).replace(/\s+/g, '').toUpperCase() : null);
-      const zoneFor = (p: any, mm: string) => norm(mm === 'SURFACE' ? p?.surfaceZone : p?.apexZone) || norm(p?.region);
+      const na = (s: any) => String(s ?? '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+      const zoneFor = (p: any, mm: string) => na(mm === 'SURFACE' ? p?.surfaceZone : p?.apexZone) || na(p?.region);
       const tatEntries = await this.prisma.masterEntry.findMany({ where: { type: 'ZONE_TAT' } });
-      const tatMap = new Map(tatEntries.map((e) => [e.code.toUpperCase(), (e.attrs as any)?.matrix]));
+      // Normalise stored codes "<VENDOR>__<MODE>" so "BLUE DART__SURFACE" and "BLUEDART__SURFACE" match.
+      const naCode = (code: string) => code.toUpperCase().split('__').map((p) => p.replace(/[^A-Z0-9]/g, '')).join('__');
+      const tatMap = new Map(tatEntries.map((e) => [naCode(e.code), (e.attrs as any)?.matrix]));
+      // Map a serviceable network (e.g. "BLUEDART-APEX", "GATI") → the vendor codes the matrix is keyed
+      // under (vendorCode/name), via the vendor master, so <vendor>__<mode> actually hits.
+      const vendors = await this.prisma.vendor.findMany({ select: { name: true, vendorCode: true } });
+      const vendorKeys = (network: string): string[] => {
+        const nU = na(network);
+        const base = na(String(network).split(/[-_ ]/)[0]); // "BLUEDART-APEX" -> "BLUEDART"
+        const keys = new Set<string>([nU, base]);
+        for (const v of vendors) {
+          const code = na(v.vendorCode), nm = na(v.name);
+          const hit = (code && (nU === code || base === code)) || (nm && (nU === nm || base === nm || nU.includes(nm) || (base && nm.includes(base))));
+          if (hit) { if (code) keys.add(code); if (nm) keys.add(nm); }
+        }
+        return [...keys].filter(Boolean);
+      };
       const matrixTat = (network: string, mode: string): number | null => {
         const mm = /AIR|APEX|EXP/i.test(mode) ? 'APEX' : 'SURFACE';
         const oz = zoneFor(o, mm), dz = zoneFor(d, mm);
         if (!oz || !dz) return null;
-        const netU = String(network || 'SELF').replace(/\s+/g, '').toUpperCase();
-        for (const code of [`${netU}__${mm}`, `SELF__${mm}`, mm]) {
-          const m = Number(tatMap.get(code)?.[oz]?.[dz]);
-          if (m > 0) return m;
-        }
+        for (const v of vendorKeys(network)) { const m = Number(tatMap.get(`${v}__${mm}`)?.[oz]?.[dz]); if (m > 0) return m; }
+        for (const code of [`SELF__${mm}`, mm]) { const m = Number(tatMap.get(code)?.[oz]?.[dz]); if (m > 0) return m; }
         return null;
       };
-      list = list.map((x) => ({ ...x, tatDays: x.tatDays ?? matrixTat(x.network, x.mode || '') }));
+      list = list.map((x) => { const mt = matrixTat(x.network, x.mode || ''); return { ...x, tatDays: mt ?? x.tatDays }; });
     }
     return list.sort((a, b) => (a.tatDays ?? 9999) - (b.tatDays ?? 9999));
   }

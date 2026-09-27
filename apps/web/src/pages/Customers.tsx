@@ -279,8 +279,8 @@ export function Customers() {
               <div><label>Account Code <span className="muted">(optional)</span></label><input value={form.accountCode} onChange={(e) => set('accountCode', e.target.value.toUpperCase())} placeholder="auto if blank" /></div>
               <div><label>Contact No *</label><input value={form.contactPhone} onChange={(e) => set('contactPhone', e.target.value)} placeholder="+91 98765 43210" /></div>
 
-              <div><label>Primary Email * <span className="muted">(for invoices)</span></label><input value={form.contactEmail} onChange={(e) => set('contactEmail', e.target.value)} placeholder="billing@company.com" /></div>
-              <div><label>Secondary Email <span className="muted">(CC)</span></label><input value={form.email2} onChange={(e) => set('email2', e.target.value)} placeholder="accounts@company.com" /></div>
+              <div><label>Billing email(s) * <span className="muted">(invoices only · comma-separate for multiple)</span></label><input value={form.contactEmail} onChange={(e) => set('contactEmail', e.target.value)} placeholder="billing@company.com, accounts@company.com" /></div>
+              <div><label>Reports email(s) <span className="muted">(MIS &amp; NDR · comma-separate for multiple)</span></label><input value={form.email2} onChange={(e) => set('email2', e.target.value)} placeholder="ops@company.com, mis@company.com" /></div>
 
               <div><label>GSTIN *</label><input value={form.gstin} maxLength={15} onChange={(e) => set('gstin', e.target.value.toUpperCase())} placeholder="29ABCDE1234F1Z5" /></div>
               <div><label>PAN <span className="muted">(optional)</span></label><input value={form.pan} maxLength={10} onChange={(e) => set('pan', e.target.value.toUpperCase())} placeholder="ABCDE1234F" /></div>

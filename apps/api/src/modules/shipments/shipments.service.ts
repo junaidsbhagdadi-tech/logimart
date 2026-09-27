@@ -487,6 +487,12 @@ export class ShipmentsService {
         options.push({ vendor: net, freight: Number(charges.freight), subtotal, gst, total: +(subtotal + gst).toFixed(2), basis: charges.basis });
       } catch { /* skip a carrier that can't be priced */ }
     }
+    // Compare EVERY vendor's own cost card for this lane too (not just the customer's carded networks).
+    try {
+      const vendOpts = await this.rates.vendorCostOptions({ product: dto.product, originZone, destZone, kg: totalKg, bookedAt: new Date() });
+      const seen = new Set(options.map((o) => o.vendor.toUpperCase()));
+      for (const vo of vendOpts) { if (!seen.has(vo.vendor.toUpperCase())) { options.push(vo); seen.add(vo.vendor.toUpperCase()); } }
+    } catch { /* vendor cost cards are optional */ }
     options.sort((a, b) => a.total - b.total);
     return { originZone, destZone, isOda, options };
   }

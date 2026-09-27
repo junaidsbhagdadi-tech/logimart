@@ -32,7 +32,7 @@ export function PincodeSearch() {
     try {
       const [i, opt, ln] = await Promise.all([
         api.lookupPincode(q).catch(() => null),
-        api.serviceOptions(q).catch(() => [] as Opt[]),
+        api.serviceOptions(q, o || undefined).catch(() => [] as Opt[]),
         o ? api.laneTat(o, q).catch(() => null) : Promise.resolve(null),
       ]);
       setInfo(i); setOpts(opt); setLane(ln); setSearched(true);
