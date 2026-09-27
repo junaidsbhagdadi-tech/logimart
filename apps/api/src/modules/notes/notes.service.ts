@@ -38,10 +38,12 @@ export class NotesService {
     const days = Math.max(0, Math.floor(Number(input.days) || 0));
     const rate = Number(input.ratePerKg) || 0;
     const min = Number(input.min) || 0;
-    const subtotal = +Math.max(min, days * rate * kg).toFixed(2);
+    // Min is charged PER DAY: each day bills max(rate × kg, min), then × days.
+    const perDay = +Math.max(min, rate * kg).toFixed(2);
+    const subtotal = +(days * perDay).toFixed(2);
     if (!(subtotal > 0)) throw new BadRequestException('Demurrage works out to zero — check days / rate / min.');
     const fa = input.firstAttemptDate ? new Date(input.firstAttemptDate).toLocaleDateString('en-GB') : null;
-    const narration = `Demurrage — ${days} day(s) × ₹${rate}/kg × ${kg} kg${min ? ` (min ₹${min})` : ''}${fa ? `; first attempt ${fa}` : ''}.`;
+    const narration = `Demurrage — ${days} day(s) × ₹${perDay}/day (₹${rate}/kg × ${kg} kg${min ? `, min ₹${min}/day` : ''})${fa ? `; first attempt ${fa}` : ''}.`;
     return this.create({ clientId: Number(s.clientId), kind: 'DEBIT', reason: 'demurrage', subtotal, narration, shipmentId: Number(s.id), createdById: input.createdById });
   }
 
