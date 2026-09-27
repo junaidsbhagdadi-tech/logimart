@@ -472,6 +472,7 @@ function RateCardEditor({ owner, card, products, zones, vendors, mechs, chargeMa
     volumetricDivisor: card?.volumetricDivisor ?? 5000, cft: card?.cft ?? 0, minChargeableKg: card?.minChargeableKg ?? 0,
     minFreight: card?.minFreight ?? 0, addlWeightUnitG: card?.addlWeightUnitG ?? 1000,
     fuelMode: card?.fuelMode ?? 'FLAT', fuelPct: card?.fuelPct ?? '', fuelMechanism: card?.fuelMechanism ?? '',
+    dscBasePct: card?.dscBasePct ?? '', dscBaseFuelPrice: card?.dscBaseFuelPrice ?? '',
     fovPct: card?.fovPct ?? 0, fovMin: card?.fovMin ?? 0, odaFlat: card?.odaFlat ?? 0, odaPerKg: card?.odaPerKg ?? 0, odaMin: card?.odaMin ?? 0,
     topayCharge: card?.topayCharge ?? 0, apptCharge: card?.apptCharge ?? 0, loadingCharge: card?.loadingCharge ?? 0,
     unloadingCharge: card?.unloadingCharge ?? 0, docketCharge: card?.docketCharge ?? 0,
@@ -626,12 +627,16 @@ function RateCardEditor({ owner, card, products, zones, vendors, mechs, chargeMa
             ? <div style={{ fontSize: 12, color: 'var(--muted)', paddingBottom: 6 }}>No fuel surcharge is charged on this card (does not inherit the master default).</div>
             : h.fuelMode === 'FLAT'
             ? <div><label style={{ fontSize: 12 }}>FSC % <span className="muted">(flat — blank / 0 → inherit master default · set NA above for no fuel)</span></label><input type="number" value={h.fuelPct} onChange={(e) => set('fuelPct', e.target.value)} placeholder="inherit" style={{ width: 120 }} /></div>
-            : <div><label style={{ fontSize: 12 }}>Diesel surcharge mechanism <span className="muted">(Surface/Train · blank → default)</span></label>
-                <select value={h.fuelMechanism} onChange={(e) => set('fuelMechanism', e.target.value)}>
-                  <option value="">Inherit default diesel mechanism</option>
-                  {mechs.map((m) => <option key={m.code} value={m.code}>{m.code} — {m.name}</option>)}
-                </select>
-              </div>}
+            : <>
+                <div><label style={{ fontSize: 12 }}>Diesel surcharge mechanism <span className="muted">(blank → default)</span></label>
+                  <select value={h.fuelMechanism} onChange={(e) => set('fuelMechanism', e.target.value)}>
+                    <option value="">Inherit default diesel mechanism</option>
+                    {mechs.map((m) => <option key={m.code} value={m.code}>{m.code} — {m.name}</option>)}
+                  </select>
+                </div>
+                <div><label style={{ fontSize: 12 }}>Base DSC % <span className="muted">(this customer · blank → mechanism)</span></label><input type="number" value={h.dscBasePct} onChange={(e) => set('dscBasePct', e.target.value)} placeholder="mechanism" style={{ width: 110 }} /></div>
+                <div><label style={{ fontSize: 12 }}>Base diesel ₹/L <span className="muted">(this customer · blank → mechanism)</span></label><input type="number" value={h.dscBaseFuelPrice} onChange={(e) => set('dscBaseFuelPrice', e.target.value)} placeholder="e.g. 98.33" style={{ width: 120 }} /></div>
+              </>}
           <span className="muted" style={{ fontSize: 11 }}>FLAT = fixed % (blank/0 inherits master) · DYNAMIC = diesel-indexed · NA = no fuel at all.</span>
         </div>
       </div>

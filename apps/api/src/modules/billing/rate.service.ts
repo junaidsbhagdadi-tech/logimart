@@ -400,6 +400,21 @@ export class RateService {
     // air/DP default mechanism — that leak billed the AIR fuel surcharge on 0%-fuel surface shipments.
     // Give surface a fuel line by setting the card to DYNAMIC (diesel-indexed) or a flat surface %.
     if (surface && !wantDynamic) return Number(card.fuelPct ?? 0);
+    // Per-customer DSC override: the card can carry its OWN base DSC % and base diesel price; the step %
+    // (per ₹ rise) and cap still come from the default DYNAMIC mechanism. (feedback: base %/price per customer)
+    if (wantDynamic && (card.dscBasePct != null || card.dscBaseFuelPrice != null)) {
+      const mechs0 = await this.prisma.masterEntry.findMany({ where: { type: 'FUEL_MECHANISM', active: true } });
+      const dyn = mechs0.find((x) => String((x.attrs as any)?.mode).toUpperCase() === 'DYNAMIC' && (x.attrs as any)?.isDefault)
+        ?? mechs0.find((x) => String((x.attrs as any)?.mode).toUpperCase() === 'DYNAMIC');
+      const a: any = dyn?.attrs || {};
+      const basePct = Number(card.dscBasePct ?? a.basePct ?? 0);
+      const ref = Number(card.dscBaseFuelPrice) > 0 ? Number(card.dscBaseFuelPrice) : (Number(a.baseFuelPrice) > 0 ? Number(a.baseFuelPrice) : BASE_DIESEL);
+      const step = Number(a.stepRupee) > 0 && a.pctPerStep != null && a.pctPerStep !== '' ? Number(a.pctPerStep) / Number(a.stepRupee) : Number(a.stepPerRupee ?? 0);
+      const diesel = await this.currentDieselPrice(asOf);
+      const cap = Number(a.maxPct ?? 0);
+      const raw = basePct + Math.max(0, diesel - ref) * step;
+      return Math.max(0, Math.min(cap > 0 ? cap : DEFAULT_FUEL_CAP, +raw.toFixed(2)));
+    }
     const mechs = await this.prisma.masterEntry.findMany({ where: { type: 'FUEL_MECHANISM', active: true } });
     const isDyn = (m: any) => String((m.attrs as any)?.mode ?? 'FLAT').toUpperCase() === 'DYNAMIC';
     // An explicitly-linked mechanism wins only if it matches the required family (keeps air off diesel).

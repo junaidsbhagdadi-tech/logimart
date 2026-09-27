@@ -324,9 +324,11 @@ model CustomerRateCard {
   emergencyCharge   Decimal   @default(0) @db.Decimal(12, 2)  // Emergency Situation Surcharge
   environmentCharge Decimal   @default(0) @db.Decimal(12, 2)  // Environmental Surcharge
   // ---- FSC (flat or dynamic diesel-linked) ----
-  fuelMode          String    @default("FLAT")  // FLAT | DYNAMIC
+  fuelMode          String    @default("FLAT")  // FLAT | DYNAMIC | NA
   fuelPct           Decimal   @default(0) @db.Decimal(6, 2)   // flat %
   fuelMechanism     String?                                    // FUEL_MECHANISM master code (dynamic)
+  dscBasePct        Decimal?  @db.Decimal(6, 2)               // per-customer DSC base % (DYNAMIC override)
+  dscBaseFuelPrice  Decimal?  @db.Decimal(8, 2)               // per-customer DSC base diesel ₹/L (DYNAMIC override)
   // ---- FOV ----
   fovPct            Decimal   @default(0) @db.Decimal(6, 3)
   fovMin            Decimal   @default(0) @db.Decimal(12, 2)

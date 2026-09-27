@@ -99,6 +99,9 @@ export class RateCardsService {
       fuelMode: (() => { const fm = String(d.fuelMode || 'FLAT').toUpperCase(); return fm === 'DYNAMIC' ? 'DYNAMIC' : fm === 'NA' ? 'NA' : 'FLAT'; })(),
       fuelPct: dec(num(d.fuelPct)),
       fuelMechanism: d.fuelMechanism || null,
+      // Per-customer DSC override (blank = inherit the global DYNAMIC mechanism).
+      dscBasePct: (d.dscBasePct == null || d.dscBasePct === '') ? null : dec(num(d.dscBasePct)),
+      dscBaseFuelPrice: (d.dscBaseFuelPrice == null || d.dscBaseFuelPrice === '') ? null : dec(num(d.dscBaseFuelPrice)),
       fovPct: dec(num(d.fovPct)),
       fovMin: dec(num(d.fovMin)),
       odaFlat: dec(num(d.odaFlat)),
