@@ -216,18 +216,21 @@ export class BluedartService implements OnModuleInit {
     return { awb, bdWaybill: bd, cancelled: true, message };
   }
 
-  /** Required-field check for a BlueDart waybill — returns the human labels of anything missing. */
+  /** A clean 10-digit Indian mobile for BlueDart (strips +91 / spaces / dashes, keeps the last 10). */
+  private bdMobile(v: any): string { return String(v ?? '').replace(/\D/g, '').slice(-10); }
+
+  /** Required-field check for a BlueDart waybill — returns the human labels of anything missing/invalid. */
   private bdMissing(s: any): string[] {
     const miss: string[] = [];
     const has = (v: any) => v != null && String(v).trim() !== '';
     if (!has(s.consigneeName)) miss.push('Consignee name');
     if (!has(s.consigneeAddress)) miss.push('Consignee address');
     if (!has(s.destPincode)) miss.push('Consignee pincode');
-    if (!has(s.consigneePhone)) miss.push('Consignee mobile');
+    if (this.bdMobile(s.consigneePhone).length < 10) miss.push('Consignee mobile (10 digits)');
     if (!has(s.shipperName ?? s.client?.legalName)) miss.push('Shipper name');
     if (!has(s.shipperAddress1 ?? s.client?.addressLine)) miss.push('Shipper address');
     if (!has(s.shipperPincode ?? s.client?.pincode)) miss.push('Shipper pincode');
-    if (!has(s.shipperContact ?? s.client?.contactPhone)) miss.push('Shipper mobile');
+    if (this.bdMobile(s.shipperContact ?? s.client?.contactPhone).length < 10) miss.push('Shipper mobile (10 digits)');
     if (!(Number(s.pieceCount) > 0)) miss.push('Piece count');
     if (!(Number(s.chargeWeight ?? s.totalDeadKg) > 0)) miss.push('Weight');
     return miss;
@@ -271,7 +274,7 @@ export class BluedartService implements OnModuleInit {
           CustomerAddress1: (s.shipperAddress1 ?? s.client?.addressLine ?? '').slice(0, 30),
           CustomerAddress2: (s.shipperAddress2 ?? '').slice(0, 30),
           CustomerPincode: s.shipperPincode ?? s.client?.pincode ?? '',
-          CustomerMobile: s.shipperContact ?? s.client?.contactPhone ?? '',
+          CustomerMobile: this.bdMobile(s.shipperContact ?? s.client?.contactPhone),
           CustomerGSTNumber: s.consignorGstin ?? s.client?.gstin ?? '',
           Sender: (s.shipperName ?? s.client?.legalName ?? '').slice(0, 20),
           // To-Pay (FOD) shipments must be flagged so BlueDart collects freight at destination — this
@@ -283,7 +286,7 @@ export class BluedartService implements OnModuleInit {
           ConsigneeAddress1: (s.consigneeAddress ?? '').slice(0, 30),
           ConsigneeAddress2: (s.consigneeCity ?? '').slice(0, 30),
           ConsigneePincode: s.destPincode ?? '',
-          ConsigneeMobile: s.consigneePhone ?? '',
+          ConsigneeMobile: this.bdMobile(s.consigneePhone),
           ConsigneeAttention: (s.consigneeName ?? '').slice(0, 30),
         },
         Services: {
