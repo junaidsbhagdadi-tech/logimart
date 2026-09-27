@@ -152,6 +152,10 @@ export class BluedartService implements OnModuleInit {
     this.ensure();
     const s = await this.prisma.shipment.findUnique({ where: { awb }, include: { client: true, pieces: true } });
     if (!s) throw new BadRequestException(`AWB ${awb} not found`);
+    // Pre-flight: catch the fields BlueDart rejects (Invalid Consignee Name, BlankContactNo, …) with a
+    // plain message BEFORE calling the carrier, so ops knows exactly what to fix on Edit AWB.
+    const miss = this.bdMissing(s);
+    if (miss.length) throw new BadRequestException(`Can't hand off to BlueDart — missing: ${miss.join(', ')}. Fix these on Edit AWB and retry.`);
     // OriginArea must be the pickup pincode's BlueDart area code (e.g. DEL/BOM/BLR) — a fixed default
     // gives "InvalidAreaScNotInRegion" for any out-of-area origin. Derive it from serviceability's AreaCode.
     // Also capture origin+dest "AREA / SC" codes for the shipping label (ORG/DST line).
@@ -212,6 +216,23 @@ export class BluedartService implements OnModuleInit {
     return { awb, bdWaybill: bd, cancelled: true, message };
   }
 
+  /** Required-field check for a BlueDart waybill — returns the human labels of anything missing. */
+  private bdMissing(s: any): string[] {
+    const miss: string[] = [];
+    const has = (v: any) => v != null && String(v).trim() !== '';
+    if (!has(s.consigneeName)) miss.push('Consignee name');
+    if (!has(s.consigneeAddress)) miss.push('Consignee address');
+    if (!has(s.destPincode)) miss.push('Consignee pincode');
+    if (!has(s.consigneePhone)) miss.push('Consignee mobile');
+    if (!has(s.shipperName ?? s.client?.legalName)) miss.push('Shipper name');
+    if (!has(s.shipperAddress1 ?? s.client?.addressLine)) miss.push('Shipper address');
+    if (!has(s.shipperPincode ?? s.client?.pincode)) miss.push('Shipper pincode');
+    if (!has(s.shipperContact ?? s.client?.contactPhone)) miss.push('Shipper mobile');
+    if (!(Number(s.pieceCount) > 0)) miss.push('Piece count');
+    if (!(Number(s.chargeWeight ?? s.totalDeadKg) > 0)) miss.push('Weight');
+    return miss;
+  }
+
   /** Logimart product/service → BlueDart ProductCode (A=Apex/air, D=Domestic Priority/surface). */
   private bdProductCode(s: any): string {
     const p = String(s.product ?? '').toUpperCase();
@@ -253,7 +274,9 @@ export class BluedartService implements OnModuleInit {
           CustomerMobile: s.shipperContact ?? s.client?.contactPhone ?? '',
           CustomerGSTNumber: s.consignorGstin ?? s.client?.gstin ?? '',
           Sender: (s.shipperName ?? s.client?.legalName ?? '').slice(0, 20),
-          isToPayCustomer: false,
+          // To-Pay (FOD) shipments must be flagged so BlueDart collects freight at destination — this
+          // is also what lets a To-Pay pickup be raised outside the account's home area.
+          isToPayCustomer: String(s.paymentTerm).toUpperCase() === 'TO_PAY',
         },
         Consignee: {
           ConsigneeName: (s.consigneeName ?? '').slice(0, 30),
