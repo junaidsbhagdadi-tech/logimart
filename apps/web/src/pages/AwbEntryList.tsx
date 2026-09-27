@@ -43,6 +43,8 @@ export function AwbEntryList() {
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
   const [sel, setSel] = useState<Set<string>>(new Set());
+  const [voidOpen, setVoidOpen] = useState(false);
+  const [voidText, setVoidText] = useState('');
 
   const load = (search?: string) => { api.awbList(300, search).then(setRows).catch((e) => setError(e.message)); setSel(new Set()); };
   // The AWB filter searches the WHOLE database (server-side), so any AWB is findable — not just the
@@ -123,6 +125,32 @@ export function AwbEntryList() {
     } catch (e: any) { setError(e.message); }
   };
 
+  // Bulk void from a pasted/uploaded list of AWBs (file has only AWB numbers). Any delimiter.
+  const parseAwbList = (text: string) => [...new Set(text.split(/[^A-Za-z0-9]+/).map((x) => x.trim().toUpperCase()).filter(Boolean))];
+  const onVoidFile = async (f?: File) => {
+    if (!f) return;
+    try {
+      if (/\.xlsx?$/i.test(f.name)) {
+        const XLSX = await import('xlsx');
+        const wb = XLSX.read(await f.arrayBuffer(), { type: 'array' });
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 }) as any[][];
+        setVoidText(rows.flat().map((x) => String(x ?? '')).filter(Boolean).join('\n'));
+      } else { setVoidText(await f.text()); }
+    } catch (e: any) { setError('Could not read file: ' + e.message); }
+  };
+  const voidByList = async () => {
+    const awbs = parseAwbList(voidText);
+    if (!awbs.length) { setError('No AWBs found in the list.'); return; }
+    if (!confirm(`Void ${awbs.length} AWB(s) from this list? They'll be marked cancelled and excluded from billing (records kept).`)) return;
+    setError(''); setMsg('Voiding…');
+    try {
+      const r = await api.bulkCancelAwbs(awbs, 'Bulk void by AWB list');
+      const failed = r.results.filter((x) => !x.ok);
+      setMsg(`✓ Voided ${r.voided}/${r.total}.${failed.length ? ' Skipped: ' + failed.slice(0, 8).map((f) => `${f.awb} (${f.error})`).join('; ') : ''}`);
+      setVoidOpen(false); setVoidText(''); load();
+    } catch (e: any) { setError(e.message); }
+  };
+
   // Excel export of the CURRENTLY FILTERED rows (not just the visible page).
   const exportXls = async () => {
     const XLSX = await import('xlsx');
@@ -152,6 +180,7 @@ export function AwbEntryList() {
             {isOps && sel.size > 0 && <button className="secondary" title="Change the booking date of the selected AWBs" onClick={changeDateSelected}>📅 Change date {sel.size}</button>}
             {isSuper && sel.size > 0 && <button style={{ background: 'var(--bad, #c0392b)', color: '#fff' }} title="Permanently delete the selected shipments" onClick={deleteSelected}>🗑 Delete {sel.size}</button>}
             {isSuper && <button className="secondary" style={{ color: 'var(--danger, #c0392b)' }} title="Delete ALL shipments + invoices (keeps config)" onClick={clearAll}>🧹 Clear test shipments</button>}
+            {isOps && <button className="secondary" title="Void many AWBs from a pasted / uploaded list" onClick={() => setVoidOpen(true)}>🚫 Void by list</button>}
             <Link to="/bulk"><button className="secondary" title="Bulk import shipments from Excel">📥 Excel import</button></Link>
             <Link to="/create"><button>➕ New Shipment</button></Link>
           </div>
@@ -215,6 +244,28 @@ export function AwbEntryList() {
           </div>
         </div>
       </div>
+
+      {voidOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }} onClick={() => setVoidOpen(false)}>
+          <div className="card" style={{ width: 520, maxWidth: '92%' }} onClick={(e) => e.stopPropagation()}>
+            <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ margin: 0 }}>🚫 Void by AWB list</h2>
+              <button className="secondary" style={{ padding: '4px 12px' }} onClick={() => setVoidOpen(false)}>✕</button>
+            </div>
+            <p className="muted" style={{ fontSize: 12.5 }}>Paste AWB numbers (one per line / comma / space) or upload a file with just the AWBs. They'll be voided — excluded from billing, records kept.</p>
+            <textarea value={voidText} onChange={(e) => setVoidText(e.target.value)} rows={8} placeholder={'L1000000101\nL1000000102\n…'} style={{ width: '100%', fontFamily: 'monospace', fontSize: 13 }} />
+            <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 10, gap: 8, flexWrap: 'wrap' }}>
+              <label className="secondary" style={{ padding: '8px 12px', borderRadius: 10, cursor: 'pointer', border: '1px solid var(--border)', fontSize: 13 }}>
+                ⬆ Upload CSV/Excel<input type="file" accept=".csv,.txt,.xlsx,.xls" style={{ display: 'none' }} onChange={(e) => onVoidFile(e.target.files?.[0])} />
+              </label>
+              <div className="row" style={{ gap: 8 }}>
+                <span className="muted" style={{ fontSize: 12, alignSelf: 'center' }}>{parseAwbList(voidText).length} AWB(s)</span>
+                <button style={{ background: 'var(--bad, #c0392b)', color: '#fff' }} disabled={!parseAwbList(voidText).length} onClick={voidByList}>Void {parseAwbList(voidText).length || ''}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
