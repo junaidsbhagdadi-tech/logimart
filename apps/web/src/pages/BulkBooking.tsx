@@ -33,6 +33,13 @@ export function BulkBooking() {
     if (active && !job) watchJob(active.id);
   }).catch(() => {});
 
+  // Undo a whole batch — void every AWB the upload booked (wrong-file recovery).
+  const undoBatch = async (id: string, booked: number) => {
+    if (!confirm(`Undo this batch? It will VOID all ${booked} booked AWB(s) from this upload — excluded from billing, records kept. Continue?`)) return;
+    try { const r = await api.undoBulkJob(id); alert(`Voided ${r.voided}/${r.total} shipment(s) from the batch.`); watchJob(id); loadRecent(); }
+    catch (e: any) { alert(e.message); }
+  };
+
   useEffect(() => {
     api.listHubs().then((hs) => { if (hs[0]) setHubIds([Number(hs[0].id), Number((hs[1] ?? hs[0]).id)]); }).catch(() => {});
     api.listMaster('PRODUCT').then((r) => {
@@ -279,6 +286,7 @@ export function BulkBooking() {
             {' · '}<span className="badge DELIVERED">{job.succeeded.toLocaleString()} booked</span>
             {job.failed > 0 && <> <span className="badge EXCEPTION">{job.failed.toLocaleString()} failed</span></>}
             {(job.status === 'RUNNING' || job.status === 'PENDING') && <> · <button className="secondary" style={{ padding: '2px 10px', fontSize: 12 }} onClick={() => api.cancelBulkJob(job.id).then(() => watchJob(job.id))}>Stop</button></>}
+            {job.succeeded > 0 && <> · <button className="secondary" style={{ padding: '2px 10px', fontSize: 12, color: 'var(--bad, #c0392b)' }} onClick={() => undoBatch(job.id, job.succeeded)}>↩ Undo batch (void {job.succeeded})</button></>}
           </div>
           {(job.status === 'RUNNING' || job.status === 'PENDING') && (
             <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>Each shipment is priced through the rate engine (~1–1.5s), so a big file takes a while. You can close this tab — it keeps booking on the server.</p>
@@ -311,7 +319,7 @@ export function BulkBooking() {
                   <td>{j.processed.toLocaleString()}/{j.total.toLocaleString()}</td>
                   <td>{j.succeeded.toLocaleString()}</td>
                   <td>{j.failed > 0 ? <span className="badge EXCEPTION">{j.failed.toLocaleString()}</span> : '0'}</td>
-                  <td><button className="secondary" style={{ padding: '2px 10px', fontSize: 12 }} onClick={() => watchJob(j.id)}>View</button></td>
+                  <td className="row" style={{ gap: 6 }}><button className="secondary" style={{ padding: '2px 10px', fontSize: 12 }} onClick={() => watchJob(j.id)}>View</button>{j.succeeded > 0 && <button className="secondary" style={{ padding: '2px 10px', fontSize: 12, color: 'var(--bad, #c0392b)' }} onClick={() => undoBatch(j.id, j.succeeded)}>↩ Undo</button>}</td>
                 </tr>
               ))}
             </tbody>

@@ -339,6 +339,8 @@ export const api = {
     request<{ ok: boolean }>(`/api/v1/shipments/bulk-jobs/${id}/start`, { method: 'POST' }),
   cancelBulkJob: (id: string) =>
     request<{ ok: boolean }>(`/api/v1/shipments/bulk-jobs/${id}/cancel`, { method: 'POST' }),
+  undoBulkJob: (id: string) =>
+    request<{ jobId: string; total: number; voided: number }>(`/api/v1/shipments/bulk-jobs/${id}/undo`, { method: 'POST' }),
   listBulkJobs: () =>
     request<BulkJob[]>('/api/v1/shipments/bulk-jobs'),
   getBulkJob: (id: string) =>

@@ -84,6 +84,19 @@ export class ShipmentsController {
     return this.bulkJobs.cancel(BigInt(id));
   }
 
+  /** Undo a whole bulk-booking batch — voids every AWB it created (wrong-file recovery). */
+  @Post('bulk-jobs/:id/undo')
+  @Feature('/bulk')
+  @Roles(UserRole.CLIENT_ADMIN, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  async undoBulkJob(@Param('id') id: string, @Req() req: any) {
+    const isClient = req.user.role === UserRole.CLIENT_ADMIN;
+    return this.bulkJobs.undoJob(BigInt(id), {
+      userId: req.user.sub != null ? BigInt(req.user.sub) : undefined,
+      clientId: isClient ? Number(req.user.clientId) : undefined,
+      isSuper: req.user.role === UserRole.SYS_ADMIN,
+    });
+  }
+
   /** Recent jobs for the current user (admins see all). */
   @Get('bulk-jobs')
   @Feature('/bulk')

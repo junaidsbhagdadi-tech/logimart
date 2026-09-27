@@ -69,6 +69,18 @@ export class BulkBookingService implements OnModuleInit {
     return { ok: true };
   }
 
+  /** Undo a whole batch — void every AWB this job booked (wrong-file recovery). Stops it first if
+   *  still running, then bulk-voids the booked AWBs (excluded from billing, record kept). */
+  async undoJob(jobId: bigint, opts: { userId?: bigint; clientId?: number; isSuper?: boolean }) {
+    await this.prisma.bulkBookingJob.update({ where: { id: jobId }, data: { status: 'CANCELLED', finishedAt: new Date() } }).catch(() => {});
+    const rows = await this.prisma.bulkBookingJobRow.findMany({ where: { jobId, status: 'OK', awb: { not: null } }, select: { awb: true } });
+    const awbs = rows.map((r) => r.awb as string).filter(Boolean);
+    const res = awbs.length
+      ? await this.shipments.bulkCancel(awbs, opts.userId, opts.clientId, 'Bulk upload undone', { isSuper: opts.isSuper })
+      : { total: 0, voided: 0, results: [] as any[] };
+    return { jobId: String(jobId), ...res };
+  }
+
   async progress(jobId: bigint) {
     const job = await this.prisma.bulkBookingJob.findUnique({ where: { id: jobId } });
     if (!job) return null;
