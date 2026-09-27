@@ -37,7 +37,7 @@ export function Track() {
           <div className="muted">Surface &amp; Domestic Air Cargo</div>
         </div>
         <form onSubmit={search} className="row" style={{ gap: 8 }}>
-          <input value={awb} onChange={(e) => setAwb(e.target.value)} placeholder="Enter AWB e.g. LMT2026000001" style={{ flex: 1 }} />
+          <input value={awb} onChange={(e) => setAwb(e.target.value)} placeholder="AWB, forwarding no, or your reference no" style={{ flex: 1 }} />
           <button type="submit">Track</button>
         </form>
         {error && <div className="error" style={{ marginTop: 12 }}>{error}</div>}
