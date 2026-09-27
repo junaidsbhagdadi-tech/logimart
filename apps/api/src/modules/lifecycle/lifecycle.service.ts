@@ -55,7 +55,11 @@ export class LifecycleService {
       select: { awb: true, consigneeName: true, consigneeCity: true, referenceNo: true, client: { select: { legalName: true, contactEmail: true, email2: true } } },
     });
     for (const s of ships) {
-      const emails = [...new Set([s.client?.contactEmail, s.client?.email2].map((e) => String(e ?? '').trim()).filter((e) => e.includes('@')))];
+      // Operational/report notifications go to the Reports email(s) (email2, comma-separated),
+      // falling back to the billing email only when no reports address is set.
+      const split = (v: any) => String(v ?? '').split(/[,;]/).map((e) => e.trim()).filter((e) => e.includes('@'));
+      const reports = split(s.client?.email2), billing = split(s.client?.contactEmail);
+      const emails = [...new Set(reports.length ? reports : billing)];
       if (!emails.length) continue;
       const ref = s.referenceNo ? ` (ref ${s.referenceNo})` : '';
       const msg = `Dear ${s.client?.legalName ?? 'Customer'},\n\nYour shipment ${s.awb}${ref} to ${s.consigneeName ?? s.consigneeCity ?? 'the consignee'} has been DELIVERED.\nTrack details & POD: ${base}/track/${s.awb}\n\n— Logimart (ExcelEx Express Logistics LLP)`;
