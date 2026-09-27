@@ -59,8 +59,11 @@ export function ShipmentDetail() {
       product: s.product ?? '', vendor: (s as any).vendor ?? '', service: (s as any).service ?? '',
       docType: s.docType ?? '', paymentTerm: (s as any).paymentTerm ?? 'PREPAID',
       consigneeName: (s as any).consigneeName ?? '', consigneePhone: (s as any).consigneePhone ?? '',
+      consigneeAddress: (s as any).consigneeAddress ?? '',
       consigneeCity: (s as any).consigneeCity ?? '', consigneeState: (s as any).consigneeState ?? '',
       destPincode: (s as any).destPincode ?? '', consigneeGstin: (s as any).consigneeGstin ?? '',
+      shipperName: (s as any).shipperName ?? '', shipperContact: (s as any).shipperContact ?? '',
+      shipperAddress1: (s as any).shipperAddress1 ?? '', shipperAddress2: (s as any).shipperAddress2 ?? '',
       shipperPincode: (s as any).shipperPincode ?? '', shipperCity: (s as any).shipperCity ?? '',
       goodsDesc: (s as any).goodsDesc ?? '', referenceNo: (s as any).referenceNo ?? '',
       shipmentValue: (s as any).shipmentValue != null ? String((s as any).shipmentValue) : '',
@@ -445,8 +448,12 @@ export function ShipmentDetail() {
             <div><label>Consignee name</label><input value={ef.consigneeName} onChange={(e) => setEfield('consigneeName', e.target.value)} /></div>
             <div><label>Consignee phone</label><input value={ef.consigneePhone} onChange={(e) => setEfield('consigneePhone', e.target.value)} /></div>
             <div><label>Consignee GSTIN</label><input value={ef.consigneeGstin} onChange={(e) => setEfield('consigneeGstin', e.target.value.toUpperCase())} /></div>
+            <div style={{ gridColumn: 'span 3' }}><label>Consignee address</label><input value={ef.consigneeAddress ?? ''} onChange={(e) => setEfield('consigneeAddress', e.target.value)} placeholder="delivery address" /></div>
             <div><label>Origin pincode <span className="muted">(pickup)</span></label><input value={ef.shipperPincode ?? ''} maxLength={6} onChange={(e) => setEfield('shipperPincode', e.target.value)} placeholder="re-derives origin zone" /></div>
             <div><label>Origin city</label><input value={ef.shipperCity ?? ''} onChange={(e) => setEfield('shipperCity', e.target.value)} /></div>
+            <div><label>Shipper name</label><input value={ef.shipperName ?? ''} onChange={(e) => setEfield('shipperName', e.target.value)} /></div>
+            <div><label>Shipper mobile</label><input value={ef.shipperContact ?? ''} onChange={(e) => setEfield('shipperContact', e.target.value)} /></div>
+            <div style={{ gridColumn: 'span 3' }}><label>Shipper address</label><input value={ef.shipperAddress1 ?? ''} onChange={(e) => setEfield('shipperAddress1', e.target.value)} placeholder="pickup address" /></div>
             <div><label>Dest pincode <span className="muted">(auto city/state)</span></label><input value={ef.destPincode} maxLength={6} onChange={(e) => lookDestPin(e.target.value)} placeholder="re-derives zone/EDD" /></div>
             <div><label>Consignee city</label><input value={ef.consigneeCity} onChange={(e) => setEfield('consigneeCity', e.target.value)} /></div>
             <div><label>Consignee state</label><input value={ef.consigneeState} onChange={(e) => setEfield('consigneeState', e.target.value)} /></div>

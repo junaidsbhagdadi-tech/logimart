@@ -757,6 +757,9 @@ export class ShipmentsService {
     str('goodsDesc', dto.goodsDesc);
     str('hsnCode', dto.hsnCode);
     str('shipperName', dto.shipperName);
+    str('shipperAddress1', dto.shipperAddress1);
+    str('shipperAddress2', dto.shipperAddress2);
+    str('shipperContact', dto.shipperContact);
     str('shipperCity', dto.shipperCity);
     str('referenceNo', dto.referenceNo);
     str('service', dto.service);
