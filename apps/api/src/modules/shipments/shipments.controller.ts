@@ -18,13 +18,20 @@ export class ShipmentsController {
 
   @Post()
   @Feature('/create') // a user granted the '/create' (New Shipment) feature can book, additive to @Roles
-  @Roles(UserRole.CLIENT_ADMIN, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  @Roles(UserRole.CLIENT_ADMIN, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN, UserRole.DRIVER)
   async create(@Body() dto: CreateShipmentDto, @Req() req: any) {
     // A client may only book under an account it owns (its own, or a same-GSTIN sibling).
     if (req.user.role === UserRole.CLIENT_ADMIN) {
       dto.clientId = await this.shipments.clientBookingAccount(req.user.clientId, dto.clientId);
     }
     return this.shipments.create(dto);
+  }
+
+  /** Lightweight customer picker for the pickup-boy (DRIVER) mobile booking — id/name/code only. */
+  @Get('booking-customers')
+  @Roles(UserRole.DRIVER, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  bookingCustomers(@Query('q') q?: string) {
+    return this.shipments.bookingCustomers(q);
   }
 
   /** Bulk booking — create up to 500 shipments from an uploaded sheet. */

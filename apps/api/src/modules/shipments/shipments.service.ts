@@ -580,6 +580,15 @@ export class ShipmentsService {
     return { total: list.length, changed: results.filter((r) => r.ok).length, date: when, results };
   }
 
+  /** Minimal active-customer list for the pickup-boy (DRIVER) mobile booking picker. */
+  async bookingCustomers(q?: string) {
+    const s = String(q ?? '').trim();
+    const where: any = { isActive: true };
+    if (s) where.OR = [{ legalName: { contains: s, mode: 'insensitive' } }, { accountCode: { contains: s, mode: 'insensitive' } }];
+    const rows = await this.prisma.b2bClient.findMany({ where, select: { id: true, legalName: true, accountCode: true }, orderBy: { legalName: 'asc' }, take: 500 });
+    return rows.map((r) => ({ id: String(r.id), legalName: r.legalName, accountCode: r.accountCode }));
+  }
+
   /**
    * DOD — record that the cheque/DD was collected from the consignee.
    * This is the delivery gate: POD is blocked (see PodsService) until this is set.

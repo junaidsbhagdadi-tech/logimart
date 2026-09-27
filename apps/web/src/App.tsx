@@ -53,6 +53,7 @@ import { Customer360 } from './pages/Customer360';
 import { ClientPortal } from './pages/ClientPortal';
 import { BulkRateUpload } from './pages/BulkRateUpload';
 import { Deliver } from './pages/Deliver';
+import { PickupBook } from './pages/PickupBook';
 import { BulkBooking } from './pages/BulkBooking';
 import { Reports } from './pages/Reports';
 import { MileScan, MileDashboard, Bagging, DeliveryUpdate, ManualScan } from './pages/Mile';
@@ -97,6 +98,7 @@ export function App() {
         <Route path="/pincode-search" element={<PincodeSearch />} />
         <Route path="/tracker/:awb" element={<TrackDetail />} />
         <Route path="/create" element={<CreateShipment />} />
+        <Route path="/pickup-book" element={<PickupBook />} />
         <Route path="/awb-list" element={<AwbEntryList />} />
         <Route path="/bulk" element={<BulkBooking />} />
         <Route path="/walk-in" element={gate('/walk-in', isAdminFin || canMaster) ? <WalkIn /> : <Navigate to="/" replace />} />

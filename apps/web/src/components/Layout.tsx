@@ -103,6 +103,7 @@ export function Layout() {
     ] },
     { title: 'Operations', items: [
       { to: '/create', icon: '➕', label: 'New Shipment' },
+      { to: '/pickup-book', icon: '📦', label: 'Pickup Booking', show: isOps },
       { to: '/awb-list', icon: '📝', label: 'Shipment List' },
       { to: '/bulk', icon: '📥', label: 'Bulk Booking' },
       { to: '/walk-in', icon: '🧾', label: 'Walk-in Counter', show: isAdminFin || canMaster },
