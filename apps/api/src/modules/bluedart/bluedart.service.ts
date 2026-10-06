@@ -314,56 +314,103 @@ export class BluedartService implements OnModuleInit {
     };
   }
 
+  /** Flatten a BlueDart Status array/object into a human message. */
+  private bdStatusMsg(result: any): string {
+    let st = result?.Status ?? result?.status;
+    if (st == null) return '';
+    if (!Array.isArray(st)) st = [st];
+    return st.map((x: any) => (x && (x.StatusInformation ?? x.statusInformation ?? x.StatusCode ?? x.statusCode)) || x).filter(Boolean).join('; ');
+  }
+
+  /** The Pickup API (RegisterPickup/CancelPickup) wants a LOWERCASE `request`/`profile` envelope —
+   *  UNLIKE the Waybill API's capitalized `Request`/`Profile`. Sending the capitalized shape → HTTP 500.
+   *  (Verified against BlueDart's own sample request.) */
+  private pickupBody(request: any) {
+    return { request, profile: { Api_type: 'S', LicenceKey: BLUEDART.licKey, LoginID: BLUEDART.loginId } };
+  }
+
   /** Raw RegisterPickup pass-through (advanced/manual use). */
   async registerPickup(body: any) {
     this.ensure();
-    return this.authed('/pickup/v1/RegisterPickup', { method: 'POST', body: JSON.stringify({ Request: body, Profile: { LoginID: BLUEDART.loginId, LicenceKey: BLUEDART.licKey, Api_type: 'S' } }) });
+    return this.authed('/pickup/v1/RegisterPickup', { method: 'POST', body: JSON.stringify(this.pickupBody(body)) });
   }
 
-  /** Schedule a BlueDart pickup for a Logimart shipment (RegisterPickup) — maps the shipper's
-   *  address/pincode/contact from the shipment. dto: { date?, time?, remarks? }. */
+  /** Schedule a BlueDart pickup for a Logimart shipment (RegisterPickup). Maps the shipper's
+   *  address/pincode/contact from the shipment. For a TO_PAY shipment it registers a to-pay (FOD)
+   *  collection via `isToPayShipper` — which is how BlueDart accepts a pickup from OUTSIDE the
+   *  account's home area (verified: AreaCode=<home, e.g. BOM> + a remote pickup pincode +
+   *  isToPayShipper=true → InsertSuccess; sending the remote area code → UnauthorizedUser).
+   *  dto: { date?, time?, remarks? }. */
   async schedulePickup(awb: string, dto: { date?: string; time?: string; remarks?: string } = {}) {
     this.ensure();
     const s = await this.prisma.shipment.findUnique({ where: { awb }, include: { client: true } }) as any;
     if (!s) throw new BadRequestException(`AWB ${awb} not found`);
-    const pin = s.shipperPincode ?? s.client?.pincode ?? '';
-    const areaCode = await this.originAreaFor(pin);
-    const phone = String(s.shipperContact ?? s.client?.contactPhone ?? '').replace(/\D/g, '');
+    const pin = String(s.shipperPincode ?? s.client?.pincode ?? '').trim();
+    const phone = this.bdMobile(s.shipperContact ?? s.client?.contactPhone);
     const when = dto.date ? new Date(dto.date) : new Date();
     // ShipmentPickupTime is "HH:MM"; BLUEDART_PICKUP_TIME is stored HHMM.
     const time = dto.time || String(BLUEDART.pickupTime || '1600').replace(/^(\d{2})(\d{2})$/, '$1:$2');
+    const toPay = String(s.paymentTerm).toUpperCase() === 'TO_PAY';
+    const weight = Number(Number(s.chargeWeight ?? s.totalDeadKg ?? 1).toFixed(2));
+    const name = String(s.shipperName ?? s.client?.legalName ?? '').slice(0, 30);
+    // Pickup API uses the ACCOUNT's home area code (BLUEDART_ORIGIN_AREA, e.g. BOM) — NOT the pickup
+    // pincode's area. Full field set per BlueDart's sample (missing fields → HTTP 500).
     const request = {
-      ProductCode: this.bdProductCode(s),
-      AreaCode: areaCode,
-      CustomerCode: BLUEDART.customerCode || BLUEDART.loginId,
-      CustomerName: String(s.shipperName ?? s.client?.legalName ?? '').slice(0, 30),
+      AWBNo: [''],
+      AreaCode: BLUEDART.originArea,
+      CISDDN: false,
+      ContactPersonName: name,
       CustomerAddress1: String(s.shipperAddress1 ?? s.client?.addressLine ?? '').slice(0, 30),
       CustomerAddress2: String(s.shipperAddress2 ?? '').slice(0, 30),
       CustomerAddress3: String(s.shipperCity ?? '').slice(0, 30),
-      ContactPersonName: String(s.shipperName ?? s.client?.legalName ?? '').slice(0, 30),
-      CustomerPincode: String(pin),
+      CustomerCode: BLUEDART.customerCode || BLUEDART.loginId,
+      CustomerName: name,
+      CustomerPincode: pin,
       CustomerTelephoneNumber: phone,
+      DoxNDox: String(s.docType ?? '').toUpperCase().includes('DOC') ? '1' : '2',
+      EmailID: '',
+      IsForcePickup: false,
+      IsReversePickup: false,
       MobileTelNo: phone,
+      NumberofPieces: Number(s.pieceCount ?? 1),
+      OfficeCloseTime: '18:00',
+      PackType: '',
+      ProductCode: this.bdProductCode(s),
+      ReferenceNo: String(s.awb).slice(0, 20),
+      Remarks: String(dto.remarks ?? '').slice(0, 60),
+      RouteCode: '',
       ShipmentPickupDate: `/Date(${when.getTime()})/`,
       ShipmentPickupTime: time,
-      Remarks: String(dto.remarks ?? '').slice(0, 60),
-      NumberofPieces: Number(s.pieceCount ?? 1),
-      WeightofShipment: Number(Number(s.chargeWeight ?? s.totalDeadKg ?? 1).toFixed(2)),
+      SubProducts: [''],
+      VolumeWeight: weight,
+      WeightofShipment: weight,
+      isToPayShipper: toPay,
     };
-    const resp = await this.authed('/pickup/v1/RegisterPickup', {
-      method: 'POST',
-      body: JSON.stringify({ Request: request, Profile: { LoginID: BLUEDART.loginId, LicenceKey: BLUEDART.licKey, Api_type: 'S' } }),
-    });
+    const resp = await this.authed('/pickup/v1/RegisterPickup', { method: 'POST', body: JSON.stringify(this.pickupBody(request)) });
     const result = resp?.RegisterPickupResult ?? resp;
     if (result?.IsError === true || result?.isError === true) {
-      const msg = (result?.Status ?? result?.status ?? [])
-        .map((x: any) => x?.StatusInformation ?? x?.statusInformation ?? x?.StatusCode)
-        .filter(Boolean).join('; ');
-      throw new BadRequestException(`BlueDart pickup failed: ${msg || JSON.stringify(result).slice(0, 300)}`);
+      throw new BadRequestException(`BlueDart pickup failed: ${this.bdStatusMsg(result) || JSON.stringify(result).slice(0, 300)}`);
     }
     const token = result?.TokenNumber ?? result?.tokenNumber ?? null;
     if (token) await this.prisma.shipment.update({ where: { id: s.id }, data: { bdPickupToken: String(token), bdPickupAt: when } });
-    return { awb, token, pickupDate: when, response: resp };
+    return { awb, token, toPay, pickupDate: when, response: resp };
+  }
+
+  /** Cancel a BlueDart pickup by its registration token. NOTE: CancelPickup can return HTTP 415
+   *  "Access to the method is not allowed" when the APIGEE app isn't subscribed to it — in that
+   *  case cancel from the BlueDart portal and ask BlueDart to enable CancelPickup on the app. */
+  async cancelPickup(tokenNo: number | string, registrationDate?: string) {
+    this.ensure();
+    const when = registrationDate ? new Date(registrationDate) : new Date();
+    const resp = await this.authed('/pickup/v1/CancelPickup', {
+      method: 'POST',
+      body: JSON.stringify(this.pickupBody({ TokenNo: Number(tokenNo), PickupRegistrationDate: `/Date(${when.getTime()})/`, Remarks: 'Cancelled from Logimart' })),
+    });
+    const result = resp?.CancelPickupResponseEntity ?? resp?.CancelPickupResult ?? resp;
+    if (result?.IsError === true || result?.isError === true) {
+      throw new BadRequestException(`BlueDart cancel pickup failed: ${this.bdStatusMsg(result) || JSON.stringify(result).slice(0, 300)}`);
+    }
+    return { tokenNo, cancelled: true, response: resp };
   }
 
   /** Parse the custawbquery XML into a flat scan list (newest first), plus the current status. */

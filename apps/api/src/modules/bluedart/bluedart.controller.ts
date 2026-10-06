@@ -69,10 +69,19 @@ export class BluedartController {
     return this.bd.registerPickup(body);
   }
 
-  /** Schedule a BlueDart pickup for a shipment (maps the shipper address from the shipment). */
+  /** Schedule a BlueDart pickup for a shipment (maps the shipper address from the shipment).
+   *  For a TO_PAY shipment this registers a to-pay (FOD) collection — the way BlueDart accepts a
+   *  pickup from outside the account's home area. */
   @Post('pickup/:awb')
   @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
   schedulePickup(@Param('awb') awb: string, @Body() body: { date?: string; time?: string; remarks?: string }) {
     return this.bd.schedulePickup(awb, body || {});
+  }
+
+  /** Cancel a BlueDart pickup by token (may 415 if CancelPickup isn't enabled on the APIGEE app). */
+  @Post('pickup-cancel')
+  @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  cancelPickup(@Body() body: { tokenNo: number | string; registrationDate?: string }) {
+    return this.bd.cancelPickup(body?.tokenNo, body?.registrationDate);
   }
 }

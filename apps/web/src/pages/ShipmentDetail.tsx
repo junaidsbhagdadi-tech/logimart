@@ -285,7 +285,11 @@ export function ShipmentDetail() {
     const time = window.prompt('Pickup time (HH:MM, 24-hour):', '16:00');
     if (time === null) return;
     setError(''); setMsg('');
-    try { const r = await api.bdPickup(awb!, { date: date || undefined, time: time || undefined }); setMsg(r.token ? `📅 BlueDart pickup scheduled — token ${r.token}` : 'BlueDart pickup request sent.'); load(); }
+    try {
+      const r: any = await api.bdPickup(awb!, { date: date || undefined, time: time || undefined });
+      setMsg(r.token ? `📅 BlueDart pickup registered — token ${r.token}${r.toPay ? ' (to-pay / outstation collection)' : ''}.` : 'BlueDart pickup request sent.');
+      load();
+    }
     catch (e: any) { setError(e.message); }
   };
   const handoffDel = async () => {
@@ -386,7 +390,7 @@ export function ShipmentDetail() {
           {canAssign && (s.bdWaybill || (/BLUE|BDR/i.test(String((s as any).vendor || '')) && (s as any).forwardingAwb)) && <button className="secondary" onClick={trackBd}>🔎 BlueDart track</button>}
           {canAssign && s.bdWaybill && String((s as any).statusCode).toUpperCase() !== 'CAN' && <button className="secondary" onClick={cancelBd}>🚫 Cancel BlueDart</button>}
           {s.bdWaybill && <a href={`/shipments/${s.awb}/bd-awb`} target="_blank" rel="noreferrer"><button className="secondary">🖨 BlueDart AWB</button></a>}
-          {canAssign && s.bdWaybill && String((s as any).statusCode).toUpperCase() !== 'CAN' && <button className="secondary" onClick={pickupBd}>📅 BlueDart pickup</button>}
+          {canAssign && String((s as any).statusCode).toUpperCase() !== 'CAN' && <button className="secondary" onClick={pickupBd} title={String((s as any).paymentTerm).toUpperCase() === 'TO_PAY' ? 'Register a BlueDart to-pay (FOD) pickup — works from outside the home area' : 'Register a BlueDart pickup for this shipment'}>📅 BlueDart pickup{String((s as any).paymentTerm).toUpperCase() === 'TO_PAY' ? ' (to-pay)' : ''}</button>}
           {isFinance && <button className="secondary" onClick={() => { setReweighMode((v) => !v); setMsg(''); }}>⚖ {reweighMode ? 'Cancel re-weigh' : 'Re-weigh'}</button>}
           {((canEditCharges && !(s as any).invoiced) || (isSysAdmin && (s as any).invoiced)) && <button className="secondary" onClick={openEdit} title={(s as any).invoiced ? 'Super-admin: edit an already-invoiced AWB (does NOT change the raised invoice)' : 'Edit product, consignee, vendor & other details'}>✏️ Edit AWB{(s as any).invoiced ? ' (invoiced)' : ''}</button>}
           {isFinance && <button className="secondary" onClick={() => { setTransferOpen((v) => !v); setMsg(''); setError(''); }} title="Wrong-entry transfer to another customer">🔄 Transfer</button>}
