@@ -518,15 +518,18 @@ export class BluedartService implements OnModuleInit {
     // For a pickup-only shipment, capture the waybill BlueDart assigned so later syncs track by it.
     const discovered = !waybill ? ((raw.match(/WaybillNo="([^"]+)"/) || [])[1] || null) : null;
     const { scans, bdStatus, bdStatusDate } = this.parseScans(raw);
+    // A reference/waybill query with no shipment yet (e.g. a pickup not collected) returns a
+    // placeholder like "Incorrect Waybill number or No Information" — don't store it as a real status.
+    const noData = scans.length === 0 && /incorrect waybill|no information|not linked|no data/i.test(raw);
     await this.prisma.shipment.updateMany({
       where: { awb },
       data: {
         ...(discovered ? { bdWaybill: discovered, forwardingAwb: (s as any)?.forwardingAwb ?? discovered, vendor: (s as any)?.vendor ?? 'BLUEDART' } : {}),
-        ...(bdStatus ? { bdStatus } : {}),
+        ...(bdStatus && !noData ? { bdStatus } : {}),
         ...(scans.length ? { bdScans: JSON.stringify(scans) } : {}),
         bdSyncedAt: new Date(),
       },
     });
-    return { awb, bdWaybill: waybill || discovered, discovered, bdStatus, bdStatusDate, scans, tracking: r };
+    return { awb, bdWaybill: waybill || discovered, discovered, bdStatus: noData ? null : bdStatus, bdStatusDate, scans, tracking: r };
   }
 }
