@@ -161,6 +161,16 @@ export class BluedartService implements OnModuleInit {
     // Also capture origin+dest "AREA / SC" codes for the shipping label (ORG/DST line).
     const org = await this.areaInfoFor((s as any).shipperPincode ?? (s as any).client?.pincode);
     const dst = await this.areaInfoFor((s as any).destPincode);
+    // Out-of-area origin: BlueDart can't GENERATE a waybill when the pickup area isn't the account's
+    // own area (returns a cryptic "UnauthorizedUser"). Give ops a clear, actionable message and point
+    // them at the pickup flow, which DOES work outstation for a to-pay collection.
+    const home = String(BLUEDART.originArea || '').toUpperCase();
+    if (home && org.area && org.area.toUpperCase() !== home) {
+      throw new BadRequestException(
+        `${awb} originates in ${org.area} (pin ${(s as any).shipperPincode ?? (s as any).client?.pincode ?? '?'}), outside the ${home} BlueDart account's area — BlueDart can't generate a waybill for an out-of-area origin. ` +
+        `For an outstation / import shipment, mark it To-Pay and use the "📅 BlueDart pickup" button to register a to-pay collection — BlueDart assigns the AWB after pickup.`,
+      );
+    }
     const payload = this.mapWaybill(s, org.area);
     const resp = await this.authed('/waybill/v1/GenerateWayBill', { method: 'POST', body: JSON.stringify(payload) });
     // APIGEE wraps the TSD WayBillGenerationResponse in GenerateWayBillResult{ AWBNo, IsError,
@@ -353,6 +363,15 @@ export class BluedartService implements OnModuleInit {
     const toPay = String(s.paymentTerm).toUpperCase() === 'TO_PAY';
     const weight = Number(Number(s.chargeWeight ?? s.totalDeadKg ?? 1).toFixed(2));
     const name = String(s.shipperName ?? s.client?.legalName ?? '').slice(0, 30);
+    const addr1 = String(s.shipperAddress1 ?? s.client?.addressLine ?? '').trim();
+    // Pre-flight: a pickup needs a real pickup address + a reachable contact, else BlueDart rejects it
+    // (or books a junk collection). Surface the gap plainly instead of a cryptic carrier error.
+    const miss: string[] = [];
+    if (!pin) miss.push('shipper pincode');
+    if (!name) miss.push('shipper name');
+    if (phone.length < 10) miss.push('shipper mobile (10 digits)');
+    if (!addr1) miss.push('shipper address');
+    if (miss.length) throw new BadRequestException(`Can't register the BlueDart pickup — missing: ${miss.join(', ')}. Add the shipper details on Edit AWB, then retry.`);
     // Pickup API uses the ACCOUNT's home area code (BLUEDART_ORIGIN_AREA, e.g. BOM) — NOT the pickup
     // pincode's area. Full field set per BlueDart's sample (missing fields → HTTP 500).
     const request = {
@@ -360,7 +379,7 @@ export class BluedartService implements OnModuleInit {
       AreaCode: BLUEDART.originArea,
       CISDDN: false,
       ContactPersonName: name,
-      CustomerAddress1: String(s.shipperAddress1 ?? s.client?.addressLine ?? '').slice(0, 30),
+      CustomerAddress1: addr1.slice(0, 30),
       CustomerAddress2: String(s.shipperAddress2 ?? '').slice(0, 30),
       CustomerAddress3: String(s.shipperCity ?? '').slice(0, 30),
       CustomerCode: BLUEDART.customerCode || BLUEDART.loginId,
