@@ -69,6 +69,13 @@ export class BluedartController {
     return this.bd.registerPickup(body);
   }
 
+  /** List shipments with a BlueDart pickup registered (Pickups page → BlueDart pickups section). */
+  @Get('pickups')
+  @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  pickups() {
+    return this.bd.listPickups();
+  }
+
   /** Schedule a BlueDart pickup for a shipment (maps the shipper address from the shipment).
    *  For a TO_PAY shipment this registers a to-pay (FOD) collection — the way BlueDart accepts a
    *  pickup from outside the account's home area. */

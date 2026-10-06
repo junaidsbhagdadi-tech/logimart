@@ -27,14 +27,17 @@ export class BluedartService implements OnModuleInit {
     this.autoSyncing = true;
     try {
       const since = new Date(Date.now() - 30 * 864e5); // booked within the last 30 days
-      // Cover BOTH ways a shipment carries a BlueDart AWB: our API hand-off (bdWaybill) AND ops
-      // recording the carrier AWB manually via "Forward to vendor" (forwardingAwb, vendor BDR/BLUEDART).
+      // Cover every way a shipment is on BlueDart: our API hand-off (bdWaybill), ops recording the
+      // carrier AWB manually via "Forward to vendor" (forwardingAwb, vendor BDR/BLUEDART), AND a
+      // registered pickup with no waybill yet (bdPickupToken) — syncTracking discovers its waybill
+      // by our reference once BlueDart collects it.
       const rows = await this.prisma.shipment.findMany({
         where: {
           createdAt: { gte: since },
           OR: [
             { bdWaybill: { not: null } },
             { AND: [{ forwardingAwb: { not: null } }, { OR: [{ vendor: { startsWith: 'BLUE', mode: 'insensitive' } }, { vendor: { equals: 'BDR', mode: 'insensitive' } }] }] },
+            { bdPickupToken: { not: null } },
           ],
         },
         select: { awb: true, bdStatus: true },
@@ -106,11 +109,15 @@ export class BluedartService implements OnModuleInit {
     try { return JSON.parse(text); } catch { return { raw: text }; }
   }
 
-  /** Tracking — shipment details/status for a BlueDart waybill (returns XML in `raw`). */
-  async track(awb: string) {
+  /** Tracking — shipment details/status for a BlueDart waybill (returns XML in `raw`).
+   *  `by='reference'` queries by OUR reference number (CreditReferenceNo / pickup ReferenceNo =
+   *  our AWB) instead of the BlueDart waybill — the response still carries WaybillNo + all scans,
+   *  so it's how a pickup-only shipment (token, no waybill yet) discovers its assigned waybill.
+   *  (Verified live: awb=reference&numbers=<ref> returns the same WaybillNo as the waybill query.) */
+  async track(numbers: string, by: 'awb' | 'reference' = 'awb') {
     this.ensure();
-    // TSD tracking URL: handler=tnt, action=custawbquery, awb=awb, numbers=<waybill>, format=xml, scan=1 (all scans).
-    const q = `/tracking/v1?handler=tnt&action=custawbquery&loginid=${encodeURIComponent(BLUEDART.trackLoginId)}&awb=awb&numbers=${encodeURIComponent(awb)}&format=xml&lickey=${encodeURIComponent(BLUEDART.trackLicKey)}&verno=1&scan=1`;
+    // TSD tracking URL: handler=tnt, action=custawbquery, awb=awb|reference, numbers=<value>, format=xml, scan=1 (all scans).
+    const q = `/tracking/v1?handler=tnt&action=custawbquery&loginid=${encodeURIComponent(BLUEDART.trackLoginId)}&awb=${by}&numbers=${encodeURIComponent(numbers)}&format=xml&lickey=${encodeURIComponent(BLUEDART.trackLicKey)}&verno=1&scan=1`;
     return this.authed(q, { method: 'GET' });
   }
 
@@ -442,6 +449,35 @@ export class BluedartService implements OnModuleInit {
     return { tokenNo, cancelled: true, response: resp };
   }
 
+  /** Shipments with a BlueDart pickup registered — powers the "BlueDart pickups" section on the
+   *  Pickups page. Newest pickup first. */
+  async listPickups(limit = 200) {
+    const rows = await this.prisma.shipment.findMany({
+      where: { bdPickupToken: { not: null } },
+      orderBy: { bdPickupAt: 'desc' },
+      take: Math.min(limit, 300),
+      select: {
+        awb: true, bdPickupToken: true, bdPickupAt: true, bdWaybill: true, bdStatus: true, bdSyncedAt: true,
+        shipperPincode: true, destPincode: true, paymentTerm: true, pieceCount: true,
+        client: { select: { legalName: true, accountCode: true } },
+      },
+    });
+    return rows.map((s) => ({
+      awb: s.awb,
+      token: s.bdPickupToken,
+      pickupAt: s.bdPickupAt,
+      waybill: s.bdWaybill,
+      status: s.bdStatus,
+      syncedAt: s.bdSyncedAt,
+      origin: s.shipperPincode,
+      dest: s.destPincode,
+      paymentTerm: s.paymentTerm,
+      pieces: s.pieceCount,
+      customer: s.client?.legalName ?? null,
+      accountCode: s.client?.accountCode ?? null,
+    }));
+  }
+
   /** Parse the custawbquery XML into a flat scan list (newest first), plus the current status. */
   private parseScans(raw: string) {
     const grab = (xml: string, tag: string) => { const m = xml.match(new RegExp(`<${tag}[^>]*>([^<]*)</${tag}>`, 'i')); return m ? m[1].trim() : null; };
@@ -465,16 +501,32 @@ export class BluedartService implements OnModuleInit {
   /** Pull BlueDart tracking into the Logimart shipment — stores the current status and the full
    *  scan history (JSON) parsed from the custawbquery XML. */
   async syncTracking(awb: string) {
-    // Track by our API waybill, else the manually-recorded carrier AWB (forwardingAwb), else the raw arg.
-    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { bdWaybill: true, forwardingAwb: true } });
-    const track = s?.bdWaybill || (s as any)?.forwardingAwb || awb;
-    const r = await this.track(track);
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { bdWaybill: true, forwardingAwb: true, bdPickupToken: true, vendor: true } });
+    const waybill = s?.bdWaybill || (s as any)?.forwardingAwb || null;
+    let r: any;
+    if (waybill) {
+      // Known carrier waybill (API hand-off or manually recorded) → track by waybill.
+      r = await this.track(waybill, 'awb');
+    } else if (s?.bdPickupToken) {
+      // Pickup registered but no waybill surfaced yet → discover it by OUR reference (we sent
+      // ReferenceNo = our AWB on the pickup). Returns the assigned WaybillNo once BlueDart collects.
+      r = await this.track(awb, 'reference');
+    } else {
+      r = await this.track(awb, 'awb');
+    }
     const raw = typeof r?.raw === 'string' ? r.raw : (typeof r === 'string' ? r : JSON.stringify(r));
+    // For a pickup-only shipment, capture the waybill BlueDart assigned so later syncs track by it.
+    const discovered = !waybill ? ((raw.match(/WaybillNo="([^"]+)"/) || [])[1] || null) : null;
     const { scans, bdStatus, bdStatusDate } = this.parseScans(raw);
     await this.prisma.shipment.updateMany({
       where: { awb },
-      data: { ...(bdStatus ? { bdStatus } : {}), ...(scans.length ? { bdScans: JSON.stringify(scans) } : {}), bdSyncedAt: new Date() },
+      data: {
+        ...(discovered ? { bdWaybill: discovered, forwardingAwb: (s as any)?.forwardingAwb ?? discovered, vendor: (s as any)?.vendor ?? 'BLUEDART' } : {}),
+        ...(bdStatus ? { bdStatus } : {}),
+        ...(scans.length ? { bdScans: JSON.stringify(scans) } : {}),
+        bdSyncedAt: new Date(),
+      },
     });
-    return { awb, bdStatus, bdStatusDate, scans, tracking: r };
+    return { awb, bdWaybill: waybill || discovered, discovered, bdStatus, bdStatusDate, scans, tracking: r };
   }
 }

@@ -19,6 +19,12 @@ export function Pickups() {
   const [error, setError] = useState('');
   const [assigning, setAssigning] = useState<any | null>(null); // the pickup being assigned
   const [selRider, setSelRider] = useState('');
+  // BlueDart pickups (registered collections, incl. outstation to-pay) — ops view.
+  const [bdPickups, setBdPickups] = useState<any[]>([]);
+  const [bdSyncing, setBdSyncing] = useState('');
+  const loadBd = () => api.bdPickups().then(setBdPickups).catch(() => {});
+  useEffect(() => { if (isOps) loadBd(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [isOps]);
+  const syncBd = async (awb: string) => { setBdSyncing(awb); setError(''); try { await api.bdSync(awb); await loadBd(); } catch (e: any) { setError(e.message); } finally { setBdSyncing(''); } };
 
   // Bulk upload (paste rows from Excel — tab-delimited — or a CSV). Ops rows carry an accountCode
   // per row; a client login is pinned to its own account so that column is ignored.
@@ -206,6 +212,39 @@ export function Pickups() {
           </tbody>
         </table>
       </div>
+
+      {isOps && (
+        <div className="card">
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <h2 style={{ margin: 0 }}>🚚 BlueDart pickups</h2>
+            <span className="muted" style={{ fontSize: 12 }}>{bdPickups.length} registered</span>
+          </div>
+          <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+            Collections registered with BlueDart (incl. outstation to-pay). The carrier waybill is
+            auto-discovered by reference once BlueDart collects, and tracking then syncs automatically.
+          </p>
+          <table>
+            <thead><tr><th>AWB</th><th>Token</th><th>Pickup</th><th>Route</th><th>Pcs</th><th>Pay</th><th>Waybill</th><th>Status</th><th>Synced</th><th></th></tr></thead>
+            <tbody>
+              {bdPickups.map((p) => (
+                <tr key={p.awb}>
+                  <td style={{ whiteSpace: 'nowrap' }}><a href={`/shipments/${p.awb}`}>{p.awb}</a></td>
+                  <td>{p.token}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{p.pickupAt ? new Date(p.pickupAt).toLocaleDateString('en-GB') : '—'}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{p.origin ?? '—'} → {p.dest ?? '—'}</td>
+                  <td>{p.pieces}</td>
+                  <td>{p.paymentTerm === 'TO_PAY' ? <span className="badge TO_PAY">TO-PAY</span> : <span className="muted" style={{ fontSize: 12 }}>PREPAID</span>}</td>
+                  <td>{p.waybill ?? <span className="muted" style={{ fontSize: 12 }}>pending</span>}</td>
+                  <td>{p.status ? <span className="badge">{p.status}</span> : <span className="muted">—</span>}</td>
+                  <td className="muted" style={{ whiteSpace: 'nowrap', fontSize: 11.5 }}>{p.syncedAt ? new Date(p.syncedAt).toLocaleString('en-GB') : '—'}</td>
+                  <td><button className="secondary" style={{ padding: '4px 10px' }} disabled={bdSyncing === p.awb} onClick={() => syncBd(p.awb)}>{bdSyncing === p.awb ? '…' : '🔎 Sync'}</button></td>
+                </tr>
+              ))}
+              {bdPickups.length === 0 && <tr><td colSpan={10} className="muted">No BlueDart pickups registered yet.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {assigning && (
         <Modal title={`Assign rider — pickup #${assigning.id}`} width={460} onClose={() => setAssigning(null)}>
