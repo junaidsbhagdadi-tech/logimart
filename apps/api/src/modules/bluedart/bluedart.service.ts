@@ -372,6 +372,16 @@ export class BluedartService implements OnModuleInit {
     if (phone.length < 10) miss.push('shipper mobile (10 digits)');
     if (!addr1) miss.push('shipper address');
     if (miss.length) throw new BadRequestException(`Can't register the BlueDart pickup — missing: ${miss.join(', ')}. Add the shipper details on Edit AWB, then retry.`);
+    // An OUT-OF-AREA (outstation) pickup on a single-area account is ONLY accepted as a To-Pay (FOD)
+    // collection — a prepaid outstation pickup → InvalidAreaScNotInRegion. So flag the BlueDart leg
+    // to-pay whenever the pickup is outstation OR the shipment itself is To-Pay. This is the CARRIER
+    // freight term for the "mutually agreed" outstation carriage; the Logimart customer is still
+    // billed per the shipment's own payment term. (areaInfoFor falls back to the home area on any
+    // serviceability hiccup → outstation=false → no behaviour change.)
+    const home = String(BLUEDART.originArea || '').toUpperCase();
+    const pickArea = String((await this.areaInfoFor(pin)).area || '').toUpperCase();
+    const outstation = !!(home && pickArea && pickArea !== home);
+    const isToPayShipper = toPay || outstation;
     // Pickup API uses the ACCOUNT's home area code (BLUEDART_ORIGIN_AREA, e.g. BOM) — NOT the pickup
     // pincode's area. Full field set per BlueDart's sample (missing fields → HTTP 500).
     const request = {
@@ -403,7 +413,7 @@ export class BluedartService implements OnModuleInit {
       SubProducts: [''],
       VolumeWeight: weight,
       WeightofShipment: weight,
-      isToPayShipper: toPay,
+      isToPayShipper,
     };
     const resp = await this.authed('/pickup/v1/RegisterPickup', { method: 'POST', body: JSON.stringify(this.pickupBody(request)) });
     const result = resp?.RegisterPickupResult ?? resp;
@@ -412,7 +422,7 @@ export class BluedartService implements OnModuleInit {
     }
     const token = result?.TokenNumber ?? result?.tokenNumber ?? null;
     if (token) await this.prisma.shipment.update({ where: { id: s.id }, data: { bdPickupToken: String(token), bdPickupAt: when } });
-    return { awb, token, toPay, pickupDate: when, response: resp };
+    return { awb, token, toPay: isToPayShipper, outstation, pickupDate: when, response: resp };
   }
 
   /** Cancel a BlueDart pickup by its registration token. NOTE: CancelPickup can return HTTP 415

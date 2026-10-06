@@ -287,7 +287,7 @@ export function ShipmentDetail() {
     setError(''); setMsg('');
     try {
       const r: any = await api.bdPickup(awb!, { date: date || undefined, time: time || undefined });
-      setMsg(r.token ? `📅 BlueDart pickup registered — token ${r.token}${r.toPay ? ' (to-pay / outstation collection)' : ''}.` : 'BlueDart pickup request sent.');
+      setMsg(r.token ? `📅 BlueDart pickup registered — token ${r.token}${r.outstation ? ' (outstation — booked to-pay with BlueDart)' : r.toPay ? ' (to-pay)' : ''}.` : 'BlueDart pickup request sent.');
       load();
     }
     catch (e: any) { setError(e.message); }
