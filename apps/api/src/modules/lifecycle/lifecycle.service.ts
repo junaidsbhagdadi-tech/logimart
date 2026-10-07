@@ -207,6 +207,47 @@ export class LifecycleService {
       return base;
     };
 
+    // ---- Merge BlueDart carrier scans into the public timeline + advance the milestone from the
+    //      carrier's live status. A shipment handed to BlueDart journeys only in bdScans (synced from
+    //      the carrier), NOT our internal scanLog — without this the tracker shows only "Manifested". ----
+    const parseBdAt = (date?: string | null, time?: string | null): Date | null => {
+      if (!date) return null;
+      const d = String(date).replace(/-/g, ' ').trim(); // "30-Jan-2023" -> "30 Jan 2023"
+      const digits = String(time || '').replace(/\D/g, '');
+      const hh = digits.length >= 3 ? Number(digits.slice(0, digits.length - 2)) : 0;
+      const mm = digits.length >= 3 ? Number(digits.slice(-2)) : 0;
+      const dt = new Date(`${d} ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`);
+      return isNaN(dt.getTime()) ? null : dt;
+    };
+    const bdScanRows: { at: Date; code: string; label: string; location: string | null; by: string | null; reason: string | null; remark: string | null }[] = [];
+    if ((s as any).bdScans) {
+      try {
+        for (const sc of JSON.parse((s as any).bdScans) as any[]) {
+          const at = parseBdAt(sc?.date, sc?.time);
+          if (!at) continue;
+          bdScanRows.push({ at, code: 'BD', label: sc?.scan || sc?.type || 'Carrier scan', location: sc?.location ?? null, by: 'BlueDart', reason: null, remark: sc?.location ?? null });
+        }
+      } catch { /* ignore malformed cache */ }
+    }
+    const bdToCode = (st: string): string | null => {
+      const u = String(st).toUpperCase();
+      if (/UNDELIVER|NOT DELIVER|UNDEL/.test(u)) return 'UDL';
+      if (/RTO|RETURN TO ORIG/.test(u)) return 'RTO';
+      if (/DELIVER/.test(u)) return 'DLD';
+      if (/OUT FOR DELIVERY|\bOFD\b/.test(u)) return 'OFD';
+      if (/ARRIV|REACHED|IN ?SCAN|RECEIVED AT|DESTINATION/.test(u)) return 'DRD';
+      if (/IN ?TRANSIT|DEPART|BAGGED|CONNECT|FORWARD|OUTSCAN/.test(u)) return 'DPD';
+      if (/PICK/.test(u)) return 'PKD';
+      return null;
+    };
+    const ORDER = ['MAN', 'PKD', 'ORD', 'DPD', 'DRD', 'OFD', 'DLD'];
+    let effCode = String(s.statusCode ?? 'MAN');
+    const bdStage = (s as any).bdStatus ? bdToCode(String((s as any).bdStatus)) : null;
+    if (bdStage === 'UDL' || bdStage === 'RTO') { if (effCode !== 'DLD' && effCode !== 'RTD') effCode = bdStage; }
+    else if (bdStage && ORDER.indexOf(bdStage) > ORDER.indexOf(effCode)) effCode = bdStage;
+    const effLabel = labelOf(effCode);
+    const bdLatestLoc = bdScanRows.length ? bdScanRows.reduce((a, b) => (a.at > b.at ? a : b)).location : null;
+
     return {
       awb: s.awb,
       forwardingAwb: s.forwardingAwb ?? null,
@@ -226,10 +267,10 @@ export class LifecycleService {
       shipper: s.shipperName ?? (s as any).client?.legalName ?? null,
       origin: [s.originLocation, s.originHub?.code].filter(Boolean).join(' - ') || s.originZone,
       destination: [s.consigneeCity, s.destHub?.code].filter(Boolean).join(' - ') || s.destZone,
-      currentLocation: s.currentLocation ?? (s.destHub ? `${s.destHub.name} - ${s.destHub.code}` : null),
+      currentLocation: s.currentLocation ?? bdLatestLoc ?? (s.destHub ? `${s.destHub.name} - ${s.destHub.code}` : null),
       orderDate: manAt,
-      currentCode: s.statusCode ?? 'MAN',
-      currentLabel: labelOf(String(s.statusCode ?? 'MAN')),
+      currentCode: effCode,
+      currentLabel: effLabel,
       remarks: s.exceptionFlag ?? null,
       customerRemark: (s as any).customerRemark ?? null,        // remark left by the customer via portal
       customerRemarkAt: (s as any).customerRemarkAt ?? null,
@@ -258,7 +299,10 @@ export class LifecycleService {
         phone: s.shipperPhone, mobile: s.shipperMobile, gstin: s.shipperGstin ?? (s as any).consignorGstin ?? null, email: s.shipperEmail,
       },
       pieces: s.pieces,
-      scans: logs.map((l) => ({ at: l.scanAt, code: l.eventType, label: labelOf(l.eventType), location: l.serviceCenter ?? null, by: uname(l.scannedById), reason: ['UDL', 'RTO', 'CAN'].includes(l.eventType) ? l.remark : null, remark: l.remark })),
+      scans: [
+        ...logs.map((l) => ({ at: l.scanAt as Date, code: l.eventType, label: labelOf(l.eventType), location: l.serviceCenter ?? null, by: uname(l.scannedById), reason: ['UDL', 'RTO', 'CAN'].includes(l.eventType) ? l.remark : null, remark: l.remark })),
+        ...bdScanRows,
+      ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()),
     };
   }
 
