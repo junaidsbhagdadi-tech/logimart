@@ -76,11 +76,11 @@ export class BluedartController {
     return this.bd.listPickups();
   }
 
-  /** Backfill tracking for ALL BlueDart shipments (any age) — one-off/admin, safe to re-run. */
+  /** Backfill tracking for ALL BlueDart shipments (any age) — runs in the BACKGROUND, returns at once. */
   @Post('sync-all')
   @Roles(UserRole.SYS_ADMIN)
   syncAll(@Body() body?: { limit?: number }) {
-    return this.bd.syncAll(body?.limit);
+    return this.bd.startBackfill(body?.limit);
   }
 
   /** Schedule a BlueDart pickup for a shipment (maps the shipper address from the shipment).

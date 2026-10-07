@@ -45,7 +45,7 @@ export function BlueDart() {
   };
   const backfill = async () => {
     setErr(''); setSyncAllMsg(''); setBusy('syncall');
-    try { const r = await api.bdSyncAll(1000); setSyncAllMsg(`✓ Synced ${r.synced}/${r.total}${r.failed ? `, ${r.failed} failed` : ''}. Re-run to continue if more remain.`); }
+    try { const r = await api.bdSyncAll(); setSyncAllMsg(`${r.message} (${r.pending} of ${r.total} not yet synced)`); }
     catch (e: any) { setErr(e.message); } finally { setBusy(''); }
   };
 

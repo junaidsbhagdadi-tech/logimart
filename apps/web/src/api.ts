@@ -639,7 +639,7 @@ export const api = {
   bdLabelPrint: (awb: string) => request<{ awb: string; bdWaybill: string | null; label: string }>(`/api/v1/bluedart/label/${awb}`),
   bdPickup: (awb: string, body: { date?: string; time?: string; remarks?: string }) => request<{ awb: string; token: string | null; pickupDate: string; toPay?: boolean; outstation?: boolean }>(`/api/v1/bluedart/pickup/${awb}`, { method: 'POST', body: JSON.stringify(body) }),
   bdPickups: () => request<{ awb: string; token: string | null; pickupAt: string | null; waybill: string | null; stage: string; status: string | null; syncedAt: string | null; origin: string | null; dest: string | null; paymentTerm: string | null; pieces: number; customer: string | null; accountCode: string | null }[]>('/api/v1/bluedart/pickups'),
-  bdSyncAll: (limit?: number) => request<{ total: number; synced: number; failed: number }>('/api/v1/bluedart/sync-all', { method: 'POST', body: JSON.stringify({ limit }) }),
+  bdSyncAll: (limit?: number) => request<{ started: boolean; running: boolean; total: number; pending: number; message: string }>('/api/v1/bluedart/sync-all', { method: 'POST', body: JSON.stringify({ limit }) }),
   // ---- Delhivery B2B / LTL carrier integration ----
   delStatus: () => request<{ configured: boolean; [k: string]: any }>('/api/v1/delhivery/status'),
   delServiceable: (pincode: string, weight?: number) => request<any>(`/api/v1/delhivery/serviceable/${pincode}${weight ? `?weight=${weight}` : ''}`),

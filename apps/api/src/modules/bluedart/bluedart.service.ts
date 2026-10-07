@@ -6,6 +6,7 @@ import { BLUEDART, bdConfigured } from './bluedart.config';
 export class BluedartService implements OnModuleInit {
   private readonly logger = new Logger('BlueDart');
   private autoSyncing = false;
+  private backfilling = false;
   constructor(private readonly prisma: PrismaService) {}
 
   /** Periodically pull BlueDart tracking for open (handed-off, not-yet-delivered) shipments,
@@ -504,6 +505,31 @@ export class BluedartService implements OnModuleInit {
     }
     this.logger.log(`BlueDart backfill sync: ${synced}/${rows.length} ok, ${failed} failed.`);
     return { total: rows.length, synced, failed };
+  }
+
+  /** Kick off a backfill in the BACKGROUND and return immediately — the backlog can be thousands of
+   *  shipments (minutes of throttled carrier calls), too long for a blocking HTTP request. Re-entrant
+   *  calls are rejected while one is running. `pending` = BlueDart shipments not yet synced. */
+  async startBackfill(limit = 6000) {
+    this.ensure();
+    const bdWhere = {
+      OR: [
+        { bdWaybill: { not: null } },
+        { AND: [{ forwardingAwb: { not: null } }, { OR: [{ vendor: { startsWith: 'BLUE', mode: 'insensitive' as const } }, { vendor: { equals: 'BDR', mode: 'insensitive' as const } }] }] },
+        { bdPickupToken: { not: null } },
+      ],
+    };
+    const [total, pending] = await Promise.all([
+      this.prisma.shipment.count({ where: bdWhere }),
+      this.prisma.shipment.count({ where: { AND: [bdWhere, { bdSyncedAt: null }] } }),
+    ]);
+    if (this.backfilling) return { started: false, running: true, total, pending, message: 'A backfill is already running — it drains oldest-first in the background.' };
+    this.backfilling = true;
+    // Fire-and-forget: run the throttled loop without blocking the response.
+    this.syncAll(limit)
+      .catch((e) => this.logger.warn(`backfill: ${e?.message || e}`))
+      .finally(() => { this.backfilling = false; });
+    return { started: true, running: true, total, pending, message: `Backfill started in the background for up to ${Math.min(limit, total)} shipment(s) (oldest-first). Statuses + scans will fill in over the next several minutes.` };
   }
 
   /** Parse the custawbquery XML into a flat scan list (newest first), plus the current status. */
