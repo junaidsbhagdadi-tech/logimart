@@ -211,6 +211,13 @@ export class LifecycleService {
       awb: s.awb,
       forwardingAwb: s.forwardingAwb ?? null,
       vendor: s.vendor ?? null,
+      // BlueDart carrier hand-off / pickup — the waybill (auto-discovered by reference once collected),
+      // its live status, and the pickup stage (SCHEDULED once registered → PICKED once collected).
+      carrierWaybill: (s as any).bdWaybill ?? null,
+      carrierStatus: (s as any).bdStatus ?? null,
+      bdPickupToken: (s as any).bdPickupToken ?? null,
+      bdPickupAt: (s as any).bdPickupAt ?? null,
+      pickupStage: (s as any).bdPickupToken ? ((s as any).bdWaybill ? 'PICKED' : 'SCHEDULED') : null,
       payMode,
       customerName: (s as any).client?.legalName ?? null,
       accountCode: (s as any).client?.accountCode ?? null,

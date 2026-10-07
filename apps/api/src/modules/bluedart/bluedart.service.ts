@@ -467,6 +467,8 @@ export class BluedartService implements OnModuleInit {
       token: s.bdPickupToken,
       pickupAt: s.bdPickupAt,
       waybill: s.bdWaybill,
+      // Pickup stage: SCHEDULED once registered with BlueDart → PICKED once they collect (waybill assigned).
+      stage: s.bdWaybill ? 'PICKED' : 'SCHEDULED',
       status: s.bdStatus,
       syncedAt: s.bdSyncedAt,
       origin: s.shipperPincode,
@@ -476,6 +478,32 @@ export class BluedartService implements OnModuleInit {
       customer: s.client?.legalName ?? null,
       accountCode: s.client?.accountCode ?? null,
     }));
+  }
+
+  /** Backfill: sync tracking for ALL BlueDart shipments (any age, including already-delivered),
+   *  oldest-synced first, up to `limit`. One-off / admin use — safe to re-run; delivered shipments
+   *  just get their final status + scans captured. Throttled to be gentle on the carrier API. */
+  async syncAll(limit = 500) {
+    this.ensure();
+    const rows = await this.prisma.shipment.findMany({
+      where: {
+        OR: [
+          { bdWaybill: { not: null } },
+          { AND: [{ forwardingAwb: { not: null } }, { OR: [{ vendor: { startsWith: 'BLUE', mode: 'insensitive' } }, { vendor: { equals: 'BDR', mode: 'insensitive' } }] }] },
+          { bdPickupToken: { not: null } },
+        ],
+      },
+      select: { awb: true },
+      orderBy: [{ bdSyncedAt: { sort: 'asc', nulls: 'first' } }],
+      take: Math.min(Math.max(1, limit), 2000),
+    });
+    let synced = 0, failed = 0;
+    for (const r of rows) {
+      try { await this.syncTracking(r.awb); synced++; } catch { failed++; }
+      await new Promise((res) => setTimeout(res, 300)); // gentle on the carrier API
+    }
+    this.logger.log(`BlueDart backfill sync: ${synced}/${rows.length} ok, ${failed} failed.`);
+    return { total: rows.length, synced, failed };
   }
 
   /** Parse the custawbquery XML into a flat scan list (newest first), plus the current status. */

@@ -12,6 +12,7 @@ export function BlueDart() {
   const [awb, setAwb] = useState('');
   const [track, setTrack] = useState<any>(null);
   const [busy, setBusy] = useState('');
+  const [syncAllMsg, setSyncAllMsg] = useState('');
 
   // Delhivery
   const [dStatus, setDStatus] = useState<{ configured: boolean; [k: string]: any } | null>(null);
@@ -41,6 +42,11 @@ export function BlueDart() {
   const checkTrack = async () => {
     setErr(''); setTrack(null); if (!awb.trim()) return; setBusy('track');
     try { setTrack(await api.bdTrack(awb.trim())); } catch (e: any) { setErr(e.message); } finally { setBusy(''); }
+  };
+  const backfill = async () => {
+    setErr(''); setSyncAllMsg(''); setBusy('syncall');
+    try { const r = await api.bdSyncAll(1000); setSyncAllMsg(`✓ Synced ${r.synced}/${r.total}${r.failed ? `, ${r.failed} failed` : ''}. Re-run to continue if more remain.`); }
+    catch (e: any) { setErr(e.message); } finally { setBusy(''); }
   };
 
   const vars = ['baseUrl', 'authUrl', 'clientId', 'loginId', 'licKey'];
@@ -74,8 +80,10 @@ export function BlueDart() {
         )}
         <div className="row" style={{ marginTop: 12, gap: 10, alignItems: 'center' }}>
           <button onClick={testToken} disabled={busy === 'token' || !status?.configured}>{busy === 'token' ? 'Testing…' : '🔑 Test authentication'}</button>
+          <button className="secondary" onClick={backfill} disabled={busy === 'syncall' || !status?.configured} title="Sync tracking for ALL BlueDart shipments (any age) — safe to re-run">{busy === 'syncall' ? 'Syncing…' : '🔄 Backfill tracking'}</button>
           <button className="secondary" onClick={load}>↻ Refresh</button>
           {tokenMsg && <span style={{ color: 'var(--ok)', fontSize: 13, fontWeight: 600 }}>{tokenMsg}</span>}
+          {syncAllMsg && <span style={{ color: 'var(--ok)', fontSize: 13, fontWeight: 600 }}>{syncAllMsg}</span>}
         </div>
       </div>
 

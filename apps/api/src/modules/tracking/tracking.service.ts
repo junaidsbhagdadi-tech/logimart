@@ -111,6 +111,13 @@ export class TrackingService {
       isShort: delivered > 0 && delivered < s.pieceCount,
       expectedDelivery: s.expectedDelivery ?? eddFallback(),
       isOda: !!s.isOda, // #14 — ODA destinations take ~2 extra days beyond EDD
+      // Carrier (BlueDart) hand-off / pickup surfaced to the customer: the carrier waybill, its live
+      // status, and the pickup stage (SCHEDULED once registered → PICKED once BlueDart collects).
+      carrier: ((s as any).bdWaybill || (s as any).bdPickupToken || (/BLUE|BDR/i.test(String((s as any).vendor || '')) && (s as any).forwardingAwb)) ? 'BlueDart' : null,
+      carrierWaybill: (s as any).bdWaybill ?? ((/BLUE|BDR/i.test(String((s as any).vendor || '')) && (s as any).forwardingAwb) ? (s as any).forwardingAwb : null),
+      carrierStatus: (s as any).bdStatus ?? null,
+      pickupToken: (s as any).bdPickupToken ?? null,
+      pickupStage: (s as any).bdPickupToken ? ((s as any).bdWaybill ? 'PICKED' : 'SCHEDULED') : null,
       timeline,
     };
   }

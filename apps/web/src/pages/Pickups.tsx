@@ -224,7 +224,7 @@ export function Pickups() {
             auto-discovered by reference once BlueDart collects, and tracking then syncs automatically.
           </p>
           <table>
-            <thead><tr><th>AWB</th><th>Token</th><th>Pickup</th><th>Route</th><th>Pcs</th><th>Pay</th><th>Waybill</th><th>Status</th><th>Synced</th><th></th></tr></thead>
+            <thead><tr><th>AWB</th><th>Token</th><th>Pickup</th><th>Route</th><th>Pcs</th><th>Pay</th><th>Stage</th><th>Waybill</th><th>Status</th><th>Synced</th><th></th></tr></thead>
             <tbody>
               {bdPickups.map((p) => (
                 <tr key={p.awb}>
@@ -234,13 +234,14 @@ export function Pickups() {
                   <td style={{ whiteSpace: 'nowrap' }}>{p.origin ?? '—'} → {p.dest ?? '—'}</td>
                   <td>{p.pieces}</td>
                   <td>{p.paymentTerm === 'TO_PAY' ? <span className="badge TO_PAY">TO-PAY</span> : <span className="muted" style={{ fontSize: 12 }}>PREPAID</span>}</td>
+                  <td>{p.stage === 'PICKED' ? <span className="badge DELIVERED">PICKED</span> : <span className="badge CREATED">SCHEDULED</span>}</td>
                   <td>{p.waybill ?? <span className="muted" style={{ fontSize: 12 }}>pending</span>}</td>
                   <td>{p.status ? <span className="badge">{p.status}</span> : <span className="muted">—</span>}</td>
                   <td className="muted" style={{ whiteSpace: 'nowrap', fontSize: 11.5 }}>{p.syncedAt ? new Date(p.syncedAt).toLocaleString('en-GB') : '—'}</td>
                   <td><button className="secondary" style={{ padding: '4px 10px' }} disabled={bdSyncing === p.awb} onClick={() => syncBd(p.awb)}>{bdSyncing === p.awb ? '…' : '🔎 Sync'}</button></td>
                 </tr>
               ))}
-              {bdPickups.length === 0 && <tr><td colSpan={10} className="muted">No BlueDart pickups registered yet.</td></tr>}
+              {bdPickups.length === 0 && <tr><td colSpan={11} className="muted">No BlueDart pickups registered yet.</td></tr>}
             </tbody>
           </table>
         </div>

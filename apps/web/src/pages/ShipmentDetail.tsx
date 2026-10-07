@@ -53,6 +53,7 @@ export function ShipmentDetail() {
   // #11 edit AWB after creation (blocked once invoiced)
   const [editOpen, setEditOpen] = useState(false);
   const [ef, setEf] = useState<Record<string, string>>({});
+  const [dims, setDims] = useState<{ sequenceNo: number; l: string; w: string; h: string }[]>([]);
   const openEdit = () => {
     if (!s) return;
     setEf({
@@ -69,6 +70,12 @@ export function ShipmentDetail() {
       shipmentValue: (s as any).shipmentValue != null ? String((s as any).shipmentValue) : '',
       chargeWeight: (s as any).chargeWeight != null ? String((s as any).chargeWeight) : '',
     });
+    setDims(((s.pieces as any[]) || []).map((p) => ({
+      sequenceNo: p.sequenceNo,
+      l: p.lengthCm != null ? String(p.lengthCm) : '',
+      w: p.widthCm != null ? String(p.widthCm) : '',
+      h: p.heightCm != null ? String(p.heightCm) : '',
+    })));
     setEditOpen(true); setError(''); setMsg('');
   };
   const setEfield = (k: string, v: string) => setEf((f) => ({ ...f, [k]: v }));
@@ -89,6 +96,8 @@ export function ShipmentDetail() {
       patch.shipmentValue = ef.shipmentValue === '' ? null : Number(ef.shipmentValue);
       // blank charge weight → null → engine recomputes from the card (divisor/CFT + round-up)
       patch.chargeWeight = ef.chargeWeight === '' ? null : Number(ef.chargeWeight);
+      // Per-box dimensions → recompute volumetric weight server-side (no debit note).
+      if (dims.length) patch.dimensions = dims.map((d) => ({ sequenceNo: d.sequenceNo, lengthCm: d.l === '' ? null : Number(d.l), widthCm: d.w === '' ? null : Number(d.w), heightCm: d.h === '' ? null : Number(d.h) }));
       if ((s as any)?.invoiced) {
         if (!confirm('This AWB is already INVOICED. Editing it will NOT change the invoice already raised — cancel/rebill the invoice for any billing change. Continue with the edit?')) return;
         patch.overrideInvoiced = true;
@@ -473,6 +482,25 @@ export function ShipmentDetail() {
             </div>
             <div><label>Reference No.</label><input value={ef.referenceNo} onChange={(e) => setEfield('referenceNo', e.target.value)} /></div>
             <div style={{ gridColumn: 'span 2' }}><label>Goods description</label><input value={ef.goodsDesc} onChange={(e) => setEfield('goodsDesc', e.target.value)} /></div>
+          </div>
+          <div style={{ marginTop: 14, borderTop: '1px dashed var(--line, #d7dadf)', paddingTop: 12 }}>
+            <label style={{ fontWeight: 600 }}>📦 Box dimensions (cm) <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>— recomputes volumetric weight on save (no debit note; use Re-weigh for a hub correction)</span></label>
+            <div style={{ overflowX: 'auto', marginTop: 6 }}>
+              <table style={{ fontSize: 13 }}>
+                <thead><tr><th>Box</th><th>Length</th><th>Width</th><th>Height</th></tr></thead>
+                <tbody>
+                  {dims.map((drow, i) => (
+                    <tr key={drow.sequenceNo}>
+                      <td>{drow.sequenceNo}</td>
+                      <td><input type="number" style={{ width: 72 }} value={drow.l} onChange={(e) => setDims((ds) => ds.map((x, j) => (j === i ? { ...x, l: e.target.value } : x)))} /></td>
+                      <td><input type="number" style={{ width: 72 }} value={drow.w} onChange={(e) => setDims((ds) => ds.map((x, j) => (j === i ? { ...x, w: e.target.value } : x)))} /></td>
+                      <td><input type="number" style={{ width: 72 }} value={drow.h} onChange={(e) => setDims((ds) => ds.map((x, j) => (j === i ? { ...x, h: e.target.value } : x)))} /></td>
+                    </tr>
+                  ))}
+                  {dims.length === 0 && <tr><td colSpan={4} className="muted">No boxes on this shipment.</td></tr>}
+                </tbody>
+              </table>
+            </div>
           </div>
           <div className="row" style={{ gap: 8, marginTop: 14, justifyContent: 'flex-end' }}>
             <button className="secondary" onClick={() => setEditOpen(false)}>Cancel</button>

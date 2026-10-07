@@ -76,6 +76,13 @@ export class BluedartController {
     return this.bd.listPickups();
   }
 
+  /** Backfill tracking for ALL BlueDart shipments (any age) — one-off/admin, safe to re-run. */
+  @Post('sync-all')
+  @Roles(UserRole.SYS_ADMIN)
+  syncAll(@Body() body?: { limit?: number }) {
+    return this.bd.syncAll(body?.limit);
+  }
+
   /** Schedule a BlueDart pickup for a shipment (maps the shipper address from the shipment).
    *  For a TO_PAY shipment this registers a to-pay (FOD) collection — the way BlueDart accepts a
    *  pickup from outside the account's home area. */

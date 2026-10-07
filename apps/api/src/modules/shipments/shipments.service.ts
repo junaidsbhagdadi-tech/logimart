@@ -812,6 +812,38 @@ export class ShipmentsService {
       data.expectedDelivery = await this.expectedDeliveryFor(newProduct ?? undefined, s.serviceMode, originZone, destZone, data.vendor ?? s.vendor ?? undefined);
     }
 
+    // Dimension edits — update per-box L×B×H and recompute volumetric weight. This is a booking-time
+    // correction (no debit note; that's what Re-weigh is for). dto.dimensions = [{ sequenceNo, lengthCm, widthCm, heightCm }].
+    if (Array.isArray(dto.dimensions) && dto.dimensions.length) {
+      const vc = await this.rates
+        .volConfigFor(Number(s.clientId), String((data.product ?? s.product) ?? ''), (data.vendor ?? s.vendor) as any)
+        .catch(() => ({ divisor: VOLUMETRIC_DIVISOR, cft: 0 }));
+      const pieces = await this.prisma.shipmentPiece.findMany({ where: { shipmentId: s.id }, orderBy: { sequenceNo: 'asc' } });
+      const bySeq = new Map<number, any>(dto.dimensions.map((d: any) => [Number(d.sequenceNo), d]));
+      const num = (v: any, fb: any) => (v != null && v !== '' && !isNaN(Number(v)) ? Number(v) : fb != null ? Number(fb) : undefined);
+      let totalVol = 0;
+      for (const p of pieces) {
+        const d = bySeq.get(p.sequenceNo);
+        const L = num(d?.lengthCm, p.lengthCm);
+        const W = num(d?.widthCm, p.widthCm);
+        const H = num(d?.heightCm, p.heightCm);
+        const vol = this.volKg(L, W, H, vc.divisor, vc.cft);
+        totalVol += vol;
+        if (d) {
+          await this.prisma.shipmentPiece.update({
+            where: { id: p.id },
+            data: {
+              lengthCm: L != null ? new Prisma.Decimal(L) : null,
+              widthCm: W != null ? new Prisma.Decimal(W) : null,
+              heightCm: H != null ? new Prisma.Decimal(H) : null,
+              volKg: new Prisma.Decimal(Number(vol).toFixed(3)),
+            },
+          });
+        }
+      }
+      data.totalVolKg = new Prisma.Decimal(totalVol.toFixed(3));
+    }
+
     await this.prisma.shipment.update({ where: { id: s.id }, data });
     return { ok: true, awb, message: `${awb} updated.`, rezoned: productChanged || destChanged || originChanged };
   }

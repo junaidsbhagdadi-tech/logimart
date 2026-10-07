@@ -200,6 +200,9 @@ export function TrackDetail() {
               <Field label="Customer" value={(d as any).customerName} />
               <Field label="Account No." value={(d as any).accountCode} color="var(--brand)" />
               <Field label="Forwarding No." value={d.forwardingAwb} color="var(--brand)" />
+              {(d as any).carrierWaybill && <Field label="BlueDart Waybill" value={(d as any).carrierWaybill} color="var(--brand)" />}
+              {(d as any).carrierStatus && <Field label="BlueDart Status" value={(d as any).carrierStatus} color="var(--ok, #16a34a)" />}
+              {(d as any).pickupStage && <Field label="BlueDart Pickup" value={(d as any).pickupStage === 'PICKED' ? '✓ Picked up by BlueDart' : '🕑 Scheduled with BlueDart — pending collection'} color={(d as any).pickupStage === 'PICKED' ? 'var(--ok, #16a34a)' : 'var(--warn, #d97706)'} />}
               <Field label="Pay Mode" value={d.payMode} />
               <Field label="Shipper" value={d.shipper} />
               <Field label="Origin" value={d.origin} />
@@ -412,6 +415,9 @@ export function TrackDetail() {
                 <Field label="Email" value={(d as any).shipperDetail?.email} />
                 <Field label="Pickup Rider" value={d.pickupRider} color="var(--brand)" />
                 <Field label="Order Date (Manifested)" value={dateFmt(d.orderDate)} />
+                {(d as any).bdPickupToken && <Field label="BlueDart Pickup Token" value={(d as any).bdPickupToken} color="var(--brand)" />}
+                {(d as any).pickupStage && <Field label="BlueDart Pickup Stage" value={(d as any).pickupStage === 'PICKED' ? '✓ Picked up' : '🕑 Scheduled — pending collection'} color={(d as any).pickupStage === 'PICKED' ? 'var(--ok, #16a34a)' : 'var(--warn, #d97706)'} />}
+                {(d as any).bdPickupAt && <Field label="Scheduled Pickup Date" value={dateFmt((d as any).bdPickupAt)} />}
               </div>
             )}
 
