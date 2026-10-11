@@ -28,6 +28,11 @@ import { BdAwbPrint } from './pages/BdAwbPrint';
 import { BlueDart } from './pages/BlueDart';
 import { BillWorksheet } from './pages/BillWorksheet';
 import { Pickups } from './pages/Pickups';
+import { IntlShipments } from './pages/IntlShipments';
+import { IntlBook } from './pages/IntlBook';
+import { IntlShipmentDetail } from './pages/IntlShipmentDetail';
+import { IntlRateCards } from './pages/IntlRateCards';
+import { IntlDocument } from './pages/IntlDocument';
 import { Manifests } from './pages/Manifests';
 import { InvoicePrint } from './pages/InvoicePrint';
 import { NotePrint } from './pages/NotePrint';
@@ -91,6 +96,7 @@ export function App() {
       <Route path="/shipments/:awb/awb-print" element={<AwbPrint />} />
       <Route path="/shipments/:awb/bd-label" element={<BdLabel />} />
       <Route path="/shipments/:awb/bd-awb" element={<BdAwbPrint />} />
+      <Route path="/intl/:idOrJob/document" element={<IntlDocument />} />
       <Route element={<Layout />}>
         <Route path="/" element={user?.role === 'CLIENT_ADMIN' ? <ClientPortal /> : <Dashboard />} />
         <Route path="/team-dashboards" element={user?.role === 'CLIENT_ADMIN' ? <Navigate to="/" replace /> : <TeamDashboards />} />
@@ -111,6 +117,11 @@ export function App() {
         <Route path="/invoices/:id" element={<InvoiceDetail />} />
         <Route path="/pickups" element={<Pickups />} />
         <Route path="/manifests" element={<Manifests />} />
+        {/* International (Express + Freight Forwarding) */}
+        <Route path="/intl" element={<IntlShipments />} />
+        <Route path="/intl/book" element={<IntlBook />} />
+        <Route path="/intl/rate-cards" element={<IntlRateCards />} />
+        <Route path="/intl/:idOrJob" element={<IntlShipmentDetail />} />
         {/* First Mile */}
         <Route path="/fm" element={<MileDashboard mile="first" />} />
         <Route path="/fm/pickup-outscan" element={<MileScan title="Pickup Outscan" code="PKD" pickupPod hint="Scan each AWB the pickup staff collected → Picked (PKD). Attach a pickup POD if available." />} />

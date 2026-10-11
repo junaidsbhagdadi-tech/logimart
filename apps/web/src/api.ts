@@ -916,4 +916,22 @@ export const api = {
       expectedDelivery?: string | null;
       timeline: { checkpoint: string; label: string; at: string }[];
     }>(`/api/v1/track/${awb}`),
+
+  // ---- International (Express + Freight Forwarding) ----
+  intlList: (p: { mode?: string; status?: string; clientId?: number; q?: string } = {}) => {
+    const qs = Object.entries(p).filter(([, v]) => v != null && v !== '').map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join('&');
+    return request<any[]>(`/api/v1/intl${qs ? `?${qs}` : ''}`);
+  },
+  intlGet: (idOrJob: string) => request<any>(`/api/v1/intl/${encodeURIComponent(idOrJob)}`),
+  intlDocument: (idOrJob: string) => request<any>(`/api/v1/intl/${encodeURIComponent(idOrJob)}/document`),
+  intlCreate: (body: unknown) => request<any>('/api/v1/intl', { method: 'POST', body: JSON.stringify(body) }),
+  intlUpdate: (id: string, body: unknown) => request<any>(`/api/v1/intl/${id}/update`, { method: 'POST', body: JSON.stringify(body) }),
+  intlSetStatus: (id: string, status: string) => request<any>(`/api/v1/intl/${id}/status`, { method: 'POST', body: JSON.stringify({ status }) }),
+  intlCancel: (id: string) => request<any>(`/api/v1/intl/${id}/cancel`, { method: 'POST' }),
+  intlAddCharge: (id: string, body: unknown) => request<any>(`/api/v1/intl/${id}/charges`, { method: 'POST', body: JSON.stringify(body) }),
+  intlDeleteCharge: (chargeId: string) => request<any>(`/api/v1/intl/charges/${chargeId}`, { method: 'DELETE' }),
+  intlQuote: (body: unknown) => request<any>('/api/v1/intl/quote', { method: 'POST', body: JSON.stringify(body) }),
+  intlRateCards: (mode?: string) => request<any[]>(`/api/v1/intl/rate-cards${mode ? `?mode=${mode}` : ''}`),
+  intlSaveRateCard: (body: unknown) => request<any>('/api/v1/intl/rate-cards', { method: 'POST', body: JSON.stringify(body) }),
+  intlDeleteRateCard: (id: string) => request<any>(`/api/v1/intl/rate-cards/${id}`, { method: 'DELETE' }),
 };

@@ -110,6 +110,11 @@ export function Layout() {
       { to: '/deliver', icon: '🚚', label: 'Delivery App', show: isOps },
       { to: '/pickups', icon: '📦', label: 'Pickups' },
     ] },
+    { title: 'International', items: [
+      { to: '/intl', icon: '🌍', label: 'Intl Shipments', end: true },
+      { to: '/intl/book', icon: '➕', label: 'Book International' },
+      { to: '/intl/rate-cards', icon: '💱', label: 'Intl Rate Cards', show: isAdminFin },
+    ] },
     { title: 'First Mile', items: [
       { to: '/fm', icon: '📊', label: 'Dashboard', end: true },
       { to: '/fm/pickup-outscan', icon: '📍', label: 'Pickup Outscan' },

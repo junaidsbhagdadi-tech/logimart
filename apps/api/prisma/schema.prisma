@@ -1418,3 +1418,153 @@ model BulkBookingJobRow {
   @@index([jobId, status, idx])
   @@map("bulk_booking_job_rows")
 }
+
+// ============================================================================
+//  INTERNATIONAL  —  standalone module: International Express + Freight Forwarding
+//  (air / ocean FCL / ocean LCL). Separate from the domestic Shipment pipeline.
+// ============================================================================
+
+enum IntlMode {
+  EXPRESS       // international courier / parcel
+  AIR_FREIGHT   // air cargo forwarding
+  OCEAN_FCL     // ocean full container load
+  OCEAN_LCL     // ocean less-than-container load
+}
+
+enum IntlDirection {
+  EXPORT
+  IMPORT
+}
+
+enum IntlStatus {
+  DRAFT
+  BOOKED
+  PICKED_UP
+  IN_TRANSIT
+  CUSTOMS
+  ARRIVED
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+}
+
+model IntlShipment {
+  id        BigInt        @id @default(autoincrement())
+  jobNo     String        @unique // INTL-2026-000001
+  mode      IntlMode
+  direction IntlDirection @default(EXPORT)
+  status    IntlStatus    @default(DRAFT)
+  clientId  BigInt
+  incoterm  String? // EXW/FCA/FOB/CFR/CIF/DAP/DDP
+  serviceLevel String? // express product / freight service
+
+  // Parties
+  shipperName      String?
+  shipperAddress   String?
+  shipperCity      String?
+  shipperCountry   String?
+  shipperContact   String?
+  consigneeName    String?
+  consigneeAddress String?
+  consigneeCity    String?
+  consigneeCountry String?
+  consigneeContact String?
+
+  // Routing
+  originCountry String?
+  originPort    String? // port / airport / city
+  destCountry   String?
+  destPort      String?
+  carrier       String? // airline / shipping line / express carrier
+  forwarderRef  String?
+
+  // Documents of carriage
+  houseNo       String? // HAWB / HBL
+  masterNo      String? // MAWB / MBL
+  containerNo   String?
+  containerType String? // 20GP/40GP/40HC/LCL
+  vesselVoyage  String?
+
+  // Cargo
+  packages           Int      @default(1)
+  grossWeightKg      Decimal  @default(0) @db.Decimal(12, 3)
+  volumeCbm          Decimal? @db.Decimal(12, 4)
+  chargeableWeightKg Decimal? @db.Decimal(12, 3)
+  declaredValue      Decimal? @db.Decimal(14, 2)
+  currency           String   @default("USD")
+  goodsDesc          String?
+  hsCode             String?
+  marksNumbers       String?
+
+  // Dates
+  bookedAt DateTime?
+  etd      DateTime? // estimated departure
+  eta      DateTime? // estimated arrival
+  pickupAt DateTime?
+
+  remarks     String?
+  createdById BigInt?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  pieces  IntlPackage[]
+  charges IntlCharge[]
+
+  @@index([clientId])
+  @@index([mode])
+  @@index([status])
+  @@map("intl_shipments")
+}
+
+model IntlPackage {
+  id          BigInt       @id @default(autoincrement())
+  shipmentId  BigInt
+  shipment    IntlShipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  count       Int          @default(1)
+  lengthCm    Decimal?     @db.Decimal(8, 2)
+  widthCm     Decimal?     @db.Decimal(8, 2)
+  heightCm    Decimal?     @db.Decimal(8, 2)
+  weightKg    Decimal?     @db.Decimal(12, 3)
+  description String?
+
+  @@index([shipmentId])
+  @@map("intl_packages")
+}
+
+model IntlCharge {
+  id         BigInt       @id @default(autoincrement())
+  shipmentId BigInt
+  shipment   IntlShipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  code       String // FREIGHT, FUEL, CUSTOMS, HANDLING, DO, THC, …
+  name       String
+  amount     Decimal      @db.Decimal(14, 2)
+  currency   String       @default("USD")
+  taxable    Boolean      @default(false)
+  createdAt  DateTime     @default(now())
+
+  @@index([shipmentId])
+  @@map("intl_charges")
+}
+
+model IntlRateCard {
+  id                BigInt   @id @default(autoincrement())
+  name              String
+  mode              IntlMode
+  clientId          BigInt? // null = default/base rate
+  originScope       String? // country / zone (null = any)
+  destScope         String?
+  perKg             Decimal? @db.Decimal(12, 2)
+  perCbm            Decimal? @db.Decimal(12, 2)
+  perContainer      Decimal? @db.Decimal(12, 2)
+  minCharge         Decimal? @db.Decimal(12, 2)
+  fuelPct           Decimal? @db.Decimal(6, 2)
+  volumetricDivisor Int? // express 5000, air 6000
+  currency          String   @default("USD")
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([mode])
+  @@index([clientId])
+  @@map("intl_rate_cards")
+}
