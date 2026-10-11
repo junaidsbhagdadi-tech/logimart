@@ -354,11 +354,23 @@ function looksBinary(text: string): boolean {
   return head.startsWith('PK\x03\x04') || head.includes('[Content_Types].xml') || /�|\x00/.test(head);
 }
 
+/** Map common header spellings to the canonical column names the importer expects, so a sheet that
+ *  labels the booking-date column "Date" (the usual one) still fills `bookedAt` instead of silently
+ *  defaulting to today. Case/space/underscore-insensitive; unknown headers pass through unchanged. */
+function normalizeHeader(h: string): string {
+  const k = h.toLowerCase().replace(/[\s_]+/g, '');
+  const alias: Record<string, string> = {
+    date: 'bookedAt', bookingdate: 'bookedAt', bookdate: 'bookedAt', bookeddate: 'bookedAt',
+    bookingdatetime: 'bookedAt', manifestdate: 'bookedAt', orderdate: 'bookedAt',
+  };
+  return alias[k] ?? h;
+}
+
 /** Minimal CSV parser: header row + comma-separated values, honouring "quoted" fields. */
 function parseCsv(text: string): Record<string, string>[] {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   if (lines.length < 2) return [];
-  const header = splitLine(lines[0]).map((h) => h.trim());
+  const header = splitLine(lines[0]).map((h) => normalizeHeader(h.trim()));
   return lines.slice(1).map((line) => {
     const cells = splitLine(line);
     const row: Record<string, string> = {};
