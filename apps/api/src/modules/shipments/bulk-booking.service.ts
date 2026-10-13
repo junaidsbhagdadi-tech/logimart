@@ -140,7 +140,7 @@ export class BulkBookingService implements OnModuleInit {
       let ok = 0, bad = 0;
       for (const row of rows) {
         try {
-          const sh = await this.shipments.create(row.payload as any);
+          const sh = await this.shipments.create(row.payload as any, { skipAutoDispatch: true });
           await this.prisma.bulkBookingJobRow.update({ where: { id: row.id }, data: { status: 'OK', awb: sh.awb } });
           ok++;
         } catch (e: any) {

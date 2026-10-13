@@ -8,6 +8,7 @@ import { RateService } from '../billing/rate.service';
 import { NotesService } from '../notes/notes.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { DelhiveryService } from '../delhivery/delhivery.service';
+import { BluedartService } from '../bluedart/bluedart.service';
 import { CreateShipmentDto } from './dto/create-shipment.dto';
 
 @Injectable()
@@ -18,6 +19,7 @@ export class ShipmentsService {
     private readonly notes: NotesService,
     private readonly notifications: NotificationsService,
     private readonly delhivery: DelhiveryService,
+    private readonly bluedart: BluedartService,
   ) {}
 
   /** Volumetric weight in kg from cm dimensions. Uses the customer/product card's divisor and, for
@@ -109,7 +111,7 @@ export class ShipmentsService {
     return requested != null && allowed.has(String(requested)) ? Number(requested) : Number(tokenClientId);
   }
 
-  async create(dto: CreateShipmentDto) {
+  async create(dto: CreateShipmentDto, opts?: { skipAutoDispatch?: boolean }) {
     // Resolve the customer by internal id OR account code — bulk imports usually carry the account code.
     const cid = String((dto as any).clientId ?? '').trim();
     const sel = { id: true, isActive: true, isCreditHold: true, legalName: true, outstandingBal: true, creditLimit: true };
@@ -291,6 +293,13 @@ export class ShipmentsService {
     });
     // First milestone: MAN (Manifested) — the timeline always opens here at booking / API push.
     await this.prisma.scanLog.create({ data: { awb, eventType: 'MAN', remark: manualAwb ? 'Booked (manual AWB)' : 'Booked' } });
+    // Single bookings: fetch the BlueDart AWB immediately — generate the waybill + register the pickup
+    // in the background (non-blocking). Only when the shipment is a BlueDart carrier with no carrier AWB
+    // yet. Bulk paths pass skipAutoDispatch and rely on the throttled auto-dispatch poller instead, so a
+    // large upload never fires hundreds of BlueDart calls at once.
+    if (!opts?.skipAutoDispatch && /BLUE|BDR/i.test(String((created as any).vendor || '')) && !(created as any).forwardingAwb && !(created as any).bdWaybill) {
+      this.bluedart.autoDispatch(created.awb).catch(() => { /* captured on the shipment; poller retries */ });
+    }
     return created;
   }
 
@@ -302,7 +311,7 @@ export class ShipmentsService {
     const results: { row: number; ok: boolean; awb?: string; error?: string }[] = [];
     for (let i = 0; i < rows.length; i++) {
       try {
-        const sh = await this.create(rows[i]);
+        const sh = await this.create(rows[i], { skipAutoDispatch: true });
         results.push({ row: i + 1, ok: true, awb: sh.awb });
       } catch (e: any) {
         results.push({ row: i + 1, ok: false, error: e?.message || 'Failed to create' });

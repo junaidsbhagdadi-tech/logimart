@@ -7,9 +7,10 @@ import { BillingModule } from '../billing/billing.module';
 import { NotesModule } from '../notes/notes.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { DelhiveryModule } from '../delhivery/delhivery.module';
+import { BluedartModule } from '../bluedart/bluedart.module';
 
 @Module({
-  imports: [LabelsModule, BillingModule, NotesModule, NotificationsModule, DelhiveryModule],
+  imports: [LabelsModule, BillingModule, NotesModule, NotificationsModule, DelhiveryModule, BluedartModule],
   controllers: [ShipmentsController],
   providers: [ShipmentsService, BulkBookingService],
   exports: [ShipmentsService],
