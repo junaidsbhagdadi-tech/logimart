@@ -342,6 +342,7 @@ export class BluedartService implements OnModuleInit {
     if (this.bdMobile(s.shipperContact ?? s.client?.contactPhone).length < 10) miss.push('Shipper mobile (10 digits)');
     if (!(Number(s.pieceCount) > 0)) miss.push('Piece count');
     if (!(Number(s.chargeWeight ?? s.totalDeadKg) > 0)) miss.push('Weight');
+    if (!(Number(s.shipmentValue ?? s.declaredValue) > 0)) miss.push('Declared/shipment value'); // BlueDart requires DeclaredValue > 0
     return miss;
   }
 
