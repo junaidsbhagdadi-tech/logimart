@@ -65,18 +65,27 @@ export class StatsService {
     const since = window === 'today' ? new Date(new Date().setHours(0, 0, 0, 0)) : new Date(now.getTime() - (window === '30d' ? 30 : 7) * 864e5);
     const base: any = { createdAt: { gte: since }, ...(clientId != null ? { clientId } : {}) };
     const inSet = (codes: string[]) => ({ ...base, statusCode: { in: codes } });
-    const [total, delivered, inTransit, outForDelivery, exceptions, returns, pendingBooking, byCarrier, pendingReqPickups, bdPendingPickups] = await Promise.all([
+    const ci = 'insensitive' as const;
+    // Carrier-forwarded shipments keep statusCode=MAN; their real status is in bdStatus (free text).
+    // Count delivered/in-transit/exceptions from BOTH the internal milestone AND the carrier status,
+    // guarding against double-counting (a BD row is MAN by milestone → excluded from the native set).
+    const [total, nDeliv, bdDeliv, nOfd, bdOfd, nTransit, bdTransit, nExc, bdExc, returns, pendingBooking, byCarrier, pendingReqPickups, bdPendingPickups] = await Promise.all([
       this.prisma.shipment.count({ where: base }),
       this.prisma.shipment.count({ where: inSet(['DLD', 'RTD']) }),
-      this.prisma.shipment.count({ where: inSet(['PKD', 'ORD', 'DPD', 'DRD']) }),
+      this.prisma.shipment.count({ where: { ...base, statusCode: { notIn: ['DLD', 'RTD'] }, bdStatus: { contains: 'DELIVERED', mode: ci }, NOT: { bdStatus: { contains: 'UNDELIVERED', mode: ci } } } }),
       this.prisma.shipment.count({ where: inSet(['OFD']) }),
+      this.prisma.shipment.count({ where: { ...base, statusCode: { not: 'OFD' }, bdStatus: { contains: 'OUT FOR DELIVERY', mode: ci } } }),
+      this.prisma.shipment.count({ where: inSet(['PKD', 'ORD', 'DPD', 'DRD']) }),
+      this.prisma.shipment.count({ where: { ...base, statusCode: 'MAN', bdStatus: { not: null }, NOT: [{ bdStatus: { contains: 'DELIVERED', mode: ci } }, { bdStatus: { contains: 'OUT FOR DELIVERY', mode: ci } }, { bdStatus: { contains: 'RTO', mode: ci } }, { bdStatus: { contains: 'RETURN', mode: ci } }] } }),
       this.prisma.shipment.count({ where: inSet(['UDL', 'RTO']) }),
-      this.prisma.shipment.count({ where: inSet(['RTO', 'RTD']) }),
-      this.prisma.shipment.count({ where: inSet(['MAN']) }),
+      this.prisma.shipment.count({ where: { ...base, statusCode: { notIn: ['UDL', 'RTO'] }, OR: [{ bdStatus: { contains: 'UNDELIVERED', mode: ci } }, { bdStatus: { contains: 'RTO', mode: ci } }] } }),
+      this.prisma.shipment.count({ where: { ...base, OR: [{ statusCode: { in: ['RTO', 'RTD'] } }, { bdStatus: { contains: 'RTO', mode: ci } }, { bdStatus: { contains: 'RETURN', mode: ci } }] } }),
+      this.prisma.shipment.count({ where: { ...base, statusCode: 'MAN', bdStatus: null, bdWaybill: null, forwardingAwb: null } }),
       this.prisma.shipment.groupBy({ by: ['vendor'], where: base, _count: { _all: true } }),
       this.prisma.pickupRequest.count({ where: { status: { in: ['REQUESTED', 'ASSIGNED'] as any }, ...(clientId != null ? { clientId } : {}) } }),
       this.prisma.shipment.count({ where: { bdPickupToken: { not: null }, bdWaybill: null, statusCode: { not: 'CAN' }, ...(clientId != null ? { clientId } : {}) } }),
     ]);
+    const delivered = nDeliv + bdDeliv, outForDelivery = nOfd + bdOfd, inTransit = nTransit + bdTransit, exceptions = nExc + bdExc;
     const carriers = byCarrier.map((c) => ({ vendor: c.vendor || 'SELF', count: c._count._all })).sort((a, b) => b.count - a.count);
     return {
       window, total, delivered, inTransit, outForDelivery, exceptions, returns, pendingBooking,
