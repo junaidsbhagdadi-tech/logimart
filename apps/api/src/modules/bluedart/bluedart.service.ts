@@ -282,7 +282,11 @@ export class BluedartService implements OnModuleInit {
       throw new BadRequestException(`BlueDart rejected the waybill: ${msg || JSON.stringify(result).slice(0, 300)}`);
     }
     const bdWaybill = result?.AWBNo || result?.awbNo || null;
-    const label = result?.AWBPrintContent ?? result?.awbPrintContent ?? null;
+    // AWBPrintContent comes back as a byte ARRAY from APIGEE (not a base64 string) — convert it, else
+    // storing it into the String column bdLabel throws a Prisma validation error (which previously
+    // aborted the whole hand-off AFTER the AWB was already created).
+    const labelRaw = result?.AWBPrintContent ?? result?.awbPrintContent ?? null;
+    const label = Array.isArray(labelRaw) ? Buffer.from(labelRaw).toString('base64') : (typeof labelRaw === 'string' && labelRaw ? labelRaw : null);
     if (bdWaybill) {
       await this.prisma.shipment.update({
         where: { id: s.id },
