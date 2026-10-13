@@ -13,6 +13,8 @@ export function BlueDart() {
   const [track, setTrack] = useState<any>(null);
   const [busy, setBusy] = useState('');
   const [syncAllMsg, setSyncAllMsg] = useState('');
+  const [dispatchMsg, setDispatchMsg] = useState('');
+  const [dispatchStat, setDispatchStat] = useState<{ pending: number; failed: number; running: boolean } | null>(null);
 
   // Delhivery
   const [dStatus, setDStatus] = useState<{ configured: boolean; [k: string]: any } | null>(null);
@@ -25,6 +27,12 @@ export function BlueDart() {
   const load = () => {
     api.bdStatus().then(setStatus).catch((e) => setErr(e.message));
     api.delStatus().then(setDStatus).catch(() => {});
+    api.bdDispatchStatus().then(setDispatchStat).catch(() => {});
+  };
+  const sendToBd = async () => {
+    setErr(''); setDispatchMsg(''); setBusy('dispatch');
+    try { const r = await api.bdDispatchAll(); setDispatchMsg(r.message); setTimeout(() => api.bdDispatchStatus().then(setDispatchStat).catch(() => {}), 1500); }
+    catch (e: any) { setErr(e.message); } finally { setBusy(''); }
   };
   useEffect(load, []);
   const dCheckSvc = async () => { setErr(''); setDSvc(null); if (!dPin.trim()) return; setBusy('dsvc'); try { setDSvc(await api.delServiceable(dPin.trim())); } catch (e: any) { setErr(e.message); } finally { setBusy(''); } };
@@ -81,10 +89,17 @@ export function BlueDart() {
         <div className="row" style={{ marginTop: 12, gap: 10, alignItems: 'center' }}>
           <button onClick={testToken} disabled={busy === 'token' || !status?.configured}>{busy === 'token' ? 'Testing…' : '🔑 Test authentication'}</button>
           <button className="secondary" onClick={backfill} disabled={busy === 'syncall' || !status?.configured} title="Sync tracking for ALL BlueDart shipments (any age) — safe to re-run">{busy === 'syncall' ? 'Syncing…' : '🔄 Backfill tracking'}</button>
+          <button onClick={sendToBd} disabled={busy === 'dispatch' || !status?.configured} title="Generate the AWB + register the pickup with BlueDart for every booked BD shipment that hasn't been sent yet">{busy === 'dispatch' ? 'Sending…' : '📤 Send pending to BlueDart'}{dispatchStat ? ` (${dispatchStat.pending})` : ''}</button>
           <button className="secondary" onClick={load}>↻ Refresh</button>
           {tokenMsg && <span style={{ color: 'var(--ok)', fontSize: 13, fontWeight: 600 }}>{tokenMsg}</span>}
           {syncAllMsg && <span style={{ color: 'var(--ok)', fontSize: 13, fontWeight: 600 }}>{syncAllMsg}</span>}
+          {dispatchMsg && <span style={{ color: 'var(--ok)', fontSize: 13, fontWeight: 600 }}>{dispatchMsg}</span>}
         </div>
+        {dispatchStat && (dispatchStat.pending > 0 || dispatchStat.failed > 0) && (
+          <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+            Auto-dispatch runs every ~5 min. <strong>{dispatchStat.pending}</strong> BlueDart shipment(s) awaiting hand-off{dispatchStat.failed > 0 ? <>, of which <strong style={{ color: 'var(--bad, #c0392b)' }}>{dispatchStat.failed}</strong> failed (bad data / out-of-area) — fix on Edit AWB & they retry.</> : '.'}{dispatchStat.running ? ' A run is in progress…' : ''}
+          </div>
+        )}
       </div>
 
       <div className="grid cols-2" style={{ gap: 16 }}>

@@ -551,6 +551,8 @@ model Shipment {
   bdSyncedAt     DateTime? // last time auto-sync pulled BlueDart tracking
   bdPickupToken  String?   // BlueDart pickup registration token number
   bdPickupAt     DateTime? // when the BlueDart pickup was scheduled
+  bdError        String?   @db.Text  // last auto-dispatch failure (missing data / out-of-area) for retry visibility
+  bdDispatchAt   DateTime? // last auto-dispatch attempt (to pace retries of failed ones)
   bdRouteOrg     String?   // BlueDart origin "AREA / SERVICECENTRE" (e.g. BOM / SAK) for the label
   bdRouteDst     String?   // BlueDart destination "AREA / SERVICECENTRE" (e.g. ABA / AMY) for the label
 

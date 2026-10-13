@@ -7,6 +7,7 @@ export class BluedartService implements OnModuleInit {
   private readonly logger = new Logger('BlueDart');
   private autoSyncing = false;
   private backfilling = false;
+  private dispatching = false;
   constructor(private readonly prisma: PrismaService) {}
 
   /** Periodically pull BlueDart tracking for open (handed-off, not-yet-delivered) shipments,
@@ -20,6 +21,15 @@ export class BluedartService implements OnModuleInit {
     (timer as any).unref?.();
     setTimeout(() => this.autoSync().catch(() => {}), 60_000); // first pass a minute after boot
     this.logger.log(`BlueDart tracking auto-sync every ${mins} min.`);
+    // Auto-dispatch: hand booked BlueDart shipments off to BD (generate AWB + register pickup) without
+    // anyone clicking. Covers single AND bulk bookings. Set BLUEDART_DISPATCH_INTERVAL_MIN=0 to disable.
+    const dmins = Number(process.env.BLUEDART_DISPATCH_INTERVAL_MIN ?? 5);
+    if (dmins > 0) {
+      const dtimer = setInterval(() => this.dispatchPending().catch((e) => this.logger.warn(`auto-dispatch: ${e?.message || e}`)), dmins * 60_000);
+      (dtimer as any).unref?.();
+      setTimeout(() => this.dispatchPending().catch(() => {}), 90_000); // first pass ~1.5 min after boot
+      this.logger.log(`BlueDart auto-dispatch every ${dmins} min.`);
+    }
   }
 
   /** One auto-sync pass: sync recent, non-terminal BlueDart shipments (throttled, best-effort). */
@@ -55,6 +65,86 @@ export class BluedartService implements OnModuleInit {
     } finally {
       this.autoSyncing = false;
     }
+  }
+
+  /** Hand a single booked BlueDart shipment off to BD — generate the AWB (which also registers the
+   *  pickup via RegisterPickup:true). Idempotent (skips if already handed off). For an out-of-area
+   *  origin that can't generate a waybill, falls back to an outstation to-pay pickup so BD still gets
+   *  the collection request. Any failure is captured on the shipment (bdError) for retry. */
+  async autoDispatch(awb: string): Promise<{ awb: string; ok: boolean; action: string; bdWaybill?: string | null; token?: string | null; error?: string }> {
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, vendor: true, bdWaybill: true, forwardingAwb: true, statusCode: true } });
+    if (!s) return { awb, ok: false, action: 'skip', error: 'not found' };
+    if (!/BLUE|BDR/i.test(String(s.vendor || ''))) return { awb, ok: false, action: 'skip', error: 'not a BlueDart shipment' };
+    if (String(s.statusCode).toUpperCase() === 'CAN') return { awb, ok: false, action: 'skip', error: 'cancelled' };
+    if (s.bdWaybill) return { awb, ok: true, action: 'already', bdWaybill: s.bdWaybill };
+    // Safety: a shipment that already carries a carrier AWB (recorded manually as forwardingAwb) must
+    // NOT get a freshly-generated waybill — that would duplicate the AWB. Auto-dispatch only creates
+    // waybills for shipments with no carrier number yet.
+    if (s.forwardingAwb) return { awb, ok: true, action: 'already', bdWaybill: s.forwardingAwb };
+    await this.prisma.shipment.update({ where: { id: s.id }, data: { bdDispatchAt: new Date() } }).catch(() => {});
+    try {
+      const r = await this.generateWaybill(awb); // generates AWB + schedules pickup (RegisterPickup:true)
+      return { awb, ok: true, action: 'waybill', bdWaybill: r.bdWaybill, token: r.token };
+    } catch (e: any) {
+      const msg = String(e?.message || e);
+      // Out-of-area origin can't generate a waybill — register an outstation (to-pay) pickup instead,
+      // so BlueDart still receives the collection request.
+      if (/area|region|UnauthorizedUser|not authorized/i.test(msg)) {
+        try {
+          const pk = await this.schedulePickup(awb);
+          await this.prisma.shipment.update({ where: { id: s.id }, data: { bdError: null } }).catch(() => {});
+          return { awb, ok: true, action: 'outstation-pickup', token: pk.token };
+        } catch (e2: any) {
+          const m2 = String(e2?.message || e2);
+          await this.prisma.shipment.update({ where: { id: s.id }, data: { bdError: m2.slice(0, 500) } }).catch(() => {});
+          return { awb, ok: false, action: 'failed', error: m2 };
+        }
+      }
+      await this.prisma.shipment.update({ where: { id: s.id }, data: { bdError: msg.slice(0, 500) } }).catch(() => {});
+      return { awb, ok: false, action: 'failed', error: msg };
+    }
+  }
+
+  /** Dispatch pending BlueDart shipments (booked, vendor BlueDart, no waybill yet) — throttled, from
+   *  the poller and the manual "Send to BlueDart" button. `force` retries ones that failed recently;
+   *  otherwise a failed shipment is paced (retried only after ~1h) so a bad-data row isn't re-hammered. */
+  async dispatchPending(opts: { limit?: number; force?: boolean } = {}) {
+    if (this.dispatching || !bdConfigured()) return { started: false, running: this.dispatching, total: 0, ok: 0, failed: 0 };
+    this.dispatching = true;
+    try {
+      const since = new Date(Date.now() - 30 * 864e5);
+      const retryBefore = new Date(Date.now() - 60 * 60_000);
+      const rows = await this.prisma.shipment.findMany({
+        where: {
+          createdAt: { gte: since }, bdWaybill: null, forwardingAwb: null, statusCode: { not: 'CAN' },
+          AND: [
+            { OR: [{ vendor: { startsWith: 'BLUE', mode: 'insensitive' } }, { vendor: { equals: 'BDR', mode: 'insensitive' } }] },
+            ...(opts.force ? [] : [{ OR: [{ bdDispatchAt: null }, { bdDispatchAt: { lt: retryBefore } }] }]),
+          ],
+        },
+        select: { awb: true }, orderBy: { createdAt: 'asc' }, take: Math.min(opts.limit ?? 200, 1000),
+      });
+      let ok = 0, failed = 0;
+      for (const r of rows) {
+        const res = await this.autoDispatch(r.awb).catch(() => ({ ok: false }));
+        if ((res as any).ok) ok++; else failed++;
+        await new Promise((res2) => setTimeout(res2, 500)); // gentle on BD
+      }
+      if (rows.length) this.logger.log(`BlueDart auto-dispatch: ${ok} sent, ${failed} failed of ${rows.length}.`);
+      return { started: true, total: rows.length, ok, failed };
+    } finally {
+      this.dispatching = false;
+    }
+  }
+
+  /** Count of BlueDart shipments still awaiting dispatch (no waybill) + how many have a failure. */
+  async dispatchStatus() {
+    const base = { bdWaybill: null, forwardingAwb: null, statusCode: { not: 'CAN' }, OR: [{ vendor: { startsWith: 'BLUE', mode: 'insensitive' as const } }, { vendor: { equals: 'BDR', mode: 'insensitive' as const } }] };
+    const [pending, failed] = await Promise.all([
+      this.prisma.shipment.count({ where: base as any }),
+      this.prisma.shipment.count({ where: { AND: [base, { bdError: { not: null } }] } as any }),
+    ]);
+    return { pending, failed, running: this.dispatching };
   }
 
   private ensure() {
@@ -198,7 +288,8 @@ export class BluedartService implements OnModuleInit {
         where: { id: s.id },
         // Capture BlueDart's official AWB print (base64) — GenerateWayBill is the only place it's
         // returned (can't re-generate: CreditReferenceNo must be unique), so store it now.
-        data: { bdWaybill, forwardingAwb: (s as any).forwardingAwb ?? bdWaybill, vendor: (s as any).vendor ?? 'BLUEDART', bdHandedAt: new Date(), ...(label ? { bdLabel: label } : {}), ...(org.label ? { bdRouteOrg: org.label } : {}), ...(dst.label ? { bdRouteDst: dst.label } : {}) },
+        // GenerateWayBill with RegisterPickup:true also schedules the pickup → capture its token.
+        data: { bdWaybill, forwardingAwb: (s as any).forwardingAwb ?? bdWaybill, vendor: (s as any).vendor ?? 'BLUEDART', bdHandedAt: new Date(), bdError: null, ...(result?.TokenNumber ? { bdPickupToken: String(result.TokenNumber), bdPickupAt: new Date() } : {}), ...(label ? { bdLabel: label } : {}), ...(org.label ? { bdRouteOrg: org.label } : {}), ...(dst.label ? { bdRouteDst: dst.label } : {}) },
       });
     }
     return { awb, bdWaybill, token: result?.TokenNumber ?? null, labelBase64: label, response: resp };
@@ -323,7 +414,7 @@ export class BluedartService implements OnModuleInit {
           Dimensions: dims,
           PickupDate: `/Date(${Date.now()})/`, // BlueDart wants the .NET epoch STRING, not a raw number (verified live — raw number → HTTP 500)
           PickupTime: BLUEDART.pickupTime,
-          RegisterPickup: false,
+          RegisterPickup: true, // also schedule the BlueDart pickup when the waybill is generated
           PDFOutputNotRequired: false,
           InvoiceNo: (s.referenceNo ?? '').slice(0, 10),
         },

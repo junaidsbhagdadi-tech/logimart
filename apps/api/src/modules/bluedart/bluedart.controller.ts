@@ -83,6 +83,29 @@ export class BluedartController {
     return this.bd.startBackfill(body?.limit);
   }
 
+  /** Auto-dispatch a single shipment to BlueDart (generate AWB + register pickup). */
+  @Post('dispatch/:awb')
+  @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  dispatch(@Param('awb') awb: string) {
+    return this.bd.autoDispatch(awb);
+  }
+
+  /** How many BlueDart shipments are still awaiting dispatch (+ how many failed). */
+  @Get('dispatch-status')
+  @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  dispatchStatus() {
+    return this.bd.dispatchStatus();
+  }
+
+  /** "Send to BlueDart" — dispatch ALL pending (incl. previously-failed) in the BACKGROUND. */
+  @Post('dispatch-all')
+  @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  async dispatchAll() {
+    const st = await this.bd.dispatchStatus();
+    if (!st.running) this.bd.dispatchPending({ force: true, limit: 1000 }).catch(() => {});
+    return { started: !st.running, pending: st.pending, failed: st.failed, message: st.running ? 'A dispatch run is already in progress.' : `Dispatching ${st.pending} pending BlueDart shipment(s) in the background.` };
+  }
+
   /** Schedule a BlueDart pickup for a shipment (maps the shipper address from the shipment).
    *  For a TO_PAY shipment this registers a to-pay (FOD) collection — the way BlueDart accepts a
    *  pickup from outside the account's home area. */

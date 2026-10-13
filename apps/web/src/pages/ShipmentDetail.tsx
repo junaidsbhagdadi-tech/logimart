@@ -638,6 +638,7 @@ export function ShipmentDetail() {
           {s.product && <div><label>Product</label>{s.product}{s.docType ? ` · ${s.docType}` : ''}</div>}
           {s.bdWaybill && <div><label>BlueDart AWB</label>{s.bdWaybill}{s.bdStatus ? ` · ${s.bdStatus}` : ''}</div>}
           {(s as any).bdPickupToken && <div><label>BlueDart pickup</label>Token {(s as any).bdPickupToken}{(s as any).bdPickupAt ? ` · pickup ${new Date((s as any).bdPickupAt).toLocaleDateString('en-GB')}` : ''}</div>}
+          {!s.bdWaybill && (s as any).bdError && <div><label>BlueDart hand-off error</label><span style={{ color: 'var(--bad, #c0392b)', fontSize: 12 }}>{(s as any).bdError}</span></div>}
           {s.chargeWeight && <div><label>Charge weight</label>{s.chargeWeight} kg</div>}
           <div>
             <label>Payment</label>

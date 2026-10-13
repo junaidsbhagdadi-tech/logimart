@@ -640,6 +640,9 @@ export const api = {
   bdPickup: (awb: string, body: { date?: string; time?: string; remarks?: string }) => request<{ awb: string; token: string | null; pickupDate: string; toPay?: boolean; outstation?: boolean }>(`/api/v1/bluedart/pickup/${awb}`, { method: 'POST', body: JSON.stringify(body) }),
   bdPickups: () => request<{ awb: string; token: string | null; pickupAt: string | null; waybill: string | null; stage: string; status: string | null; syncedAt: string | null; origin: string | null; dest: string | null; paymentTerm: string | null; pieces: number; customer: string | null; accountCode: string | null }[]>('/api/v1/bluedart/pickups'),
   bdSyncAll: (limit?: number) => request<{ started: boolean; running: boolean; total: number; pending: number; message: string }>('/api/v1/bluedart/sync-all', { method: 'POST', body: JSON.stringify({ limit }) }),
+  bdDispatch: (awb: string) => request<{ awb: string; ok: boolean; action: string; bdWaybill?: string | null; token?: string | null; error?: string }>(`/api/v1/bluedart/dispatch/${awb}`, { method: 'POST' }),
+  bdDispatchStatus: () => request<{ pending: number; failed: number; running: boolean }>('/api/v1/bluedart/dispatch-status'),
+  bdDispatchAll: () => request<{ started: boolean; pending: number; failed: number; message: string }>('/api/v1/bluedart/dispatch-all', { method: 'POST' }),
   // ---- Delhivery B2B / LTL carrier integration ----
   delStatus: () => request<{ configured: boolean; [k: string]: any }>('/api/v1/delhivery/status'),
   delServiceable: (pincode: string, weight?: number) => request<any>(`/api/v1/delhivery/serviceable/${pincode}${weight ? `?weight=${weight}` : ''}`),
