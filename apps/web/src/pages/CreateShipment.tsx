@@ -98,7 +98,9 @@ export function CreateShipment() {
     } catch { /* non-fatal */ } finally { setSavingWh(false); }
   };
   // services extras
-  const [svc, setSvc] = useState({ vendor: 'SELF', service: 'SELF', shipmentValue: '', referenceNo: '', forwardingAwb: '', isCommercial: false, isMedical: false, bookedAt: '' });
+  const [svc, setSvc] = useState({ vendor: 'SELF', service: 'SELF', shipmentValue: '', referenceNo: '', forwardingAwb: '', isCommercial: false, isMedical: false, bookedAt: '', bdAccountId: '' });
+  const [bdAccts, setBdAccts] = useState<any[]>([]);
+  useEffect(() => { api.bdAccountOptions().then(setBdAccts).catch(() => {}); }, []);
   const [entryTab, setEntryTab] = useState<'AWB' | 'PROFORMA' | 'FORWARDING'>('AWB');
   const [flags, setFlags] = useState({ oda: false, appt: false });
   const [svcOptions, setSvcOptions] = useState<{ network: string; mode: string | null; tatDays: number | null; isOda: boolean }[]>([]);
@@ -423,6 +425,7 @@ export function CreateShipment() {
         consigneeDocNo: c.consigneeDocNo || undefined,
         // services extras
         vendor: svc.vendor || undefined,
+        bdAccountId: /BLUE|BDR/i.test(svc.vendor) && svc.bdAccountId ? svc.bdAccountId : undefined,
         service: svc.service || undefined,
         shipmentValue: svc.shipmentValue ? +svc.shipmentValue : undefined,
         referenceNo: svc.referenceNo || undefined,
@@ -909,6 +912,13 @@ export function CreateShipment() {
             {vendorTouched && autoCarrier && (
               <button className="secondary" style={{ marginTop: 4, padding: '2px 8px', fontSize: 11 }} onClick={() => { setVendorTouched(false); setSvc((s) => ({ ...s, vendor: autoCarrier.vendor })); }}>↺ auto-pick</button>
             )}
+          </div>}
+          {!isClient && /BLUE|BDR/i.test(svc.vendor) && bdAccts.length > 0 && <div>
+            <label>BlueDart account <span className="muted">(which account code books this)</span></label>
+            <select value={svc.bdAccountId} onChange={(e) => setSvc({ ...svc, bdAccountId: e.target.value })}>
+              <option value="">Default{bdAccts.find((a) => a.isDefault) ? ` — ${bdAccts.find((a) => a.isDefault)?.label}` : ''}</option>
+              {bdAccts.map((a) => <option key={a.id} value={a.id}>{a.label} ({a.areaCode} · {a.customerCode})</option>)}
+            </select>
           </div>}
           {!isClient && <div><label>Service</label><input value={svc.service} onChange={(e) => setSvc({ ...svc, service: e.target.value })} placeholder="SELF / DHL / …" /></div>}
           <div><label>Shipment value ₹</label><input type="number" value={svc.shipmentValue} onChange={(e) => setSvc({ ...svc, shipmentValue: e.target.value })} /></div>

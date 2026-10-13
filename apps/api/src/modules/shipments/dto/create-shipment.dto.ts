@@ -86,6 +86,7 @@ export class CreateShipmentDto {
 
   // ---- services extras ----
   @IsOptional() @IsString() vendor?: string;
+  @IsOptional() @IsString() bdAccountId?: string; // which BlueDart account/customer code to book under (manual pick)
   @IsOptional() @IsString() service?: string;
   @IsOptional() @IsNumber() shipmentValue?: number;
   @IsOptional() @IsBoolean() isCommercial?: boolean;

@@ -15,6 +15,16 @@ export function BlueDart() {
   const [syncAllMsg, setSyncAllMsg] = useState('');
   const [dispatchMsg, setDispatchMsg] = useState('');
   const [dispatchStat, setDispatchStat] = useState<{ pending: number; failed: number; running: boolean } | null>(null);
+  // BlueDart account codes (config of all accounts; manual pick at booking)
+  const accBlank = { id: '', label: '', accountCode: '', areaCode: '', loginId: '', licKey: '', trackLoginId: '', trackLicKey: '', customerCode: '', isDefault: false, active: true };
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [acc, setAcc] = useState<any>({ ...accBlank });
+  const [accMsg, setAccMsg] = useState('');
+  const loadAccounts = () => api.bdAccounts().then(setAccounts).catch(() => {});
+  const setAccF = (k: string, v: any) => setAcc((a: any) => ({ ...a, [k]: v }));
+  const editAcc = (a: any) => { setAcc({ ...accBlank, id: a.id, label: a.label, accountCode: a.accountCode ?? '', areaCode: a.areaCode, loginId: a.loginId, customerCode: a.customerCode, trackLoginId: a.trackLoginId ?? '', isDefault: a.isDefault, active: a.active, licKey: '', trackLicKey: '' }); setAccMsg('Leave the licence-key fields blank to keep the existing keys.'); };
+  const saveAcc = async () => { setErr(''); try { await api.bdSaveAccount(acc); setAccMsg('✓ Account saved.'); setAcc({ ...accBlank }); loadAccounts(); } catch (e: any) { setErr(e.message); } };
+  const delAcc = async (id: string) => { if (!confirm('Delete this BlueDart account?')) return; try { await api.bdDeleteAccount(id); loadAccounts(); } catch (e: any) { setErr(e.message); } };
 
   // Delhivery
   const [dStatus, setDStatus] = useState<{ configured: boolean; [k: string]: any } | null>(null);
@@ -28,6 +38,7 @@ export function BlueDart() {
     api.bdStatus().then(setStatus).catch((e) => setErr(e.message));
     api.delStatus().then(setDStatus).catch(() => {});
     api.bdDispatchStatus().then(setDispatchStat).catch(() => {});
+    loadAccounts();
   };
   const sendToBd = async () => {
     setErr(''); setDispatchMsg(''); setBusy('dispatch');
@@ -100,6 +111,44 @@ export function BlueDart() {
             Auto-dispatch runs every ~5 min. <strong>{dispatchStat.pending}</strong> BlueDart shipment(s) awaiting hand-off{dispatchStat.failed > 0 ? <>, of which <strong style={{ color: 'var(--bad, #c0392b)' }}>{dispatchStat.failed}</strong> failed (bad data / out-of-area) — fix on Edit AWB & they retry.</> : '.'}{dispatchStat.running ? ' A run is in progress…' : ''}
           </div>
         )}
+      </div>
+
+      <div className="card">
+        <h2 style={{ marginTop: 0 }}>BlueDart accounts <span className="muted" style={{ fontSize: 12, fontWeight: 400 }}>— all account codes; ops picks one at booking</span></h2>
+        <p className="muted" style={{ fontSize: 12, marginTop: -6 }}>Each account = one origin area (BOM/DEL/GZB…) with its own login + shipping licence key + customer code. Mark one <strong>default</strong>. Hand-off &amp; pickup use the account picked on the shipment (or the default).</p>
+        <div className="grid cols-4" style={{ gap: 10 }}>
+          <div><label>Label *</label><input value={acc.label} onChange={(e) => setAccF('label', e.target.value)} placeholder="Mumbai — BOM439154" /></div>
+          <div><label>Account code</label><input value={acc.accountCode} onChange={(e) => setAccF('accountCode', e.target.value)} placeholder="BOM439154" /></div>
+          <div><label>Area code *</label><input value={acc.areaCode} maxLength={3} onChange={(e) => setAccF('areaCode', e.target.value.toUpperCase())} placeholder="BOM" /></div>
+          <div><label>Customer code *</label><input value={acc.customerCode} onChange={(e) => setAccF('customerCode', e.target.value)} placeholder="439154" /></div>
+          <div><label>Shipping login id *</label><input value={acc.loginId} onChange={(e) => setAccF('loginId', e.target.value)} placeholder="BOM27377" /></div>
+          <div><label>Shipping licence key{acc.id ? ' (blank = keep)' : ' *'}</label><input value={acc.licKey} onChange={(e) => setAccF('licKey', e.target.value)} placeholder="32-char key" /></div>
+          <div><label>Tracking login id</label><input value={acc.trackLoginId} onChange={(e) => setAccF('trackLoginId', e.target.value)} placeholder="optional" /></div>
+          <div><label>Tracking licence key{acc.id ? ' (blank = keep)' : ''}</label><input value={acc.trackLicKey} onChange={(e) => setAccF('trackLicKey', e.target.value)} placeholder="optional" /></div>
+          <div className="row" style={{ gap: 12, alignItems: 'center' }}>
+            <label className="row" style={{ gap: 4, fontSize: 13, margin: 0 }}><input type="checkbox" checked={acc.isDefault} onChange={(e) => setAccF('isDefault', e.target.checked)} style={{ width: 'auto' }} />Default</label>
+            <label className="row" style={{ gap: 4, fontSize: 13, margin: 0 }}><input type="checkbox" checked={acc.active} onChange={(e) => setAccF('active', e.target.checked)} style={{ width: 'auto' }} />Active</label>
+          </div>
+        </div>
+        <div className="row" style={{ gap: 8, marginTop: 10, alignItems: 'center' }}>
+          <button onClick={saveAcc} disabled={!acc.label || !acc.areaCode || !acc.customerCode || !acc.loginId}>{acc.id ? 'Save changes' : 'Add account'}</button>
+          {acc.id && <button className="secondary" onClick={() => { setAcc({ ...accBlank }); setAccMsg(''); }}>Cancel edit</button>}
+          {accMsg && <span className="muted" style={{ fontSize: 12 }}>{accMsg}</span>}
+        </div>
+        <table style={{ fontSize: 13, marginTop: 12 }}>
+          <thead><tr><th>Label</th><th>Area</th><th>Cust code</th><th>Login</th><th>Ship key</th><th>Default</th><th>Active</th><th></th></tr></thead>
+          <tbody>
+            {accounts.map((a) => (
+              <tr key={a.id}>
+                <td>{a.label}</td><td>{a.areaCode}</td><td>{a.customerCode}</td><td>{a.loginId}</td>
+                <td>{a.licKeySet ? `…${a.licKeyLast4}` : <span style={{ color: 'var(--bad, #c0392b)' }}>missing</span>}</td>
+                <td>{a.isDefault ? '✓' : '—'}</td><td>{a.active ? '✓' : '—'}</td>
+                <td className="row" style={{ gap: 4 }}><button className="secondary" style={{ padding: '2px 8px' }} onClick={() => editAcc(a)}>✎</button><button className="secondary" style={{ padding: '2px 8px' }} onClick={() => delAcc(a.id)}>🗑</button></td>
+              </tr>
+            ))}
+            {accounts.length === 0 && <tr><td colSpan={8} className="muted">No BlueDart accounts configured — add one above (the single .env account is used until then).</td></tr>}
+          </tbody>
+        </table>
       </div>
 
       <div className="grid cols-2" style={{ gap: 16 }}>

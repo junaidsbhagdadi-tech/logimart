@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles } from '../../common/rbac/roles.decorator';
@@ -95,6 +95,32 @@ export class BluedartController {
   @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
   dispatchStatus() {
     return this.bd.dispatchStatus();
+  }
+
+  // ---- BlueDart account codes (config of all accounts; manual pick at booking) ----
+  @Get('accounts')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  listAccounts() {
+    return this.bd.listAccounts();
+  }
+
+  /** Account picker for the booking screen (no secrets). */
+  @Get('account-options')
+  @Roles(UserRole.CLIENT_ADMIN, UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN, UserRole.DRIVER)
+  accountOptions() {
+    return this.bd.accountOptions();
+  }
+
+  @Post('accounts')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  upsertAccount(@Body() dto: any) {
+    return this.bd.upsertAccount(dto);
+  }
+
+  @Delete('accounts/:id')
+  @Roles(UserRole.SYS_ADMIN)
+  deleteAccount(@Param('id') id: string) {
+    return this.bd.deleteAccount(Number(id));
   }
 
   /** "Send to BlueDart" — dispatch ALL pending (incl. previously-failed) in the BACKGROUND. */

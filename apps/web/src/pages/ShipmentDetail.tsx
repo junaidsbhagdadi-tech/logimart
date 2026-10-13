@@ -34,6 +34,7 @@ export function ShipmentDetail() {
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
   const [vendors, setVendors] = useState<any[]>([]);
+  const [bdAccts, setBdAccts] = useState<any[]>([]);
   const [fwd, setFwd] = useState({ vendor: '', forwardingAwb: '' });
   const [track, setTrack] = useState<{ code: string; label: string; at: string; remark?: string | null }[]>([]);
   const [addons, setAddons] = useState<any[]>([]);
@@ -58,6 +59,7 @@ export function ShipmentDetail() {
     if (!s) return;
     setEf({
       product: s.product ?? '', vendor: (s as any).vendor ?? '', service: (s as any).service ?? '',
+      bdAccountId: (s as any).bdAccountId != null ? String((s as any).bdAccountId) : '',
       docType: s.docType ?? '', paymentTerm: (s as any).paymentTerm ?? 'PREPAID',
       consigneeName: (s as any).consigneeName ?? '', consigneePhone: (s as any).consigneePhone ?? '',
       consigneeAddress: (s as any).consigneeAddress ?? '',
@@ -137,6 +139,7 @@ export function ShipmentDetail() {
   };
   const removeAddon = async (id: string) => { if (!confirm('Delete this add-on charge?')) return; try { await api.deleteAddon(id); load(); } catch (e: any) { setError(e.message); } };
   useEffect(() => { if (canHandover) api.listVendors().then((v) => setVendors(v.filter((x: any) => x.isActive !== false))).catch(() => {}); }, [canHandover]);
+  useEffect(() => { if (canHandover) api.bdAccountOptions().then(setBdAccts).catch(() => {}); }, [canHandover]);
 
   const forward = async () => {
     setError(''); setMsg('');
@@ -453,6 +456,12 @@ export function ShipmentDetail() {
               <input list="sd-edit-vendors" value={ef.vendor} onChange={(e) => setEfield('vendor', e.target.value.toUpperCase())} placeholder="SELF or code" />
               <datalist id="sd-edit-vendors">{vendors.map((v) => <option key={v.id} value={(v.vendorCode || v.name).toUpperCase()}>{v.vendorCode} — {v.name}</option>)}</datalist>
             </div>
+            {/BLUE|BDR/i.test(ef.vendor || '') && bdAccts.length > 0 && <div><label>BlueDart account</label>
+              <select value={ef.bdAccountId ?? ''} onChange={(e) => setEfield('bdAccountId', e.target.value)}>
+                <option value="">Default{bdAccts.find((a) => a.isDefault) ? ` — ${bdAccts.find((a) => a.isDefault)?.label}` : ''}</option>
+                {bdAccts.map((a) => <option key={a.id} value={a.id}>{a.label} ({a.areaCode} · {a.customerCode})</option>)}
+              </select>
+            </div>}
             <div><label>Doc type</label>
               <select value={ef.docType} onChange={(e) => setEfield('docType', e.target.value)}>
                 <option value="">—</option><option value="NDOX">NDOX</option><option value="DOX">DOX</option>

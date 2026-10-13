@@ -2,6 +2,9 @@ import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/c
 import { PrismaService } from '../../prisma/prisma.service';
 import { BLUEDART, bdConfigured } from './bluedart.config';
 
+/** The BlueDart account a shipment books under — its login + licence key + customer code + origin area. */
+interface BdAcc { loginId: string; licKey: string; customerCode: string; originArea: string; }
+
 @Injectable()
 export class BluedartService implements OnModuleInit {
   private readonly logger = new Logger('BlueDart');
@@ -241,6 +244,52 @@ export class BluedartService implements OnModuleInit {
     return (await this.areaInfoFor(pincode)).area;
   }
 
+  /** Resolve which BlueDart account a shipment books under: its manual pick (bdAccountId), else the
+   *  default configured account, else the single env account. */
+  private async resolveAccount(shipment?: { bdAccountId?: bigint | null } | null): Promise<BdAcc> {
+    if (shipment?.bdAccountId != null) {
+      const a = await this.prisma.bdAccount.findUnique({ where: { id: shipment.bdAccountId } }).catch(() => null);
+      if (a && a.active) return { loginId: a.loginId, licKey: a.licKey, customerCode: a.customerCode, originArea: a.areaCode };
+    }
+    const def = await this.prisma.bdAccount.findFirst({ where: { isDefault: true, active: true } }).catch(() => null);
+    if (def) return { loginId: def.loginId, licKey: def.licKey, customerCode: def.customerCode, originArea: def.areaCode };
+    return { loginId: BLUEDART.loginId, licKey: BLUEDART.licKey, customerCode: BLUEDART.customerCode || BLUEDART.loginId, originArea: BLUEDART.originArea };
+  }
+
+  /** List / upsert / delete BlueDart accounts (admin config of all account codes). */
+  async listAccounts() {
+    const rows = await this.prisma.bdAccount.findMany({ orderBy: [{ isDefault: 'desc' }, { areaCode: 'asc' }] });
+    // Don't leak full licence keys to the browser — show a fingerprint only.
+    return rows.map((a) => ({ id: a.id.toString(), label: a.label, accountCode: a.accountCode, areaCode: a.areaCode, loginId: a.loginId, customerCode: a.customerCode, licKeySet: !!a.licKey, licKeyLast4: a.licKey ? a.licKey.slice(-4) : null, trackLoginId: a.trackLoginId, trackLicKeySet: !!a.trackLicKey, isDefault: a.isDefault, active: a.active }));
+  }
+  /** Accounts for the booking-screen picker (no secrets). */
+  async accountOptions() {
+    const rows = await this.prisma.bdAccount.findMany({ where: { active: true }, orderBy: [{ isDefault: 'desc' }, { areaCode: 'asc' }], select: { id: true, label: true, accountCode: true, areaCode: true, customerCode: true, isDefault: true } });
+    return rows.map((a) => ({ id: a.id.toString(), label: a.label, accountCode: a.accountCode, areaCode: a.areaCode, customerCode: a.customerCode, isDefault: a.isDefault }));
+  }
+  async upsertAccount(dto: any) {
+    const data: any = {
+      label: String(dto.label || '').trim() || `${dto.areaCode} ${dto.customerCode}`,
+      accountCode: dto.accountCode || null,
+      areaCode: String(dto.areaCode || '').trim().toUpperCase(),
+      loginId: String(dto.loginId || '').trim(),
+      customerCode: String(dto.customerCode || '').trim(),
+      trackLoginId: dto.trackLoginId || null,
+      isDefault: !!dto.isDefault,
+      active: dto.active !== false,
+    };
+    if (!data.areaCode || !data.loginId || !data.customerCode) throw new BadRequestException('Area code, login id and customer code are required.');
+    // Only overwrite the keys when provided (so editing without re-typing keeps them).
+    if (dto.licKey) data.licKey = String(dto.licKey).trim();
+    if (dto.trackLicKey !== undefined) data.trackLicKey = dto.trackLicKey ? String(dto.trackLicKey).trim() : null;
+    if (!dto.id && !data.licKey) throw new BadRequestException('Shipping licence key is required for a new account.');
+    const a = dto.id ? await this.prisma.bdAccount.update({ where: { id: BigInt(dto.id) }, data }) : await this.prisma.bdAccount.create({ data });
+    // Enforce a single default.
+    if (a.isDefault) await this.prisma.bdAccount.updateMany({ where: { id: { not: a.id }, isDefault: true }, data: { isDefault: false } });
+    return { id: a.id.toString(), ok: true };
+  }
+  async deleteAccount(id: number) { await this.prisma.bdAccount.delete({ where: { id: BigInt(id) } }); return { ok: true }; }
+
   /**
    * Hand off a Logimart shipment to BlueDart (GenerateWayBill). The full request has
    * ~40 fields; mapWaybill() is the Logimart→BlueDart mapping, finalized field-by-field
@@ -250,26 +299,25 @@ export class BluedartService implements OnModuleInit {
     this.ensure();
     const s = await this.prisma.shipment.findUnique({ where: { awb }, include: { client: true, pieces: true } });
     if (!s) throw new BadRequestException(`AWB ${awb} not found`);
+    // Resolve which BlueDart account this shipment books under (manual pick → bdAccountId, else default).
+    const acc = await this.resolveAccount(s);
     // Pre-flight: catch the fields BlueDart rejects (Invalid Consignee Name, BlankContactNo, …) with a
     // plain message BEFORE calling the carrier, so ops knows exactly what to fix on Edit AWB.
     const miss = this.bdMissing(s);
     if (miss.length) throw new BadRequestException(`Can't hand off to BlueDart — missing: ${miss.join(', ')}. Fix these on Edit AWB and retry.`);
-    // OriginArea must be the pickup pincode's BlueDart area code (e.g. DEL/BOM/BLR) — a fixed default
-    // gives "InvalidAreaScNotInRegion" for any out-of-area origin. Derive it from serviceability's AreaCode.
-    // Also capture origin+dest "AREA / SC" codes for the shipping label (ORG/DST line).
+    // Capture origin+dest "AREA / SC" codes for the shipping label (ORG/DST line).
     const org = await this.areaInfoFor((s as any).shipperPincode ?? (s as any).client?.pincode);
     const dst = await this.areaInfoFor((s as any).destPincode);
-    // Out-of-area origin: BlueDart can't GENERATE a waybill when the pickup area isn't the account's
-    // own area (returns a cryptic "UnauthorizedUser"). Give ops a clear, actionable message and point
-    // them at the pickup flow, which DOES work outstation for a to-pay collection.
-    const home = String(BLUEDART.originArea || '').toUpperCase();
+    // The pickup pincode's area must match the SELECTED account's area, else BlueDart can't generate a
+    // waybill (cryptic "UnauthorizedUser" / area-SC-region). Point ops at the right account / to-pay pickup.
+    const home = String(acc.originArea || '').toUpperCase();
     if (home && org.area && org.area.toUpperCase() !== home) {
       throw new BadRequestException(
-        `${awb} originates in ${org.area} (pin ${(s as any).shipperPincode ?? (s as any).client?.pincode ?? '?'}), outside the ${home} BlueDart account's area — BlueDart can't generate a waybill for an out-of-area origin. ` +
-        `For an outstation / import shipment, mark it To-Pay and use the "📅 BlueDart pickup" button to register a to-pay collection — BlueDart assigns the AWB after pickup.`,
+        `${awb} originates in ${org.area} (pin ${(s as any).shipperPincode ?? (s as any).client?.pincode ?? '?'}), but the selected BlueDart account is for ${home} — BlueDart can't generate a waybill across areas. ` +
+        `Pick the ${org.area} BlueDart account on Edit AWB, or mark it To-Pay and use the "📅 BlueDart pickup" button for an outstation collection.`,
       );
     }
-    const payload = this.mapWaybill(s, org.area);
+    const payload = this.mapWaybill(s, acc);
     const resp = await this.authed('/waybill/v1/GenerateWayBill', { method: 'POST', body: JSON.stringify(payload) });
     // APIGEE wraps the TSD WayBillGenerationResponse in GenerateWayBillResult{ AWBNo, IsError,
     // Status[]{StatusCode,StatusInformation}, TokenNumber, AWBPrintContent }. Unwrap it for both
@@ -310,11 +358,12 @@ export class BluedartService implements OnModuleInit {
    *  Accepts our AWB (resolves the stored bdWaybill) or a BlueDart waybill number directly. */
   async cancelWaybill(awb: string) {
     this.ensure();
-    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, bdWaybill: true } });
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, bdWaybill: true, bdAccountId: true } });
     const bd = s?.bdWaybill || awb;
+    const acc = await this.resolveAccount(s);
     const resp = await this.authed('/waybill/v1/CancelWaybill', {
       method: 'POST',
-      body: JSON.stringify({ Request: { AWBNo: bd }, Profile: { LoginID: BLUEDART.loginId, LicenceKey: BLUEDART.licKey, Api_type: 'S' } }),
+      body: JSON.stringify({ Request: { AWBNo: bd }, Profile: { LoginID: acc.loginId, LicenceKey: acc.licKey, Api_type: 'S' } }),
     });
     // Response wrapped in CancelWaybillResult{ AWBNo, IsError, Status[]{StatusCode,StatusInformation} }.
     const result = resp?.CancelWaybillResult ?? resp;
@@ -369,8 +418,8 @@ export class BluedartService implements OnModuleInit {
     return 'P';
   }
 
-  /** Map Logimart shipment → BlueDart GenerateWayBill request (TSD v2.7). */
-  private mapWaybill(s: any, originArea?: string) {
+  /** Map Logimart shipment → BlueDart GenerateWayBill request (TSD v2.7), under account `acc`. */
+  private mapWaybill(s: any, acc: BdAcc) {
     // Dimensions grouped by identical box size, with a Count per size (TSD Dimension object).
     const dimGroups = new Map<string, { Length: number; Breadth: number; Height: number; Count: number }>();
     for (const p of s.pieces ?? []) {
@@ -386,8 +435,8 @@ export class BluedartService implements OnModuleInit {
     return {
       Request: {
         Shipper: {
-          OriginArea: originArea || BLUEDART.originArea || String(s.originZone ?? '').slice(0, 3).toUpperCase(),
-          CustomerCode: BLUEDART.customerCode || BLUEDART.loginId,
+          OriginArea: acc.originArea || BLUEDART.originArea || String(s.originZone ?? '').slice(0, 3).toUpperCase(),
+          CustomerCode: acc.customerCode,
           CustomerName: (s.shipperName ?? s.client?.legalName ?? '').slice(0, 30),
           CustomerAddress1: (s.shipperAddress1 ?? s.client?.addressLine ?? '').slice(0, 30),
           CustomerAddress2: (s.shipperAddress2 ?? '').slice(0, 30),
@@ -424,7 +473,7 @@ export class BluedartService implements OnModuleInit {
           InvoiceNo: (s.referenceNo ?? '').slice(0, 10),
         },
       },
-      Profile: { LoginID: BLUEDART.loginId, LicenceKey: BLUEDART.licKey, Api_type: 'S' },
+      Profile: { LoginID: acc.loginId, LicenceKey: acc.licKey, Api_type: 'S' },
     };
   }
 
@@ -439,8 +488,8 @@ export class BluedartService implements OnModuleInit {
   /** The Pickup API (RegisterPickup/CancelPickup) wants a LOWERCASE `request`/`profile` envelope —
    *  UNLIKE the Waybill API's capitalized `Request`/`Profile`. Sending the capitalized shape → HTTP 500.
    *  (Verified against BlueDart's own sample request.) */
-  private pickupBody(request: any) {
-    return { request, profile: { Api_type: 'S', LicenceKey: BLUEDART.licKey, LoginID: BLUEDART.loginId } };
+  private pickupBody(request: any, acc?: BdAcc) {
+    return { request, profile: { Api_type: 'S', LicenceKey: acc?.licKey ?? BLUEDART.licKey, LoginID: acc?.loginId ?? BLUEDART.loginId } };
   }
 
   /** Raw RegisterPickup pass-through (advanced/manual use). */
@@ -459,6 +508,7 @@ export class BluedartService implements OnModuleInit {
     this.ensure();
     const s = await this.prisma.shipment.findUnique({ where: { awb }, include: { client: true } }) as any;
     if (!s) throw new BadRequestException(`AWB ${awb} not found`);
+    const acc = await this.resolveAccount(s);
     const pin = String(s.shipperPincode ?? s.client?.pincode ?? '').trim();
     const phone = this.bdMobile(s.shipperContact ?? s.client?.contactPhone);
     const when = dto.date ? new Date(dto.date) : new Date();
@@ -482,21 +532,21 @@ export class BluedartService implements OnModuleInit {
     // freight term for the "mutually agreed" outstation carriage; the Logimart customer is still
     // billed per the shipment's own payment term. (areaInfoFor falls back to the home area on any
     // serviceability hiccup → outstation=false → no behaviour change.)
-    const home = String(BLUEDART.originArea || '').toUpperCase();
+    const home = String(acc.originArea || '').toUpperCase();
     const pickArea = String((await this.areaInfoFor(pin)).area || '').toUpperCase();
     const outstation = !!(home && pickArea && pickArea !== home);
     const isToPayShipper = toPay || outstation;
-    // Pickup API uses the ACCOUNT's home area code (BLUEDART_ORIGIN_AREA, e.g. BOM) — NOT the pickup
-    // pincode's area. Full field set per BlueDart's sample (missing fields → HTTP 500).
+    // Pickup API uses the ACCOUNT's home area code — NOT the pickup pincode's area. Full field set per
+    // BlueDart's sample (missing fields → HTTP 500).
     const request = {
       AWBNo: [''],
-      AreaCode: BLUEDART.originArea,
+      AreaCode: acc.originArea,
       CISDDN: false,
       ContactPersonName: name,
       CustomerAddress1: addr1.slice(0, 30),
       CustomerAddress2: String(s.shipperAddress2 ?? '').slice(0, 30),
       CustomerAddress3: String(s.shipperCity ?? '').slice(0, 30),
-      CustomerCode: BLUEDART.customerCode || BLUEDART.loginId,
+      CustomerCode: acc.customerCode,
       CustomerName: name,
       CustomerPincode: pin,
       CustomerTelephoneNumber: phone,
@@ -519,7 +569,7 @@ export class BluedartService implements OnModuleInit {
       WeightofShipment: weight,
       isToPayShipper,
     };
-    const resp = await this.authed('/pickup/v1/RegisterPickup', { method: 'POST', body: JSON.stringify(this.pickupBody(request)) });
+    const resp = await this.authed('/pickup/v1/RegisterPickup', { method: 'POST', body: JSON.stringify(this.pickupBody(request, acc)) });
     const result = resp?.RegisterPickupResult ?? resp;
     if (result?.IsError === true || result?.isError === true) {
       throw new BadRequestException(`BlueDart pickup failed: ${this.bdStatusMsg(result) || JSON.stringify(result).slice(0, 300)}`);

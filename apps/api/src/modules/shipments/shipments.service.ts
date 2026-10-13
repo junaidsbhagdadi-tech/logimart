@@ -254,6 +254,7 @@ export class ShipmentsService {
         consigneeDocNo: dto.consigneeDocNo || null,
         // ---- services extras ----
         vendor: dto.vendor || null,
+        bdAccountId: (dto as any).bdAccountId ? BigInt((dto as any).bdAccountId) : null,
         service: dto.service || null,
         forwardingAwb: (dto as any).forwardingAwb || null,
         shipmentValue: dto.shipmentValue != null ? new Prisma.Decimal(dto.shipmentValue) : null,
@@ -789,6 +790,7 @@ export class ShipmentsService {
     str('service', dto.service);
     upper('product', dto.product);
     upper('vendor', dto.vendor);
+    if (dto.bdAccountId !== undefined) data.bdAccountId = dto.bdAccountId ? BigInt(dto.bdAccountId) : null;
     if (dto.docType !== undefined) data.docType = dto.docType || null;
     if (dto.paymentTerm !== undefined) data.paymentTerm = dto.paymentTerm;
     dec('shipmentValue', dto.shipmentValue);

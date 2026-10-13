@@ -643,6 +643,10 @@ export const api = {
   bdDispatch: (awb: string) => request<{ awb: string; ok: boolean; action: string; bdWaybill?: string | null; token?: string | null; error?: string }>(`/api/v1/bluedart/dispatch/${awb}`, { method: 'POST' }),
   bdDispatchStatus: () => request<{ pending: number; failed: number; running: boolean }>('/api/v1/bluedart/dispatch-status'),
   bdDispatchAll: () => request<{ started: boolean; pending: number; failed: number; message: string }>('/api/v1/bluedart/dispatch-all', { method: 'POST' }),
+  bdAccounts: () => request<{ id: string; label: string; accountCode: string | null; areaCode: string; loginId: string; customerCode: string; licKeySet: boolean; licKeyLast4: string | null; trackLoginId: string | null; trackLicKeySet: boolean; isDefault: boolean; active: boolean }[]>('/api/v1/bluedart/accounts'),
+  bdAccountOptions: () => request<{ id: string; label: string; accountCode: string | null; areaCode: string; customerCode: string; isDefault: boolean }[]>('/api/v1/bluedart/account-options'),
+  bdSaveAccount: (dto: unknown) => request<{ id: string; ok: boolean }>('/api/v1/bluedart/accounts', { method: 'POST', body: JSON.stringify(dto) }),
+  bdDeleteAccount: (id: string) => request<{ ok: boolean }>(`/api/v1/bluedart/accounts/${id}`, { method: 'DELETE' }),
   // ---- Delhivery B2B / LTL carrier integration ----
   delStatus: () => request<{ configured: boolean; [k: string]: any }>('/api/v1/delhivery/status'),
   delServiceable: (pincode: string, weight?: number) => request<any>(`/api/v1/delhivery/serviceable/${pincode}${weight ? `?weight=${weight}` : ''}`),

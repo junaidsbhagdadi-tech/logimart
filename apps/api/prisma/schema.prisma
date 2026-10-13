@@ -553,6 +553,7 @@ model Shipment {
   bdPickupAt     DateTime? // when the BlueDart pickup was scheduled
   bdError        String?   @db.Text  // last auto-dispatch failure (missing data / out-of-area) for retry visibility
   bdDispatchAt   DateTime? // last auto-dispatch attempt (to pace retries of failed ones)
+  bdAccountId    BigInt?   // which BlueDart account (BdAccount) this shipment is booked under (manual pick)
   bdRouteOrg     String?   // BlueDart origin "AREA / SERVICECENTRE" (e.g. BOM / SAK) for the label
   bdRouteDst     String?   // BlueDart destination "AREA / SERVICECENTRE" (e.g. ABA / AMY) for the label
 
@@ -1448,6 +1449,28 @@ enum IntlStatus {
   OUT_FOR_DELIVERY
   DELIVERED
   CANCELLED
+}
+
+// A BlueDart account/customer code (one per origin area). Ops picks which one a shipment books under;
+// hand-off/pickup use its login + licence key + customer code + origin area. Separate from the single
+// env default so finance can manage all account codes without a redeploy.
+model BdAccount {
+  id           BigInt   @id @default(autoincrement())
+  label        String // "Mumbai — BOM439154"
+  accountCode  String? // BOM439154 (display)
+  areaCode     String // BOM / DEL / GZB (3-char BlueDart area)
+  loginId      String // e.g. BOM27377
+  licKey       String // shipping licence key
+  trackLoginId String? // optional per-account tracking login
+  trackLicKey  String? // optional per-account tracking licence key
+  customerCode String // 6-digit BlueDart customer code
+  isDefault    Boolean  @default(false)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([areaCode])
+  @@map("bd_accounts")
 }
 
 model IntlShipment {
