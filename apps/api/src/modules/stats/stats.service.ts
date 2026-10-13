@@ -58,4 +58,29 @@ export class StatsService {
       revenueTrend,
     };
   }
+
+  /** Windowed KPIs for the multi-carrier Shipping Hub home (today / 7d / 30d). */
+  async hubSummary(window: 'today' | '7d' | '30d' = '7d', clientId?: bigint) {
+    const now = new Date();
+    const since = window === 'today' ? new Date(new Date().setHours(0, 0, 0, 0)) : new Date(now.getTime() - (window === '30d' ? 30 : 7) * 864e5);
+    const base: any = { createdAt: { gte: since }, ...(clientId != null ? { clientId } : {}) };
+    const inSet = (codes: string[]) => ({ ...base, statusCode: { in: codes } });
+    const [total, delivered, inTransit, outForDelivery, exceptions, returns, pendingBooking, byCarrier, pendingReqPickups, bdPendingPickups] = await Promise.all([
+      this.prisma.shipment.count({ where: base }),
+      this.prisma.shipment.count({ where: inSet(['DLD', 'RTD']) }),
+      this.prisma.shipment.count({ where: inSet(['PKD', 'ORD', 'DPD', 'DRD']) }),
+      this.prisma.shipment.count({ where: inSet(['OFD']) }),
+      this.prisma.shipment.count({ where: inSet(['UDL', 'RTO']) }),
+      this.prisma.shipment.count({ where: inSet(['RTO', 'RTD']) }),
+      this.prisma.shipment.count({ where: inSet(['MAN']) }),
+      this.prisma.shipment.groupBy({ by: ['vendor'], where: base, _count: { _all: true } }),
+      this.prisma.pickupRequest.count({ where: { status: { in: ['REQUESTED', 'ASSIGNED'] as any }, ...(clientId != null ? { clientId } : {}) } }),
+      this.prisma.shipment.count({ where: { bdPickupToken: { not: null }, bdWaybill: null, statusCode: { not: 'CAN' }, ...(clientId != null ? { clientId } : {}) } }),
+    ]);
+    const carriers = byCarrier.map((c) => ({ vendor: c.vendor || 'SELF', count: c._count._all })).sort((a, b) => b.count - a.count);
+    return {
+      window, total, delivered, inTransit, outForDelivery, exceptions, returns, pendingBooking,
+      pendingPickups: pendingReqPickups + bdPendingPickups, carriers,
+    };
+  }
 }

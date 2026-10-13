@@ -108,4 +108,53 @@ export class PickupsService {
     if (!p) throw new NotFoundException('Pickup request not found');
     return p;
   }
+
+  /** Unified pickups across all carriers — internal pickup requests (any vendor / rider) merged with
+   *  carrier-registered pickups (BlueDart). Powers the mobile Pickups app. Normalised + filterable. */
+  async unified(params: { status?: string; carrier?: string; window?: 'today' | 'upcoming' | 'all'; clientId?: number } = {}) {
+    const cf = params.clientId != null ? BigInt(params.clientId) : undefined;
+    const [reqs, bds] = await Promise.all([
+      this.prisma.pickupRequest.findMany({ where: cf != null ? { clientId: cf } : {}, orderBy: { createdAt: 'desc' }, take: 400 }),
+      this.prisma.shipment.findMany({
+        where: { bdPickupToken: { not: null }, ...(cf != null ? { clientId: cf } : {}) },
+        orderBy: { bdPickupAt: 'desc' }, take: 400,
+        select: { awb: true, clientId: true, bdPickupToken: true, bdPickupAt: true, bdWaybill: true, bdStatus: true, statusCode: true, shipperName: true, shipperAddress1: true, shipperCity: true, shipperPincode: true, shipperContact: true, pieceCount: true },
+      }),
+    ]);
+    const clientIds = [...new Set([...reqs.map((r) => r.clientId.toString()), ...bds.map((b) => b.clientId.toString())])].map((i) => BigInt(i));
+    const riderIds = [...new Set(reqs.map((r) => r.assignedRiderId).filter((x): x is bigint => !!x).map((x) => x.toString()))].map((i) => BigInt(i));
+    const [clients, riders] = await Promise.all([
+      clientIds.length ? this.prisma.b2bClient.findMany({ where: { id: { in: clientIds } }, select: { id: true, legalName: true, accountCode: true } }) : [],
+      riderIds.length ? this.prisma.user.findMany({ where: { id: { in: riderIds } }, select: { id: true, fullName: true, riderCode: true } }) : [],
+    ]);
+    const cn = new Map<string, any>(clients.map((c) => [c.id.toString(), c] as [string, any]));
+    const rn = new Map<string, any>(riders.map((r) => [r.id.toString(), r] as [string, any]));
+    const reqStatus = (s: string) => (s === 'REQUESTED' ? 'PENDING' : s === 'ASSIGNED' ? 'SCHEDULED' : s === 'PICKED' ? 'PICKED' : s === 'CANCELLED' ? 'CANCELLED' : s);
+    const items: any[] = [
+      ...reqs.map((r) => ({
+        id: 'req-' + r.id, source: 'REQUEST', requestId: r.id.toString(),
+        carrier: r.assignedRiderId ? 'Rider' : (r.vendor || '—'), ref: null, awb: null,
+        customer: cn.get(r.clientId.toString())?.legalName ?? null, address: r.pickupAddress, city: r.city, pincode: r.pincode,
+        pieces: r.estPieces, contact: r.contactPhone, scheduledAt: r.createdAt, status: reqStatus(String(r.status)),
+        rider: r.assignedRiderId ? (rn.get(r.assignedRiderId.toString())?.riderCode ?? `#${r.assignedRiderId}`) : null,
+      })),
+      ...bds.map((b) => ({
+        id: 'bd-' + b.awb, source: 'CARRIER', requestId: null,
+        carrier: 'BlueDart', ref: b.bdPickupToken, awb: b.awb,
+        customer: cn.get(b.clientId.toString())?.legalName ?? null, address: b.shipperAddress1, city: b.shipperCity, pincode: b.shipperPincode,
+        pieces: b.pieceCount, contact: b.shipperContact, scheduledAt: b.bdPickupAt,
+        status: String(b.statusCode) === 'CAN' ? 'CANCELLED' : (b.bdWaybill ? 'PICKED' : 'SCHEDULED'), bdStatus: b.bdStatus, rider: null,
+      })),
+    ];
+    let out = items;
+    if (params.carrier) out = out.filter((i) => String(i.carrier).toUpperCase().includes(params.carrier!.toUpperCase()));
+    if (params.status) out = out.filter((i) => i.status === params.status);
+    if (params.window && params.window !== 'all') {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today.getTime() + 864e5);
+      out = out.filter((i) => { if (!i.scheduledAt) return false; const d = new Date(i.scheduledAt); return params.window === 'today' ? d >= today && d < tomorrow : d >= today; });
+    }
+    out.sort((a, b) => new Date(b.scheduledAt || 0).getTime() - new Date(a.scheduledAt || 0).getTime());
+    return out.slice(0, 500);
+  }
 }

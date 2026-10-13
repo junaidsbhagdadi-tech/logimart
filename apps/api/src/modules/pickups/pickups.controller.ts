@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { IsInt, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
@@ -51,6 +51,13 @@ export class PickupsController {
   list(@Req() req: any) {
     const clientId = req.user.role === UserRole.CLIENT_ADMIN ? BigInt(req.user.clientId) : undefined;
     return this.pickups.list(clientId);
+  }
+
+  /** Unified pickups across all carriers (internal requests + BlueDart) — for the mobile Pickups app. */
+  @Get('unified')
+  unified(@Req() req: any, @Query('status') status?: string, @Query('carrier') carrier?: string, @Query('window') window?: string) {
+    const clientId = req.user.role === UserRole.CLIENT_ADMIN ? Number(req.user.clientId) : undefined;
+    return this.pickups.unified({ status, carrier, window: (window as any) || 'all', clientId });
   }
 
   @Post(':id/assign')

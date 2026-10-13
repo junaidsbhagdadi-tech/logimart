@@ -791,6 +791,7 @@ export const api = {
     request(`/api/v1/leads/${leadId}/quotations`, { method: 'POST', body: JSON.stringify(body) }),
 
   // ---- stats / dashboard ----
+  statsHub: (window = '7d') => request<{ window: string; total: number; delivered: number; inTransit: number; outForDelivery: number; exceptions: number; returns: number; pendingBooking: number; pendingPickups: number; carriers: { vendor: string; count: number }[] }>(`/api/v1/stats/hub?window=${window}`),
   statsOverview: () =>
     request<{
       shipments: { total: number; byStatus: Record<string, number> };
@@ -805,6 +806,10 @@ export const api = {
 
   // ---- pickups ----
   listPickups: () => request<any[]>('/api/v1/pickups'),
+  pickupsUnified: (p: { status?: string; carrier?: string; window?: string } = {}) => {
+    const qs = Object.entries(p).filter(([, v]) => v).map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join('&');
+    return request<any[]>(`/api/v1/pickups/unified${qs ? `?${qs}` : ''}`);
+  },
   createPickup: (body: unknown) =>
     request('/api/v1/pickups', { method: 'POST', body: JSON.stringify(body) }),
   bulkPickups: (rows: any[], vendor?: string) =>

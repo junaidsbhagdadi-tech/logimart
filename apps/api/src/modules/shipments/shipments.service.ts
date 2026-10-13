@@ -916,6 +916,8 @@ export class ShipmentsService {
       destPincode: s.destPincode ?? null,                        // #6
       deliveryVendor: s.bdWaybill ?? s.awb, // carrier waybill; self = own AWB
       status: s.status,
+      statusCode: s.statusCode ?? 'MAN', // milestone code (MAN/PKD/…/DLD/UDL/RTO) for hub filters
+      bdStatus: (s as any).bdStatus ?? null,
     }));
   }
 
