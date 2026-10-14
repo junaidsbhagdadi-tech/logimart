@@ -769,6 +769,8 @@ model Invoice {
   clientId    BigInt
   client      B2bClient     @relation(fields: [clientId], references: [id])
   invoiceNo   String        @unique
+  companyCode String?       // billing legal entity (service-centre code) this invoice was raised under
+  seller      Json?         // snapshot of the billing company's identity at generation (stable for reprints)
   periodStart DateTime      @db.Date
   periodEnd   DateTime      @db.Date
   subtotal    Decimal       @default(0) @db.Decimal(14, 2)
@@ -1316,6 +1318,7 @@ model Expense {
   paidBy      String?
   paidTo      String?
   branch      String? // BOM | DEL | AHD | BLR ...
+  attachmentUrl String? // bill/receipt image — Spaces object key (or inline data URI on a bare deploy)
   createdById BigInt?
   createdAt   DateTime @default(now())
 

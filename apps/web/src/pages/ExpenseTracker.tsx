@@ -10,6 +10,7 @@ export function ExpenseTracker() {
   const [data, setData] = useState<{ count: number; total: number; byCategory: Record<string, number>; byBranch: Record<string, number>; balanceByBranch?: Record<string, { funded: number; spent: number; balance: number }>; rows: any[] } | null>(null);
   const [filters, setFilters] = useState({ from: '', to: '', branch: '', category: '' });
   const [form, setForm] = useState({ date: today(), mode: 'CASH', category: 'Vehicle', remark: '', amount: '', companyAmount: '', paidBy: '', paidTo: '', branch: '' });
+  const [attachment, setAttachment] = useState<{ name: string; dataUrl: string } | null>(null);
   const [err, setErr] = useState('');
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
@@ -19,11 +20,19 @@ export function ExpenseTracker() {
 
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
+  const onAttach = (f: File | null) => {
+    if (!f) { setAttachment(null); return; }
+    if (f.size > 8 * 1024 * 1024) { setErr('Attachment too large (max 8 MB).'); return; }
+    const reader = new FileReader();
+    reader.onload = () => setAttachment({ name: f.name, dataUrl: String(reader.result) });
+    reader.readAsDataURL(f);
+  };
+
   const add = async () => {
     setErr(''); setMsg('');
     if (!(Number(form.amount) > 0)) { setErr('Enter an amount greater than zero.'); return; }
     setBusy(true);
-    try { await api.createExpense({ ...form, amount: Number(form.amount), companyAmount: form.companyAmount !== '' ? Number(form.companyAmount) : undefined }); setMsg('✓ Expense recorded.'); setForm((f) => ({ ...f, remark: '', amount: '', companyAmount: '', paidTo: '' })); load(); }
+    try { await api.createExpense({ ...form, amount: Number(form.amount), companyAmount: form.companyAmount !== '' ? Number(form.companyAmount) : undefined, attachment: attachment?.dataUrl }); setMsg('✓ Expense recorded.'); setForm((f) => ({ ...f, remark: '', amount: '', companyAmount: '', paidTo: '' })); setAttachment(null); load(); }
     catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
 
@@ -57,6 +66,11 @@ export function ExpenseTracker() {
           <div><label>Paid by</label><input value={form.paidBy} onChange={(e) => set('paidBy', e.target.value)} placeholder="Neha" /></div>
           <div><label>Paid to</label><input value={form.paidTo} onChange={(e) => set('paidTo', e.target.value)} placeholder="(optional)" /></div>
           <div><label>Branch</label><input value={form.branch} onChange={(e) => set('branch', e.target.value)} placeholder="BOM / DEL / AHD" /></div>
+          <div style={{ gridColumn: 'span 2' }}>
+            <label>Attachment (bill / receipt)</label>
+            <input type="file" accept="image/*,application/pdf" onChange={(e) => { onAttach(e.target.files?.[0] ?? null); e.target.value = ''; }} />
+            {attachment && <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>📎 {attachment.name} <button className="link" style={{ marginLeft: 6 }} onClick={() => setAttachment(null)}>remove</button></div>}
+          </div>
         </div>
         <button style={{ marginTop: 12 }} disabled={busy} onClick={add}>{busy ? 'Saving…' : '➕ Add expense'}</button>
       </div>
@@ -102,7 +116,7 @@ export function ExpenseTracker() {
           <div className="card">
             <div style={{ overflowX: 'auto' }}>
               <table style={{ fontSize: 13 }}>
-                <thead><tr><th>Date</th><th>Mode</th><th>Category</th><th>Remark</th><th style={{ textAlign: 'right' }}>Spent</th><th style={{ textAlign: 'right' }}>Company</th><th>Paid by</th><th>Paid to</th><th>Branch</th><th></th></tr></thead>
+                <thead><tr><th>Date</th><th>Mode</th><th>Category</th><th>Remark</th><th style={{ textAlign: 'right' }}>Spent</th><th style={{ textAlign: 'right' }}>Company</th><th>Paid by</th><th>Paid to</th><th>Branch</th><th>Bill</th><th></th></tr></thead>
                 <tbody>
                   {data.rows.map((r) => (
                     <tr key={r.id}>
@@ -110,10 +124,11 @@ export function ExpenseTracker() {
                       <td style={{ textAlign: 'right', fontWeight: 600 }}>{money(Number(r.amount))}</td>
                       <td style={{ textAlign: 'right' }}>{r.companyAmount != null ? money(Number(r.companyAmount)) : '—'}</td>
                       <td>{r.paidBy || '—'}</td><td>{r.paidTo || '—'}</td><td>{r.branch || '—'}</td>
+                      <td>{r.attachmentUrl ? <a href={r.attachmentUrl} target="_blank" rel="noreferrer" title="View bill / receipt">📎</a> : '—'}</td>
                       <td><button className="secondary" style={{ padding: '3px 8px', fontSize: 12 }} onClick={() => remove(r.id)}>🗑</button></td>
                     </tr>
                   ))}
-                  {!data.rows.length && <tr><td colSpan={9} className="muted">No expenses recorded for this filter.</td></tr>}
+                  {!data.rows.length && <tr><td colSpan={11} className="muted">No expenses recorded for this filter.</td></tr>}
                 </tbody>
               </table>
             </div>

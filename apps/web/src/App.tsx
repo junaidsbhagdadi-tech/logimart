@@ -29,6 +29,7 @@ import { BlueDart } from './pages/BlueDart';
 import { BillWorksheet } from './pages/BillWorksheet';
 import { Pickups } from './pages/Pickups';
 import { ShippingHub } from './pages/ShippingHub';
+import { Companies } from './pages/Companies';
 import { IntlShipments } from './pages/IntlShipments';
 import { IntlBook } from './pages/IntlBook';
 import { IntlShipmentDetail } from './pages/IntlShipmentDetail';
@@ -118,6 +119,7 @@ export function App() {
         <Route path="/invoices/:id" element={<InvoiceDetail />} />
         <Route path="/pickups" element={<Pickups />} />
         <Route path="/hub" element={<ShippingHub />} />
+        <Route path="/companies" element={<Companies />} />
         <Route path="/manifests" element={<Manifests />} />
         {/* International (Express + Freight Forwarding) */}
         <Route path="/intl" element={<IntlShipments />} />

@@ -193,9 +193,9 @@ export class ShipmentsController {
   /** AWB Entry List (Xpresion-style flat grid). Declared before ':awb'. `search` matches any AWB
    *  across all shipments (not just the latest page). */
   @Get('awb-list')
-  awbList(@Req() req: any, @Query('limit') limit?: string, @Query('search') search?: string) {
+  awbList(@Req() req: any, @Query('limit') limit?: string, @Query('search') search?: string, @Query('from') from?: string, @Query('to') to?: string) {
     const clientId = req.user.role === UserRole.CLIENT_ADMIN ? BigInt(req.user.clientId) : undefined;
-    return this.shipments.awbList(clientId, limit ? Number(limit) : 300, search);
+    return this.shipments.awbList(clientId, limit ? Number(limit) : 300, search, from, to);
   }
 
   @Get(':awb')

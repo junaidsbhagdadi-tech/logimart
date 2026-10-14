@@ -1,17 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 
 export interface ExpenseInput {
   date?: string; mode?: string; category?: string; remark?: string;
   amount: number; companyAmount?: number; paidBy?: string; paidTo?: string; branch?: string; createdById?: number;
+  attachment?: string; // base64 data URI of the bill/receipt (offloaded to Spaces on write)
 }
 
 @Injectable()
 export class ExpensesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly storage: StorageService) {}
 
-  create(dto: ExpenseInput) {
+  async create(dto: ExpenseInput) {
+    // Offload the bill/receipt image to object storage (falls back to inline on a bare deploy).
+    const attachmentUrl = dto.attachment ? await this.storage.store(dto.attachment, 'expense') : null;
     return this.prisma.expense.create({
       data: {
         date: dto.date ? new Date(dto.date) : new Date(),
@@ -23,6 +27,7 @@ export class ExpensesService {
         paidBy: dto.paidBy?.trim() || null,
         paidTo: dto.paidTo?.trim() || null,
         branch: dto.branch?.trim() || null,
+        attachmentUrl: attachmentUrl || null,
         createdById: dto.createdById != null ? BigInt(dto.createdById) : null,
       },
     });
@@ -33,7 +38,9 @@ export class ExpensesService {
     if (q.from || q.to) where.date = { ...(q.from ? { gte: new Date(q.from) } : {}), ...(q.to ? { lte: new Date(q.to + 'T23:59:59') } : {}) };
     if (q.branch) where.branch = q.branch;
     if (q.category) where.category = q.category;
-    const rows = await this.prisma.expense.findMany({ where, orderBy: { date: 'desc' }, take: 5000 });
+    const raw = await this.prisma.expense.findMany({ where, orderBy: { date: 'desc' }, take: 5000 });
+    // Turn stored attachment keys into short-lived loadable URLs for the browser.
+    const rows = await Promise.all(raw.map(async (r) => ({ ...r, attachmentUrl: await this.storage.resolve(r.attachmentUrl) })));
     const byCategory: Record<string, number> = {};
     const byBranch: Record<string, number> = {};
     let total = 0;

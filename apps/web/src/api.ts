@@ -698,7 +698,7 @@ export const api = {
   delAddr: (clientId: string, rowId: string) => request(`/api/v1/clients/${clientId}/addresses/${rowId}`, { method: 'DELETE' }),
 
   // ---- AWB Entry List ----
-  awbList: (limit = 300, search?: string) => request<any[]>(`/api/v1/shipments/awb-list?limit=${limit}${search ? `&search=${encodeURIComponent(search)}` : ''}`),
+  awbList: (limit = 300, search?: string, from?: string, to?: string) => request<any[]>(`/api/v1/shipments/awb-list?limit=${limit}${search ? `&search=${encodeURIComponent(search)}` : ''}${from ? `&from=${from}` : ''}${to ? `&to=${to}` : ''}`),
 
   // ---- fuel price (drives dynamic fuel surcharge) ----
   getFuelPrice: () => request<{ fuelType: string; current: number | null; effectiveFrom: string | null; history: any[] }>('/api/v1/fuel-price'),

@@ -45,8 +45,16 @@ export function AwbEntryList() {
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [voidOpen, setVoidOpen] = useState(false);
   const [voidText, setVoidText] = useState('');
+  const [range, setRange] = useState<{ from: string; to: string }>({ from: '', to: '' });
 
-  const load = (search?: string) => { api.awbList(300, search).then(setRows).catch((e) => setError(e.message)); setSel(new Set()); };
+  // When a booking-date range is set, pull the whole range (server lifts the 300 cap); otherwise the
+  // latest 300. The AWB search box always matches across the whole database regardless of the range.
+  const load = (search?: string) => {
+    const dated = !!(range.from || range.to);
+    api.awbList(dated ? 10000 : 300, search, range.from || undefined, range.to || undefined)
+      .then(setRows).catch((e) => setError(e.message));
+    setSel(new Set());
+  };
   // The AWB filter searches the WHOLE database (server-side), so any AWB is findable — not just the
   // latest 300 loaded. Debounced; other column filters still narrow the returned set client-side.
   useEffect(() => {
@@ -170,8 +178,14 @@ export function AwbEntryList() {
 
       <div className="card" style={{ padding: 16 }}>
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <div className="row" style={{ gap: 8 }}>
+          <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <button className="secondary" onClick={() => load((filters.awb || '').trim() || undefined)} title="Refresh">⟳ Refresh</button>
+            <span className="muted" style={{ fontSize: 13 }}>Book date</span>
+            <input type="date" value={range.from} max={range.to || undefined} onChange={(e) => setRange((r) => ({ ...r, from: e.target.value }))} title="From booking date" style={{ width: 150 }} />
+            <span className="muted">→</span>
+            <input type="date" value={range.to} min={range.from || undefined} onChange={(e) => setRange((r) => ({ ...r, to: e.target.value }))} title="To booking date" style={{ width: 150 }} />
+            <button className="secondary" onClick={() => load((filters.awb || '').trim() || undefined)} disabled={!range.from && !range.to} title="Pull all shipments booked in this date range">🔎 Apply dates</button>
+            {(range.from || range.to) && <button className="secondary" onClick={() => { setRange({ from: '', to: '' }); setTimeout(() => load((filters.awb || '').trim() || undefined), 0); }} title="Clear the date range (back to latest 300)">✕ Dates</button>}
             {Object.values(filters).some(Boolean) && <button className="secondary" onClick={() => setFilters({})}>Clear filters</button>}
             <button className="secondary" onClick={exportXls} disabled={!filtered.length} title="Download the filtered list to Excel">⬇ Excel</button>
           </div>

@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BLUEDART, bdConfigured } from './bluedart.config';
+import { deriveStatusFromBd } from './bd-status';
 
 /** The BlueDart account a shipment books under — its login + licence key + customer code + origin area. */
 interface BdAcc { loginId: string; licKey: string; customerCode: string; originArea: string; }
@@ -701,7 +702,7 @@ export class BluedartService implements OnModuleInit {
   /** Pull BlueDart tracking into the Logimart shipment — stores the current status and the full
    *  scan history (JSON) parsed from the custawbquery XML. */
   async syncTracking(awb: string) {
-    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { bdWaybill: true, forwardingAwb: true, bdPickupToken: true, vendor: true } });
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { bdWaybill: true, forwardingAwb: true, bdPickupToken: true, vendor: true, statusCode: true } });
     const waybill = s?.bdWaybill || (s as any)?.forwardingAwb || null;
     let r: any;
     if (waybill) {
@@ -721,15 +722,44 @@ export class BluedartService implements OnModuleInit {
     // A reference/waybill query with no shipment yet (e.g. a pickup not collected) returns a
     // placeholder like "Incorrect Waybill number or No Information" — don't store it as a real status.
     const noData = scans.length === 0 && /incorrect waybill|no information|not linked|no data/i.test(raw);
+    // Persist the carrier status through to our own milestone so every pending-list, dashboard and
+    // status-filtered report stays correct — otherwise a BD-forwarded shipment sits at MAN forever
+    // and looks "not booked" even after it's delivered.
+    const derived = bdStatus && !noData ? deriveStatusFromBd((s as any)?.statusCode, bdStatus) : null;
     await this.prisma.shipment.updateMany({
       where: { awb },
       data: {
         ...(discovered ? { bdWaybill: discovered, forwardingAwb: (s as any)?.forwardingAwb ?? discovered, vendor: (s as any)?.vendor ?? 'BLUEDART' } : {}),
         ...(bdStatus && !noData ? { bdStatus } : {}),
+        ...(derived ? { statusCode: derived.statusCode, status: derived.status, statusAt: bdStatusDate ? new Date(bdStatusDate) : new Date() } : {}),
         ...(scans.length ? { bdScans: JSON.stringify(scans) } : {}),
         bdSyncedAt: new Date(),
       },
     });
     return { awb, bdWaybill: waybill || discovered, discovered, bdStatus: noData ? null : bdStatus, bdStatusDate, scans, tracking: r };
+  }
+
+  /**
+   * One-time repair: derive statusCode/status from the bdStatus text we ALREADY have on file, for
+   * every BD-forwarded shipment still stuck at MAN (or otherwise behind its carrier status). No BlueDart
+   * calls — pure local mapping — so it's cheap to re-run. Fixes the historical "delivered shipments still
+   * show as pending" backlog without waiting for the next tracking sync.
+   */
+  async backfillStatusFromBd() {
+    const rows = await this.prisma.shipment.findMany({
+      where: { bdStatus: { not: null }, statusCode: { notIn: ['DLD', 'RTD', 'CAN'] } },
+      select: { id: true, statusCode: true, bdStatus: true, statusAt: true },
+    });
+    let updated = 0;
+    for (const s of rows) {
+      const derived = deriveStatusFromBd(s.statusCode, s.bdStatus);
+      if (!derived) continue;
+      await this.prisma.shipment.update({
+        where: { id: s.id },
+        data: { statusCode: derived.statusCode, status: derived.status, statusAt: s.statusAt ?? new Date() },
+      });
+      updated++;
+    }
+    return { scanned: rows.length, updated };
   }
 }

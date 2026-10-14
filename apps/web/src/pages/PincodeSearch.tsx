@@ -2,7 +2,7 @@ import { FormEvent, useState } from 'react';
 import { api } from '../api';
 
 type PinInfo = Awaited<ReturnType<typeof api.lookupPincode>>;
-type Opt = { network: string; mode: string | null; tatDays: number | null; isOda: boolean; city: string | null };
+type Opt = { network: string; mode: string | null; tatDays: number | null; isOda: boolean; city: string | null; estimate?: boolean };
 
 function Field({ label, value, color }: { label: string; value?: React.ReactNode; color?: string }) {
   return (
@@ -110,7 +110,7 @@ export function PincodeSearch() {
                     <tr key={o.network}>
                       <td><strong>{o.network}</strong></td>
                       <td>{o.mode ?? '—'}</td>
-                      <td>{o.tatDays != null ? `${o.tatDays} day${o.tatDays === 1 ? '' : 's'}` : '—'}</td>
+                      <td>{o.tatDays != null ? `${o.estimate ? '~' : ''}${o.tatDays} day${o.tatDays === 1 ? '' : 's'}${o.estimate ? ' (est.)' : ''}` : '—'}</td>
                       <td>{o.isOda ? <span className="badge" style={{ background: '#fff3d6', color: '#8a6100' }}>ODA</span> : <span className="muted">—</span>}</td>
                     </tr>
                   ))}

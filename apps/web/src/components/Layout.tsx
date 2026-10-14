@@ -145,6 +145,7 @@ export function Layout() {
       { to: '/notes', icon: '±', label: 'Debit / Credit Notes', show: isAdminFin },
       { to: '/claims', icon: '🛡', label: 'Claims', show: isAdminFin },
       { to: '/customers', icon: '👥', label: 'Customers', show: isAdminFin || isSales },
+      { to: '/companies', icon: '🏢', label: 'Billing Companies', show: isAdminFin },
       { to: '/vendors', icon: '🏢', label: 'Vendors', show: isAdminFin },
       { to: '/vehicles', icon: '🚚', label: 'Vehicles', show: isAdminFin },
       { to: '/vendor-bills', icon: '🚚', label: 'Vendor Bills & P&L', show: isAdminFin },

@@ -12,7 +12,7 @@ const blank = {
   contactEmail: '', email2: '', gstin: '', pan: '', tanNo: '', iecCode: '',
   addressLine: '', pincode: '', city: '', state: '', salesPerson: '', salesPersonMobile: '', salesPersonEmail: '',
   csPerson: '', csPersonMobile: '', csPersonEmail: '',
-  accountType: 'CREDIT', billingCycle: 'MONTHLY', allowSameGstin: false, defaultVendor: '',
+  accountType: 'CREDIT', billingCycle: 'MONTHLY', allowSameGstin: false, defaultVendor: '', serviceCentre: '',
   creditLimit: '', creditDays: '30', isCash: false, canCheckRates: false, canViewInvoices: false, commissionPct: '', parentAccountId: '',
   allowedVendors: [] as string[], // vendor codes this customer may use (empty = all)
 };
@@ -48,9 +48,11 @@ export function Customers() {
   const [q, setQ] = useState('');
   const [cashOnly, setCashOnly] = useState(false); // filter to only CASH (not-billed) customers
   const [vendors, setVendors] = useState<{ vendorCode: string; name: string }[]>([]); // #12a default-vendor picker
+  const [companies, setCompanies] = useState<{ code: string; name: string }[]>([]); // billing legal entities (multi-company)
   const load = () => { api.listClients().then(setClients).catch((e) => setError(e.message)); setSel(new Set()); };
   useEffect(load, []);
   useEffect(() => { api.listVendors().then((v: any[]) => setVendors(v.filter((x) => x.isActive !== false).map((x) => ({ vendorCode: x.vendorCode, name: x.name })))).catch(() => {}); }, []);
+  useEffect(() => { api.listMaster('COMPANY').then((cs) => setCompanies(cs.filter((c) => c.active !== false).map((c) => ({ code: c.code, name: c.name })))).catch(() => {}); }, []);
 
   // Configurable customer-code series (super-admin) — CONFIG/CUSTOMER_CODE master { prefix, nextNo, pad }.
   const [codeCfg, setCodeCfg] = useState({ prefix: '', nextNo: '1', pad: '4', active: false });
@@ -169,7 +171,7 @@ export function Customers() {
       salesPerson: (c as any).salesPerson ?? '', salesPersonMobile: (c as any).salesPersonMobile ?? '', salesPersonEmail: (c as any).salesPersonEmail ?? '',
       csPerson: (c as any).csPerson ?? '', csPersonMobile: (c as any).csPersonMobile ?? '', csPersonEmail: (c as any).csPersonEmail ?? '',
       accountType: (c as any).isCash ? 'CASH' : ((c as any).accountType ?? 'CREDIT'), billingCycle: (c as any).billingCycle ?? 'MONTHLY',
-      allowSameGstin: !!(c as any).allowSameGstin, defaultVendor: (c as any).defaultVendor ?? '', creditLimit: String((c as any).creditLimit ?? ''), creditDays: String((c as any).creditDays ?? '30'), isCash: !!(c as any).isCash, canCheckRates: !!(c as any).canCheckRates, canViewInvoices: !!(c as any).canViewInvoices, commissionPct: String((c as any).commissionPct ?? ''), allowedVendors: Array.isArray((c as any).allowedVendors) ? (c as any).allowedVendors : [],
+      allowSameGstin: !!(c as any).allowSameGstin, defaultVendor: (c as any).defaultVendor ?? '', serviceCentre: (c as any).serviceCentre ?? '', creditLimit: String((c as any).creditLimit ?? ''), creditDays: String((c as any).creditDays ?? '30'), isCash: !!(c as any).isCash, canCheckRates: !!(c as any).canCheckRates, canViewInvoices: !!(c as any).canViewInvoices, commissionPct: String((c as any).commissionPct ?? ''), allowedVendors: Array.isArray((c as any).allowedVendors) ? (c as any).allowedVendors : [],
       parentAccountId: (c as any).parentAccountId != null ? String((c as any).parentAccountId) : '',
     });
     setShowAdd(true);
@@ -202,6 +204,7 @@ export function Customers() {
       billingCycle: form.billingCycle || undefined,
       allowSameGstin: form.allowSameGstin,
       defaultVendor: form.defaultVendor || undefined,
+      serviceCentre: form.serviceCentre || undefined, // billing legal entity (multi-company)
       allowedVendors: form.allowedVendors,
       canCheckRates: form.canCheckRates,
       canViewInvoices: form.canViewInvoices,
@@ -364,6 +367,13 @@ export function Customers() {
                 <select value={form.defaultVendor} onChange={(e) => set('defaultVendor', e.target.value)} style={{ width: 200 }}>
                   <option value="">— none (SELF) —</option>
                   {vendors.map((v) => <option key={v.vendorCode} value={v.vendorCode}>{v.vendorCode} — {v.name}</option>)}
+                </select>
+              </div>
+              <div><label>Billing company <span className="muted" style={{ fontSize: 11 }}>(which legal entity invoices this customer)</span></label>
+                <select value={form.serviceCentre} onChange={(e) => set('serviceCentre', e.target.value)} style={{ width: 240 }}>
+                  <option value="">— default entity —</option>
+                  {companies.map((c) => <option key={c.code} value={c.code}>{c.code} — {c.name}</option>)}
+                  {form.serviceCentre && !companies.some((c) => c.code === form.serviceCentre) && <option value={form.serviceCentre}>{form.serviceCentre} (unconfigured)</option>}
                 </select>
               </div>
               <div style={{ flexBasis: '100%' }}>

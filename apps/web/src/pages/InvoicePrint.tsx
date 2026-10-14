@@ -46,6 +46,11 @@ export function InvoicePrint() {
 
   const c = inv.client;
   const num = (v: any) => Number(v ?? 0);
+  // Seller = the invoice's own billing entity (multi-company), snapshotted at generation. Older invoices
+  // without a snapshot fall back to the default company. Bank/terms inherit the default when not set.
+  const S: any = (inv as any).seller || COMPANY;
+  const sBank = S.bank || COMPANY.bank;
+  const sTerms: string[] = Array.isArray(S.terms) ? S.terms : COMPANY.terms;
 
   // Per-line freight (the "Amount" column). Fall back to the all-in amount for
   // legacy invoices generated before the freight/fuel/other split existed.
@@ -112,13 +117,13 @@ export function InvoicePrint() {
             <div><span className="lbl">Place of Supply:</span> {inv.placeOfSupply ?? c?.state ?? '—'}</div>
           </div>
           <div className="pad" style={{ flex: 1 }}>
-            <div style={{ fontWeight: 800, fontSize: 14 }}>{COMPANY.legalName}</div>
-            <div className="k">{COMPANY.addressLines.join(' ')}</div>
-            <div className="k">{COMPANY.phones}{COMPANY.email ? ` · ${COMPANY.email}` : ''}</div>
-            {(COMPANY as any).cin && <div><span className="lbl">CIN:</span> {(COMPANY as any).cin}{COMPANY.pan ? <>  ·  <span className="lbl">PAN No.:</span> {COMPANY.pan}</> : null}</div>}
-            {!(COMPANY as any).cin && COMPANY.pan && <div><span className="lbl">PAN No.:</span> {COMPANY.pan}</div>}
-            <div><span className="lbl">GST No.:</span> {COMPANY.gstin}</div>
-            <div><span className="lbl">HSN/SAC:</span> {inv.sacCode ?? COMPANY.sacCode}</div>
+            <div style={{ fontWeight: 800, fontSize: 14 }}>{S.legalName}</div>
+            <div className="k">{(S.addressLines || []).join(' ')}</div>
+            <div className="k">{S.phones}{S.email ? ` · ${S.email}` : ''}</div>
+            {S.cin && <div><span className="lbl">CIN:</span> {S.cin}{S.pan ? <>  ·  <span className="lbl">PAN No.:</span> {S.pan}</> : null}</div>}
+            {!S.cin && S.pan && <div><span className="lbl">PAN No.:</span> {S.pan}</div>}
+            <div><span className="lbl">GST No.:</span> {S.gstin}</div>
+            <div><span className="lbl">HSN/SAC:</span> {inv.sacCode ?? S.sacCode}</div>
           </div>
         </div>
 
@@ -152,11 +157,11 @@ export function InvoicePrint() {
         <div style={{ display: 'flex', borderTop: '1px solid #333' }}>
           <div className="pad" style={{ flex: 1, borderRight: '1px solid #333' }}>
             <div className="lbl" style={{ marginBottom: 4 }}>Our Bank Details</div>
-            <div><span className="lbl">Bank Name:</span> {COMPANY.bank.name}</div>
-            <div><span className="lbl">A/C No.:</span> {COMPANY.bank.accountNo}</div>
-            <div><span className="lbl">NEFT / RTGS (IFSC):</span> {COMPANY.bank.ifsc}</div>
-            <div><span className="lbl">Branch:</span> {COMPANY.bank.branch}</div>
-            {COMPANY.bank.address && <div className="k">{COMPANY.bank.address}</div>}
+            <div><span className="lbl">Bank Name:</span> {sBank.name}</div>
+            <div><span className="lbl">A/C No.:</span> {sBank.accountNo}</div>
+            <div><span className="lbl">NEFT / RTGS (IFSC):</span> {sBank.ifsc}</div>
+            <div><span className="lbl">Branch:</span> {sBank.branch}</div>
+            {sBank.address && <div className="k">{sBank.address}</div>}
           </div>
           <div style={{ flex: 1 }}>
             <table className="lines" style={{ border: 'none' }}>
@@ -194,12 +199,12 @@ export function InvoicePrint() {
         <div className="pad" style={{ borderTop: '1px solid #333' }}>
           <div className="lbl" style={{ marginBottom: 4 }}>Terms &amp; Conditions</div>
           <ol style={{ margin: 0, paddingLeft: 18, fontSize: 11, lineHeight: 1.6 }}>
-            {COMPANY.terms.map((t, i) => <li key={i}>{t}</li>)}
+            {sTerms.map((t, i) => <li key={i}>{t}</li>)}
           </ol>
         </div>
 
         <div className="pad k" style={{ borderTop: '1px solid #333', textAlign: 'center', fontSize: 10 }}>
-          E.&amp;O.E · This is a computer-generated invoice and does not require a signature. — {COMPANY.legalName}
+          E.&amp;O.E · This is a computer-generated invoice and does not require a signature. — {S.legalName}
         </div>
       </div>
     </div>

@@ -42,7 +42,59 @@ export class InvoiceService {
    * already-taken number — GST needs unique, non-reused numbers); otherwise the legacy INV-<code>-<mm>
    * format applies. Editable via the Invoices → "Invoice number series" panel.
    */
-  private async nextInvoiceNo(client: any, periodEnd: string): Promise<string> {
+  /** The billing legal entity for a customer. Its Service Centre maps to a COMPANY master; falls back to
+   *  the entity flagged default, else the static config — but only picks an entity that has a GSTIN, so an
+   *  unmapped or half-configured customer never bills from a GST-incomplete company. */
+  private async resolveCompany(client: any): Promise<{ code: string | null; attrs: any }> {
+    const companies = await this.prisma.masterEntry.findMany({ where: { type: 'COMPANY', active: true } }).catch(() => [] as any[]);
+    const hasGst = (e: any) => !!String((e?.attrs as any)?.gstin ?? '').trim();
+    const picked = client?.serviceCentre ? companies.find((e) => e.code.toUpperCase() === String(client.serviceCentre).toUpperCase()) : undefined;
+    const def = companies.find((e) => (e.attrs as any)?.isDefault);
+    const chosen = picked && hasGst(picked) ? picked : def && hasGst(def) ? def : null;
+    return chosen ? { code: chosen.code, attrs: chosen.attrs } : { code: null, attrs: null };
+  }
+
+  /** Seller block snapshotted onto the invoice (stable for reprints). Matches the web COMPANY shape;
+   *  any field missing on the chosen entity inherits the static default so the print is never blank. */
+  private sellerSnapshot(attrs: any): any {
+    const a = attrs ?? {};
+    const d = COMPANY;
+    return {
+      legalName: a.legalName ?? d.legalName,
+      brand: a.brand ?? d.brand,
+      tagline: a.tagline ?? d.tagline,
+      addressLines: Array.isArray(a.addressLines) && a.addressLines.length ? a.addressLines : [d.address.line1, `${d.address.line2}, ${d.address.city} - ${d.address.pincode}`],
+      phones: a.phones ?? d.phones.join(', '),
+      email: a.email ?? d.emails[0],
+      gstin: a.gstin ?? d.gstin,
+      pan: a.pan ?? d.pan,
+      cin: a.cin ?? d.cin,
+      stateCode: a.stateCode ?? d.stateCode,
+      sacCode: a.sacCode ?? '996812',
+      jurisdiction: a.jurisdiction ?? stateName(a.stateCode ?? d.stateCode) ?? 'Delhi',
+      ...(a.bank ? { bank: a.bank } : {}),
+      ...(Array.isArray(a.terms) && a.terms.length ? { terms: a.terms } : {}),
+      ...(a.logo ? { logo: a.logo } : {}),
+    };
+  }
+
+  private async nextInvoiceNo(client: any, periodEnd: string, companyCode?: string | null, companyAttrs?: any): Promise<string> {
+    // Per-company series (preferred): each billing entity runs its own continuous, non-overlapping
+    // numbers (GST-safe), advanced on its own COMPANY master. Configure prefix/pad/nextNo per company.
+    if (companyCode && companyAttrs && String(companyAttrs.invoicePrefix ?? '').trim()) {
+      const prefix = String(companyAttrs.invoicePrefix).trim();
+      const pad = Math.max(1, Math.min(12, Number(companyAttrs.invoicePad) || 5));
+      let n = Math.max(1, Number(companyAttrs.invoiceNextNo) || 1);
+      for (let i = 0; i < 100000; i++) {
+        const no = `${prefix}${String(n).padStart(pad, '0')}`;
+        const taken = await this.prisma.invoice.findFirst({ where: { invoiceNo: no }, select: { id: true } });
+        if (!taken) {
+          await this.prisma.masterEntry.update({ where: { type_code: { type: 'COMPANY', code: companyCode } }, data: { attrs: { ...companyAttrs, invoiceNextNo: n + 1 } } });
+          return no;
+        }
+        n++;
+      }
+    }
     const cfg = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'CONFIG', code: 'INVOICE_SERIES' } } }).catch(() => null);
     const a: any = cfg?.active ? (cfg.attrs ?? {}) : null;
     if (a && String(a.prefix ?? '').trim()) {
@@ -134,8 +186,12 @@ export class InvoiceService {
     const tax = +(subtotal * GST_RATE).toFixed(2);
     const total = +(subtotal + tax).toFixed(2);
 
-    // Place of supply → CGST+SGST (intra-state) vs IGST (inter-state).
-    const carrierState = COMPANY.stateCode; // Delhi (Excelex) — fixed to the legal entity
+    // Resolve the billing legal entity for this customer (multi-company billing via Service Centre).
+    const company = await this.resolveCompany(client);
+    const seller = this.sellerSnapshot(company.attrs);
+
+    // Place of supply → CGST+SGST (intra-state) vs IGST (inter-state). Carrier state = the BILLING entity's.
+    const carrierState = seller.stateCode;
     const clientState = client.gstin && client.gstin.length >= 2 ? client.gstin.slice(0, 2) : null;
     const intraState = clientState ? clientState === carrierState : true;
     const cgst = intraState ? +(tax / 2).toFixed(2) : 0;
@@ -143,7 +199,7 @@ export class InvoiceService {
     const igst = intraState ? 0 : tax;
     const placeOfSupply = stateName(clientState) ?? client.city ?? stateName(carrierState) ?? 'Delhi';
 
-    const invoiceNo = await this.nextInvoiceNo(client, periodEnd);
+    const invoiceNo = await this.nextInvoiceNo(client, periodEnd, company.code, company.attrs);
     const dueDate = new Date(new Date(periodEnd).getTime() + client.creditDays * 86400000);
 
     // Created as a DRAFT — editable (add/remove AWBs) and NOT yet posted to the ledger. Locking the
@@ -152,6 +208,8 @@ export class InvoiceService {
       data: {
         clientId: client.id,
         invoiceNo,
+        companyCode: company.code,
+        seller,
         periodStart: new Date(periodStart),
         periodEnd: new Date(periodEnd),
         subtotal: new Prisma.Decimal(subtotal),
@@ -196,7 +254,8 @@ export class InvoiceService {
     const subtotal = +inv.lines.reduce((s, l) => s + Number(l.amount), 0).toFixed(2);
     const tax = +(subtotal * GST_RATE).toFixed(2);
     const total = +(subtotal + tax).toFixed(2);
-    const carrierState = COMPANY.stateCode;
+    // GST split follows the invoice's own billing entity (multi-company), not the global default.
+    const carrierState = (inv.seller as any)?.stateCode ?? COMPANY.stateCode;
     const clientState = inv.client.gstin && inv.client.gstin.length >= 2 ? inv.client.gstin.slice(0, 2) : null;
     const intraState = clientState ? clientState === carrierState : true;
     await this.prisma.invoice.update({
@@ -466,7 +525,7 @@ export class InvoiceService {
     // Only billable customers (exclude cash/wallet — they never appear on the billing run).
     const billable = await this.prisma.b2bClient.findMany({
       where: { ...clientWhere, isCash: false, NOT: { accountType: 'WALLET' } },
-      select: { id: true, accountCode: true, legalName: true, gstin: true },
+      select: { id: true, accountCode: true, legalName: true, gstin: true, serviceCentre: true },
     });
     if (!billable.length) {
       return { columns: BILL_COLUMNS, client: { accountCode: '', legalName: clientIds === 'all' ? 'All customers' : 'No billable customer selected' }, count: 0, rows: [], truncated: false };
@@ -481,7 +540,13 @@ export class InvoiceService {
     const truncated = shipments.length > CAP;
     const list = truncated ? shipments.slice(0, CAP) : shipments;
 
-    const carrierState = COMPANY.stateCode;
+    // Per-client billing-entity state (multi-company): a client's Service Centre maps to a COMPANY master.
+    const companies = await this.prisma.masterEntry.findMany({ where: { type: 'COMPANY', active: true } }).catch(() => [] as any[]);
+    const defState = (companies.find((e) => (e.attrs as any)?.isDefault && String((e.attrs as any)?.gstin ?? '').trim())?.attrs as any)?.stateCode ?? COMPANY.stateCode;
+    const stateForClient = (c: any): string => {
+      const e = c?.serviceCentre ? companies.find((x) => x.code.toUpperCase() === String(c.serviceCentre).toUpperCase() && String((x.attrs as any)?.gstin ?? '').trim()) : null;
+      return (e?.attrs as any)?.stateCode ?? defState;
+    };
     const vendorCode = (v?: string | null) => (v && String(v).toUpperCase().startsWith('BLUEDART') ? 'BDR' : (v || 'SELF'));
     const d10 = (dt: any) => (dt ? new Date(dt).toISOString().slice(0, 10) : '');
 
@@ -489,6 +554,7 @@ export class InvoiceService {
     for (const s of list) {
       const client = byId.get(String(s.clientId));
       if (!client) continue; // shipment's client isn't billable (shouldn't happen given the filter)
+      const carrierState = stateForClient(client);
       const clientState = client.gstin && client.gstin.length >= 2 ? client.gstin.slice(0, 2) : null;
       const intraState = clientState ? clientState === carrierState : true;
       const b: any = (await this.rates.chargesForShipment(s, s.pieces)) || {};

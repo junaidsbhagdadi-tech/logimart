@@ -169,7 +169,7 @@ export class PincodesService {
     for (const r of rows) {
       if (!byNet.has(r.network)) byNet.set(r.network, { network: r.network, mode: r.mode, tatDays: r.tatDays, isOda: r.isOda, city: r.city });
     }
-    let list = Array.from(byNet.values());
+    let list: any[] = Array.from(byNet.values());
     // Fill any MISSING per-vendor TAT from the ZONE_TAT matrix (code <VENDOR>__<MODE> → SELF__<MODE>
     // → legacy <MODE>) when we know the origin — so a matrix update shows even if the serviceable row
     // has no tatDays. Existing row TATs are kept.
@@ -210,6 +210,15 @@ export class PincodesService {
       };
       list = list.map((x) => { const mt = matrixTat(x.network, x.mode || ''); return { ...x, tatDays: mt ?? x.tatDays }; });
     }
+    // Final fallback: a coverage row imported without a TAT (and not resolvable via the zone matrix)
+    // borrows the fastest same-MODE committed TAT known for this destination, so it shows a transit
+    // estimate instead of a blank "—". Flagged estimate:true (a genuine same-mode value, not fabricated).
+    const modeTat = (mode: string | null): number | null => {
+      const air = /AIR|APEX|EXP/i.test(String(mode ?? ''));
+      const hits = list.filter((r) => (air ? /AIR|APEX|EXP/i : /SURF|ROAD|RAIL/i).test(String(r.mode ?? '')) && r.tatDays != null).map((r) => Number(r.tatDays));
+      return hits.length ? Math.min(...hits) : null;
+    };
+    list = list.map((x) => (x.tatDays != null ? { ...x, estimate: false } : (() => { const t = modeTat(x.mode); return { ...x, tatDays: t, estimate: t != null }; })()));
     return list.sort((a, b) => (a.tatDays ?? 9999) - (b.tatDays ?? 9999));
   }
 

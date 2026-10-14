@@ -720,10 +720,13 @@ export class RateService {
       : 0;
     // DOD (Draft/Demand on Delivery): handling charge when a DD/cheque is collected at delivery.
     // Bills as max(% of the DOD amount, flat min) — configure via Charges master (code DOD) or the card.
-    const dodAmt = Number(shipment.dodAmount ?? 0);
+    // A shipment counts as DOD via the explicit flag OR a product code of DOD (bulk imports set the
+    // product, not the flag) — either way the DOD handling charge should apply.
+    const isDodShip = shipment.isDod || prod === 'DOD';
+    const dodAmt = Number(shipment.dodAmount ?? 0) || Number(shipment.shipmentValue ?? shipment.declaredValue ?? 0);
     const dodPct = cget('DOD', 'value', (card as any).dodPct);
     const dodMin = cget('DOD', 'min', (card as any).dodMin);
-    const dod = shipment.isDod && (dodPct > 0 || dodMin > 0) ? r2(Math.max((dodAmt * dodPct) / 100, dodMin)) : 0;
+    const dod = isDodShip && (dodPct > 0 || dodMin > 0) ? r2(Math.max((dodAmt * dodPct) / 100, dodMin)) : 0;
     // Appointment delivery: per-kg (chargeable) with a ₹ minimum. (value = ₹/kg, min = floor ₹)
     const apptMin = cget('APPT', 'min', 0);
     const appt = shipment.apptDelivery ? r2(Math.max(cget('APPT', 'value', card.apptCharge) * chargeableKg, apptMin)) : 0;

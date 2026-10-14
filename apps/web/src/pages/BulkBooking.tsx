@@ -121,17 +121,19 @@ export function BulkBooking() {
     try {
       if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
         const XLSX = await import('xlsx');
-        const wb = XLSX.read(await f.arrayBuffer(), { type: 'array' });
+        // cellDates + dateNF: emit date cells as DD-MM-YYYY text (not the raw Excel serial number,
+        // which parseBookedAt can't read → it silently fell back to today's date).
+        const wb = XLSX.read(await f.arrayBuffer(), { type: 'array', cellDates: true });
         const ws = wb.Sheets[wb.SheetNames[0]];
-        setText(XLSX.utils.sheet_to_csv(ws));
+        setText(XLSX.utils.sheet_to_csv(ws, { dateNF: 'dd-mm-yyyy hh:mm' }));
         return;
       }
       const t = await f.text();
       if (looksBinary(t)) {
         // A .csv that is actually an .xlsx in disguise (or any binary) — read it as a workbook too.
         const XLSX = await import('xlsx');
-        const wb = XLSX.read(await f.arrayBuffer(), { type: 'array' });
-        setText(XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]]));
+        const wb = XLSX.read(await f.arrayBuffer(), { type: 'array', cellDates: true });
+        setText(XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]], { dateNF: 'dd-mm-yyyy hh:mm' }));
         return;
       }
       setText(t);
@@ -337,9 +339,28 @@ export function BulkBooking() {
 function parseBookedAt(s?: string): string | undefined {
   const v = (s || '').trim();
   if (!v) return undefined;
-  const m = v.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:[ T](\d{1,2}):(\d{2}))?/);
+  // DD-MM-YYYY or DD/MM/YYYY, 2- or 4-digit year, optional HH:MM.
+  const m = v.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})(?:[ T](\d{1,2}):(\d{2}))?/);
   if (m) {
-    const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]), Number(m[4] ?? 0), Number(m[5] ?? 0));
+    let yr = Number(m[3]); if (yr < 100) yr += 2000;
+    const d = new Date(yr, Number(m[2]) - 1, Number(m[1]), Number(m[4] ?? 0), Number(m[5] ?? 0));
+    return isNaN(d.getTime()) ? undefined : d.toISOString();
+  }
+  // DD-MMM-YYYY (e.g. 01-Sep-2026 / 1 Sep 26).
+  const mon = v.match(/^(\d{1,2})[-/ ]([A-Za-z]{3,})[-/ ](\d{2,4})/);
+  if (mon) {
+    const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+    const mi = months.indexOf(mon[2].slice(0, 3).toLowerCase());
+    if (mi >= 0) {
+      let yr = Number(mon[3]); if (yr < 100) yr += 2000;
+      const d = new Date(yr, mi, Number(mon[1]));
+      return isNaN(d.getTime()) ? undefined : d.toISOString();
+    }
+  }
+  // Bare Excel serial number (days since 1899-12-30) — in case a cell slips through as a number.
+  if (/^\d{4,6}(\.\d+)?$/.test(v)) {
+    const serial = Number(v);
+    const d = new Date(Date.UTC(1899, 11, 30) + serial * 86400000);
     return isNaN(d.getTime()) ? undefined : d.toISOString();
   }
   const d = new Date(v); // ISO (YYYY-MM-DD…) or other natively-parseable formats

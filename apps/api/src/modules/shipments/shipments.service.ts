@@ -861,7 +861,7 @@ export class ShipmentsService {
 
   /** Recent shipments, optionally scoped to a single client, with light rollup. */
   /** Xpresion-style AWB Entry List rows (flat, filter/grid-friendly). */
-  async awbList(clientId: bigint | undefined, limit: number, search?: string) {
+  async awbList(clientId: bigint | undefined, limit: number, search?: string, from?: string, to?: string) {
     const s = (search ?? '').trim();
     // A search matches ACROSS ALL shipments (not just the latest page) so any AWB is findable —
     // by our AWB, the carrier's forwarding/BlueDart waybill, the customer reference, or consignee.
@@ -875,10 +875,19 @@ export class ShipmentsService {
         { consigneeName: { contains: s, mode: 'insensitive' } },
       ];
     }
+    // Booking-date range filter (bookDate = createdAt). `to` is inclusive of the whole day.
+    const gte = from ? new Date(from) : null;
+    let lte: Date | null = null;
+    if (to) { lte = new Date(to); lte.setHours(23, 59, 59, 999); }
+    if (gte || lte) where.createdAt = { ...(gte ? { gte } : {}), ...(lte ? { lte } : {}) };
+    // When the caller filters (by date or search) we're pulling a bounded, intentional set, so lift the
+    // default 300/500 cap; otherwise keep it small for the default "latest" view.
+    const filtered = !!(s || gte || lte);
+    const take = Math.min(limit || (filtered ? 10000 : 300), filtered ? 20000 : 500);
     const shipments = await this.prisma.shipment.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      take: Math.min(limit, 500),
+      take,
       include: {
         client: { select: { legalName: true, accountCode: true } },
         _count: { select: { invoiceLines: true } },

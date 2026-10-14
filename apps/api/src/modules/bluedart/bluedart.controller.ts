@@ -83,6 +83,13 @@ export class BluedartController {
     return this.bd.startBackfill(body?.limit);
   }
 
+  /** One-time repair: derive statusCode from the bdStatus already on file (fixes delivered-but-pending backlog). */
+  @Post('backfill-status')
+  @Roles(UserRole.SYS_ADMIN)
+  backfillStatus() {
+    return this.bd.backfillStatusFromBd();
+  }
+
   /** Auto-dispatch a single shipment to BlueDart (generate AWB + register pickup). */
   @Post('dispatch/:awb')
   @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
