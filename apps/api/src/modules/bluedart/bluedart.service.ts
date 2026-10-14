@@ -382,6 +382,17 @@ export class BluedartService implements OnModuleInit {
   /** A clean 10-digit Indian mobile for BlueDart (strips +91 / spaces / dashes, keeps the last 10). */
   private bdMobile(v: any): string { return String(v ?? '').replace(/\D/g, '').slice(-10); }
 
+  /** The pickup/shipper contact number for BlueDart. `shipperContact` often holds the contact-person
+   *  NAME (not a number), so we try the real phone fields first and fall back through the account and,
+   *  as a last resort, the consignee number — so a pickup never fails just because one field is blank. */
+  private bdShipperMobile(s: any): string {
+    for (const v of [s.shipperMobile, s.shipperPhone, s.shipperContact, s.client?.contactPhone, s.client?.contactPhone2, s.consigneePhone]) {
+      const m = this.bdMobile(v);
+      if (m.length >= 10) return m;
+    }
+    return '';
+  }
+
   /** Required-field check for a BlueDart waybill — returns the human labels of anything missing/invalid. */
   private bdMissing(s: any): string[] {
     const miss: string[] = [];
@@ -393,7 +404,7 @@ export class BluedartService implements OnModuleInit {
     if (!has(s.shipperName ?? s.client?.legalName)) miss.push('Shipper name');
     if (!has(s.shipperAddress1 ?? s.client?.addressLine)) miss.push('Shipper address');
     if (!has(s.shipperPincode ?? s.client?.pincode)) miss.push('Shipper pincode');
-    if (this.bdMobile(s.shipperContact ?? s.client?.contactPhone).length < 10) miss.push('Shipper mobile (10 digits)');
+    if (this.bdShipperMobile(s).length < 10) miss.push('Shipper mobile (10 digits)');
     if (!(Number(s.pieceCount) > 0)) miss.push('Piece count');
     if (!(Number(s.chargeWeight ?? s.totalDeadKg) > 0)) miss.push('Weight');
     if (!(Number(s.shipmentValue ?? s.declaredValue) > 0)) miss.push('Declared/shipment value'); // BlueDart requires DeclaredValue > 0
@@ -442,7 +453,7 @@ export class BluedartService implements OnModuleInit {
           CustomerAddress1: (s.shipperAddress1 ?? s.client?.addressLine ?? '').slice(0, 30),
           CustomerAddress2: (s.shipperAddress2 ?? '').slice(0, 30),
           CustomerPincode: s.shipperPincode ?? s.client?.pincode ?? '',
-          CustomerMobile: this.bdMobile(s.shipperContact ?? s.client?.contactPhone),
+          CustomerMobile: this.bdShipperMobile(s),
           CustomerGSTNumber: s.consignorGstin ?? s.client?.gstin ?? '',
           Sender: (s.shipperName ?? s.client?.legalName ?? '').slice(0, 20),
           // To-Pay (FOD) shipments must be flagged so BlueDart collects freight at destination — this
@@ -511,7 +522,7 @@ export class BluedartService implements OnModuleInit {
     if (!s) throw new BadRequestException(`AWB ${awb} not found`);
     const acc = await this.resolveAccount(s);
     const pin = String(s.shipperPincode ?? s.client?.pincode ?? '').trim();
-    const phone = this.bdMobile(s.shipperContact ?? s.client?.contactPhone);
+    const phone = this.bdShipperMobile(s);
     const when = dto.date ? new Date(dto.date) : new Date();
     // ShipmentPickupTime is "HH:MM"; BLUEDART_PICKUP_TIME is stored HHMM.
     const time = dto.time || String(BLUEDART.pickupTime || '1600').replace(/^(\d{2})(\d{2})$/, '$1:$2');
