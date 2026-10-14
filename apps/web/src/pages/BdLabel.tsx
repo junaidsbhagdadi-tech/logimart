@@ -26,6 +26,10 @@ export function BdLabel() {
   const wgt = (m.totalDeadKg || 0).toFixed(2);
   // Once handed to BlueDart, the label carries BlueDart's AWB + area/service-centre route codes.
   const bdNo = m.bdWaybill || m.awb;
+  // A BlueDart shipment with no carrier waybill yet: this label would carry OUR docket, which BlueDart
+  // can't scan. Warn (on screen, not on the print) so ops generates the hand-off first.
+  const isBd = /^BLUE|BDR/i.test(String(m.vendor ?? ''));
+  const noCarrierAwb = isBd && !m.bdWaybill;
   const org = m.bdRouteOrg || [m.originCity, m.originZone].filter(Boolean).join(' / ') || m.originZone || '—';
   const dst = m.bdRouteDst || [m.consigneeCity, m.destZone].filter(Boolean).join(' / ') || m.destZone || '—';
   const senderLine = [m.accountCode || m.consignor.name, m.senderPincode].filter(Boolean).join(' — ');
@@ -50,6 +54,12 @@ export function BdLabel() {
         <Link to={`/shipments/${m.awb}/labels`}>← Box labels</Link>
         <button onClick={() => window.print()}>🖨 Print</button>
       </div>
+
+      {noCarrierAwb && (
+        <div className="no-print" style={{ width: 384, background: '#fff3cd', border: '1.5px solid #e0a800', color: '#664d03', borderRadius: 6, padding: '10px 12px', fontSize: 13, lineHeight: 1.4 }}>
+          ⚠ <b>No BlueDart waybill yet.</b> This label shows your docket (<b>{m.awb}</b>), which BlueDart can’t scan. Hand the shipment to BlueDart first (<Link to={`/shipments/${m.awb}`}>open shipment → Hand to BlueDart</Link>) so the 11-digit BD AWB is generated, then reprint. Usually blocked by a missing 10-digit consignee / shipper mobile on Edit AWB.
+        </div>
+      )}
 
       {/* ============ Part 1 — shipping label ============ */}
       <section className="bd-label">

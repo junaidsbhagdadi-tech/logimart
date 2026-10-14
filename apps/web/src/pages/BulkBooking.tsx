@@ -379,10 +379,27 @@ function looksBinary(text: string): boolean {
  *  labels the booking-date column "Date" (the usual one) still fills `bookedAt` instead of silently
  *  defaulting to today. Case/space/underscore-insensitive; unknown headers pass through unchanged. */
 function normalizeHeader(h: string): string {
-  const k = h.toLowerCase().replace(/[\s_]+/g, '');
+  const k = h.toLowerCase().replace(/[\s_.()-]+/g, '');
   const alias: Record<string, string> = {
+    // booking date
     date: 'bookedAt', bookingdate: 'bookedAt', bookdate: 'bookedAt', bookeddate: 'bookedAt',
     bookingdatetime: 'bookedAt', manifestdate: 'bookedAt', orderdate: 'bookedAt',
+    // consignee mobile — the field BlueDart needs to mint a waybill (often labelled many ways)
+    consigneephone: 'consigneePhone', consigneemobile: 'consigneePhone', consigneecontact: 'consigneePhone',
+    consigneecontactno: 'consigneePhone', consigneemobileno: 'consigneePhone', consigneephoneno: 'consigneePhone',
+    receiverphone: 'consigneePhone', receivermobile: 'consigneePhone', receivercontact: 'consigneePhone',
+    deliveryphone: 'consigneePhone', deliverymobile: 'consigneePhone', mobile: 'consigneePhone',
+    mobileno: 'consigneePhone', phone: 'consigneePhone', phoneno: 'consigneePhone', contactno: 'consigneePhone', contactnumber: 'consigneePhone',
+    // consignee name / address
+    consigneename: 'consigneeName', receivername: 'consigneeName', consignee: 'consigneeName', deliverto: 'consigneeName',
+    consigneeaddress: 'consigneeAddress', receiveraddress: 'consigneeAddress', deliveryaddress: 'consigneeAddress', consigneeadd: 'consigneeAddress',
+    // destination pincode
+    destpincode: 'destPincode', destinationpincode: 'destPincode', deliverypincode: 'destPincode',
+    topincode: 'destPincode', consigneepincode: 'destPincode', destpin: 'destPincode', deliverypin: 'destPincode',
+    // value / pieces / weight
+    declaredvalue: 'declaredValue', shipmentvalue: 'declaredValue', invoicevalue: 'declaredValue', invvalue: 'declaredValue',
+    pieces: 'pcs', boxes: 'pcs', noofboxes: 'pcs', nos: 'pcs', qty: 'pcs', quantity: 'pcs',
+    weight: 'deadKg', actualweight: 'deadKg', deadweight: 'deadKg', wt: 'deadKg', weightkg: 'deadKg', weightkgs: 'deadKg',
   };
   return alias[k] ?? h;
 }
