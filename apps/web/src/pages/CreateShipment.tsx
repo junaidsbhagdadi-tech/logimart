@@ -360,9 +360,10 @@ export function CreateShipment() {
       // Pass the origin so a missing per-vendor TAT is filled from the ZONE_TAT matrix.
       const opts = await api.serviceOptions(p, /^\d{6}$/.test(originPin) ? originPin : undefined).catch(() => []);
       setSvcOptions(opts);
-      // ODA is a property of the destination area — auto-set it from the pincode directory OR any
-      // serving network flagged ODA (not just whichever carrier happens to be fastest).
-      const odaAuto = (info?.isOda ?? false) || opts.some((o) => o.isOda);
+      // ODA is a property of the destination PINCODE (matches the stored value + Pincode Search): the
+      // pincode's own isOda, or a non-"Regular" EDL. NOT OR'd across every serving carrier — one carrier
+      // (e.g. GATI) being ODA doesn't make the pincode ODA for a BlueDart booking.
+      const odaAuto = (info?.isOda ?? false) || (!!(info as any)?.edl && String((info as any).edl).toUpperCase() !== 'REGULAR');
       setFlags((f) => ({ ...f, oda: odaAuto }));
       // Hard-block if the pincode isn't in the master; soft-warn if it's known but unserved.
       if (info && info.known === false) {
@@ -405,7 +406,7 @@ export function CreateShipment() {
         destZone: destInfo?.region ?? 'SOUTH',
         originPincode: originPin || undefined,
         destPincode: destPin || undefined,
-        isOda: flags.oda || (destInfo?.isOda ?? false) || svcOptions.some((o) => o.isOda),
+        isOda: flags.oda || (destInfo?.isOda ?? false) || (!!(destInfo as any)?.edl && String((destInfo as any).edl).toUpperCase() !== 'REGULAR'),
         apptDelivery: flags.appt,
         consigneeName: c.consigneeName || undefined,
         consigneePhone: c.consigneePhone || undefined,

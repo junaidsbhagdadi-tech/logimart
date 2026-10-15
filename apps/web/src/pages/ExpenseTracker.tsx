@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
+import { useRights } from '../rights';
 
 const MODES = ['CASH', 'GPAY', 'UPI', 'A/C TRANSFER', 'CARD', 'CHEQUE'];
 const CATEGORIES = ['Vehicle', 'Office expense', 'Stationary', 'Internet charges', 'Staff welfare', 'Freight', 'Fuel', 'Rent', 'Repairs', 'Other'];
@@ -14,9 +15,13 @@ export function ExpenseTracker() {
   const [err, setErr] = useState('');
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  // Access split: anyone with the add grant can record an expense; only the report grant sees the
+  // totals / branch balances / all entries / Excel export.
+  const canAdd = useRights('/expenses').edit;
+  const canReport = useRights('/expenses-report').view;
 
-  const load = () => { api.listExpenses({ from: filters.from || undefined, to: filters.to || undefined, branch: filters.branch || undefined, category: filters.category || undefined }).then(setData).catch((e) => setErr(e.message)); };
-  useEffect(load, [filters]);
+  const load = () => { if (!canReport) return; api.listExpenses({ from: filters.from || undefined, to: filters.to || undefined, branch: filters.branch || undefined, category: filters.category || undefined }).then(setData).catch((e) => setErr(e.message)); };
+  useEffect(load, [filters, canReport]);
 
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -54,6 +59,7 @@ export function ExpenseTracker() {
       {err && <div className="error">{err}</div>}
       {msg && <div className="card" style={{ borderLeft: '4px solid var(--ok, #16a34a)', fontSize: 13 }}>{msg}</div>}
 
+      {canAdd && (
       <div className="card">
         <h2>Record an expense</h2>
         <div className="grid cols-4" style={{ gap: 12 }}>
@@ -74,7 +80,15 @@ export function ExpenseTracker() {
         </div>
         <button style={{ marginTop: 12 }} disabled={busy} onClick={add}>{busy ? 'Saving…' : '➕ Add expense'}</button>
       </div>
+      )}
 
+      {!canReport && (
+        <div className="card" style={{ fontSize: 13, color: 'var(--muted)' }}>
+          You have add-only access to the Expense Tracker. Totals, branch balances, the entry list and Excel export are visible only to people granted the reports access.
+        </div>
+      )}
+
+      {canReport && (<>
       <div className="card">
         <div className="row" style={{ gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div><label>From</label><input type="date" value={filters.from} onChange={(e) => setFilters((f) => ({ ...f, from: e.target.value }))} /></div>
@@ -134,6 +148,8 @@ export function ExpenseTracker() {
             </div>
           </div>
         </>
+      )}
+      </>
       )}
     </>
   );

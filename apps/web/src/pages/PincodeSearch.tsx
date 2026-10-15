@@ -72,7 +72,9 @@ export function PincodeSearch() {
               <Field label="State" value={info?.state} />
               <Field label="Region / Zone" value={info?.region} />
               <Field label="Tier" value={info?.tier != null ? `Tier ${info.tier}` : '—'} />
-              <Field label="ODA (out-of-delivery-area)" value={info?.isOda ? 'Yes' : 'No'} color={info?.isOda ? 'var(--warn, #b26a00)' : 'var(--ok, #16a34a)'} />
+              {(() => { const oda = !!(info && (info.isOda || ((info as any).edl && String((info as any).edl).toUpperCase() !== 'REGULAR'))); return (
+              <Field label="ODA (out-of-delivery-area)" value={oda ? 'Yes' : 'No'} color={oda ? 'var(--warn, #b26a00)' : 'var(--ok, #16a34a)'} />
+              ); })()}
               <Field label="Serviceable" value={(opts && opts.length) ? 'Yes' : (info?.known ? 'Directory only' : 'No')} color={(opts && opts.length) ? 'var(--ok, #16a34a)' : 'var(--muted)'} />
               <Field label="Fastest transit" value={fastest != null ? `${fastest} day${fastest === 1 ? '' : 's'}` : '—'} />
             </div>

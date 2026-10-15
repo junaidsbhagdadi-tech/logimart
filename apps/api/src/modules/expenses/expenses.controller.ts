@@ -10,7 +10,10 @@ import { ExpensesService, ExpenseInput } from './expenses.service';
 export class ExpensesController {
   constructor(private readonly svc: ExpensesService) {}
 
+  /** Totals / branch balances / all entries — the financial VIEW. Tagged with its own feature so an
+   *  "add-only" data-entry user (granted /expenses EDIT) can record expenses but NOT see the money. */
   @Get()
+  @Feature('/expenses-report')
   @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
   list(@Query('from') from?: string, @Query('to') to?: string, @Query('branch') branch?: string, @Query('category') category?: string) {
     return this.svc.list({ from, to, branch, category });

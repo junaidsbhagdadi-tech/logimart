@@ -54,7 +54,8 @@ export const FEATURE_CATALOG: FeatureSection[] = [
     { to: '/vendor-bills', label: 'Vendor Bills & P&L' },
     { to: '/documents', label: 'Documents' },
     { to: '/contact-directory', label: 'Contact Directory' },
-    { to: '/expenses', label: 'Expense Tracker' },
+    { to: '/expenses', label: 'Expense Tracker (add entry)' },
+    { to: '/expenses-report', label: 'Expense Tracker — totals & reports' },
     { to: '/sales', label: 'Sales' },
   ] },
   { section: 'Masters & Setup', features: [

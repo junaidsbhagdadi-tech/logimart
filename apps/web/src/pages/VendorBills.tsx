@@ -102,6 +102,17 @@ function PnlTab() {
   });
   const fT = rows.reduce((a, r) => ({ sell: a.sell + r.sell, cost: a.cost + r.cost, margin: a.margin + r.margin }), { sell: 0, cost: 0, margin: 0 });
 
+  const exportXls = async () => {
+    if (!rows.length) return;
+    const XLSX = await import('xlsx');
+    const head = ['Vendor AWB', 'Forwarding No', 'Our AWB', 'Customer', 'Vendor', 'Product', 'Origin', 'Destination', 'Charge Wt', 'Cost', 'Sell', 'Margin', 'Matched'];
+    const body = rows.map((r) => [r.vendorAwb, r.forwardingNo ?? '', r.ourAwb ?? '', r.customer ?? '', r.vendorCode ?? '', r.product ?? '', r.origin ?? '', r.destination ?? '', Number(r.chrgWeight ?? 0), Number(r.cost), Number(r.sell), Number(r.margin), r.matched ? 'Yes' : 'No']);
+    body.push(['', '', '', '', '', '', '', '', 'TOTAL', +fT.cost.toFixed(2), +fT.sell.toFixed(2), +fT.margin.toFixed(2), '']);
+    const ws = XLSX.utils.aoa_to_sheet([head, ...body]);
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Vendor P&L');
+    XLSX.writeFile(wb, `vendor-pnl-${from || 'all'}_${to || 'all'}.xlsx`);
+  };
+
   return (
     <>
       <div className="card">
@@ -109,6 +120,7 @@ function PnlTab() {
           <div><label>From <span className="muted">(opt.)</span></label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
           <div><label>To <span className="muted">(opt.)</span></label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
           <button onClick={run} disabled={busy}>{busy ? 'Working…' : 'Refresh'}</button>
+          <button className="secondary" onClick={exportXls} disabled={!rows.length}>⬇ Excel</button>
         </div>
         <div className="row" style={{ gap: 10, alignItems: 'flex-end', marginTop: 10 }}>
           <div style={{ flex: 1, minWidth: 200 }}><label>Search <span className="muted">vendor / customer / AWB</span></label><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="e.g. BDR, Acme, 5800…" /></div>

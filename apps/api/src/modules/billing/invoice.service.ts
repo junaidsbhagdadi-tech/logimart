@@ -597,15 +597,14 @@ export class InvoiceService {
   async pnl(from?: string, to?: string) {
     const where: any = {};
     if (from || to) where.pickupDate = { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) };
-    const bills = await this.prisma.vendorBill.findMany({ where, orderBy: { createdAt: 'desc' }, take: 5000 });
-    const rows: any[] = [];
-    let totSell = 0, totCost = 0;
-    for (const b of bills) {
-      // #12 — reconcile the vendor bill to our shipment by AWB OR forwarding number. The vendor may
-      // bill under our AWB or under their own waybill (the forwarding no), and either can land in the
-      // bill's `awb` or `forwardingNo` column — so match every key against every shipment id field,
-      // case-insensitively.
-      const keys = Array.from(new Set([b.awb, (b as any).forwardingNo].map((k) => String(k ?? '').trim()).filter(Boolean)));
+    const bills = await this.prisma.vendorBill.findMany({ where, orderBy: { createdAt: 'desc' }, take: 20000 });
+    // Reconcile + price each bill. This is heavy (a shipment lookup + a rate-engine recompute per bill),
+    // so run it in bounded-concurrency batches instead of one-at-a-time — a month's worth of bills used
+    // to time out serially. Each bill yields a row, or null when it's a prepaid (cash/wallet) shipment.
+    const priceOne = async (b: any): Promise<any | null> => {
+      // #12 — match the vendor bill to our shipment by AWB OR forwarding number, either of which can
+      // land in the bill's `awb` or `forwardingNo` column — match every key against every id field.
+      const keys = Array.from(new Set([b.awb, b.forwardingNo].map((k) => String(k ?? '').trim()).filter(Boolean)));
       const or = keys.flatMap((k) => [
         { awb: { equals: k, mode: 'insensitive' as const } },
         { forwardingAwb: { equals: k, mode: 'insensitive' as const } },
@@ -617,21 +616,28 @@ export class InvoiceService {
         include: { pieces: true, client: { select: { legalName: true, accountCode: true, isCash: true, accountType: true } } },
       }) : null;
       // Cash / Wallet (prepaid) shipments are settled at booking — excluded from P&L.
-      if (ship?.client && (ship.client.isCash || ship.client.accountType === 'WALLET')) continue;
+      if (ship?.client && (ship.client.isCash || ship.client.accountType === 'WALLET')) return null;
       let sell = 0, ourAwb: string | null = null, customer: string | null = null;
       if (ship) {
-        const ch = await this.rates.chargesForShipment(ship, ship.pieces);
+        const ch = await this.rates.chargesForShipment(ship, ship.pieces).catch(() => null);
         sell = ch ? +(ch.subtotal * (1 + GST_RATE)).toFixed(2) : 0;
         ourAwb = ship.awb; customer = ship.client?.legalName ?? null;
       }
       const cost = Number(b.totalWithGst || b.total);
-      totSell += sell; totCost += cost;
-      rows.push({
-        vendorAwb: b.awb, forwardingNo: (b as any).forwardingNo ?? null, ourAwb, customer, vendorCode: b.vendorCode, product: b.product,
+      return {
+        vendorAwb: b.awb, forwardingNo: b.forwardingNo ?? null, ourAwb, customer, vendorCode: b.vendorCode, product: b.product,
         origin: b.origin, destination: b.destination, chrgWeight: Number(b.chrgWeight ?? 0),
         cost: +cost.toFixed(2), sell, margin: +(sell - cost).toFixed(2), matched: !!ship,
-      });
+      };
+    };
+    const rows: any[] = [];
+    const CONC = 12;
+    for (let i = 0; i < bills.length; i += CONC) {
+      const batch = await Promise.all(bills.slice(i, i + CONC).map(priceOne));
+      for (const r of batch) if (r) rows.push(r);
     }
+    const totSell = rows.reduce((s, r) => s + r.sell, 0);
+    const totCost = rows.reduce((s, r) => s + r.cost, 0);
     return { count: rows.length, totalSell: +totSell.toFixed(2), totalCost: +totCost.toFixed(2), totalMargin: +(totSell - totCost).toFixed(2), rows };
   }
 

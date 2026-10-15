@@ -31,7 +31,7 @@ export const DEPARTMENT_DEFAULTS: Record<string, Record<string, DeptLevel>> = {
     '/': 'VIEW', '/team-dashboards': 'VIEW', '/tracker': 'VIEW',
     '/invoices': 'DELETE', '/bill-worksheet': 'EDIT', '/sales-mis': 'VIEW', '/receivables': 'EDIT',
     '/notes': 'DELETE', '/claims': 'EDIT', '/customers': 'EDIT', '/vendors': 'EDIT', '/vehicles': 'EDIT',
-    '/vendor-bills': 'EDIT', '/documents': 'EDIT', '/expenses': 'EDIT', '/sales': 'VIEW',
+    '/vendor-bills': 'EDIT', '/documents': 'EDIT', '/expenses': 'EDIT', '/expenses-report': 'DELETE', '/sales': 'VIEW',
     '/ftl-rates': 'VIEW', '/per-box-rates': 'VIEW', '/tax': 'EDIT', '/reports': 'VIEW',
   },
   SALES: {
