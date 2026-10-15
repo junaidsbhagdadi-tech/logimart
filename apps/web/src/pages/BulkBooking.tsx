@@ -15,7 +15,6 @@ export function BulkBooking() {
   const ownClientId = user?.clientId ? Number(user.clientId) : null;
   const cols = ownClientId ? COLS_CLIENT : COLS_STAFF;
 
-  const [hubIds, setHubIds] = useState<[number, number]>([1, 2]);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -41,7 +40,6 @@ export function BulkBooking() {
   };
 
   useEffect(() => {
-    api.listHubs().then((hs) => { if (hs[0]) setHubIds([Number(hs[0].id), Number((hs[1] ?? hs[0]).id)]); }).catch(() => {});
     api.listMaster('PRODUCT').then((r) => {
       const m: Record<string, string> = {};
       r.forEach((x) => { m[x.code.toUpperCase()] = mapMode((x.attrs as any)?.service || (x.attrs as any)?.mode || (x.attrs as any)?.serviceMode || (x.attrs as any)?.groupType); });
@@ -159,8 +157,9 @@ export function BulkBooking() {
         serviceMode,
         vendor: (first.vendor || '').trim() || undefined, // drives the vendor rate card
         forwardingAwb: (first.forwardingAwb || '').trim() || undefined, // carrier's forwarding AWB / tracking no.
-        originHubId: hubIds[0], destHubId: hubIds[1],
-        originZone: 'SOUTH', destZone: 'SOUTH',
+        // Don't stamp a blanket origin/dest hub on every row — the backend derives the real origin/dest
+        // CITY and zone from each pincode. Forcing hub #1/#2 made every shipment show AMD→BWH regardless
+        // of the actual pincodes. (Zones are derived server-side from the pincode master.)
         originPincode: first.originPincode || undefined,
         destPincode: first.destPincode || undefined,
         consigneeName: first.consigneeName || undefined,

@@ -12,7 +12,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ROLES_KEY, SUPER_ADMIN_ONLY_KEY, FEATURE_KEY } from './roles.decorator';
 import { grantLevelFor, meetsLevel, levelForMethod } from './feature-grants';
 
-type FreshUser = { role: UserRole; department: string | null; featureGrants: unknown; isActive: boolean } | null;
+type FreshUser = { role: UserRole; department: string | null; featureGrants: unknown; isActive: boolean; clientId: bigint | null } | null;
 
 /**
  * Verifies the Bearer JWT, then resolves the user's CURRENT role / department / feature grants from
@@ -40,7 +40,7 @@ export class RolesGuard implements CanActivate {
     const hit = RolesGuard.cache.get(id);
     if (hit && hit.exp > now) return hit.v;
     const u = await this.prisma.user
-      .findUnique({ where: { id: BigInt(id) }, select: { role: true, department: true, featureGrants: true, isActive: true } })
+      .findUnique({ where: { id: BigInt(id) }, select: { role: true, department: true, featureGrants: true, isActive: true, clientId: true } })
       .catch(() => null);
     RolesGuard.cache.set(id, { v: (u as FreshUser) ?? null, exp: now + RolesGuard.TTL_MS });
     return (u as FreshUser) ?? null;
@@ -66,6 +66,9 @@ export class RolesGuard implements CanActivate {
       req.user.role = fresh.role;
       req.user.department = fresh.department;
       req.user.featureGrants = fresh.featureGrants;
+      // Keep the customer link live too, so linking a CLIENT_ADMIN to a customer takes effect without
+      // forcing a re-login (the portal routes read req.user.clientId).
+      req.user.clientId = fresh.clientId != null ? fresh.clientId.toString() : null;
     }
 
     const role: UserRole = req.user.role;

@@ -23,6 +23,8 @@ class UpdateUserDto {
   // Either a legacy string[] (each feature = full access) or a { featureKey: 'VIEW'|'EDIT'|'DELETE' }
   // map. SYS_ADMIN-only endpoint, so accepted as-is (validated in the UI editor).
   @IsOptional() featureGrants?: string[] | Record<string, string> | null;
+  // Customer link for a CLIENT_ADMIN portal login; null detaches it.
+  @IsOptional() clientId?: number | null;
 }
 
 @Controller('api/v1/users')

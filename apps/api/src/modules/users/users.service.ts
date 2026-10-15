@@ -106,7 +106,7 @@ export class UsersService {
   }
 
   /** Toggle active, change role, reset password, or assign feature access (super admin). */
-  async update(id: number, dto: { isActive?: boolean; role?: UserRole; department?: Department | null; password?: string; featureGrants?: string[] | Record<string, string> | null }) {
+  async update(id: number, dto: { isActive?: boolean; role?: UserRole; department?: Department | null; password?: string; featureGrants?: string[] | Record<string, string> | null; clientId?: number | null }) {
     const u = await this.prisma.user.findUnique({ where: { id: BigInt(id) } });
     if (!u) throw new NotFoundException('User not found');
     return this.prisma.user.update({
@@ -117,8 +117,11 @@ export class UsersService {
         ...(dto.department !== undefined ? { department: dto.department ?? null } : {}),
         passwordHash: dto.password ? await bcrypt.hash(dto.password, 10) : undefined,
         ...(dto.featureGrants !== undefined ? { featureGrants: dto.featureGrants ?? Prisma.DbNull } : {}),
+        // Customer link for a CLIENT_ADMIN portal login (null = internal staff). Lets ops fix a login
+        // that shows "Client not found" by pointing it at the right customer.
+        ...(dto.clientId !== undefined ? { clientId: dto.clientId != null ? BigInt(dto.clientId) : null } : {}),
       },
-      select: { id: true, fullName: true, email: true, role: true, department: true, isActive: true, featureGrants: true },
+      select: { id: true, fullName: true, email: true, role: true, department: true, isActive: true, featureGrants: true, clientId: true },
     });
   }
 }

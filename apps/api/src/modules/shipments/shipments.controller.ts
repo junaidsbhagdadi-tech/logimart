@@ -186,7 +186,7 @@ export class ShipmentsController {
   /** List recent shipments. Client admins see only their own; staff see all. */
   @Get()
   list(@Req() req: any, @Query('limit') limit?: string) {
-    const clientId = req.user.role === UserRole.CLIENT_ADMIN ? BigInt(req.user.clientId) : undefined;
+    const clientId = req.user.role === UserRole.CLIENT_ADMIN && req.user.clientId != null ? BigInt(req.user.clientId) : undefined;
     return this.shipments.list(clientId, limit ? Number(limit) : 50);
   }
 
@@ -194,7 +194,7 @@ export class ShipmentsController {
    *  across all shipments (not just the latest page). */
   @Get('awb-list')
   awbList(@Req() req: any, @Query('limit') limit?: string, @Query('search') search?: string, @Query('from') from?: string, @Query('to') to?: string) {
-    const clientId = req.user.role === UserRole.CLIENT_ADMIN ? BigInt(req.user.clientId) : undefined;
+    const clientId = req.user.role === UserRole.CLIENT_ADMIN && req.user.clientId != null ? BigInt(req.user.clientId) : undefined;
     return this.shipments.awbList(clientId, limit ? Number(limit) : 300, search, from, to);
   }
 

@@ -30,6 +30,7 @@ export function Users() {
   const [grantUser, setGrantUser] = useState<any | null>(null);
   const [grants, setGrants] = useState<Record<string, 'VIEW' | 'EDIT' | 'DELETE'>>({});
   const [hubs, setHubs] = useState<{ id: string; code: string; name: string }[]>([]);
+  const [clients, setClients] = useState<{ id: string; legalName: string; accountCode: string }[]>([]);
   const [cred, setCred] = useState<{ email: string; password: string; url: string; heading: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -46,6 +47,12 @@ export function Users() {
   };
   useEffect(load, []);
   useEffect(() => { api.listHubs().then(setHubs).catch(() => {}); }, []);
+  useEffect(() => { api.listClients().then((cs: any[]) => setClients(cs.map((c) => ({ id: String(c.id), legalName: c.legalName, accountCode: c.accountCode })))).catch(() => {}); }, []);
+  const clientName = (id: any) => { const c = clients.find((x) => x.id === String(id)); return c ? `${c.accountCode} — ${c.legalName}` : null; };
+  const changeClient = async (u: any, clientId: string) => {
+    try { await api.updateUser(u.id, { clientId: clientId ? +clientId : null } as any); setMsg(clientId ? `${u.fullName} linked to ${clientName(clientId)}` : `${u.fullName} customer link cleared`); load(); }
+    catch (e: any) { setError(e.message); }
+  };
 
   // Show the user's CURRENT effective access: their explicit override if they have one, otherwise
   // the department default seeded in. Because an override REPLACES the department (see rights.ts),
@@ -157,7 +164,12 @@ export function Users() {
               {hubs.map((h) => <option key={h.id} value={h.id}>{h.code} — {h.name}</option>)}
             </select>
           </div>
-          <div><label>Client ID (client admin)</label><input value={form.clientId} onChange={(e) => set('clientId', e.target.value)} /></div>
+          <div><label>Customer account <span className="muted">(for a Customer/portal login)</span></label>
+            <select value={form.clientId} onChange={(e) => set('clientId', e.target.value)}>
+              <option value="">— none (internal staff) —</option>
+              {clients.map((c) => <option key={c.id} value={c.id}>{c.accountCode} — {c.legalName}</option>)}
+            </select>
+          </div>
         </div>
         <button style={{ marginTop: 12 }} disabled={!form.fullName || !form.email} onClick={create}>Create user</button>
       </div>
@@ -204,6 +216,12 @@ export function Users() {
                       </td>
                       <td><span className={`badge ${u.isActive ? 'DELIVERED' : 'CANCELLED'}`}>{u.isActive ? 'ACTIVE' : 'DISABLED'}</span></td>
                       <td className="row" style={{ gap: 6 }}>
+                        {u.role === 'CLIENT_ADMIN' && (
+                          <select value={u.clientId != null ? String(u.clientId) : ''} onChange={(e) => changeClient(u, e.target.value)} title="Customer this portal login is linked to" style={{ width: 'auto', maxWidth: 190, ...(u.clientId == null ? { borderColor: 'var(--danger, #c0392b)', color: 'var(--danger, #c0392b)' } : {}) }}>
+                            <option value="">⚠ link customer…</option>
+                            {clients.map((c) => <option key={c.id} value={c.id}>{c.accountCode} — {c.legalName}</option>)}
+                          </select>
+                        )}
                         <button className="secondary" onClick={() => toggle(u)}>{u.isActive ? 'Disable' : 'Enable'}</button>
                         <button className="secondary" onClick={() => resetPwd(u)}>Reset pwd</button>
                         {u.role !== 'SYS_ADMIN' && <button className="secondary" onClick={() => openGrants(u)} title="Override this person's department default, feature by feature">🔑 Features{u.featureGrants ? ` (${Array.isArray(u.featureGrants) ? u.featureGrants.length : Object.keys(u.featureGrants).length})` : ''}</button>}

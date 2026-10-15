@@ -1,4 +1,4 @@
-import { Body, Controller, Get, NotFoundException, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles } from '../../common/rbac/roles.decorator';
@@ -13,6 +13,16 @@ export class BillingController {
     private readonly rates: RateService,
     private readonly invoices: InvoiceService,
   ) {}
+
+  /** A CLIENT_ADMIN's linked customer id — a clear message instead of a BigInt(null) 500 / "Client not
+   *  found" when the login isn't linked to a customer yet. */
+  private clientIdOf(req: any): bigint {
+    const cid = req.user?.clientId;
+    if (cid == null || cid === '') {
+      throw new BadRequestException('This login is not linked to a customer account yet. Ask an admin to set the customer on your user (Users → edit → Customer account).');
+    }
+    return BigInt(cid);
+  }
 
   /** Live rate preview for an AWB — confidential pricing, finance team only. */
   @Get('shipments/:awb/rate-quote')
@@ -40,7 +50,7 @@ export class BillingController {
 
   @Get('billing/invoices')
   list(@Req() req: any) {
-    const clientId = req.user.role === UserRole.CLIENT_ADMIN ? BigInt(req.user.clientId) : undefined;
+    const clientId = req.user.role === UserRole.CLIENT_ADMIN ? this.clientIdOf(req) : undefined;
     return this.invoices.list(clientId);
   }
 
@@ -186,14 +196,14 @@ export class BillingController {
   @Get('portal/overview')
   @Roles(UserRole.CLIENT_ADMIN)
   portal(@Req() req: any) {
-    return this.invoices.clientPortal(Number(req.user.clientId));
+    return this.invoices.clientPortal(Number(this.clientIdOf(req)));
   }
 
   /** Accounts the logged-in client can book under (own + same-GSTIN siblings) with shipper defaults. */
   @Get('portal/accounts')
   @Roles(UserRole.CLIENT_ADMIN)
   portalAccounts(@Req() req: any) {
-    return this.invoices.bookableAccounts(Number(req.user.clientId));
+    return this.invoices.bookableAccounts(Number(this.clientIdOf(req)));
   }
 
   @Get('billing/clients/:id/statement')

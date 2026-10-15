@@ -218,7 +218,9 @@ export class ShipmentsService {
         consigneeName: dto.consigneeName,
         consigneePhone: dto.consigneePhone,
         consigneeAddress: dto.consigneeAddress,
-        consigneeCity: dto.consigneeCity,
+        // Derive the destination city from the pincode master when the caller omits it (bulk uploads
+        // send only the pincode) — else the tracker shows the default hub code instead of the real city.
+        consigneeCity: dto.consigneeCity || destPin?.city || null,
         destPincode: dto.destPincode,
         isOda,
         expectedDelivery,
@@ -244,7 +246,7 @@ export class ShipmentsService {
         shipperGstin: dto.shipperGstin || null,
         shipperDocType: dto.shipperDocType || null,
         shipperDocNo: dto.shipperDocNo || null,
-        originLocation: dto.originLocation || null,
+        originLocation: dto.originLocation || originPin?.city || null,
         // ---- consignee extras ----
         consigneeContact: dto.consigneeContact || null,
         consigneeState: dto.consigneeState || null,

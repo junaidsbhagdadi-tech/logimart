@@ -313,10 +313,20 @@ export class BluedartService implements OnModuleInit {
     // waybill (cryptic "UnauthorizedUser" / area-SC-region). Point ops at the right account / to-pay pickup.
     const home = String(acc.originArea || '').toUpperCase();
     if (home && org.area && org.area.toUpperCase() !== home) {
-      throw new BadRequestException(
-        `${awb} originates in ${org.area} (pin ${(s as any).shipperPincode ?? (s as any).client?.pincode ?? '?'}), but the selected BlueDart account is for ${home} — BlueDart can't generate a waybill across areas. ` +
-        `Pick the ${org.area} BlueDart account on Edit AWB, or mark it To-Pay and use the "📅 BlueDart pickup" button for an outstation collection.`,
-      );
+      // Out-of-area origin: BlueDart can't mint a waybill across areas on a single-area account, so hand
+      // it off as an outstation (to-pay/FOD) PICKUP instead — the same fallback the auto-dispatcher uses.
+      // This is what makes a To-Pay / outstation shipment bookable from the manual "Hand to BlueDart"
+      // button, instead of a dead-end error. (The Logimart customer is still billed per the shipment's
+      // own payment term; isToPayShipper is just the carrier leg term — see schedulePickup.)
+      try {
+        const pk = await this.schedulePickup(awb);
+        return { awb, bdWaybill: null, token: pk.token, labelBase64: null, outstation: true, action: 'outstation-pickup', response: pk.response };
+      } catch (e: any) {
+        throw new BadRequestException(
+          `${awb} originates in ${org.area} (pin ${(s as any).shipperPincode ?? (s as any).client?.pincode ?? '?'}), outside the selected BlueDart account's area (${home}). ` +
+          `Tried an outstation (To-Pay) pickup but it failed: ${String(e?.message || e)}. Add a ${org.area} BlueDart account on Edit AWB, or fix the shipper details and retry.`,
+        );
+      }
     }
     const payload = this.mapWaybill(s, acc);
     const resp = await this.authed('/waybill/v1/GenerateWayBill', { method: 'POST', body: JSON.stringify(payload) });
@@ -681,13 +691,28 @@ export class BluedartService implements OnModuleInit {
       this.prisma.shipment.count({ where: bdWhere }),
       this.prisma.shipment.count({ where: { AND: [bdWhere, { bdSyncedAt: null }] } }),
     ]);
-    if (this.backfilling) return { started: false, running: true, total, pending, message: 'A backfill is already running — it drains oldest-first in the background.' };
+    if (this.backfilling) return { started: false, running: true, total, pending, message: 'A backfill is already running — it drains the whole backlog oldest-first in the background. No need to press again.' };
     this.backfilling = true;
-    // Fire-and-forget: run the throttled loop without blocking the response.
-    this.syncAll(limit)
+    // Fire-and-forget: drain the ENTIRE unsynced backlog in repeated throttled batches, so one press
+    // finishes the job instead of the user re-pressing for each 2000-shipment slice.
+    this.drainBackfill(bdWhere)
       .catch((e) => this.logger.warn(`backfill: ${e?.message || e}`))
       .finally(() => { this.backfilling = false; });
-    return { started: true, running: true, total, pending, message: `Backfill started in the background for up to ${Math.min(limit, total)} shipment(s) (oldest-first). Statuses + scans will fill in over the next several minutes.` };
+    return { started: true, running: true, total, pending, message: `Backfill started — draining all ${pending} unsynced shipment(s) in the background (oldest-first, throttled). This runs to completion on its own; no need to press again.` };
+  }
+
+  /** Drain the whole never-synced BlueDart backlog in repeated throttled batches until none remain.
+   *  syncAll advances bdSyncedAt (nulls-first), so each pass clears the next slice of unsynced rows. */
+  private async drainBackfill(bdWhere: any) {
+    let totalDone = 0;
+    for (let pass = 0; pass < 50; pass++) {
+      const pending = await this.prisma.shipment.count({ where: { AND: [bdWhere, { bdSyncedAt: null }] } });
+      if (pending === 0) break;
+      const r = await this.syncAll(2000);
+      totalDone += r.synced + r.failed;
+      if (!r.total) break; // nothing processed — avoid a tight loop
+    }
+    this.logger.log(`BlueDart backfill drain complete: ~${totalDone} shipment(s) processed.`);
   }
 
   /** Parse the custawbquery XML into a flat scan list (newest first), plus the current status. */

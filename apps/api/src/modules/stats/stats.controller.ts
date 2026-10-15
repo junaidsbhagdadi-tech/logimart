@@ -19,7 +19,7 @@ export class StatsController {
   @Get('hub')
   @Roles(UserRole.CLIENT_ADMIN, UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
   hub(@Req() req: any, @Query('window') window?: string) {
-    const clientId = req.user.role === UserRole.CLIENT_ADMIN ? BigInt(req.user.clientId) : undefined;
+    const clientId = req.user.role === UserRole.CLIENT_ADMIN && req.user.clientId != null ? BigInt(req.user.clientId) : undefined;
     return this.stats.hubSummary((window as any) || '7d', clientId);
   }
 }

@@ -49,7 +49,7 @@ export class PickupsController {
 
   @Get()
   list(@Req() req: any) {
-    const clientId = req.user.role === UserRole.CLIENT_ADMIN ? BigInt(req.user.clientId) : undefined;
+    const clientId = req.user.role === UserRole.CLIENT_ADMIN && req.user.clientId != null ? BigInt(req.user.clientId) : undefined;
     return this.pickups.list(clientId);
   }
 
