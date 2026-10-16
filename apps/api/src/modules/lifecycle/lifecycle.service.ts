@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ShipmentStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RateService } from '../billing/rate.service';
@@ -161,23 +161,40 @@ export class LifecycleService {
 
   /** Full scan timeline for one AWB (append-only history), oldest → newest, with labels.
    *  Consumable by staff, customer panel, and public website tracking. */
-  async track(awbRaw: string) {
+  /** A CLIENT_ADMIN may only see their own account's AWBs (own account + same head-office group).
+   *  No-op when clientId is undefined (staff). Throws if the shipment is on another account. */
+  private async assertOwnedByClient(shipClientId: bigint | null | undefined, clientId?: bigint) {
+    if (clientId == null) return; // staff — unrestricted
+    if (shipClientId != null && shipClientId === clientId) return;
+    const [me, ship] = await Promise.all([
+      this.prisma.b2bClient.findUnique({ where: { id: clientId }, select: { parentAccountId: true } }),
+      shipClientId != null ? this.prisma.b2bClient.findUnique({ where: { id: shipClientId }, select: { parentAccountId: true } }) : null,
+    ]);
+    const group = (id: bigint | null | undefined, parent: bigint | null | undefined) => new Set([id, parent].filter((x): x is bigint => x != null).map(String));
+    const mine = group(clientId, me?.parentAccountId);
+    const theirs = group(shipClientId, ship?.parentAccountId);
+    const shares = [...mine].some((x) => theirs.has(x));
+    if (!shares) throw new ForbiddenException('This shipment is not on your account.');
+  }
+
+  async track(awbRaw: string, clientId?: bigint) {
     const awb = String(awbRaw || '').trim().toUpperCase();
     const [shipment, logs] = await Promise.all([
       this.prisma.shipment.findUnique({
         where: { awb },
-        select: { awb: true, statusCode: true, statusAt: true, originZone: true, destZone: true, consigneeName: true, consigneeCity: true, expectedDelivery: true, product: true, vendor: true },
+        select: { awb: true, clientId: true, statusCode: true, statusAt: true, originZone: true, destZone: true, consigneeName: true, consigneeCity: true, expectedDelivery: true, product: true, vendor: true },
       }),
       this.prisma.scanLog.findMany({ where: { awb }, orderBy: { scanAt: 'asc' } }),
     ]);
     if (!shipment) throw new BadRequestException(`AWB ${awb} not found.`);
+    await this.assertOwnedByClient(shipment.clientId, clientId);
     const labelOf = (c: string) => LIFECYCLE.find((l) => l.code === c)?.label || c;
     const timeline = logs.map((l) => ({ code: l.eventType, label: labelOf(l.eventType), at: l.scanAt, remark: l.remark }));
     return { ...shipment, currentLabel: labelOf(String(shipment.statusCode || 'MAN')), timeline };
   }
 
   /** Rich tracking detail for the dedicated tracker page (header + milestone stepper + scan grid). */
-  async trackDetail(awbRaw: string) {
+  async trackDetail(awbRaw: string, clientId?: bigint) {
     const awb = String(awbRaw || '').trim().toUpperCase();
     const labelOf = (c: string) => LIFECYCLE.find((l) => l.code === c)?.label || c;
     const s = await this.prisma.shipment.findUnique({
@@ -189,6 +206,7 @@ export class LifecycleService {
       },
     });
     if (!s) throw new BadRequestException(`AWB ${awb} not found.`);
+    await this.assertOwnedByClient((s as any).clientId, clientId);
     const logs = await this.prisma.scanLog.findMany({ where: { awb }, orderBy: { scanAt: 'desc' } });
     const userIds = [...new Set(logs.map((l) => l.scannedById).filter((x): x is bigint => !!x))];
     const users = userIds.length ? await this.prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, fullName: true } }) : [];

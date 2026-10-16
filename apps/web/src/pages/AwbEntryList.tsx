@@ -85,7 +85,9 @@ export function AwbEntryList() {
         const v = c.key === 'bookDate' ? fmtDate(r.bookDate) : String(r[c.key] ?? '');
         return v.toLowerCase().includes(f);
       }),
-    );
+    )
+      // Date-wise, OLDEST first.
+      .sort((a, b) => new Date(a.bookDate || 0).getTime() - new Date(b.bookDate || 0).getTime());
   }, [rows, filters]);
 
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE));

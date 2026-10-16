@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InvoiceStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -550,19 +550,20 @@ export class InvoiceService {
     const vendorCode = (v?: string | null) => (v && String(v).toUpperCase().startsWith('BLUEDART') ? 'BDR' : (v || 'SELF'));
     const d10 = (dt: any) => (dt ? new Date(dt).toISOString().slice(0, 10) : '');
 
-    const rows: Record<string, any>[] = [];
-    for (const s of list) {
+    // Price each AWB through the rate engine in bounded-concurrency batches (a month's worth used to
+    // time out one-at-a-time). Each shipment yields a 59-column row, or null when not billable.
+    const num = (x: any) => +(Number(x ?? 0)).toFixed(2);
+    const buildRow = async (s: any): Promise<Record<string, any> | null> => {
       const client = byId.get(String(s.clientId));
-      if (!client) continue; // shipment's client isn't billable (shouldn't happen given the filter)
+      if (!client) return null; // shipment's client isn't billable (shouldn't happen given the filter)
       const carrierState = stateForClient(client);
       const clientState = client.gstin && client.gstin.length >= 2 ? client.gstin.slice(0, 2) : null;
       const intraState = clientState ? clientState === carrierState : true;
-      const b: any = (await this.rates.chargesForShipment(s, s.pieces)) || {};
-      const num = (x: any) => +(Number(x ?? 0)).toFixed(2);
+      const b: any = (await this.rates.chargesForShipment(s, s.pieces).catch(() => null)) || {};
       const reverseProd = ['TAPEX', 'TOSFC', 'TODP'].includes(String(s.product ?? '').toUpperCase());
       const sub = num(b.subtotal);
       const gst = +(sub * GST_RATE).toFixed(2);
-      rows.push({
+      return {
         AWBNo: s.awb, BookingDate: d10(s.createdAt), CustomerCode: client.accountCode, CustomerName: client.legalName,
         Invoice_No: '', Invoice_Date: '', Cust_Invoice_No: s.referenceNo ?? '', Cust_Invoice_Date: '',
         Shipment_Value: num(s.shipmentValue ?? s.declaredValue), COD_Amount: 0, AddField7: '', Vendor_InvoiceNo: '',
@@ -581,7 +582,13 @@ export class InvoiceService {
         'Other Charges 1': num(b.loading), 'Other Charges 2': num(b.unloading), 'RAS CHARGE': num(b.ras), 'Currency Adjustment': 0,
         FuelSurcharge: num(b.fuel), TaxIGST: intraState ? 0 : gst, SBCessSGST: intraState ? +(gst / 2).toFixed(2) : 0,
         KKCessCGST: intraState ? +(gst / 2).toFixed(2) : 0, TotalSales: +(sub + gst).toFixed(2),
-      });
+      };
+    };
+    const rows: Record<string, any>[] = [];
+    const CONC = 12;
+    for (let i = 0; i < list.length; i += CONC) {
+      const batch = await Promise.all(list.slice(i, i + CONC).map(buildRow));
+      for (const r of batch) if (r) rows.push(r);
     }
     // Header label: the one customer's name for a single pick, else a summary of the set.
     const label = clientIds !== 'all' && clientIds.length === 1
@@ -666,7 +673,12 @@ export class InvoiceService {
     };
   }
 
-  list(clientId?: bigint) {
+  async list(clientId?: bigint) {
+    // A scoped (portal) list is only served if the customer is opted in to seeing invoices.
+    if (clientId != null) {
+      const c = await this.prisma.b2bClient.findUnique({ where: { id: clientId }, select: { canViewInvoices: true } });
+      if (!c?.canViewInvoices) throw new ForbiddenException('Invoice access is not enabled for your account. Please contact us.');
+    }
     return this.prisma.invoice.findMany({
       where: clientId != null ? { clientId } : undefined,
       orderBy: { issuedAt: 'desc' },

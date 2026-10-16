@@ -32,11 +32,20 @@ export class AuthService {
     return this.issue(user);
   }
 
+  /** Portal opt-in flags from the linked customer (CLIENT_ADMIN) so the UI can gate My Invoices /
+   *  rate-check. Internal staff (no clientId) get both false; they're governed by role, not these. */
+  private async clientFlags(clientId: bigint | null) {
+    if (clientId == null) return { canViewInvoices: false, canCheckRates: false };
+    const c = await this.prisma.b2bClient.findUnique({ where: { id: clientId }, select: { canViewInvoices: true, canCheckRates: true } }).catch(() => null);
+    return { canViewInvoices: !!c?.canViewInvoices, canCheckRates: !!c?.canCheckRates };
+  }
+
   /** Current user's LIVE profile (role / department / feature grants) so the client can refresh
    *  access on load without re-logging in. Same shape as the login `user`. */
   async me(userId: number) {
     const user = await this.prisma.user.findUnique({ where: { id: BigInt(userId) } });
     if (!user || !user.isActive) throw new UnauthorizedException('Session no longer valid — sign in again.');
+    const flags = await this.clientFlags(user.clientId);
     return {
       id: user.id.toString(),
       fullName: user.fullName,
@@ -44,6 +53,7 @@ export class AuthService {
       clientId: user.clientId?.toString() ?? null,
       riderCode: user.riderCode ?? null,
       department: user.department ?? null,
+      ...flags,
       featureGrants:
         Array.isArray(user.featureGrants) || (user.featureGrants && typeof user.featureGrants === 'object')
           ? (user.featureGrants as any)
@@ -70,6 +80,7 @@ export class AuthService {
           ? (user.featureGrants as any)
           : null,
     };
+    const flags = await this.clientFlags(user.clientId);
     return {
       accessToken: await this.jwt.signAsync(payload),
       user: {
@@ -79,6 +90,7 @@ export class AuthService {
         clientId: user.clientId?.toString() ?? null,
         riderCode: user.riderCode ?? null,
         department: user.department ?? null,
+        ...flags,
         // Pass through either grant shape (legacy string[] OR { route: level } map) so a per-user
         // override actually reaches the client; null/other → department/role defaults apply.
         featureGrants:

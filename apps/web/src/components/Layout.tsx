@@ -34,9 +34,10 @@ export function Layout() {
       { to: '/pickups', icon: '📦', label: 'Schedule Pickup' },
     ] },
     { title: 'Billing', items: [
-      { to: '/invoices', icon: '🧾', label: 'My Invoices' },
+      // Only if the customer has been granted "Show invoices in portal" on their account.
+      { to: '/invoices', icon: '🧾', label: 'My Invoices', show: !!(user as any)?.canViewInvoices },
     ] },
-  ];
+  ].filter((g) => g.items.some((i) => (i as any).show !== false));
   const [awb, setAwb] = useState('');
   // Global appointment-delivery notification (all pages, staff only).
   const [appts, setAppts] = useState<any[]>([]);

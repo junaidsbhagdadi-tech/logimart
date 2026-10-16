@@ -19,15 +19,20 @@ export class LifecycleController {
   @Roles(...OPS)
   list(@Query('code') code?: string, @Query('limit') limit?: string) { return this.svc.list(code, limit ? Number(limit) : 100); }
 
-  /** Full scan timeline for one AWB (staff view; also feeds customer panel / website tracking). */
+  /** Full scan timeline for one AWB (staff view; also feeds customer panel / website tracking).
+   *  A CLIENT_ADMIN may track, but only their own account's AWBs (scoped in the service). */
   @Get('track/:awb')
-  @Roles(...OPS)
-  track(@Param('awb') awb: string) { return this.svc.track(awb); }
+  @Roles(...OPS, UserRole.CLIENT_ADMIN)
+  track(@Param('awb') awb: string, @Req() req: any) {
+    return this.svc.track(awb, req.user.role === UserRole.CLIENT_ADMIN && req.user.clientId != null ? BigInt(req.user.clientId) : undefined);
+  }
 
-  /** Rich tracking detail for the dedicated tracker page. */
+  /** Rich tracking detail for the dedicated tracker page. CLIENT_ADMIN scoped to own AWBs. */
   @Get('detail/:awb')
-  @Roles(...OPS)
-  detail(@Param('awb') awb: string) { return this.svc.trackDetail(awb); }
+  @Roles(...OPS, UserRole.CLIENT_ADMIN)
+  detail(@Param('awb') awb: string, @Req() req: any) {
+    return this.svc.trackDetail(awb, req.user.role === UserRole.CLIENT_ADMIN && req.user.clientId != null ? BigInt(req.user.clientId) : undefined);
+  }
 
   /** Super-admin only: wipe a shipment's scan history and reset it to MAN. */
   @Post('reset/:awb')

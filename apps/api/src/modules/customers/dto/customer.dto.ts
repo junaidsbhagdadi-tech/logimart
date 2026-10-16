@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsEmail, IsInt, IsISO8601, IsNumber, IsOptional, IsString, Min, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsInt, IsISO8601, IsNumber, IsOptional, IsString, Min, MinLength } from 'class-validator';
 
 /** Xpresion "Personal Information" parity — most fields optional. */
 export class CreateClientDto {
@@ -14,7 +14,7 @@ export class CreateClientDto {
   @IsOptional() @IsString() contactName?: string;
   @IsOptional() @IsString() contactPerson?: string; // Contact Person
   @IsOptional() @IsString() contactPhone?: string; // Mobile *
-  @IsOptional() @IsEmail() contactEmail?: string; // Email ID *
+  @IsOptional() @IsString() contactEmail?: string; // Billing email(s) — comma-separate for multiple
   @IsOptional() @IsString() tel1?: string;
   @IsOptional() @IsString() tel2?: string;
   @IsOptional() @IsString() fax?: string;
@@ -29,7 +29,7 @@ export class CreateClientDto {
   @IsOptional() @IsString() invoiceFormat?: string;
   @IsOptional() @IsString() customerType?: string; // Customer | Agent
   @IsOptional() @IsString() registerType?: string; // Registered | Un Registered | B2B | B2C
-  @IsOptional() @IsEmail() email2?: string;
+  @IsOptional() @IsString() email2?: string; // Reports email(s) — comma-separate for multiple
   @IsOptional() @IsString() iecCode?: string;
   @IsOptional() @IsString() salesPerson?: string;
   @IsOptional() @IsString() salesPersonMobile?: string;
@@ -64,7 +64,8 @@ export class UpdateClientDto {
   @IsOptional() @IsString() contactName?: string;
   @IsOptional() @IsString() contactPerson?: string;
   @IsOptional() @IsString() contactPhone?: string;
-  @IsOptional() @IsEmail() contactEmail?: string;
+  @IsOptional() @IsString() contactEmail?: string; // Billing email(s) — comma-separate for multiple
+  @IsOptional() @IsString() email2?: string; // Reports email(s) — comma-separate for multiple
   @IsOptional() @IsString() tel1?: string;
   @IsOptional() @IsString() tel2?: string;
   @IsOptional() @IsString() fax?: string;

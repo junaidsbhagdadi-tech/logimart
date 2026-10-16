@@ -89,16 +89,19 @@ function PnlTab() {
   const [err, setErr] = useState('');
   const [q, setQ] = useState('');
   const [sign, setSign] = useState<'all' | 'pos' | 'zero' | 'neg'>('all');
+  const [vendor, setVendor] = useState('');
 
   const run = async () => { setErr(''); setBusy(true); try { setData(await api.getPnl(from || undefined, to || undefined)); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
   useEffect(() => { run(); /* eslint-disable-next-line */ }, []);
 
-  // Client-side search (vendor + customer + AWB + lane) and margin-sign filter; totals reflect the filter.
+  const vendors = Array.from(new Set((data?.rows ?? []).map((r) => String(r.vendorCode ?? '').trim()).filter(Boolean))).sort();
+  // Client-side search (vendor + customer + AWB + lane), vendor filter, and margin-sign filter; totals reflect the filter.
   const rows = (data?.rows ?? []).filter((r) => {
     const s = q.trim().toLowerCase();
     const hitQ = !s || [r.vendorAwb, r.forwardingNo, r.ourAwb, r.customer, r.vendorCode, r.product, r.origin, r.destination].some((v) => String(v ?? '').toLowerCase().includes(s));
     const hitSign = sign === 'all' || (sign === 'pos' && r.margin > 0) || (sign === 'zero' && r.margin === 0) || (sign === 'neg' && r.margin < 0);
-    return hitQ && hitSign;
+    const hitVendor = !vendor || String(r.vendorCode ?? '') === vendor;
+    return hitQ && hitSign && hitVendor;
   });
   const fT = rows.reduce((a, r) => ({ sell: a.sell + r.sell, cost: a.cost + r.cost, margin: a.margin + r.margin }), { sell: 0, cost: 0, margin: 0 });
 
@@ -124,6 +127,12 @@ function PnlTab() {
         </div>
         <div className="row" style={{ gap: 10, alignItems: 'flex-end', marginTop: 10 }}>
           <div style={{ flex: 1, minWidth: 200 }}><label>Search <span className="muted">vendor / customer / AWB</span></label><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="e.g. BDR, Acme, 5800…" /></div>
+          <div><label>Vendor</label>
+            <select value={vendor} onChange={(e) => setVendor(e.target.value)} style={{ minWidth: 140 }}>
+              <option value="">All vendors</option>
+              {vendors.map((v) => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </div>
           <div className="row" style={{ gap: 6 }}>
             {([['all', 'All'], ['pos', '▲ Positive'], ['zero', '0 Zero'], ['neg', '▼ Negative']] as const).map(([k, lbl]) => (
               <button key={k} className={sign === k ? '' : 'secondary'} style={{ padding: '7px 12px', fontSize: 13 }} onClick={() => setSign(k)}>{lbl}</button>
