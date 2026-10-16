@@ -519,6 +519,10 @@ export function CreateShipment() {
   // never leave the operator with nothing to pick.
   const selClient: any = clients.find((x) => String(x.id) === String(clientId));
   const allowedVendorCodes: string[] = Array.isArray(selClient?.allowedVendors) ? selClient.allowedVendors : [];
+  // For a portal (client) login the account comes from `accounts`, and its allowedVendors carry resolved
+  // {code,name} — the customer's assigned courier partners, offered as a picker on their booking.
+  const clientAccount: any = isClient ? accounts.find((a: any) => String(a.id) === String(clientId)) : null;
+  const clientVendors: { code: string; name: string }[] = Array.isArray(clientAccount?.allowedVendors) ? clientAccount.allowedVendors : [];
   const vendorAllowed = (network: string) => {
     if (!allowedVendorCodes.length) return true;
     const norm = (s: string) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -654,6 +658,16 @@ export function CreateShipment() {
               Mode: <strong>{modeLabel(serviceMode)}</strong>{product && !selProduct?.mode ? ' (default — set this product’s mode in Masters)' : ''}
             </div>
           </div>
+          {/* Portal: the customer's assigned courier partners (Customers → Vendor access). */}
+          {isClient && clientVendors.length > 0 && (
+            <div>
+              <label>Courier partner <span className="muted">(your assigned carriers)</span></label>
+              <select value={svc.vendor} onChange={(e) => { setSvc((s) => ({ ...s, vendor: e.target.value })); setVendorTouched(true); }}>
+                <option value="SELF">— choose a courier —</option>
+                {clientVendors.map((v) => <option key={v.code} value={v.code}>{v.name}</option>)}
+              </select>
+            </div>
+          )}
           {/* Routing — internal; hidden from customers. #3: an explicit Direct (point-to-point) option
               for walk-ins, or route via hubs. Direct clears both hubs. */}
           {!isClient && (

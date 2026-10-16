@@ -1069,6 +1069,10 @@ export class InvoiceService {
       where: { OR: [{ id: rootId }, { parentAccountId: rootId }] },
       orderBy: { accountCode: 'asc' },
     });
+    // Resolve the customer's assigned courier partners (allowedVendors) to {code,name} so the portal
+    // booking can offer them. Empty allowedVendors = no specific carriers assigned.
+    const vendors = await this.prisma.vendor.findMany({ select: { vendorCode: true, name: true } }).catch(() => [] as any[]);
+    const vName = new Map(vendors.map((v) => [String(v.vendorCode).toUpperCase(), v.name] as [string, string]));
     return rows.map((c) => ({
       id: String(c.id),
       accountCode: c.accountCode,
@@ -1082,6 +1086,8 @@ export class InvoiceService {
       contactPerson: c.contactPerson ?? c.contactName,
       contactPhone: c.contactPhone,
       contactEmail: c.contactEmail,
+      defaultVendor: (c as any).defaultVendor ?? null,
+      allowedVendors: (Array.isArray(c.allowedVendors) ? c.allowedVendors : []).map((code) => ({ code, name: vName.get(String(code).toUpperCase()) ?? code })),
     }));
   }
 
