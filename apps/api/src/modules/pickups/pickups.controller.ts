@@ -60,6 +60,20 @@ export class PickupsController {
     return this.pickups.unified({ status, carrier, window: (window as any) || 'all', clientId });
   }
 
+  /** Full detail for the CS pickup-request popup. */
+  @Get(':id')
+  @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  detail(@Param('id') id: string) {
+    return this.pickups.detail(Number(id));
+  }
+
+  /** CS hands the pickup off to BlueDart → generates the vendor pickup token (shown to the customer). */
+  @Post(':id/handoff')
+  @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  handoff(@Param('id') id: string, @Body() body: { toPay?: boolean; date?: string }) {
+    return this.pickups.handoff(Number(id), body || {});
+  }
+
   @Post(':id/assign')
   @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
   assign(@Param('id') id: string, @Body() dto: AssignDto) {

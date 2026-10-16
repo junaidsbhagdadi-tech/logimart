@@ -818,6 +818,9 @@ export const api = {
     request(`/api/v1/pickups/${id}/assign`, { method: 'POST', body: JSON.stringify({ riderId }) }),
   completePickup: (id: string) =>
     request(`/api/v1/pickups/${id}/complete`, { method: 'POST' }),
+  pickupDetail: (id: string) => request<any>(`/api/v1/pickups/${id}`),
+  pickupHandoff: (id: string, body: { toPay?: boolean; date?: string } = {}) =>
+    request<{ token: string | null; toPay?: boolean; outstation?: boolean }>(`/api/v1/pickups/${id}/handoff`, { method: 'POST', body: JSON.stringify(body) }),
 
   // ---- manifests ----
   listManifests: () => request<any[]>('/api/v1/manifests'),

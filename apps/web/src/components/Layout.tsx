@@ -47,10 +47,17 @@ export function Layout() {
   const [custOpen, setCustOpen] = useState(false);
   const loadCustReqs = () => api.customerRequests().then(setCustReqs).catch(() => {});
   const ackCust = async (awb: string) => { try { await api.ackCustomerRequest(awb); setCustReqs((r) => r.filter((x) => x.awb !== awb)); } catch { /* ignore */ } };
+  // Customer pickup requests awaiting CS hand-off (not yet handed to a vendor).
+  const [pendPickups, setPendPickups] = useState<any[]>([]);
+  const [pickOpen, setPickOpen] = useState(false);
+  const loadPendPickups = () => api.listPickups().then((ps: any[]) => setPendPickups(ps.filter((p) => p.status === 'REQUESTED' && !p.token))).catch(() => {});
   useEffect(() => {
     if (!user || user.role === 'CLIENT_ADMIN') return;
     api.upcomingAppointments().then(setAppts).catch(() => {});
     loadCustReqs();
+    loadPendPickups();
+    const t = setInterval(loadPendPickups, 60000); // poll for new pickup requests
+    return () => clearInterval(t);
   }, [user]);
   const todayStr = new Date().toISOString().slice(0, 10);
   const isToday = (d?: string | null) => !!d && String(d).slice(0, 10) === todayStr;
@@ -303,6 +310,31 @@ export function Layout() {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!isClient && pendPickups.length > 0 && (
+        <div style={{ position: 'fixed', top: (dueAppts.length > 0 ? 56 : 14) + (custReqs.length > 0 ? 44 : 0), right: 18, zIndex: 1198 }}>
+          <button onClick={() => setPickOpen((o) => !o)} title="Customer pickup requests awaiting hand-off"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 20, fontSize: 13, fontWeight: 700, boxShadow: '0 2px 8px rgba(0,0,0,.15)', background: 'var(--brand, #0e7490)', color: '#fff', border: 'none' }}>
+            📦 {pendPickups.length} pickup request{pendPickups.length > 1 ? 's' : ''}
+          </button>
+          {pickOpen && (
+            <div style={{ position: 'absolute', right: 0, top: 44, width: 400, maxHeight: 460, overflowY: 'auto', background: 'var(--surface, #fff)', border: '1px solid var(--line, #d7dadf)', borderRadius: 12, boxShadow: '0 8px 28px rgba(0,0,0,.18)', padding: 10 }}>
+              <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <strong style={{ fontSize: 14 }}>📦 Pickup requests awaiting CS</strong>
+                <button className="secondary" style={{ padding: '2px 8px', fontSize: 12 }} onClick={() => setPickOpen(false)}>✕</button>
+              </div>
+              {pendPickups.map((p: any) => (
+                <div key={p.id} style={{ padding: '8px 10px', borderRadius: 8, marginBottom: 4, borderLeft: '3px solid var(--brand, #0e7490)', background: 'var(--surface-2, #f1f3f6)', cursor: 'pointer' }} onClick={() => { setPickOpen(false); nav('/pickups'); }}>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>#{p.id} <span className="muted" style={{ fontWeight: 500 }}>· {p.estPieces} box{p.estPieces > 1 ? 'es' : ''}{p.cargoMode ? ` · ${p.cargoMode}` : ''}</span></div>
+                  <div style={{ fontSize: 12.5, margin: '2px 0' }}>{p.pickupAddress}{p.city ? `, ${p.city}` : ''}{p.pincode ? ` - ${p.pincode}` : ''}</div>
+                  <div className="muted" style={{ fontSize: 11 }}>{p.contactName ?? ''}{p.contactPhone ? ` · ${p.contactPhone}` : ''}{p.createdAt ? ` · ${new Date(p.createdAt).toLocaleString('en-GB')}` : ''}</div>
+                </div>
+              ))}
+              <div className="muted" style={{ fontSize: 11, textAlign: 'center', marginTop: 4 }}>Open Pickups to hand off to a vendor →</div>
             </div>
           )}
         </div>

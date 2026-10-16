@@ -704,6 +704,11 @@ model PickupRequest {
   notes         String?
   status        PickupStatus @default(REQUESTED)
   assignedRiderId BigInt?
+  // Carrier hand-off (CS → vendor): the vendor's pickup token (e.g. BlueDart RegisterPickup), when it
+  // was handed off, and which BlueDart account it went to. The token reflects on the customer's panel.
+  token         String?
+  handoffAt     DateTime?
+  bdAccountId   BigInt?
   createdAt     DateTime     @default(now())
 
   @@index([status, createdAt])

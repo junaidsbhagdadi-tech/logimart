@@ -19,6 +19,9 @@ export function Pickups() {
   const [error, setError] = useState('');
   const [assigning, setAssigning] = useState<any | null>(null); // the pickup being assigned
   const [selRider, setSelRider] = useState('');
+  const [detail, setDetail] = useState<any | null>(null); // the pickup request shown in the CS detail popup
+  const [handingOff, setHandingOff] = useState(''); // id currently being handed off to the vendor
+  const [msg, setMsg] = useState('');
   // BlueDart pickups (registered collections, incl. outstation to-pay) — ops view.
   const [bdPickups, setBdPickups] = useState<any[]>([]);
   const [bdSyncing, setBdSyncing] = useState('');
@@ -112,11 +115,21 @@ export function Pickups() {
   const complete = async (id: string) => {
     try { await api.completePickup(id); load(); } catch (e: any) { setError(e.message); }
   };
+  const openDetail = async (p: any) => { setError(''); setDetail({ ...p, loading: true }); try { setDetail(await api.pickupDetail(String(p.id))); } catch (e: any) { setError(e.message); setDetail(null); } };
+  const doHandoff = async (p: any, toPay?: boolean) => {
+    setError(''); setMsg(''); setHandingOff(String(p.id));
+    try {
+      const r = await api.pickupHandoff(String(p.id), { toPay });
+      setMsg(`✓ Handed to BlueDart — pickup token ${r.token ?? '(pending)'}${r.toPay ? ' · to-pay/outstation' : ''}. The customer can see it on their panel.`);
+      setDetail(null); load();
+    } catch (e: any) { setError(e.message); } finally { setHandingOff(''); }
+  };
 
   return (
     <>
       <h1>Pickup Requests</h1>
       {error && <div className="error">{error}</div>}
+      {msg && <div className="card" style={{ borderLeft: '4px solid var(--ok, #16a34a)', fontSize: 13 }}>{msg}</div>}
 
       {isClient && (
         <div className="card">
@@ -190,15 +203,20 @@ export function Pickups() {
           <span className="muted" style={{ fontSize: 12, marginLeft: 'auto' }}>{visibleRows.length} pickup(s)</span>
         </div>
         <table>
-          <thead><tr><th>#</th><th>Date</th><th>Address</th><th>City</th><th>Boxes</th><th>Status</th>{isOps && <th>Rider</th>}{isOps && <th></th>}</tr></thead>
+          <thead><tr><th>#</th><th>Date</th><th>Address</th><th>City</th><th>Boxes</th><th>Status</th><th>Vendor token</th>{isOps && <th>Rider</th>}{isOps && <th></th>}</tr></thead>
           <tbody>
             {visibleRows.map((p) => (
               <tr key={p.id}>
-                <td>{p.id}</td><td style={{ whiteSpace: 'nowrap' }}>{p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-GB') : '—'}</td><td>{p.pickupAddress}</td><td>{p.city ?? '—'}</td><td>{p.estPieces}</td>
+                <td>{p.id}</td><td style={{ whiteSpace: 'nowrap' }}>{p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-GB') : '—'}</td>
+                <td>{isOps ? <button className="link" style={{ textAlign: 'left' }} onClick={() => openDetail(p)} title="View full pickup detail">{p.pickupAddress}</button> : p.pickupAddress}</td>
+                <td>{p.city ?? '—'}</td><td>{p.estPieces}</td>
                 <td><span className={`badge ${p.status}`}>{p.status}</span></td>
+                <td>{p.token ? <span title={`${p.vendor || 'Carrier'} pickup token`}><b>{p.token}</b>{p.vendor ? <span className="muted" style={{ fontSize: 11 }}> · {p.vendor}</span> : null}</span> : <span className="muted">—</span>}</td>
                 {isOps && <td>{p.status === 'ASSIGNED' || p.status === 'PICKED' ? riderLabel(p.assignedRiderId) : '—'}</td>}
                 {isOps && (
                   <td className="row" style={{ gap: 6 }}>
+                    <button className="secondary" onClick={() => openDetail(p)}>Details</button>
+                    {!p.token && <button disabled={handingOff === String(p.id)} onClick={() => doHandoff(p)} title="Register this pickup with BlueDart and generate a pickup token">{handingOff === String(p.id) ? '…' : '📅 Hand to BlueDart'}</button>}
                     {p.status === 'REQUESTED' && <button className="secondary" onClick={() => openAssign(p)}>Assign rider</button>}
                     {p.status === 'ASSIGNED' && <>
                       <button className="secondary" onClick={() => openAssign(p)}>Re-assign</button>
@@ -208,7 +226,7 @@ export function Pickups() {
                 )}
               </tr>
             ))}
-            {visibleRows.length === 0 && <tr><td colSpan={8} className="muted">{rows.length ? `No pickups for ${dateFilter}.` : 'No pickup requests.'}</td></tr>}
+            {visibleRows.length === 0 && <tr><td colSpan={9} className="muted">{rows.length ? `No pickups for ${dateFilter}.` : 'No pickup requests.'}</td></tr>}
           </tbody>
         </table>
       </div>
@@ -265,6 +283,33 @@ export function Pickups() {
             <button className="secondary" onClick={() => setAssigning(null)}>Cancel</button>
             <button disabled={!selRider} onClick={doAssign}>Assign</button>
           </div>
+        </Modal>
+      )}
+
+      {detail && (
+        <Modal title={`Pickup request #${detail.id}`} width={560} onClose={() => setDetail(null)}>
+          {detail.loading ? <p className="muted">Loading…</p> : (
+            <>
+              <div className="grid cols-2" style={{ gap: 10, fontSize: 13 }}>
+                <div><div className="muted">Customer</div><strong>{detail.client?.legalName ?? '—'}{detail.client?.accountCode ? ` (${detail.client.accountCode})` : ''}</strong></div>
+                <div><div className="muted">Status</div><span className={`badge ${detail.status}`}>{detail.status}</span></div>
+                <div style={{ gridColumn: 'span 2' }}><div className="muted">Pickup address</div>{detail.pickupAddress}{detail.city ? `, ${detail.city}` : ''}{detail.pincode ? ` - ${detail.pincode}` : ''}</div>
+                <div><div className="muted">Contact</div>{detail.contactName ?? '—'}{detail.contactPhone ? ` · ${detail.contactPhone}` : ''}</div>
+                <div><div className="muted">Boxes · Mode</div>{detail.estPieces} · {detail.cargoMode ?? '—'}</div>
+                <div><div className="muted">Invoice</div>{detail.invoiceNo ?? '—'}{detail.invoiceValue ? ` · ₹${Number(detail.invoiceValue).toLocaleString('en-IN')}` : ''}</div>
+                <div><div className="muted">E-way bill</div>{detail.ewbNo ?? '—'}</div>
+                {detail.notes && <div style={{ gridColumn: 'span 2' }}><div className="muted">Notes</div>{detail.notes}</div>}
+                {detail.token && <div style={{ gridColumn: 'span 2' }}><div className="muted">Vendor pickup token</div><strong>{detail.token}</strong>{detail.vendor ? ` · ${detail.vendor}` : ''}{detail.handoffAt ? ` · ${new Date(detail.handoffAt).toLocaleString('en-GB')}` : ''}</div>}
+              </div>
+              <div className="row" style={{ justifyContent: 'space-between', gap: 8, marginTop: 18, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span className="muted" style={{ fontSize: 12 }}>{detail.token ? 'Already handed to the carrier — the token shows on the customer’s panel.' : 'Hand off to BlueDart to generate a pickup token for this request.'}</span>
+                <div className="row" style={{ gap: 8 }}>
+                  <button className="secondary" onClick={() => setDetail(null)}>Close</button>
+                  {!detail.token && isOps && <button disabled={handingOff === String(detail.id)} onClick={() => doHandoff(detail)}>{handingOff === String(detail.id) ? 'Handing off…' : '📅 Hand off to BlueDart'}</button>}
+                </div>
+              </div>
+            </>
+          )}
         </Modal>
       )}
     </>

@@ -601,6 +601,48 @@ export class BluedartService implements OnModuleInit {
     return { awb, token, toPay: isToPayShipper, outstation, pickupDate: when, response: resp };
   }
 
+  /** Register an ad-hoc BlueDart pickup from a PickupRequest (no shipment/AWB). Used by CS to hand a
+   *  customer's portal pickup request to BlueDart — returns the pickup token to show the customer.
+   *  Outside the account's home area it's registered as an outstation to-pay (FOD) collection. */
+  async scheduleAdhocPickup(p: { pincode: string; name: string; phone: string; address1: string; address2?: string; city?: string; pieces?: number; toPay?: boolean; weight?: number; date?: string; remarks?: string }) {
+    this.ensure();
+    const acc = await this.resolveAccount(null as any);
+    const pin = String(p.pincode ?? '').trim();
+    const phone = this.bdMobile(p.phone);
+    const name = String(p.name ?? '').slice(0, 30);
+    const addr1 = String(p.address1 ?? '').trim();
+    const miss: string[] = [];
+    if (!pin) miss.push('pickup pincode');
+    if (!name) miss.push('contact name');
+    if (phone.length < 10) miss.push('contact mobile (10 digits)');
+    if (!addr1) miss.push('pickup address');
+    if (miss.length) throw new BadRequestException(`Can't hand off the pickup — missing: ${miss.join(', ')}.`);
+    const when = p.date ? new Date(p.date) : new Date();
+    const time = String(BLUEDART.pickupTime || '1600').replace(/^(\d{2})(\d{2})$/, '$1:$2');
+    const home = String(acc.originArea || '').toUpperCase();
+    const pickArea = String((await this.areaInfoFor(pin)).area || '').toUpperCase();
+    const outstation = !!(home && pickArea && pickArea !== home);
+    const isToPayShipper = !!p.toPay || outstation;
+    const weight = Number(Number(p.weight ?? 1).toFixed(2));
+    const request = {
+      AWBNo: [''], AreaCode: acc.originArea, CISDDN: false, ContactPersonName: name,
+      CustomerAddress1: addr1.slice(0, 30), CustomerAddress2: String(p.address2 ?? '').slice(0, 30), CustomerAddress3: String(p.city ?? '').slice(0, 30),
+      CustomerCode: acc.customerCode, CustomerName: name, CustomerPincode: pin, CustomerTelephoneNumber: phone,
+      DoxNDox: '2', EmailID: '', IsForcePickup: false, IsReversePickup: false, MobileTelNo: phone,
+      NumberofPieces: Number(p.pieces ?? 1), OfficeCloseTime: '18:00', PackType: '', ProductCode: 'E',
+      ReferenceNo: '', Remarks: String(p.remarks ?? 'Portal pickup').slice(0, 60), RouteCode: '',
+      ShipmentPickupDate: `/Date(${when.getTime()})/`, ShipmentPickupTime: time, SubProducts: [''],
+      VolumeWeight: weight, WeightofShipment: weight, isToPayShipper,
+    };
+    const resp = await this.authed('/pickup/v1/RegisterPickup', { method: 'POST', body: JSON.stringify(this.pickupBody(request, acc)) });
+    const result = resp?.RegisterPickupResult ?? resp;
+    if (result?.IsError === true || result?.isError === true) {
+      throw new BadRequestException(`BlueDart pickup failed: ${this.bdStatusMsg(result) || JSON.stringify(result).slice(0, 300)}`);
+    }
+    const token = result?.TokenNumber ?? result?.tokenNumber ?? null;
+    return { token: token != null ? String(token) : null, toPay: isToPayShipper, outstation, pickupDate: when, response: resp };
+  }
+
   /** Cancel a BlueDart pickup by its registration token. NOTE: CancelPickup can return HTTP 415
    *  "Access to the method is not allowed" when the APIGEE app isn't subscribed to it — in that
    *  case cancel from the BlueDart portal and ask BlueDart to enable CancelPickup on the app. */

@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PickupStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { BluedartService } from '../bluedart/bluedart.service';
 
 interface CreatePickup {
   clientId: number;
@@ -21,7 +22,7 @@ interface CreatePickup {
 
 @Injectable()
 export class PickupsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly bluedart: BluedartService) {}
 
   create(dto: CreatePickup) {
     return this.prisma.pickupRequest.create({
@@ -101,6 +102,38 @@ export class PickupsService {
       where: { id: BigInt(id) },
       data: { status: PickupStatus.PICKED },
     });
+  }
+
+  /** Full detail for one pickup request (+ the customer), for the CS detail popup. */
+  async detail(id: number) {
+    const p = await this.prisma.pickupRequest.findUnique({ where: { id: BigInt(id) } });
+    if (!p) throw new NotFoundException('Pickup request not found');
+    const client = await this.prisma.b2bClient.findUnique({ where: { id: p.clientId }, select: { legalName: true, accountCode: true, contactPhone: true } });
+    const rider = p.assignedRiderId ? await this.prisma.user.findUnique({ where: { id: p.assignedRiderId }, select: { fullName: true, riderCode: true } }) : null;
+    return { ...p, client, rider };
+  }
+
+  /** CS hands a customer's pickup request off to BlueDart → registers the carrier pickup, stores the
+   *  returned token on the request (reflects on the customer's panel), and marks it assigned. */
+  async handoff(id: number, opts: { toPay?: boolean; date?: string } = {}) {
+    const p = await this.exists(id);
+    if (p.token) throw new BadRequestException(`This pickup is already handed off (token ${p.token}).`);
+    const res = await this.bluedart.scheduleAdhocPickup({
+      pincode: String(p.pincode ?? ''),
+      name: p.contactName ?? '',
+      phone: p.contactPhone ?? '',
+      address1: p.pickupAddress,
+      city: p.city ?? undefined,
+      pieces: p.estPieces ?? 1,
+      toPay: opts.toPay,
+      date: opts.date,
+      remarks: `Portal pickup #${id}`,
+    });
+    const updated = await this.prisma.pickupRequest.update({
+      where: { id: BigInt(id) },
+      data: { token: res.token, handoffAt: new Date(), vendor: 'BDR', status: PickupStatus.ASSIGNED },
+    });
+    return { ...updated, token: res.token, toPay: res.toPay, outstation: res.outstation };
   }
 
   private async exists(id: number) {
