@@ -137,24 +137,30 @@ export class BulkBookingService implements OnModuleInit {
       });
       if (!rows.length) break; // all done
 
-      let ok = 0, bad = 0;
+      let ok = 0, bad = 0, skip = 0;
       for (const row of rows) {
         try {
           const sh = await this.shipments.create(row.payload as any, { skipAutoDispatch: true });
           await this.prisma.bulkBookingJobRow.update({ where: { id: row.id }, data: { status: 'OK', awb: sh.awb } });
           ok++;
         } catch (e: any) {
-          await this.prisma.bulkBookingJobRow.update({
-            where: { id: row.id },
-            data: { status: 'FAILED', error: String(e?.message || e).slice(0, 300) },
-          });
-          bad++;
+          const msg = String(e?.message || e);
+          // Re-uploading a file that was already booked: the AWB/forwarding-no already exists. That's a
+          // no-op SKIP (idempotent re-run), not a failure — so the summary doesn't look like a disaster.
+          if (/already exists/i.test(msg)) {
+            const awbMatch = msg.match(/AWB\s+(\S+)\s+already exists/i);
+            await this.prisma.bulkBookingJobRow.update({ where: { id: row.id }, data: { status: 'SKIPPED', awb: awbMatch?.[1] ?? null, error: 'Already booked — skipped' } });
+            skip++;
+          } else {
+            await this.prisma.bulkBookingJobRow.update({ where: { id: row.id }, data: { status: 'FAILED', error: msg.slice(0, 300) } });
+            bad++;
+          }
         }
       }
       // Batch the counter update once per page to keep writes light.
       await this.prisma.bulkBookingJob.update({
         where: { id: jobId },
-        data: { processed: { increment: ok + bad }, succeeded: { increment: ok }, failed: { increment: bad } },
+        data: { processed: { increment: ok + bad + skip }, succeeded: { increment: ok }, failed: { increment: bad }, skipped: { increment: skip } },
       });
     }
 

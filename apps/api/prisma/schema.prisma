@@ -1404,6 +1404,7 @@ model BulkBookingJob {
   processed   Int      @default(0)
   succeeded   Int      @default(0)
   failed      Int      @default(0)
+  skipped     Int      @default(0)              // AWBs already booked (re-upload) — skipped, not failed
   startedAt   DateTime?
   finishedAt  DateTime?
   createdAt   DateTime @default(now())

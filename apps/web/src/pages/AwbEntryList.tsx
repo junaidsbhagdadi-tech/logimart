@@ -86,8 +86,8 @@ export function AwbEntryList() {
         return v.toLowerCase().includes(f);
       }),
     )
-      // Date-wise, OLDEST first.
-      .sort((a, b) => new Date(a.bookDate || 0).getTime() - new Date(b.bookDate || 0).getTime());
+      // Date-wise, NEWEST first.
+      .sort((a, b) => new Date(b.bookDate || 0).getTime() - new Date(a.bookDate || 0).getTime());
   }, [rows, filters]);
 
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE));

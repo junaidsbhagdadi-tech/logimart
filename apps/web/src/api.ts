@@ -64,6 +64,7 @@ export interface BulkJob {
   processed: number;
   succeeded: number;
   failed: number;
+  skipped?: number;
   startedAt: string | null;
   finishedAt: string | null;
   createdAt: string;

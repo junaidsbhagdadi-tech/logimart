@@ -143,6 +143,8 @@ export function BulkBooking() {
   const submit = async () => {
     setError('');
     if (grouped.length === 0) { setError('No rows found. Paste CSV or upload a file.'); return; }
+    // Decide the date order ONCE for the whole file (DMY vs MDY) so every row's booking date parses the same.
+    const dateOrder = detectDateOrder(rows.map((r) => r.bookedAt));
     const dtos = grouped.map((grp) => {
       const first = grp[0];
       const prodCode = (first.product || '').trim();
@@ -171,7 +173,7 @@ export function BulkBooking() {
         paymentTerm: (first.paymentTerm || '').trim().toUpperCase() === 'TO_PAY' ? 'TO_PAY' : undefined,
         freightToCollect: first.freightToCollect ? Number(first.freightToCollect) : undefined,
         manualFreight: first.agreedFreight && !isNaN(Number(first.agreedFreight)) && Number(first.agreedFreight) > 0 ? Number(first.agreedFreight) : undefined,
-        bookedAt: parseBookedAt(first.bookedAt), // manual booking date+time (DD-MM-YYYY Indian format)
+        bookedAt: parseBookedAt(first.bookedAt, dateOrder), // booking date+time; order auto-detected per file (DMY/MDY)
         // `pcs` = number of pieces for the row; `deadKg` = the row's TOTAL dead weight, split evenly
         // across those pieces (so chargeable weight ≈ deadKg, not deadKg × pcs). Dims are per-piece
         // (usually a placeholder here; the team refines each box once the AWB is in hand).
@@ -285,6 +287,7 @@ export function BulkBooking() {
           <div className="muted" style={{ fontSize: 13 }}>
             <strong>{job.processed.toLocaleString()}</strong> of <strong>{job.total.toLocaleString()}</strong> processed
             {' · '}<span className="badge DELIVERED">{job.succeeded.toLocaleString()} booked</span>
+            {!!job.skipped && job.skipped > 0 && <> <span className="badge AT_HUB" title="Already booked (re-upload) — skipped">{job.skipped.toLocaleString()} skipped</span></>}
             {job.failed > 0 && <> <span className="badge EXCEPTION">{job.failed.toLocaleString()} failed</span></>}
             {(job.status === 'RUNNING' || job.status === 'PENDING') && <> · <button className="secondary" style={{ padding: '2px 10px', fontSize: 12 }} onClick={() => api.cancelBulkJob(job.id).then(() => watchJob(job.id))}>Stop</button></>}
             {job.succeeded > 0 && <> · <button className="secondary" style={{ padding: '2px 10px', fontSize: 12, color: 'var(--bad, #c0392b)' }} onClick={() => undoBatch(job.id, job.succeeded)}>↩ Undo batch (void {job.succeeded})</button></>}
@@ -311,7 +314,7 @@ export function BulkBooking() {
         <div className="card">
           <h2 style={{ marginBottom: 6 }}>Recent bulk jobs</h2>
           <table>
-            <thead><tr><th>Started</th><th>Status</th><th>Progress</th><th>Booked</th><th>Failed</th><th></th></tr></thead>
+            <thead><tr><th>Started</th><th>Status</th><th>Progress</th><th>Booked</th><th>Skipped</th><th>Failed</th><th></th></tr></thead>
             <tbody>
               {recent.map((j) => (
                 <tr key={j.id}>
@@ -319,6 +322,7 @@ export function BulkBooking() {
                   <td><span className={`badge ${j.status === 'DONE' ? 'DELIVERED' : j.status === 'CANCELLED' ? 'EXCEPTION' : 'AT_HUB'}`}>{j.status}</span></td>
                   <td>{j.processed.toLocaleString()}/{j.total.toLocaleString()}</td>
                   <td>{j.succeeded.toLocaleString()}</td>
+                  <td>{j.skipped ? <span className="badge AT_HUB" title="Already booked — skipped">{j.skipped.toLocaleString()}</span> : '0'}</td>
                   <td>{j.failed > 0 ? <span className="badge EXCEPTION">{j.failed.toLocaleString()}</span> : '0'}</td>
                   <td className="row" style={{ gap: 6 }}><button className="secondary" style={{ padding: '2px 10px', fontSize: 12 }} onClick={() => watchJob(j.id)}>View</button>{j.succeeded > 0 && <button className="secondary" style={{ padding: '2px 10px', fontSize: 12, color: 'var(--bad, #c0392b)' }} onClick={() => undoBatch(j.id, j.succeeded)}>↩ Undo</button>}</td>
                 </tr>
@@ -335,14 +339,34 @@ export function BulkBooking() {
  *  JS's native `new Date("15-08-2026")` returns Invalid Date (and "01-08-2026" is misread as US
  *  MM-DD → wrong month), which silently failed/misdated bulk rows. Parse day-first explicitly and
  *  fall back to native parsing for ISO (YYYY-MM-DD) inputs. Returns an ISO string, or undefined. */
-function parseBookedAt(s?: string): string | undefined {
+/** Decide whether a batch's dates are day-first (DMY, the Indian template default) or month-first
+ *  (MDY, American export). Unambiguous when some value has a first part > 12 (→ DMY) or a second part
+ *  > 12 (→ MDY); mixed/none defaults to DMY. Applied to the WHOLE file so every row parses the same. */
+function detectDateOrder(values: (string | undefined)[]): 'DMY' | 'MDY' {
+  let mdy = false, dmy = false;
+  for (const v of values) {
+    const m = String(v ?? '').trim().match(/^(\d{1,2})[-/](\d{1,2})[-/]\d{2,4}/);
+    if (!m) continue;
+    const a = Number(m[1]), b = Number(m[2]);
+    if (a > 12) dmy = true;        // first part can only be a day
+    else if (b > 12) mdy = true;   // second part can only be a day → month-first
+  }
+  if (mdy && !dmy) return 'MDY';
+  return 'DMY';
+}
+
+function parseBookedAt(s?: string, order: 'DMY' | 'MDY' = 'DMY'): string | undefined {
   const v = (s || '').trim();
   if (!v) return undefined;
-  // DD-MM-YYYY or DD/MM/YYYY, 2- or 4-digit year, optional HH:MM.
+  // DD/MM/YYYY (or MM/DD/YYYY per `order`), 2- or 4-digit year, optional HH:MM.
   const m = v.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})(?:[ T](\d{1,2}):(\d{2}))?/);
   if (m) {
     let yr = Number(m[3]); if (yr < 100) yr += 2000;
-    const d = new Date(yr, Number(m[2]) - 1, Number(m[1]), Number(m[4] ?? 0), Number(m[5] ?? 0));
+    const first = Number(m[1]), second = Number(m[2]);
+    const day = order === 'MDY' ? second : first;
+    const month = order === 'MDY' ? first : second;
+    if (month < 1 || month > 12 || day < 1 || day > 31) return undefined; // reject impossible dates (no silent rollover)
+    const d = new Date(yr, month - 1, day, Number(m[4] ?? 0), Number(m[5] ?? 0));
     return isNaN(d.getTime()) ? undefined : d.toISOString();
   }
   // DD-MMM-YYYY (e.g. 01-Sep-2026 / 1 Sep 26).
