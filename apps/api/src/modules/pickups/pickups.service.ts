@@ -12,7 +12,11 @@ interface CreatePickup {
   contactPhone?: string;
   estPieces?: number;
   cargoMode?: string;
+  product?: string;
+  weight?: number;
   vendor?: string;
+  isWarehouse?: boolean;
+  refNo?: string;
   invoiceNo?: string;
   invoiceDate?: string;
   invoiceValue?: number;
@@ -35,7 +39,11 @@ export class PickupsService {
         contactPhone: dto.contactPhone,
         estPieces: dto.estPieces ?? 1,
         cargoMode: dto.cargoMode,
+        product: dto.product || null,
+        weight: dto.weight != null ? new Prisma.Decimal(dto.weight) : null,
         vendor: dto.vendor || null,
+        isWarehouse: !!dto.isWarehouse,
+        refNo: dto.refNo || null,
         invoiceNo: dto.invoiceNo,
         invoiceDate: dto.invoiceDate ? new Date(dto.invoiceDate) : null,
         invoiceValue: dto.invoiceValue != null ? new Prisma.Decimal(dto.invoiceValue) : null,
@@ -80,12 +88,17 @@ export class PickupsService {
     return { total: (rows || []).length, created: results.filter((r) => r.ok).length, results };
   }
 
-  /** Client admins see only their own requests; ops staff see all. */
-  list(clientId?: bigint) {
-    return this.prisma.pickupRequest.findMany({
+  /** Client admins see only their own requests; ops staff see all. Each row carries the requesting
+   *  customer's code + name (for the CS list). */
+  async list(clientId?: bigint) {
+    const rows = await this.prisma.pickupRequest.findMany({
       where: clientId != null ? { clientId } : undefined,
       orderBy: { createdAt: 'desc' },
     });
+    const ids = [...new Set(rows.map((r) => r.clientId))];
+    const clients = ids.length ? await this.prisma.b2bClient.findMany({ where: { id: { in: ids } }, select: { id: true, accountCode: true, legalName: true } }) : [];
+    const byId = new Map(clients.map((c) => [String(c.id), c]));
+    return rows.map((r) => ({ ...r, customerCode: byId.get(String(r.clientId))?.accountCode ?? null, customerName: byId.get(String(r.clientId))?.legalName ?? null }));
   }
 
   async assign(id: number, riderId: number) {
@@ -96,11 +109,17 @@ export class PickupsService {
     });
   }
 
-  async complete(id: number) {
+  async complete(id: number, captured: { awb?: string; weight?: number; pieces?: number; value?: number } = {}) {
     await this.exists(id);
     return this.prisma.pickupRequest.update({
       where: { id: BigInt(id) },
-      data: { status: PickupStatus.PICKED },
+      data: {
+        status: PickupStatus.PICKED,
+        ...(captured.awb ? { pickedAwb: String(captured.awb).trim() } : {}),
+        ...(captured.weight != null ? { pickedWeight: new Prisma.Decimal(captured.weight) } : {}),
+        ...(captured.pieces != null ? { pickedPieces: Math.max(1, Math.floor(captured.pieces)) } : {}),
+        ...(captured.value != null ? { pickedValue: new Prisma.Decimal(captured.value) } : {}),
+      },
     });
   }
 
@@ -115,25 +134,29 @@ export class PickupsService {
 
   /** CS hands a customer's pickup request off to BlueDart → registers the carrier pickup, stores the
    *  returned token on the request (reflects on the customer's panel), and marks it assigned. */
-  async handoff(id: number, opts: { toPay?: boolean; date?: string } = {}) {
+  async handoff(id: number, opts: { vendor?: string; toPay?: boolean; date?: string; token?: string } = {}) {
     const p = await this.exists(id);
     if (p.token) throw new BadRequestException(`This pickup is already handed off (token ${p.token}).`);
-    const res = await this.bluedart.scheduleAdhocPickup({
-      pincode: String(p.pincode ?? ''),
-      name: p.contactName ?? '',
-      phone: p.contactPhone ?? '',
-      address1: p.pickupAddress,
-      city: p.city ?? undefined,
-      pieces: p.estPieces ?? 1,
-      toPay: opts.toPay,
-      date: opts.date,
-      remarks: `Portal pickup #${id}`,
-    });
+    // CS picks the carrier (can override the customer's choice). BlueDart registers via API and returns a
+    // token; any other vendor is recorded (with an optional manually-entered token) — no API for them yet.
+    const vendor = (opts.vendor || p.vendor || '').trim();
+    if (/^BLUE|BDR/i.test(vendor) || (!vendor && /^BLUE|BDR/i.test(p.vendor || ''))) {
+      const res = await this.bluedart.scheduleAdhocPickup({
+        pincode: String(p.pincode ?? ''), name: p.contactName ?? '', phone: p.contactPhone ?? '',
+        address1: p.pickupAddress, city: p.city ?? undefined,
+        pieces: p.estPieces ?? 1, weight: p.weight != null ? Number(p.weight) : undefined,
+        toPay: opts.toPay, date: opts.date, remarks: `Portal pickup #${id}`,
+      });
+      const updated = await this.prisma.pickupRequest.update({
+        where: { id: BigInt(id) }, data: { token: res.token, handoffAt: new Date(), vendor: vendor || 'BDR', status: PickupStatus.ASSIGNED },
+      });
+      return { ...updated, token: res.token, toPay: res.toPay, outstation: res.outstation };
+    }
+    if (!vendor) throw new BadRequestException('Pick a vendor to hand this pickup off to.');
     const updated = await this.prisma.pickupRequest.update({
-      where: { id: BigInt(id) },
-      data: { token: res.token, handoffAt: new Date(), vendor: 'BDR', status: PickupStatus.ASSIGNED },
+      where: { id: BigInt(id) }, data: { token: opts.token?.trim() || null, handoffAt: new Date(), vendor, status: PickupStatus.ASSIGNED },
     });
-    return { ...updated, token: res.token, toPay: res.toPay, outstation: res.outstation };
+    return { ...updated, token: updated.token, manual: true };
   }
 
   private async exists(id: number) {

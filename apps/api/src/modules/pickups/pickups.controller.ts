@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
-import { IsInt, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsBoolean, IsInt, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles } from '../../common/rbac/roles.decorator';
@@ -14,7 +14,11 @@ class CreatePickupDto {
   @IsOptional() @IsString() contactPhone?: string;
   @IsOptional() @IsInt() estPieces?: number;
   @IsOptional() @IsString() cargoMode?: string;
+  @IsOptional() @IsString() product?: string;
+  @IsOptional() @IsNumber() weight?: number;
   @IsOptional() @IsString() vendor?: string;
+  @IsOptional() @IsBoolean() isWarehouse?: boolean;
+  @IsOptional() @IsString() refNo?: string;
   @IsOptional() @IsString() invoiceNo?: string;
   @IsOptional() @IsString() invoiceDate?: string;
   @IsOptional() @IsNumber() invoiceValue?: number;
@@ -23,6 +27,18 @@ class CreatePickupDto {
 }
 class AssignDto {
   @IsInt() riderId!: number;
+}
+class CompleteDto {
+  @IsOptional() @IsString() awb?: string;
+  @IsOptional() @IsNumber() weight?: number;
+  @IsOptional() @IsInt() pieces?: number;
+  @IsOptional() @IsNumber() value?: number;
+}
+class HandoffDto {
+  @IsOptional() @IsString() vendor?: string;
+  @IsOptional() @IsBoolean() toPay?: boolean;
+  @IsOptional() @IsString() date?: string;
+  @IsOptional() @IsString() token?: string;
 }
 
 @Controller('api/v1/pickups')
@@ -67,10 +83,11 @@ export class PickupsController {
     return this.pickups.detail(Number(id));
   }
 
-  /** CS hands the pickup off to BlueDart → generates the vendor pickup token (shown to the customer). */
+  /** CS hands the pickup off to a vendor → BlueDart generates a pickup token; other vendors record it
+   *  (with an optional manual token). CS may override the customer's vendor choice. */
   @Post(':id/handoff')
   @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
-  handoff(@Param('id') id: string, @Body() body: { toPay?: boolean; date?: string }) {
+  handoff(@Param('id') id: string, @Body() body: HandoffDto) {
     return this.pickups.handoff(Number(id), body || {});
   }
 
@@ -82,7 +99,7 @@ export class PickupsController {
 
   @Post(':id/complete')
   @Roles(UserRole.DRIVER, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
-  complete(@Param('id') id: string) {
-    return this.pickups.complete(Number(id));
+  complete(@Param('id') id: string, @Body() body: CompleteDto) {
+    return this.pickups.complete(Number(id), body || {});
   }
 }

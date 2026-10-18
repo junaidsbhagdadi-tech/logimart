@@ -695,13 +695,22 @@ model PickupRequest {
   contactName   String?
   contactPhone  String?
   estPieces     Int          @default(1)
-  cargoMode     String?      // AIR | ROAD | TRAIN | FTL | PTL
-  vendor        String?      // #3 — carrier for this pickup (one vendor for a bulk upload, or blank = assign at booking)
+  cargoMode     String?      // AIR | ROAD | TRAIN | FTL | PTL (legacy; "product" is the new field)
+  product       String?      // product code (DP/SFC/…) — the customer's requested service
+  weight        Decimal?     @db.Decimal(10, 3) // approx pickup weight (kg)
+  vendor        String?      // carrier for this pickup (customer's choice / CS override; blank = assign later)
+  isWarehouse   Boolean      @default(false)    // saved as a reusable warehouse/pickup location
+  refNo         String?      // customer reference (trackable), replaces invoiceDate on the form
   invoiceNo     String?
   invoiceDate   DateTime?
   invoiceValue  Decimal?     @db.Decimal(14, 2)
   ewbNo         String?
   notes         String?
+  // Captured when CS marks the pickup PICKED (optional).
+  pickedAwb     String?
+  pickedWeight  Decimal?     @db.Decimal(10, 3)
+  pickedPieces  Int?
+  pickedValue   Decimal?     @db.Decimal(14, 2)
   status        PickupStatus @default(REQUESTED)
   assignedRiderId BigInt?
   // Carrier hand-off (CS → vendor): the vendor's pickup token (e.g. BlueDart RegisterPickup), when it

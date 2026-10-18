@@ -4,8 +4,8 @@ import { useAuth } from '../auth';
 import { Modal } from '../components/Modal';
 
 const blank = {
-  pickupAddress: '', city: '', pincode: '', contactName: '', contactPhone: '', estPieces: '1',
-  cargoMode: 'ROAD', invoiceNo: '', invoiceDate: '', invoiceValue: '', ewbNo: '', notes: '',
+  pickupAddress: '', city: '', pincode: '', contactName: '', contactPhone: '', estPieces: '1', weight: '',
+  product: '', vendor: '', refNo: '', invoiceNo: '', invoiceValue: '', ewbNo: '', notes: '', isWarehouse: false,
 };
 
 export function Pickups() {
@@ -38,7 +38,16 @@ export function Pickups() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkVendor, setBulkVendor] = useState(''); // #3 — one vendor for the whole upload (blank = none / assign at booking)
   const [vendors, setVendors] = useState<{ vendorCode: string; name: string }[]>([]);
-  useEffect(() => { api.listVendors().then((v: any[]) => setVendors(v.filter((x) => x.isActive !== false).map((x) => ({ vendorCode: x.vendorCode, name: x.name })))).catch(() => {}); }, []);
+  const [products, setProducts] = useState<{ code: string; name: string }[]>([]);
+  // Vendor options for the pickup form: a client sees only its assigned courier partners (from its
+  // account); CS/ops sees all active vendors.
+  const [myVendors, setMyVendors] = useState<{ code: string; name: string }[]>([]);
+  useEffect(() => {
+    if (isOps) api.listVendors().then((v: any[]) => setVendors(v.filter((x) => x.isActive !== false).map((x) => ({ vendorCode: x.vendorCode, name: x.name })))).catch(() => {});
+    else if (isClient) api.portalAccounts().then((rows: any[]) => { const a = rows[0]; setMyVendors(Array.isArray(a?.allowedVendors) ? a.allowedVendors : []); }).catch(() => {});
+    api.listMaster('PRODUCT').then((r) => setProducts(r.map((x) => ({ code: x.code, name: x.name })))).catch(() => {});
+  }, [isOps, isClient]);
+  const formVendors = isClient ? myVendors : vendors.map((v) => ({ code: v.vendorCode, name: v.name }));
   const [bulkResult, setBulkResult] = useState<{ total: number; created: number; results: { row: string; ok: boolean; error?: string }[] } | null>(null);
   const downloadTemplate = () => {
     const example = isClient
@@ -83,7 +92,12 @@ export function Pickups() {
   const yesterdayKey = dayKey(new Date(Date.now() - 864e5));
   const visibleRows = rows.filter((p) => dateFilter === 'all' || (dateFilter === 'today' ? dayKey(p.createdAt) === todayKey : dayKey(p.createdAt) === yesterdayKey));
 
-  const set = (k: keyof typeof blank, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (k: keyof typeof blank, v: string | boolean) => setForm((f) => ({ ...f, [k]: v }));
+  // Auto-fetch the city from the pincode (6 digits), like the booking form.
+  const onPincode = (v: string) => {
+    set('pincode', v);
+    if (/^\d{6}$/.test(v)) api.lookupPincode(v).then((info: any) => { if (info?.city) set('city', info.city); }).catch(() => {});
+  };
 
   const create = async () => {
     setError('');
@@ -95,9 +109,12 @@ export function Pickups() {
         contactName: form.contactName || undefined,
         contactPhone: form.contactPhone || undefined,
         estPieces: form.estPieces ? +form.estPieces : 1,
-        cargoMode: form.cargoMode || undefined,
+        weight: form.weight ? +form.weight : undefined,
+        product: form.product || undefined,
+        vendor: form.vendor || undefined,
+        isWarehouse: form.isWarehouse || undefined,
+        refNo: form.refNo || undefined,
         invoiceNo: form.invoiceNo || undefined,
-        invoiceDate: form.invoiceDate || undefined,
         invoiceValue: form.invoiceValue ? +form.invoiceValue : undefined,
         ewbNo: form.ewbNo || undefined,
         notes: form.notes || undefined,
@@ -112,17 +129,34 @@ export function Pickups() {
     if (!assigning || !selRider) return;
     try { await api.assignPickup(assigning.id, +selRider); setAssigning(null); load(); } catch (e: any) { setError(e.message); }
   };
-  const complete = async (id: string) => {
-    try { await api.completePickup(id); load(); } catch (e: any) { setError(e.message); }
-  };
   const openDetail = async (p: any) => { setError(''); setDetail({ ...p, loading: true }); try { setDetail(await api.pickupDetail(String(p.id))); } catch (e: any) { setError(e.message); setDetail(null); } };
-  const doHandoff = async (p: any, toPay?: boolean) => {
-    setError(''); setMsg(''); setHandingOff(String(p.id));
+
+  // Hand-off modal (CS picks the vendor — can override the customer's choice).
+  const [handoffFor, setHandoffFor] = useState<any | null>(null);
+  const [hVendor, setHVendor] = useState('');
+  const [hToken, setHToken] = useState('');
+  const [hToPay, setHToPay] = useState(false);
+  const openHandoff = (p: any) => { setHandoffFor(p); setHVendor(p.vendor || ''); setHToken(''); setHToPay(false); setError(''); setMsg(''); };
+  const doHandoff = async () => {
+    if (!handoffFor) return;
+    setError(''); setMsg(''); setHandingOff(String(handoffFor.id));
     try {
-      const r = await api.pickupHandoff(String(p.id), { toPay });
-      setMsg(`✓ Handed to BlueDart — pickup token ${r.token ?? '(pending)'}${r.toPay ? ' · to-pay/outstation' : ''}. The customer can see it on their panel.`);
-      setDetail(null); load();
+      const r = await api.pickupHandoff(String(handoffFor.id), { vendor: hVendor || undefined, toPay: hToPay, token: hToken || undefined });
+      setMsg(`✓ Handed to ${hVendor || 'carrier'} — pickup token ${r.token ?? '(pending)'}. The customer can see it on their panel.`);
+      setHandoffFor(null); setDetail(null); load();
     } catch (e: any) { setError(e.message); } finally { setHandingOff(''); }
+  };
+
+  // Mark-picked modal (capture AWB / weight / pcs / value).
+  const [pickedFor, setPickedFor] = useState<any | null>(null);
+  const [pk, setPk] = useState({ awb: '', weight: '', pieces: '', value: '' });
+  const openPicked = (p: any) => { setPickedFor(p); setPk({ awb: p.pickedAwb || '', weight: p.pickedWeight || '', pieces: String(p.estPieces || ''), value: p.pickedValue || p.invoiceValue || '' }); setError(''); };
+  const doPicked = async () => {
+    if (!pickedFor) return;
+    try {
+      await api.completePickup(String(pickedFor.id), { awb: pk.awb || undefined, weight: pk.weight ? +pk.weight : undefined, pieces: pk.pieces ? +pk.pieces : undefined, value: pk.value ? +pk.value : undefined });
+      setPickedFor(null); load();
+    } catch (e: any) { setError(e.message); }
   };
 
   return (
@@ -137,22 +171,32 @@ export function Pickups() {
           <div className="grid cols-3">
             <div style={{ gridColumn: 'span 2' }}><label>Pickup address *</label><input value={form.pickupAddress} onChange={(e) => set('pickupAddress', e.target.value)} /></div>
             <div><label>City</label><input value={form.city} onChange={(e) => set('city', e.target.value)} /></div>
-            <div><label>Pincode</label><input value={form.pincode} onChange={(e) => set('pincode', e.target.value)} /></div>
+            <div><label>Pincode <span className="muted" style={{ fontSize: 11 }}>(auto-fills city)</span></label><input value={form.pincode} onChange={(e) => onPincode(e.target.value)} /></div>
             <div><label>Contact name</label><input value={form.contactName} onChange={(e) => set('contactName', e.target.value)} /></div>
             <div><label>Contact phone</label><input value={form.contactPhone} onChange={(e) => set('contactPhone', e.target.value)} /></div>
             <div><label>No. of boxes</label><input type="number" value={form.estPieces} onChange={(e) => set('estPieces', e.target.value)} /></div>
+            <div><label>Weight (kg)</label><input type="number" value={form.weight} onChange={(e) => set('weight', e.target.value)} /></div>
             <div>
-              <label>Cargo mode</label>
-              <select value={form.cargoMode} onChange={(e) => set('cargoMode', e.target.value)}>
-                {['ROAD', 'AIR', 'TRAIN', 'FTL', 'PTL'].map((m) => <option key={m} value={m}>{m}</option>)}
+              <label>Product</label>
+              <select value={form.product} onChange={(e) => set('product', e.target.value)}>
+                <option value="">— select product —</option>
+                {products.map((p) => <option key={p.code} value={p.code}>{p.code} — {p.name}</option>)}
               </select>
             </div>
+            <div>
+              <label>Courier partner <span className="muted" style={{ fontSize: 11 }}>(your assigned carriers)</span></label>
+              <select value={form.vendor} onChange={(e) => set('vendor', e.target.value)}>
+                <option value="">— choose / assign later —</option>
+                {formVendors.map((v) => <option key={v.code} value={v.code}>{v.name}</option>)}
+              </select>
+            </div>
+            <div><label>Reference no. <span className="muted" style={{ fontSize: 11 }}>(trackable)</span></label><input value={form.refNo} onChange={(e) => set('refNo', e.target.value)} /></div>
             <div><label>Invoice no.</label><input value={form.invoiceNo} onChange={(e) => set('invoiceNo', e.target.value)} /></div>
-            <div><label>Invoice date</label><input type="date" value={form.invoiceDate} onChange={(e) => set('invoiceDate', e.target.value)} /></div>
             <div><label>Invoice value ₹</label><input type="number" value={form.invoiceValue} onChange={(e) => set('invoiceValue', e.target.value)} /></div>
             <div><label>E-way bill no.</label><input value={form.ewbNo} onChange={(e) => set('ewbNo', e.target.value)} /></div>
             <div style={{ gridColumn: 'span 2' }}><label>Notes</label><input value={form.notes} onChange={(e) => set('notes', e.target.value)} /></div>
           </div>
+          <label className="row" style={{ gap: 6, marginTop: 10, fontSize: 13 }}><input type="checkbox" style={{ width: 'auto' }} checked={form.isWarehouse} onChange={(e) => set('isWarehouse', e.target.checked)} /> Save this as a warehouse / regular pickup location</label>
           <button style={{ marginTop: 12 }} disabled={!form.pickupAddress} onClick={create}>Request pickup</button>
         </div>
       )}
@@ -203,30 +247,33 @@ export function Pickups() {
           <span className="muted" style={{ fontSize: 12, marginLeft: 'auto' }}>{visibleRows.length} pickup(s)</span>
         </div>
         <table>
-          <thead><tr><th>#</th><th>Date</th><th>Address</th><th>City</th><th>Boxes</th><th>Status</th><th>Vendor token</th>{isOps && <th>Rider</th>}{isOps && <th></th>}</tr></thead>
+          <thead><tr><th>#</th><th>Date</th>{isOps && <th>Customer</th>}<th>Product</th><th>From → To</th><th>Boxes</th><th>Wt</th><th>Status</th><th>Vendor token</th>{isOps && <th>Rider</th>}{isOps && <th></th>}</tr></thead>
           <tbody>
             {visibleRows.map((p) => (
               <tr key={p.id}>
                 <td>{p.id}</td><td style={{ whiteSpace: 'nowrap' }}>{p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-GB') : '—'}</td>
-                <td>{isOps ? <button className="link" style={{ textAlign: 'left' }} onClick={() => openDetail(p)} title="View full pickup detail">{p.pickupAddress}</button> : p.pickupAddress}</td>
-                <td>{p.city ?? '—'}</td><td>{p.estPieces}</td>
+                {isOps && <td><button className="link" style={{ textAlign: 'left' }} onClick={() => openDetail(p)} title="View full pickup detail">{p.customerName ?? '—'}{p.customerCode ? <span className="muted" style={{ fontSize: 11 }}> ({p.customerCode})</span> : null}</button></td>}
+                <td>{p.product ?? p.cargoMode ?? '—'}</td>
+                <td style={{ whiteSpace: 'nowrap' }} title={p.pickupAddress}>{[p.city, p.pincode].filter(Boolean).join(' · ') || '—'}</td>
+                <td>{p.estPieces}</td>
+                <td>{p.weight ? Number(p.weight) : '—'}</td>
                 <td><span className={`badge ${p.status}`}>{p.status}</span></td>
                 <td>{p.token ? <span title={`${p.vendor || 'Carrier'} pickup token`}><b>{p.token}</b>{p.vendor ? <span className="muted" style={{ fontSize: 11 }}> · {p.vendor}</span> : null}</span> : <span className="muted">—</span>}</td>
                 {isOps && <td>{p.status === 'ASSIGNED' || p.status === 'PICKED' ? riderLabel(p.assignedRiderId) : '—'}</td>}
                 {isOps && (
                   <td className="row" style={{ gap: 6 }}>
                     <button className="secondary" onClick={() => openDetail(p)}>Details</button>
-                    {!p.token && <button disabled={handingOff === String(p.id)} onClick={() => doHandoff(p)} title="Register this pickup with BlueDart and generate a pickup token">{handingOff === String(p.id) ? '…' : '📅 Hand to BlueDart'}</button>}
+                    {!p.token && <button onClick={() => openHandoff(p)} title="Hand this pickup to a vendor — generates a pickup token">📅 Hand to vendor</button>}
                     {p.status === 'REQUESTED' && <button className="secondary" onClick={() => openAssign(p)}>Assign rider</button>}
                     {p.status === 'ASSIGNED' && <>
                       <button className="secondary" onClick={() => openAssign(p)}>Re-assign</button>
-                      <button className="secondary" onClick={() => complete(p.id)}>Mark picked</button>
+                      <button className="secondary" onClick={() => openPicked(p)}>Mark picked</button>
                     </>}
                   </td>
                 )}
               </tr>
             ))}
-            {visibleRows.length === 0 && <tr><td colSpan={9} className="muted">{rows.length ? `No pickups for ${dateFilter}.` : 'No pickup requests.'}</td></tr>}
+            {visibleRows.length === 0 && <tr><td colSpan={12} className="muted">{rows.length ? `No pickups for ${dateFilter}.` : 'No pickup requests.'}</td></tr>}
           </tbody>
         </table>
       </div>
@@ -302,14 +349,51 @@ export function Pickups() {
                 {detail.token && <div style={{ gridColumn: 'span 2' }}><div className="muted">Vendor pickup token</div><strong>{detail.token}</strong>{detail.vendor ? ` · ${detail.vendor}` : ''}{detail.handoffAt ? ` · ${new Date(detail.handoffAt).toLocaleString('en-GB')}` : ''}</div>}
               </div>
               <div className="row" style={{ justifyContent: 'space-between', gap: 8, marginTop: 18, alignItems: 'center', flexWrap: 'wrap' }}>
-                <span className="muted" style={{ fontSize: 12 }}>{detail.token ? 'Already handed to the carrier — the token shows on the customer’s panel.' : 'Hand off to BlueDart to generate a pickup token for this request.'}</span>
+                <span className="muted" style={{ fontSize: 12 }}>{detail.token ? 'Already handed to the carrier — the token shows on the customer’s panel.' : 'Hand off to a vendor to generate a pickup token for this request.'}</span>
                 <div className="row" style={{ gap: 8 }}>
                   <button className="secondary" onClick={() => setDetail(null)}>Close</button>
-                  {!detail.token && isOps && <button disabled={handingOff === String(detail.id)} onClick={() => doHandoff(detail)}>{handingOff === String(detail.id) ? 'Handing off…' : '📅 Hand off to BlueDart'}</button>}
+                  {!detail.token && isOps && <button onClick={() => { setDetail(null); openHandoff(detail); }}>📅 Hand off to vendor</button>}
                 </div>
               </div>
             </>
           )}
+        </Modal>
+      )}
+
+      {handoffFor && (
+        <Modal title={`Hand off pickup #${handoffFor.id} to a vendor`} width={480} onClose={() => setHandoffFor(null)}>
+          <p className="muted" style={{ marginTop: 0, fontSize: 12.5 }}>Pick the carrier (you can override the customer's choice). BlueDart registers the pickup and returns a token automatically; for any other vendor enter the token they give you (optional).</p>
+          <div><label>Vendor</label>
+            <select value={hVendor} onChange={(e) => setHVendor(e.target.value)}>
+              <option value="">— select vendor —</option>
+              {vendors.map((v) => <option key={v.vendorCode} value={v.vendorCode}>{v.vendorCode} — {v.name}</option>)}
+            </select>
+          </div>
+          {/^BLUE|BDR/i.test(hVendor) ? (
+            <label className="row" style={{ gap: 6, marginTop: 10, fontSize: 13 }}><input type="checkbox" style={{ width: 'auto' }} checked={hToPay} onChange={(e) => setHToPay(e.target.checked)} /> To-pay / outstation collection</label>
+          ) : (
+            <div style={{ marginTop: 10 }}><label>Pickup token <span className="muted" style={{ fontSize: 11 }}>(from the vendor — optional)</span></label><input value={hToken} onChange={(e) => setHToken(e.target.value)} /></div>
+          )}
+          <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+            <button className="secondary" onClick={() => setHandoffFor(null)}>Cancel</button>
+            <button disabled={!hVendor || handingOff === String(handoffFor.id)} onClick={doHandoff}>{handingOff === String(handoffFor.id) ? 'Handing off…' : 'Hand off'}</button>
+          </div>
+        </Modal>
+      )}
+
+      {pickedFor && (
+        <Modal title={`Mark picked — pickup #${pickedFor.id}`} width={460} onClose={() => setPickedFor(null)}>
+          <p className="muted" style={{ marginTop: 0, fontSize: 12.5 }}>Capture the actuals at pickup.</p>
+          <div className="grid cols-2" style={{ gap: 10 }}>
+            <div style={{ gridColumn: 'span 2' }}><label>AWB no.</label><input value={pk.awb} onChange={(e) => setPk((s) => ({ ...s, awb: e.target.value }))} /></div>
+            <div><label>Weight (kg)</label><input type="number" value={pk.weight} onChange={(e) => setPk((s) => ({ ...s, weight: e.target.value }))} /></div>
+            <div><label>Pieces</label><input type="number" value={pk.pieces} onChange={(e) => setPk((s) => ({ ...s, pieces: e.target.value }))} /></div>
+            <div style={{ gridColumn: 'span 2' }}><label>Invoice value ₹</label><input type="number" value={pk.value} onChange={(e) => setPk((s) => ({ ...s, value: e.target.value }))} /></div>
+          </div>
+          <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+            <button className="secondary" onClick={() => setPickedFor(null)}>Cancel</button>
+            <button onClick={doPicked}>Mark picked</button>
+          </div>
         </Modal>
       )}
     </>
