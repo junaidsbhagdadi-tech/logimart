@@ -520,7 +520,7 @@ export class InvoiceService {
    * shipment set is capped — narrow the date range or customer set if it truncates.
    */
   async billWorksheet(clientIds: number[] | 'all', from?: string, to?: string) {
-    const CAP = 2500;
+    const CAP = 25000; // a full month for all customers — pricing runs in concurrency batches, so this is safe
     const clientWhere: any = clientIds === 'all' ? {} : { id: { in: clientIds.map((n) => BigInt(n)) } };
     // Only billable customers (exclude cash/wallet — they never appear on the billing run).
     const billable = await this.prisma.b2bClient.findMany({

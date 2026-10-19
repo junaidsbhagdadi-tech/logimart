@@ -71,7 +71,7 @@ export function BillWorksheet() {
                 </div>
               </>
             )}
-            {allCustomers && <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>Runs for every billable customer (cash / wallet excluded). Large — use a date range; it caps at 2,500 AWBs.</div>}
+            {allCustomers && <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>Runs for every billable customer (cash / wallet excluded). A full month is fine; it caps at 25,000 AWBs.</div>}
           </div>
           <div><label>From <span className="muted">(opt.)</span></label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
           <div><label>To <span className="muted">(opt.)</span></label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
@@ -85,7 +85,7 @@ export function BillWorksheet() {
       {data && (
         <div className="card">
           <h2>{data.client.legalName} — {data.count} AWB(s)</h2>
-          {data.truncated && <div className="card" style={{ borderLeft: '4px solid var(--warn, #d97706)', fontSize: 13, marginBottom: 10 }}>⚠ Capped at 2,500 AWBs — narrow the date range or pick fewer customers to see everything.</div>}
+          {data.truncated && <div className="card" style={{ borderLeft: '4px solid var(--warn, #d97706)', fontSize: 13, marginBottom: 10 }}>⚠ Capped at 25,000 AWBs — narrow the date range or pick fewer customers to see everything.</div>}
           {!data.rows.length ? <p className="muted">No shipments in range.</p> : (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ fontSize: 13 }}>
