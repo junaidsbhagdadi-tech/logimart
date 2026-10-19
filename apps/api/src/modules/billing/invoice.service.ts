@@ -674,16 +674,26 @@ export class InvoiceService {
   }
 
   async list(clientId?: bigint) {
-    // A scoped (portal) list is only served if the customer is opted in to seeing invoices.
+    // A scoped (portal) list is only served if the customer is opted in to seeing invoices, and only
+    // shows invoices that have been SENT (finance finalises + sends before the customer can see them).
     if (clientId != null) {
       const c = await this.prisma.b2bClient.findUnique({ where: { id: clientId }, select: { canViewInvoices: true } });
       if (!c?.canViewInvoices) throw new ForbiddenException('Invoice access is not enabled for your account. Please contact us.');
     }
     return this.prisma.invoice.findMany({
-      where: clientId != null ? { clientId } : undefined,
+      where: clientId != null ? { clientId, sentAt: { not: null } } : undefined,
       orderBy: { issuedAt: 'desc' },
       include: { lines: true },
     });
+  }
+
+  /** Finance/CS "sends" a completed invoice to the customer — only then is it visible on the portal. */
+  async send(invoiceId: number) {
+    const inv = await this.prisma.invoice.findUnique({ where: { id: BigInt(invoiceId) }, select: { id: true, status: true, sentAt: true, invoiceNo: true } });
+    if (!inv) throw new NotFoundException('Invoice not found');
+    if (inv.status === 'DRAFT') throw new BadRequestException('Lock the invoice before sending it to the customer.');
+    const updated = await this.prisma.invoice.update({ where: { id: BigInt(invoiceId) }, data: { sentAt: inv.sentAt ?? new Date() } });
+    return { ok: true, invoiceNo: inv.invoiceNo, sentAt: updated.sentAt };
   }
 
   async get(id: number) {
@@ -998,7 +1008,7 @@ export class InvoiceService {
 
     // invoices + per-invoice remaining (signed sum of ledger entries)
     const invoices = await this.prisma.invoice.findMany({
-      where: { clientId: cid }, orderBy: { issuedAt: 'desc' },
+      where: { clientId: cid, sentAt: { not: null } }, orderBy: { issuedAt: 'desc' },
       select: { id: true, invoiceNo: true, periodStart: true, periodEnd: true, total: true, status: true, dueDate: true, issuedAt: true },
     });
     const sums = await this.prisma.ledgerEntry.groupBy({ by: ['invoiceId'], where: { clientId: cid, invoiceId: { not: null } }, _sum: { amount: true } });

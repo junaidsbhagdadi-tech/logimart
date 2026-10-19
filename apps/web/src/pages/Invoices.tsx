@@ -163,6 +163,12 @@ export function Invoices() {
     try { const r = await api.lockInvoice(String(inv.id)); setMsg(`🔒 ${inv.invoiceNo} locked${r.creditHold ? ' — customer now on CREDIT HOLD' : ''}.`); load(); }
     catch (e: any) { setError(e.message); }
   };
+  const sendInv = async (inv: any) => {
+    if (!confirm(`Send invoice ${inv.invoiceNo} to the customer? It becomes visible on their portal login only after this.`)) return;
+    setError(''); setMsg('');
+    try { await api.sendInvoice(String(inv.id)); setMsg(`✉ ${inv.invoiceNo} sent — now visible to the customer.`); load(); }
+    catch (e: any) { setError(e.message); }
+  };
 
   // Bulk lock (single / multiple / all) + bulk e-invoice
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -362,6 +368,8 @@ export function Invoices() {
                         <button className="secondary" style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }} title="Add an AWB" onClick={() => addAwb(inv)}>＋AWB</button>
                         <button style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }} title="Lock / issue this invoice" onClick={() => lockInv(inv)}>🔒 Lock</button>
                       </>}
+                      {isFinance && rights.edit && inv.status !== 'DRAFT' && !inv.sentAt && <button style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }} title="Send to the customer — makes it visible on their portal" onClick={() => sendInv(inv)}>✉ Send</button>}
+                      {inv.sentAt && <span className="badge DELIVERED" style={{ fontSize: 11, marginRight: 4 }} title={`Sent ${new Date(inv.sentAt).toLocaleString('en-GB')}`}>✓ Sent</span>}
                       {isFinance && rights.del && inv.status !== 'PAID' && inv.status !== 'PARTIALLY_PAID' && (
                         <button className="secondary" style={{ padding: '3px 8px', fontSize: 12, color: 'var(--danger, #c0392b)' }} title="Delete invoice" onClick={() => delInv(inv)}>🗑</button>
                       )}

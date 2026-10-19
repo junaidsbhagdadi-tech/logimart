@@ -277,6 +277,7 @@ export interface Invoice {
   status: string;
   dueDate: string;
   issuedAt?: string | null;
+  sentAt?: string | null;
   lines: InvoiceLine[];
   irn?: string | null;
   client?: {
@@ -483,6 +484,8 @@ export const api = {
     ),
   lockInvoice: (invoiceId: string) =>
     request<{ creditHold: boolean; newBalance: number }>('/api/v1/billing/invoices/' + invoiceId + '/lock', { method: 'POST' }),
+  sendInvoice: (invoiceId: string) =>
+    request<{ ok: boolean; invoiceNo: string; sentAt: string | null }>('/api/v1/billing/invoices/' + invoiceId + '/send', { method: 'POST' }),
   lockManyInvoices: (body: { ids?: (string | number)[]; all?: boolean }) =>
     request<{ ok: boolean; locked: number; skipped: { id: string; reason: string }[] }>('/api/v1/billing/invoices/lock-many', { method: 'POST', body: JSON.stringify({ ids: (body.ids ?? []).map(Number), all: body.all }) }),
   einvoiceManyInvoices: (ids: (string | number)[]) =>

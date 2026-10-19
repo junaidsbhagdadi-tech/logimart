@@ -57,11 +57,18 @@ export class BillingController {
   @Get('billing/invoices/:id')
   async get(@Param('id') id: string, @Req() req: any) {
     const inv = await this.invoices.get(Number(id));
-    // A client may only open its OWN invoices.
-    if (req.user.role === UserRole.CLIENT_ADMIN && String((inv as any).clientId) !== String(req.user.clientId)) {
+    // A client may only open its OWN invoices, and only once they've been SENT.
+    if (req.user.role === UserRole.CLIENT_ADMIN && (String((inv as any).clientId) !== String(req.user.clientId) || !(inv as any).sentAt)) {
       throw new NotFoundException('Invoice not found');
     }
     return inv;
+  }
+
+  /** Send a completed invoice to the customer — only then is it visible on their portal. */
+  @Post('billing/invoices/:id/send')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  send(@Param('id') id: string) {
+    return this.invoices.send(Number(id));
   }
 
   /** Lock a line under dispute (clean lines stay payable). */

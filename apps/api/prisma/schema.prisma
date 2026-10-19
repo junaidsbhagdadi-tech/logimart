@@ -798,6 +798,7 @@ model Invoice {
   status      InvoiceStatus @default(DRAFT)
   dueDate     DateTime      @db.Date
   issuedAt    DateTime?
+  sentAt      DateTime?     // set when CS/finance "sends" it — only then is it visible on the customer portal
   // ---- GST e-invoice (IRP) ----
   irn         String?       // Invoice Reference Number
   irnAckNo    String?
