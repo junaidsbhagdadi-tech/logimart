@@ -19,7 +19,7 @@ export function BulkBooking() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [uploadPct, setUploadPct] = useState<number | null>(null); // 0-100 while sending rows to the server
-  const [job, setJob] = useState<(BulkJob & { failures?: { idx: number; awb?: string | null; error?: string | null }[] }) | null>(null);
+  const [job, setJob] = useState<(BulkJob & { failures?: { idx: number; awb?: string | null; error?: string | null }[]; skippedRows?: { idx: number; awb?: string | null; error?: string | null }[] }) | null>(null);
   const [recent, setRecent] = useState<BulkJob[]>([]);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -32,10 +32,17 @@ export function BulkBooking() {
     if (active && !job) watchJob(active.id);
   }).catch(() => {});
 
-  // Undo a whole batch — void every AWB the upload booked (wrong-file recovery).
+  // Undo a whole file — void every AWB the upload booked (wrong-file recovery). The voided AWBs can
+  // then be re-booked by uploading the corrected sheet; AWBs still active are skipped (no duplicates).
   const undoBatch = async (id: string, booked: number) => {
-    if (!confirm(`Undo this batch? It will VOID all ${booked} booked AWB(s) from this upload — excluded from billing, records kept. Continue?`)) return;
-    try { const r = await api.undoBulkJob(id); alert(`Voided ${r.voided}/${r.total} shipment(s) from the batch.`); watchJob(id); loadRecent(); }
+    if (!confirm(`Undo this whole file?\n\nAll ${booked.toLocaleString()} AWB(s) it booked will be VOIDED (excluded from billing; records kept).\n\nAfter this you can fix the sheet and upload it again — the same AWBs will be booked fresh with the corrected data, with no duplicates.\n\nContinue?`)) return;
+    try {
+      const r = await api.undoBulkJob(id);
+      const lines = [`Voided ${r.voided.toLocaleString()} of ${r.total.toLocaleString()} AWB(s). You can now re-upload the corrected file.`];
+      if (r.blocked?.length) lines.push('', `${r.total - r.voided} could NOT be voided (left as they are):`, ...r.blocked.slice(0, 10).map((b) => `• ${b.awb}: ${b.error ?? ''}`), r.blocked.length > 10 ? `…and ${r.blocked.length - 10} more` : '');
+      alert(lines.join('\n'));
+      watchJob(id); loadRecent();
+    }
     catch (e: any) { alert(e.message); }
   };
 
@@ -244,6 +251,11 @@ export function BulkBooking() {
           <code> agreedFreight</code> (₹ one-off / "As Agreed" override — blank = rate card),
           <code> referenceNo</code> (your invoice / booking ref), <code> goodsDesc</code>.
         </p>
+        <p className="muted" style={{ marginTop: 6, fontSize: 12.5 }}>
+          <strong>Uploaded the wrong file?</strong> Click <strong>↩ Undo file</strong> on it below — every AWB it booked is voided.
+          Then fix the sheet and upload it again: the voided AWBs are booked fresh with the corrected data.
+          Re-uploading never duplicates — AWBs that are still active are skipped.
+        </p>
         <div className="row">
           <button className="secondary" onClick={downloadTemplate}>⬇ Download CSV template</button>
           <label className="secondary" style={{ padding: '10px 16px', borderRadius: 11, cursor: 'pointer', fontWeight: 600, fontSize: 13, border: '1px solid var(--border)' }}>
@@ -271,7 +283,7 @@ export function BulkBooking() {
           </div>
           <button disabled={busy || grouped.length === 0 || binaryPaste} onClick={submit}>{busy ? (uploadPct !== null ? `Uploading ${uploadPct}%…` : 'Starting…') : `Book ${grouped.length.toLocaleString()} shipment(s)`}</button>
         </div>
-        <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>Booking runs in the background on the server — once it starts you can <strong>close this tab</strong> and come back later; progress is saved. AWBs are unique, so re-uploading a file skips shipments already booked.</p>
+        <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>Booking runs in the background on the server — once it starts you can <strong>close this tab</strong> and come back later; progress is saved. AWBs are unique: re-uploading a file skips shipments still booked, and re-books any you undid.</p>
       </div>
 
       {job && (
@@ -290,7 +302,8 @@ export function BulkBooking() {
             {!!job.skipped && job.skipped > 0 && <> <span className="badge AT_HUB" title="Already booked (re-upload) — skipped">{job.skipped.toLocaleString()} skipped</span></>}
             {job.failed > 0 && <> <span className="badge EXCEPTION">{job.failed.toLocaleString()} failed</span></>}
             {(job.status === 'RUNNING' || job.status === 'PENDING') && <> · <button className="secondary" style={{ padding: '2px 10px', fontSize: 12 }} onClick={() => api.cancelBulkJob(job.id).then(() => watchJob(job.id))}>Stop</button></>}
-            {job.succeeded > 0 && <> · <button className="secondary" style={{ padding: '2px 10px', fontSize: 12, color: 'var(--bad, #c0392b)' }} onClick={() => undoBatch(job.id, job.succeeded)}>↩ Undo batch (void {job.succeeded})</button></>}
+            {job.undoneAt && <> · <span className="badge EXCEPTION" title={`Undone ${new Date(job.undoneAt).toLocaleString('en-IN')}`}>UNDONE · {(job.voided ?? 0).toLocaleString()} voided</span></>}
+            {job.succeeded > 0 && !job.undoneAt && job.status !== 'RUNNING' && job.status !== 'PENDING' && <> · <button className="secondary" style={{ padding: '2px 10px', fontSize: 12, color: 'var(--bad, #c0392b)' }} onClick={() => undoBatch(job.id, job.succeeded)}>↩ Undo file (void {job.succeeded.toLocaleString()})</button></>}
           </div>
           {(job.status === 'RUNNING' || job.status === 'PENDING') && (
             <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>Each shipment is priced through the rate engine (~1–1.5s), so a big file takes a while. You can close this tab — it keeps booking on the server.</p>
@@ -307,6 +320,16 @@ export function BulkBooking() {
               {job.status === 'DONE' && <p className="muted" style={{ fontSize: 12 }}>Fix these in the sheet and re-upload — already-booked AWBs are skipped automatically.</p>}
             </>
           )}
+          {job.skippedRows && job.skippedRows.length > 0 && (
+            <details style={{ marginTop: 10 }}>
+              <summary style={{ cursor: 'pointer', fontSize: 13 }}>Skipped as already booked {job.skipped && job.skipped > job.skippedRows.length ? `(first ${job.skippedRows.length} of ${job.skipped.toLocaleString()})` : `(${job.skippedRows.length})`}</summary>
+              <p className="muted" style={{ fontSize: 12, margin: '6px 0' }}>These AWBs are still active from an earlier upload, so they were left unchanged. To replace them with this file's data, Undo the earlier upload, then upload this file again.</p>
+              <table>
+                <thead><tr><th>Row</th><th>AWB</th></tr></thead>
+                <tbody>{job.skippedRows.map((f) => <tr key={f.idx}><td>{f.idx + 1}</td><td className="mono">{f.awb || '—'}</td></tr>)}</tbody>
+              </table>
+            </details>
+          )}
         </div>
       )}
 
@@ -319,12 +342,12 @@ export function BulkBooking() {
               {recent.map((j) => (
                 <tr key={j.id}>
                   <td>{new Date(j.createdAt).toLocaleString('en-IN')}</td>
-                  <td><span className={`badge ${j.status === 'DONE' ? 'DELIVERED' : j.status === 'CANCELLED' ? 'EXCEPTION' : 'AT_HUB'}`}>{j.status}</span></td>
+                  <td>{j.undoneAt ? <span className="badge EXCEPTION" title={`Undone ${new Date(j.undoneAt).toLocaleString('en-IN')}`}>UNDONE</span> : <span className={`badge ${j.status === 'DONE' ? 'DELIVERED' : j.status === 'CANCELLED' ? 'EXCEPTION' : 'AT_HUB'}`}>{j.status}</span>}</td>
                   <td>{j.processed.toLocaleString()}/{j.total.toLocaleString()}</td>
-                  <td>{j.succeeded.toLocaleString()}</td>
+                  <td>{j.succeeded.toLocaleString()}{j.undoneAt ? <div className="muted" style={{ fontSize: 11 }}>{(j.voided ?? 0).toLocaleString()} voided</div> : null}</td>
                   <td>{j.skipped ? <span className="badge AT_HUB" title="Already booked — skipped">{j.skipped.toLocaleString()}</span> : '0'}</td>
                   <td>{j.failed > 0 ? <span className="badge EXCEPTION">{j.failed.toLocaleString()}</span> : '0'}</td>
-                  <td className="row" style={{ gap: 6 }}><button className="secondary" style={{ padding: '2px 10px', fontSize: 12 }} onClick={() => watchJob(j.id)}>View</button>{j.succeeded > 0 && <button className="secondary" style={{ padding: '2px 10px', fontSize: 12, color: 'var(--bad, #c0392b)' }} onClick={() => undoBatch(j.id, j.succeeded)}>↩ Undo</button>}</td>
+                  <td className="row" style={{ gap: 6 }}><button className="secondary" style={{ padding: '2px 10px', fontSize: 12 }} onClick={() => watchJob(j.id)}>View</button>{j.succeeded > 0 && !j.undoneAt && j.status !== 'RUNNING' && j.status !== 'PENDING' && <button className="secondary" style={{ padding: '2px 10px', fontSize: 12, color: 'var(--bad, #c0392b)' }} onClick={() => undoBatch(j.id, j.succeeded)} title="Void every AWB this file booked, so you can re-upload a corrected file">↩ Undo file</button>}</td>
                 </tr>
               ))}
             </tbody>

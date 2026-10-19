@@ -71,6 +71,8 @@ export interface BulkJob {
   succeeded: number;
   failed: number;
   skipped?: number;
+  undoneAt?: string | null; // whole file undone (its AWBs voided)
+  voided?: number;
   startedAt: string | null;
   finishedAt: string | null;
   createdAt: string;
@@ -350,11 +352,11 @@ export const api = {
   cancelBulkJob: (id: string) =>
     request<{ ok: boolean }>(`/api/v1/shipments/bulk-jobs/${id}/cancel`, { method: 'POST' }),
   undoBulkJob: (id: string) =>
-    request<{ jobId: string; total: number; voided: number }>(`/api/v1/shipments/bulk-jobs/${id}/undo`, { method: 'POST' }),
+    request<{ jobId: string; total: number; voided: number; blocked: { awb: string; error?: string }[] }>(`/api/v1/shipments/bulk-jobs/${id}/undo`, { method: 'POST' }),
   listBulkJobs: () =>
     request<BulkJob[]>('/api/v1/shipments/bulk-jobs'),
   getBulkJob: (id: string) =>
-    request<BulkJob & { failures: { idx: number; awb?: string | null; error?: string | null }[] }>(`/api/v1/shipments/bulk-jobs/${id}`),
+    request<BulkJob & { failures: { idx: number; awb?: string | null; error?: string | null }[]; skippedRows?: { idx: number; awb?: string | null; error?: string | null }[] }>(`/api/v1/shipments/bulk-jobs/${id}`),
 
   // ---- ground ops ----
   uploadPod: async (file: File, kind = 'pod_stamp') => {

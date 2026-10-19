@@ -138,13 +138,15 @@ export class ShipmentsService {
     const manualAwb = (dto as any).manualAwb ? String((dto as any).manualAwb).trim().toUpperCase() : '';
     if (manualAwb) {
       const exists = await this.prisma.shipment.findUnique({ where: { awb: manualAwb }, select: { id: true } });
-      if (exists) throw new ConflictException(`AWB ${manualAwb} already exists.`);
+      // A VOIDED (cancelled, never-invoiced) AWB — e.g. from an undone bulk upload — is re-bookable:
+      // retire the void record and book the corrected row fresh. An active AWB is a duplicate.
+      if (exists && !(await this.retireVoided(exists.id))) throw new ConflictException(`AWB ${manualAwb} already exists.`);
     }
     // Dedupe on the forwarding/carrier no too — so a re-uploaded row is caught even when our AWB differs.
     const fwd = (dto as any).forwardingAwb ? String((dto as any).forwardingAwb).trim().toUpperCase() : '';
     if (fwd) {
-      const dup = await this.prisma.shipment.findFirst({ where: { forwardingAwb: { equals: fwd, mode: 'insensitive' } }, select: { awb: true } });
-      if (dup) throw new ConflictException(`Forwarding no ${fwd} already exists (on AWB ${dup.awb}).`);
+      const dup = await this.prisma.shipment.findFirst({ where: { forwardingAwb: { equals: fwd, mode: 'insensitive' } }, select: { id: true, awb: true } });
+      if (dup && !(await this.retireVoided(dup.id))) throw new ConflictException(`Forwarding no ${fwd} already exists (on AWB ${dup.awb}).`);
       // A forwarding/carrier AWB must carry a vendor — the vendor drives billing rates. Booking one
       // with a blank vendor would silently bill SELF-network rates. Require the carrier at booking too.
       if (!(dto.vendor && String(dto.vendor).trim()))
@@ -615,6 +617,38 @@ export class ShipmentsService {
   }
 
   /** Void several AWBs at once — runs the same guarded cancel() per AWB, collecting per-AWB results. */
+  /**
+   * Free a VOIDED shipment's AWB / LR / forwarding no so a corrected booking can reuse them (undo a
+   * wrong upload → fix the sheet → re-upload). Only a cancelled (CAN), never-invoiced record qualifies;
+   * returns false otherwise (the caller then treats it as a real duplicate). Nothing is deleted: the
+   * void record is renamed `<AWB>-VOID<id>` along with its scan history and the old upload's job rows
+   * (so undoing the old job can never touch the new booking), keeping the audit trail.
+   */
+  async retireVoided(shipmentId: bigint): Promise<boolean> {
+    const s = await this.prisma.shipment.findUnique({
+      where: { id: shipmentId },
+      select: { id: true, awb: true, lrNumber: true, forwardingAwb: true, statusCode: true, _count: { select: { invoiceLines: true } } },
+    });
+    if (!s || s.statusCode !== 'CAN' || s._count.invoiceLines > 0) return false;
+    const tag = `-VOID${s.id}`;
+    const old = s.awb;
+    const newAwb = old.endsWith(tag) ? old : `${old}${tag}`;
+    await this.prisma.$transaction([
+      this.prisma.shipment.update({
+        where: { id: s.id },
+        data: {
+          awb: newAwb,
+          lrNumber: s.lrNumber && !s.lrNumber.endsWith(tag) ? `${s.lrNumber}${tag}` : s.lrNumber,
+          forwardingAwb: s.forwardingAwb && !s.forwardingAwb.endsWith(tag) ? `${s.forwardingAwb}${tag}` : s.forwardingAwb,
+        },
+      }),
+      this.prisma.scanLog.updateMany({ where: { awb: old }, data: { awb: newAwb } }),
+      this.prisma.bulkBookingJobRow.updateMany({ where: { awb: old }, data: { awb: newAwb } }),
+      this.prisma.notification.updateMany({ where: { awb: old }, data: { awb: newAwb } }),
+    ]);
+    return true;
+  }
+
   async bulkCancel(awbs: string[], userId?: bigint, clientId?: number, reason?: string, opts?: { isSuper?: boolean }) {
     const list = [...new Set((awbs || []).map((a) => String(a).trim().toUpperCase()).filter(Boolean))];
     const results: { awb: string; ok: boolean; status?: string; error?: string }[] = [];

@@ -78,7 +78,13 @@ export class BulkBookingService implements OnModuleInit {
     const res = awbs.length
       ? await this.shipments.bulkCancel(awbs, opts.userId, opts.clientId, 'Bulk upload undone', { isSuper: opts.isSuper })
       : { total: 0, voided: 0, results: [] as any[] };
-    return { jobId: String(jobId), ...res };
+    // Mark the file undone. Its voided AWBs become re-bookable: re-uploading the corrected sheet books
+    // them fresh (ShipmentsService.retireVoided), while still-active AWBs are skipped — no duplicates.
+    const already = await this.prisma.bulkBookingJob.findUnique({ where: { id: jobId }, select: { voided: true } });
+    await this.prisma.bulkBookingJob.update({ where: { id: jobId }, data: { undoneAt: new Date(), voided: (already?.voided ?? 0) + res.voided } });
+    // Rows that couldn't be voided (e.g. already invoiced / delivered) are reported back to the user.
+    const blocked = res.results.filter((r: any) => !r.ok).slice(0, 50);
+    return { jobId: String(jobId), total: res.total, voided: res.voided, blocked };
   }
 
   async progress(jobId: bigint) {
@@ -91,7 +97,14 @@ export class BulkBookingService implements OnModuleInit {
       take: 100,
       select: { idx: true, awb: true, error: true },
     });
-    return { ...job, failures };
+    // …and which AWBs were skipped as already-booked (active), so a re-upload's result is explainable.
+    const skippedRows = await this.prisma.bulkBookingJobRow.findMany({
+      where: { jobId, status: 'SKIPPED' },
+      orderBy: { idx: 'asc' },
+      take: 100,
+      select: { idx: true, awb: true, error: true },
+    });
+    return { ...job, failures, skippedRows };
   }
 
   async recent(createdById?: bigint | null, isSuper = false) {
@@ -149,7 +162,7 @@ export class BulkBookingService implements OnModuleInit {
           // no-op SKIP (idempotent re-run), not a failure — so the summary doesn't look like a disaster.
           if (/already exists/i.test(msg)) {
             const awbMatch = msg.match(/AWB\s+(\S+)\s+already exists/i);
-            await this.prisma.bulkBookingJobRow.update({ where: { id: row.id }, data: { status: 'SKIPPED', awb: awbMatch?.[1] ?? null, error: 'Already booked — skipped' } });
+            await this.prisma.bulkBookingJobRow.update({ where: { id: row.id }, data: { status: 'SKIPPED', awb: awbMatch?.[1] ?? null, error: 'Already booked (active) — skipped. To replace it, Undo the earlier upload first.' } });
             skip++;
           } else {
             await this.prisma.bulkBookingJobRow.update({ where: { id: row.id }, data: { status: 'FAILED', error: msg.slice(0, 300) } });

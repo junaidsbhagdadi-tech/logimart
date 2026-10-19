@@ -1427,6 +1427,8 @@ model BulkBookingJob {
   succeeded   Int      @default(0)
   failed      Int      @default(0)
   skipped     Int      @default(0)              // AWBs already booked (re-upload) — skipped, not failed
+  undoneAt    DateTime?                            // whole file undone (its booked AWBs voided)
+  voided      Int      @default(0)              // how many AWBs the undo voided
   startedAt   DateTime?
   finishedAt  DateTime?
   createdAt   DateTime @default(now())
