@@ -106,9 +106,14 @@ export function AwbEntryList() {
   const deleteSelected = async () => {
     if (sel.size === 0) return;
     const awbs = Array.from(sel);
-    if (!confirm(`Permanently delete ${awbs.length} shipment${awbs.length > 1 ? 's' : ''} and all their scans / PODs / invoice lines? This cannot be undone.`)) return;
+    if (!confirm(`PERMANENTLY delete ${awbs.length} shipment${awbs.length > 1 ? 's' : ''} with their scans / PODs? This cannot be undone.\n\nInvoiced AWBs are skipped (raise a credit note). To keep a record instead, use 🚫 Void.`)) return;
     setError(''); setMsg('Deleting…');
-    try { const r = await api.bulkDeleteShipments(awbs); setMsg(`✓ Deleted ${r.deleted} shipment(s).`); load(); }
+    try {
+      const r = await api.bulkDeleteShipments(awbs);
+      const inv = r.invoiced ?? [];
+      setMsg(`✓ Deleted ${r.deleted} shipment(s).${inv.length ? ` Skipped ${inv.length} invoiced AWB(s) — raise a credit note: ${inv.slice(0, 8).join(', ')}${inv.length > 8 ? '…' : ''}` : ''}`);
+      load();
+    }
     catch (e: any) { setError(e.message); }
   };
   // Bulk VOID — reversible-in-spirit (excluded from billing, record kept); safer than hard-delete.
@@ -165,6 +170,21 @@ export function AwbEntryList() {
     } catch (e: any) { setError(e.message); }
   };
 
+  // Super admin: permanently delete AWBs from a pasted/uploaded list (invoiced ones are skipped server-side).
+  const deleteByList = async () => {
+    const awbs = parseAwbList(voidText);
+    if (!awbs.length) { setError('No AWBs found in the list.'); return; }
+    if (!confirm(`PERMANENTLY delete ${awbs.length} AWB(s) from this list, with their scans / PODs? This cannot be undone.\n\nInvoiced AWBs are skipped (raise a credit note).`)) return;
+    if (window.prompt(`Type DELETE to permanently remove ${awbs.length} AWB(s):`) !== 'DELETE') { setMsg('Cancelled — nothing was deleted.'); return; }
+    setError(''); setMsg('Deleting…');
+    try {
+      const r = await api.bulkDeleteShipments(awbs);
+      const inv = r.invoiced ?? [], nf = r.notFound ?? [];
+      setMsg(`✓ Deleted ${r.deleted}/${awbs.length}.${inv.length ? ` Skipped ${inv.length} invoiced: ${inv.slice(0, 6).join(', ')}${inv.length > 6 ? '…' : ''}.` : ''}${nf.length ? ` ${nf.length} not found.` : ''}`);
+      setVoidOpen(false); setVoidText(''); load();
+    } catch (e: any) { setError(e.message); }
+  };
+
   // Excel export of the CURRENTLY FILTERED rows (not just the visible page).
   const exportXls = async () => {
     const XLSX = await import('xlsx');
@@ -207,7 +227,7 @@ export function AwbEntryList() {
             {canChangeDate && sel.size > 0 && <button className="secondary" title="Change the booking / manifest date of the selected AWBs" onClick={changeDateSelected}>📅 Change date {sel.size}</button>}
             {isSuper && sel.size > 0 && <button style={{ background: 'var(--bad, #c0392b)', color: '#fff' }} title="Permanently delete the selected shipments" onClick={deleteSelected}>🗑 Delete {sel.size}</button>}
             {isSuper && <button className="secondary" style={{ color: 'var(--danger, #c0392b)' }} title="Delete ALL shipments + invoices (keeps config)" onClick={clearAll}>🧹 Clear test shipments</button>}
-            {isOps && <button className="secondary" title="Void many AWBs from a pasted / uploaded list" onClick={() => setVoidOpen(true)}>🚫 Void by list</button>}
+            {isOps && <button className="secondary" title="Void many AWBs from a pasted / uploaded list" onClick={() => setVoidOpen(true)}>🚫 Void{isSuper ? ' / 🗑 Delete' : ''} by list</button>}
             <Link to="/bulk"><button className="secondary" title="Bulk import shipments from Excel">📥 Excel import</button></Link>
             <Link to="/create"><button>➕ New Shipment</button></Link>
           </div>
@@ -276,7 +296,7 @@ export function AwbEntryList() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }} onClick={() => setVoidOpen(false)}>
           <div className="card" style={{ width: 520, maxWidth: '92%' }} onClick={(e) => e.stopPropagation()}>
             <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ margin: 0 }}>🚫 Void by AWB list</h2>
+              <h2 style={{ margin: 0 }}>🚫 Void{isSuper ? ' / delete' : ''} by AWB list</h2>
               <button className="secondary" style={{ padding: '4px 12px' }} onClick={() => setVoidOpen(false)}>✕</button>
             </div>
             <p className="muted" style={{ fontSize: 12.5 }}>Paste AWB numbers (one per line / comma / space) or upload a file with just the AWBs. They'll be voided — excluded from billing, records kept.</p>
@@ -288,6 +308,7 @@ export function AwbEntryList() {
               <div className="row" style={{ gap: 8 }}>
                 <span className="muted" style={{ fontSize: 12, alignSelf: 'center' }}>{parseAwbList(voidText).length} AWB(s)</span>
                 <button style={{ background: 'var(--bad, #c0392b)', color: '#fff' }} disabled={!parseAwbList(voidText).length} onClick={voidByList}>Void {parseAwbList(voidText).length || ''}</button>
+                {isSuper && <button className="secondary" style={{ color: 'var(--bad, #c0392b)', borderColor: 'var(--bad, #c0392b)' }} disabled={!parseAwbList(voidText).length} onClick={deleteByList} title="Super admin: permanently delete these AWBs (invoiced ones are skipped)">🗑 Delete {parseAwbList(voidText).length || ''}</button>}
               </div>
             </div>
           </div>

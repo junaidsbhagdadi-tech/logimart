@@ -336,10 +336,15 @@ export class ShipmentsService {
   async bulkDelete(awbs: string[]) {
     const list = (awbs || []).map((a) => String(a).trim().toUpperCase()).filter(Boolean);
     if (!list.length) return { ok: true, deleted: 0, detail: {} };
-    const shipments = await this.prisma.shipment.findMany({ where: { awb: { in: list } }, select: { id: true, awb: true } });
+    const found = await this.prisma.shipment.findMany({ where: { awb: { in: list } }, select: { id: true, awb: true, _count: { select: { invoiceLines: true } } } });
+    // Never hard-delete an INVOICED AWB: it would strip lines off an issued (GST) invoice while its
+    // total + ledger charge stay — the bill and the books would no longer match. Raise a credit note.
+    const invoiced = found.filter((s) => s._count.invoiceLines > 0).map((s) => s.awb);
+    const shipments = found.filter((s) => s._count.invoiceLines === 0);
+    const notFound = list.filter((a) => !found.some((s) => s.awb === a));
     const sIds = shipments.map((s) => s.id);
     const awbList = shipments.map((s) => s.awb);
-    if (!sIds.length) return { ok: true, deleted: 0, detail: {} };
+    if (!sIds.length) return { ok: true, deleted: 0, detail: {}, invoiced, notFound };
     const pieces = await this.prisma.shipmentPiece.findMany({ where: { shipmentId: { in: sIds } }, select: { id: true } });
     const pieceIds = pieces.map((x) => x.id);
     const r: Record<string, number> = {};
@@ -350,9 +355,10 @@ export class ShipmentsService {
     await del('invoiceLines', () => this.prisma.invoiceLineItem.deleteMany({ where: { shipmentId: { in: sIds } } }));
     await del('debitCreditNotes', () => this.prisma.debitCreditNote.deleteMany({ where: { shipmentId: { in: sIds } } }));
     await del('claims', () => this.prisma.claim.deleteMany({ where: { shipmentId: { in: sIds } } }));
+    await del('addons', () => this.prisma.shipmentAddon.deleteMany({ where: { shipmentId: { in: sIds } } })); // FK — else the delete fails
     await del('shipmentPieces', () => this.prisma.shipmentPiece.deleteMany({ where: { shipmentId: { in: sIds } } }));
     await del('shipments', () => this.prisma.shipment.deleteMany({ where: { id: { in: sIds } } }));
-    return { ok: true, deleted: shipments.length, detail: r };
+    return { ok: true, deleted: shipments.length, detail: r, invoiced, notFound };
   }
 
   // ---- Per-AWB add-on charges (ad-hoc, billed to the customer on the next invoice when toBill) ----
