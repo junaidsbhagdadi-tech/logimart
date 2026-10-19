@@ -426,7 +426,11 @@ export class ShipmentsService {
     const client = await this.prisma.b2bClient.findUnique({ where: { id: BigInt(clientId) }, select: { canCheckRates: true } });
     if (!client?.canCheckRates) throw new ForbiddenException('Rate check is not enabled for your account. Please contact us.');
     if (!dto.product || !dto.destPincode) throw new BadRequestException('Product and destination pincode are required.');
+    return this.priceEstimate(clientId, dto);
+  }
 
+  /** Core rate-engine pricing for a portal estimate (no auth check — callers gate on canCheckRates). */
+  private async priceEstimate(clientId: number, dto: { product: string; vendor?: string; originPincode: string; destPincode: string; deadKg: number; pcs?: number; declaredValue?: number; lengthCm?: number; widthCm?: number; heightCm?: number }) {
     const [originPin, destPin] = await Promise.all([
       dto.originPincode ? this.prisma.pincode.findFirst({ where: { pincode: String(dto.originPincode) } }) : Promise.resolve(null),
       this.prisma.pincode.findFirst({ where: { pincode: String(dto.destPincode) } }),
@@ -435,7 +439,8 @@ export class ShipmentsService {
     const destZone = this.productZone(destPin, dto.product, undefined, dto.destPincode, 'SOUTH') || 'SOUTH';
     const pcs = Math.max(1, Math.floor(Number(dto.pcs) || 1));
     const totalKg = Number(dto.deadKg) || 0.5;
-    const pieces = Array.from({ length: pcs }, () => ({ deadKg: totalKg / pcs, volKg: 0, lengthCm: null, widthCm: null, heightCm: null }));
+    const L = Number(dto.lengthCm) || null, W = Number(dto.widthCm) || null, H = Number(dto.heightCm) || null;
+    const pieces = Array.from({ length: pcs }, () => ({ deadKg: totalKg / pcs, volKg: 0, lengthCm: L, widthCm: W, heightCm: H }));
     const isOda = !!(destPin?.edl && String(destPin.edl).toUpperCase() !== 'REGULAR');
 
     const shipment: any = {
@@ -451,6 +456,27 @@ export class ShipmentsService {
       ok: true, subtotal: charges.subtotal, gst, total: +(Number(charges.subtotal) + gst).toFixed(2),
       chargeableKg: charges.chargeableKg, isOda, lines: charges.lines, basis: charges.basis,
     };
+  }
+
+  /** Portal rate-check across the customer's ASSIGNED vendors: a rate per vendor (to/from pincode,
+   *  weight, dims, value). When the rate is SELF-based (same regardless of carrier) every assigned
+   *  vendor shows that same rate. No assigned vendors → a single SELF quote. */
+  async estimateVendors(clientId: number, dto: { product: string; originPincode: string; destPincode: string; deadKg: number; pcs?: number; declaredValue?: number; lengthCm?: number; widthCm?: number; heightCm?: number }) {
+    const client = await this.prisma.b2bClient.findUnique({ where: { id: BigInt(clientId) }, select: { canCheckRates: true, allowedVendors: true } });
+    if (!client?.canCheckRates) throw new ForbiddenException('Rate check is not enabled for your account. Please contact us.');
+    if (!dto.product || !dto.destPincode) throw new BadRequestException('Product and destination pincode are required.');
+    const codes = (Array.isArray(client.allowedVendors) ? client.allowedVendors : []).map((c) => String(c).toUpperCase());
+    const vendorsMaster = await this.prisma.vendor.findMany({ select: { vendorCode: true, name: true } });
+    const nameOf = (code: string) => vendorsMaster.find((v) => String(v.vendorCode).toUpperCase() === code)?.name ?? code;
+    const selfQuote = await this.priceEstimate(clientId, { ...dto, vendor: 'SELF' });
+    if (!codes.length) return { ok: true, isOda: (selfQuote as any).isOda ?? false, rates: [{ vendor: 'SELF', name: 'Our network', ...selfQuote }] };
+    const rates = await Promise.all(codes.map(async (code) => {
+      const q = await this.priceEstimate(clientId, { ...dto, vendor: code }).catch(() => null);
+      // Fall back to the SELF rate when the vendor has no distinct rate card (SELF → same for all).
+      const eff = q && (q as any).ok ? q : selfQuote;
+      return { vendor: code, name: nameOf(code), ...eff };
+    }));
+    return { ok: true, isOda: (selfQuote as any).isOda ?? false, rates };
   }
 
   /** #25 — effective volumetric divisor + CFT for the booking screen's per-box preview. */

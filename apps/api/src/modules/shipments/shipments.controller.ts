@@ -160,6 +160,13 @@ export class ShipmentsController {
     return this.shipments.estimate(Number(req.user.clientId), dto);
   }
 
+  /** Portal rate-check across the customer's assigned vendors (one rate per vendor). */
+  @Post('portal-rate-estimate-vendors')
+  @Roles(UserRole.CLIENT_ADMIN)
+  portalEstimateVendors(@Body() dto: any, @Req() req: any) {
+    return this.shipments.estimateVendors(Number(req.user.clientId), dto);
+  }
+
   /** Staff carrier-rate comparison at booking — every carrier priced, cheapest first. */
   @Post('carrier-rates')
   @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)

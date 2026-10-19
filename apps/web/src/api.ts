@@ -429,6 +429,8 @@ export const api = {
     request<{ ok: boolean }>(`/api/v1/shipments/${awb}/portal-remark`, { method: 'POST', body: JSON.stringify({ remark }) }),
   portalRateEstimate: (body: { product: string; vendor?: string; originPincode?: string; destPincode: string; deadKg: number; pcs?: number; declaredValue?: number }) =>
     request<{ ok: boolean; message?: string; subtotal?: number; gst?: number; total?: number; chargeableKg?: number; isOda?: boolean; lines?: any[]; basis?: string }>('/api/v1/shipments/portal-rate-estimate', { method: 'POST', body: JSON.stringify(body) }),
+  portalRateEstimateVendors: (body: { product: string; originPincode?: string; destPincode: string; deadKg: number; pcs?: number; declaredValue?: number; lengthCm?: number; widthCm?: number; heightCm?: number }) =>
+    request<{ ok: boolean; isOda?: boolean; rates: { vendor: string; name: string; ok: boolean; total?: number; subtotal?: number; gst?: number; chargeableKg?: number; message?: string }[] }>('/api/v1/shipments/portal-rate-estimate-vendors', { method: 'POST', body: JSON.stringify(body) }),
   volConfig: (clientId: number | string, product: string, vendor?: string) =>
     request<{ divisor: number; cft: number }>(`/api/v1/shipments/vol-config?clientId=${clientId}&product=${encodeURIComponent(product)}${vendor ? `&vendor=${encodeURIComponent(vendor)}` : ''}`),
   carrierRates: (body: { clientId: number | string; product: string; originPincode?: string; destPincode: string; deadKg?: number; pcs?: number; declaredValue?: number }) =>

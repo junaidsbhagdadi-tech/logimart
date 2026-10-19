@@ -1,8 +1,19 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { api } from '../api';
+import { useAuth } from '../auth';
 
 type PinInfo = Awaited<ReturnType<typeof api.lookupPincode>>;
 type Opt = { network: string; mode: string | null; tatDays: number | null; isOda: boolean; city: string | null; estimate?: boolean };
+
+/** Does a carrier network (e.g. "BLUEDART-APEX", "GATI") belong to one of the customer's assigned
+ *  vendor codes/names? Empty assigned list = show all (no restriction). */
+function networkAssigned(network: string, assigned: { code: string; name: string }[]): boolean {
+  if (!assigned.length) return true;
+  const na = (s: string) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const prefix = na(String(network || '').split(/[-_ ]/)[0]);
+  if (!prefix || prefix === 'SELF') return true;
+  return assigned.some((v) => { const c = na(v.code), n = na(v.name); return (c && (prefix === c || prefix.startsWith(c) || c.startsWith(prefix))) || (n && (prefix === n || prefix.startsWith(n) || n.startsWith(prefix))); });
+}
 
 function Field({ label, value, color }: { label: string; value?: React.ReactNode; color?: string }) {
   return (
@@ -22,6 +33,10 @@ export function PincodeSearch() {
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const { user } = useAuth();
+  const isClient = user?.role === 'CLIENT_ADMIN';
+  const [myVendors, setMyVendors] = useState<{ code: string; name: string }[]>([]);
+  useEffect(() => { if (isClient) api.portalAccounts().then((r: any[]) => setMyVendors(Array.isArray(r[0]?.allowedVendors) ? r[0].allowedVendors : [])).catch(() => {}); }, [isClient]);
 
   const search = async (e?: FormEvent) => {
     e?.preventDefault();
@@ -40,10 +55,12 @@ export function PincodeSearch() {
     finally { setBusy(false); }
   };
 
+  // A customer sees only its assigned carriers' serviceability; staff see all.
+  const visibleOpts = opts && isClient && myVendors.length ? opts.filter((o) => networkAssigned(o.network, myVendors)) : opts;
   // Accurate lane TAT (when an origin is given) wins; else the destination-only serviceability TAT.
   const laneFastest = lane ? Math.min(...lane.lanes.map((l) => l.tatDays ?? 9999).filter((n) => n < 9999)) : null;
   const fastest = (laneFastest != null && laneFastest < 9999) ? laneFastest
-    : (opts && opts.length ? Math.min(...opts.map((o) => o.tatDays ?? 9999).filter((n) => n < 9999)) : null);
+    : (visibleOpts && visibleOpts.length ? Math.min(...visibleOpts.map((o) => o.tatDays ?? 9999).filter((n) => n < 9999)) : null);
 
   return (
     <div style={{ minHeight: searched ? undefined : '62vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: searched ? 'flex-start' : 'center' }}>
@@ -75,7 +92,7 @@ export function PincodeSearch() {
               {(() => { const oda = !!(info && (info.isOda || ((info as any).edl && String((info as any).edl).toUpperCase() !== 'REGULAR'))); return (
               <Field label="ODA (out-of-delivery-area)" value={oda ? 'Yes' : 'No'} color={oda ? 'var(--warn, #b26a00)' : 'var(--ok, #16a34a)'} />
               ); })()}
-              <Field label="Serviceable" value={(opts && opts.length) ? 'Yes' : (info?.known ? 'Directory only' : 'No')} color={(opts && opts.length) ? 'var(--ok, #16a34a)' : 'var(--muted)'} />
+              <Field label="Serviceable" value={(visibleOpts && visibleOpts.length) ? 'Yes' : (info?.known ? 'Directory only' : 'No')} color={(visibleOpts && visibleOpts.length) ? 'var(--ok, #16a34a)' : 'var(--muted)'} />
               <Field label="Fastest transit" value={fastest != null ? `${fastest} day${fastest === 1 ? '' : 's'}` : '—'} />
             </div>
           </div>
@@ -103,12 +120,12 @@ export function PincodeSearch() {
 
           {/* Products / carriers serving it */}
           <div className="card">
-            <h2 style={{ marginTop: 0 }}>Products &amp; carriers serving {pin} <span className="muted" style={{ fontSize: 13, fontWeight: 500 }}>({opts?.length ?? 0})</span></h2>
-            {opts && opts.length ? (
+            <h2 style={{ marginTop: 0 }}>Products &amp; carriers serving {pin} <span className="muted" style={{ fontSize: 13, fontWeight: 500 }}>({visibleOpts?.length ?? 0})</span></h2>
+            {visibleOpts && visibleOpts.length ? (
               <table>
                 <thead><tr><th>Network / Product</th><th>Mode</th><th>Transit (TAT)</th><th>ODA</th></tr></thead>
                 <tbody>
-                  {opts.map((o) => (
+                  {visibleOpts.map((o) => (
                     <tr key={o.network}>
                       <td><strong>{o.network}</strong></td>
                       <td>{o.mode ?? '—'}</td>
