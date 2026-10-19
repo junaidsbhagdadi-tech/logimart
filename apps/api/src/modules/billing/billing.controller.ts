@@ -5,6 +5,8 @@ import { Roles } from '../../common/rbac/roles.decorator';
 import { RateService } from './rate.service';
 import { InvoiceService } from './invoice.service';
 import { DisputeDto, GenerateBatchDto, GenerateInvoiceDto, PayDto } from './dto/billing.dto';
+import { PrismaService } from '../../prisma/prisma.service';
+import { assertClientInScope, scopedClientIds } from '../../common/scope/data-scope';
 
 @Controller('api/v1')
 @UseGuards(RolesGuard)
@@ -12,7 +14,11 @@ export class BillingController {
   constructor(
     private readonly rates: RateService,
     private readonly invoices: InvoiceService,
+    private readonly prisma: PrismaService,
   ) {}
+
+  /** #10 — customer ids a branch/company-scoped user may see (null = all). */
+  private scope(req: any) { return scopedClientIds(this.prisma, req.user); }
 
   /** A CLIENT_ADMIN's linked customer id — a clear message instead of a BigInt(null) 500 / "Client not
    *  found" when the login isn't linked to a customer yet. */
@@ -49,9 +55,9 @@ export class BillingController {
   }
 
   @Get('billing/invoices')
-  list(@Req() req: any) {
+  async list(@Req() req: any) {
     const clientId = req.user.role === UserRole.CLIENT_ADMIN ? this.clientIdOf(req) : undefined;
-    return this.invoices.list(clientId);
+    return this.invoices.list(clientId, clientId == null ? await this.scope(req) : null);
   }
 
   @Get('billing/invoices/:id')
@@ -61,6 +67,7 @@ export class BillingController {
     if (req.user.role === UserRole.CLIENT_ADMIN && (String((inv as any).clientId) !== String(req.user.clientId) || !(inv as any).sentAt)) {
       throw new NotFoundException('Invoice not found');
     }
+    if (req.user.role !== UserRole.CLIENT_ADMIN) await assertClientInScope(this.prisma, req.user, (inv as any).clientId);
     return inv;
   }
 
@@ -145,21 +152,22 @@ export class BillingController {
   /** Sales MIS — per-customer summary (shipments, weights, sales, billed/unbilled, status, cash). */
   @Get('billing/mis/sales')
   @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SALES, UserRole.SYS_ADMIN)
-  misSales(@Query('from') from?: string, @Query('to') to?: string) {
-    return this.invoices.misSalesSummary(from, to);
+  async misSales(@Req() req: any, @Query('from') from?: string, @Query('to') to?: string) {
+    return this.invoices.misSalesSummary(from, to, await this.scope(req));
   }
 
   /** Sales dashboard by salesperson — daily contribution incl. unbilled. */
   @Get('billing/mis/sales-by-rep')
   @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SALES, UserRole.SYS_ADMIN)
-  salesByRep(@Query('from') from?: string, @Query('to') to?: string, @Query('vendor') vendor?: string, @Query('clientId') clientId?: string, @Query('groupBy') groupBy?: string) {
-    return this.invoices.salesByRep(from, to, { vendor, clientId, groupBy: groupBy as any });
+  async salesByRep(@Req() req: any, @Query('from') from?: string, @Query('to') to?: string, @Query('vendor') vendor?: string, @Query('clientId') clientId?: string, @Query('groupBy') groupBy?: string) {
+    return this.invoices.salesByRep(from, to, { vendor, clientId, groupBy: groupBy as any, scope: await this.scope(req) });
   }
 
   /** Bill-working export (per-AWB charge breakdown) for a client — matches the bill sheet. */
   @Get('billing/bill-worksheet')
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
-  billWorksheet(
+  async billWorksheet(
+    @Req() req: any,
     @Query('clientId') clientId?: string,
     @Query('clientIds') clientIds?: string,
     @Query('all') all?: string,
@@ -170,7 +178,7 @@ export class BillingController {
     const ids: number[] | 'all' = all === '1'
       ? 'all'
       : (clientIds ? clientIds.split(',').map(Number).filter((n) => !isNaN(n)) : (clientId ? [Number(clientId)] : []));
-    return this.invoices.billWorksheet(ids, from, to);
+    return this.invoices.billWorksheet(ids, from, to, await this.scope(req));
   }
 
   /** Head-wise charge breakup of billed AWBs (freight/fuel/fov/oda/…) for Excel export. */
@@ -190,14 +198,15 @@ export class BillingController {
   /** Receivables aging across all clients (current / 1-30 / 31-60 / 61-90 / 90+). */
   @Get('billing/aging')
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
-  aging() {
-    return this.invoices.aging();
+  async aging(@Req() req: any) {
+    return this.invoices.aging(await this.scope(req));
   }
 
   /** Statement of Account for one client (ledger + per-invoice outstanding). */
   @Get('clients/:id/overview')
   @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
-  customerOverview(@Param('id') id: string) {
+  async customerOverview(@Param('id') id: string, @Req() req: any) {
+    await assertClientInScope(this.prisma, req.user, id);
     return this.invoices.customerOverview(Number(id));
   }
 
@@ -217,17 +226,19 @@ export class BillingController {
 
   @Get('billing/clients/:id/statement')
   @Roles(UserRole.FINANCE_EXEC, UserRole.CLIENT_ADMIN, UserRole.SYS_ADMIN)
-  statement(@Param('id') id: string, @Req() req: any) {
+  async statement(@Param('id') id: string, @Req() req: any) {
     // A customer login only ever gets its OWN statement, whatever id is in the URL.
     const cid = req.user.role === UserRole.CLIENT_ADMIN ? Number(this.clientIdOf(req)) : Number(id);
+    if (req.user.role !== UserRole.CLIENT_ADMIN) await assertClientInScope(this.prisma, req.user, cid);
     return this.invoices.statement(cid);
   }
 
   /** Credit limit / outstanding / hold status. */
   @Get('clients/:id/credit')
   @Roles(UserRole.FINANCE_EXEC, UserRole.CLIENT_ADMIN, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
-  credit(@Param('id') id: string, @Req() req: any) {
+  async credit(@Param('id') id: string, @Req() req: any) {
     const cid = req.user.role === UserRole.CLIENT_ADMIN ? Number(this.clientIdOf(req)) : Number(id);
+    if (req.user.role !== UserRole.CLIENT_ADMIN) await assertClientInScope(this.prisma, req.user, cid);
     return this.invoices.getCredit(cid);
   }
 

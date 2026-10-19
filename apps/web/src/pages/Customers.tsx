@@ -12,7 +12,7 @@ const blank = {
   contactEmail: '', email2: '', gstin: '', pan: '', tanNo: '', iecCode: '',
   addressLine: '', pincode: '', city: '', state: '', salesPerson: '', salesPersonMobile: '', salesPersonEmail: '',
   csPerson: '', csPersonMobile: '', csPersonEmail: '',
-  accountType: 'CREDIT', billingCycle: 'MONTHLY', allowSameGstin: false, defaultVendor: '', serviceCentre: '',
+  accountType: 'CREDIT', billingCycle: 'MONTHLY', allowSameGstin: false, defaultVendor: '', serviceCentre: '', branch: '',
   creditLimit: '', creditDays: '30', isCash: false, canCheckRates: false, canViewInvoices: false, commissionPct: '', parentAccountId: '',
   allowedVendors: [] as string[], // vendor codes this customer may use (empty = all)
 };
@@ -49,9 +49,11 @@ export function Customers() {
   const [cashOnly, setCashOnly] = useState(false); // filter to only CASH (not-billed) customers
   const [vendors, setVendors] = useState<{ vendorCode: string; name: string }[]>([]); // #12a default-vendor picker
   const [companies, setCompanies] = useState<{ code: string; name: string }[]>([]); // billing legal entities (multi-company)
+  const [branches, setBranches] = useState<{ code: string; name: string }[]>([]); // #10 BRANCH master
   const load = () => { api.listClients().then(setClients).catch((e) => setError(e.message)); setSel(new Set()); };
   useEffect(load, []);
   useEffect(() => { api.listVendors().then((v: any[]) => setVendors(v.filter((x) => x.isActive !== false).map((x) => ({ vendorCode: x.vendorCode, name: x.name })))).catch(() => {}); }, []);
+  useEffect(() => { api.listMaster('BRANCH').then((bs) => setBranches(bs.filter((b) => b.active !== false).map((b) => ({ code: b.code, name: b.name })))).catch(() => {}); }, []);
   useEffect(() => { api.listMaster('COMPANY').then((cs) => setCompanies(cs.filter((c) => c.active !== false).map((c) => ({ code: c.code, name: c.name })))).catch(() => {}); }, []);
 
   // Configurable customer-code series (super-admin) — CONFIG/CUSTOMER_CODE master { prefix, nextNo, pad }.
@@ -171,7 +173,7 @@ export function Customers() {
       salesPerson: (c as any).salesPerson ?? '', salesPersonMobile: (c as any).salesPersonMobile ?? '', salesPersonEmail: (c as any).salesPersonEmail ?? '',
       csPerson: (c as any).csPerson ?? '', csPersonMobile: (c as any).csPersonMobile ?? '', csPersonEmail: (c as any).csPersonEmail ?? '',
       accountType: (c as any).isCash ? 'CASH' : ((c as any).accountType ?? 'CREDIT'), billingCycle: (c as any).billingCycle ?? 'MONTHLY',
-      allowSameGstin: !!(c as any).allowSameGstin, defaultVendor: (c as any).defaultVendor ?? '', serviceCentre: (c as any).serviceCentre ?? '', creditLimit: String((c as any).creditLimit ?? ''), creditDays: String((c as any).creditDays ?? '30'), isCash: !!(c as any).isCash, canCheckRates: !!(c as any).canCheckRates, canViewInvoices: !!(c as any).canViewInvoices, commissionPct: String((c as any).commissionPct ?? ''), allowedVendors: Array.isArray((c as any).allowedVendors) ? (c as any).allowedVendors : [],
+      allowSameGstin: !!(c as any).allowSameGstin, defaultVendor: (c as any).defaultVendor ?? '', serviceCentre: (c as any).serviceCentre ?? '', branch: (c as any).branch ?? '', creditLimit: String((c as any).creditLimit ?? ''), creditDays: String((c as any).creditDays ?? '30'), isCash: !!(c as any).isCash, canCheckRates: !!(c as any).canCheckRates, canViewInvoices: !!(c as any).canViewInvoices, commissionPct: String((c as any).commissionPct ?? ''), allowedVendors: Array.isArray((c as any).allowedVendors) ? (c as any).allowedVendors : [],
       parentAccountId: (c as any).parentAccountId != null ? String((c as any).parentAccountId) : '',
     });
     setShowAdd(true);
@@ -205,6 +207,7 @@ export function Customers() {
       allowSameGstin: form.allowSameGstin,
       defaultVendor: form.defaultVendor || undefined,
       serviceCentre: form.serviceCentre || undefined, // billing legal entity (multi-company)
+      branch: form.branch, // #10 owning branch ('' clears) — drives staff location-wise access
       allowedVendors: form.allowedVendors,
       canCheckRates: form.canCheckRates,
       canViewInvoices: form.canViewInvoices,
@@ -375,6 +378,14 @@ export function Customers() {
                   {companies.map((c) => <option key={c.code} value={c.code}>{c.code} — {c.name}</option>)}
                   {form.serviceCentre && !companies.some((c) => c.code === form.serviceCentre) && <option value={form.serviceCentre}>{form.serviceCentre} (unconfigured)</option>}
                 </select>
+              </div>
+              <div><label>Branch <span className="muted" style={{ fontSize: 11 }}>(staff assigned to this branch see this customer)</span></label>
+                <select value={form.branch} onChange={(e) => set('branch', e.target.value)} style={{ width: 220 }}>
+                  <option value="">— no branch —</option>
+                  {branches.map((b) => <option key={b.code} value={b.code}>{b.code} — {b.name}</option>)}
+                  {form.branch && !branches.some((b) => b.code === form.branch) && <option value={form.branch}>{form.branch} (not in Branch master)</option>}
+                </select>
+                {!branches.length && <div className="muted" style={{ fontSize: 11 }}>Add branches under Masters → Branch.</div>}
               </div>
               <div style={{ flexBasis: '100%' }}>
                 <label>Vendor access <span className="muted" style={{ fontSize: 11 }}>(carriers this customer may be booked on — <strong>none ticked = all vendors allowed</strong>)</span></label>

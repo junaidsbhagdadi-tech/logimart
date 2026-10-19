@@ -20,6 +20,7 @@ export class CreateClientDto {
   @IsOptional() @IsString() fax?: string;
   @IsOptional() @IsString() billingState?: string; // Customer Billing State *
   @IsOptional() @IsString() serviceCentre?: string; // Service Centre *
+  @IsOptional() @IsString() branch?: string; // #10 owning branch (BRANCH master code)
   @IsOptional() @IsString() origin?: string; // Origin *
   @IsOptional() @IsISO8601() startDate?: string; // Start Date *
   @IsOptional() @IsString() aadhaarNo?: string;
@@ -71,6 +72,7 @@ export class UpdateClientDto {
   @IsOptional() @IsString() fax?: string;
   @IsOptional() @IsString() billingState?: string;
   @IsOptional() @IsString() serviceCentre?: string;
+  @IsOptional() @IsString() branch?: string;
   @IsOptional() @IsString() origin?: string;
   @IsOptional() @IsISO8601() startDate?: string;
   @IsOptional() @IsString() aadhaarNo?: string;

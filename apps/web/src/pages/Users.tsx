@@ -33,6 +33,12 @@ export function Users() {
   const [clients, setClients] = useState<{ id: string; legalName: string; accountCode: string }[]>([]);
   const [cred, setCred] = useState<{ email: string; password: string; url: string; heading: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  // #10 — location/company data scope (Branch + Billing company masters). Nothing ticked = sees all.
+  const [scopeUser, setScopeUser] = useState<any | null>(null);
+  const [scopeB, setScopeB] = useState<string[]>([]);
+  const [scopeC, setScopeC] = useState<string[]>([]);
+  const [branchM, setBranchM] = useState<{ code: string; name: string }[]>([]);
+  const [companyM, setCompanyM] = useState<{ code: string; name: string }[]>([]);
 
   const credText = (c: { email: string; password: string; url: string }) =>
     `ExcelEx Express login\nURL: ${c.url}\nEmail: ${c.email}\nTemporary password: ${c.password}\nPlease sign in and change your password.`;
@@ -48,6 +54,24 @@ export function Users() {
   useEffect(load, []);
   useEffect(() => { api.listHubs().then(setHubs).catch(() => {}); }, []);
   useEffect(() => { api.listClients().then((cs: any[]) => setClients(cs.map((c) => ({ id: String(c.id), legalName: c.legalName, accountCode: c.accountCode })))).catch(() => {}); }, []);
+  useEffect(() => {
+    api.listMaster('BRANCH').then((r) => setBranchM(r.filter((x) => x.active !== false).map((x) => ({ code: x.code, name: x.name })))).catch(() => {});
+    api.listMaster('COMPANY').then((r) => setCompanyM(r.filter((x) => x.active !== false).map((x) => ({ code: x.code, name: x.name })))).catch(() => {});
+  }, []);
+  const openScope = (u: any) => { setScopeUser(u); setScopeB(u.branches ?? []); setScopeC(u.companyCodes ?? []); };
+  const tick = (list: string[], set: (v: string[]) => void, code: string) => set(list.includes(code) ? list.filter((x) => x !== code) : [...list, code]);
+  const saveScope = async () => {
+    if (!scopeUser) return;
+    try {
+      await api.updateUser(scopeUser.id, { branches: scopeB, companyCodes: scopeC } as any);
+      setMsg(!scopeB.length && !scopeC.length ? `${scopeUser.fullName} now sees all branches & companies` : `${scopeUser.fullName} limited to ${[scopeB.length ? `branch ${scopeB.join(', ')}` : '', scopeC.length ? `company ${scopeC.join(', ')}` : ''].filter(Boolean).join(' + ')}`);
+      setScopeUser(null); load();
+    } catch (e: any) { setError(e.message); }
+  };
+  const scopeLabel = (u: any) => {
+    const n = (u.branches?.length ?? 0) + (u.companyCodes?.length ?? 0);
+    return n ? [...(u.branches ?? []), ...(u.companyCodes ?? [])].join(', ') : 'All';
+  };
   const clientName = (id: any) => { const c = clients.find((x) => x.id === String(id)); return c ? `${c.accountCode} — ${c.legalName}` : null; };
   const changeClient = async (u: any, clientId: string) => {
     try { await api.updateUser(u.id, { clientId: clientId ? +clientId : null } as any); setMsg(clientId ? `${u.fullName} linked to ${clientName(clientId)}` : `${u.fullName} customer link cleared`); load(); }
@@ -224,6 +248,7 @@ export function Users() {
                         )}
                         <button className="secondary" onClick={() => toggle(u)}>{u.isActive ? 'Disable' : 'Enable'}</button>
                         <button className="secondary" onClick={() => resetPwd(u)}>Reset pwd</button>
+                        {u.role !== 'SYS_ADMIN' && u.role !== 'CLIENT_ADMIN' && <button className="secondary" onClick={() => openScope(u)} title="Limit which branch / billing company's customers this person sees">📍 {scopeLabel(u)}</button>}
                         {u.role !== 'SYS_ADMIN' && <button className="secondary" onClick={() => openGrants(u)} title="Override this person's department default, feature by feature">🔑 Features{u.featureGrants ? ` (${Array.isArray(u.featureGrants) ? u.featureGrants.length : Object.keys(u.featureGrants).length})` : ''}</button>}
                         <button className="secondary" title="Delete user" onClick={async () => { if (!confirm(`Delete user ${u.email}? This cannot be undone.`)) return; try { await api.deleteUser(u.id); setMsg(`Deleted ${u.email}`); load(); } catch (e: any) { setError(e.message); } }}>🗑</button>
                       </td>
@@ -235,6 +260,41 @@ export function Users() {
           </div>
         );
       })}
+
+      {scopeUser && <Modal title={`Access scope — ${scopeUser.fullName}`} width={620} onClose={() => setScopeUser(null)}>
+        <p className="muted" style={{ marginTop: 0, fontSize: 12.5 }}>
+          Tick the <strong>branches</strong> and/or <strong>billing companies</strong> this person works for. They will then only see those
+          customers — and their shipments, invoices, sales, CS/ops dashboards and (for branches) expenses. <strong>Nothing ticked = sees everything.</strong>
+          A customer belongs to a branch via the Branch field on the customer.
+        </p>
+        <div className="grid cols-2" style={{ gap: 16 }}>
+          <div>
+            <strong style={{ fontSize: 12, color: 'var(--muted)' }}>BRANCHES</strong>
+            {!branchM.length && <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>No branches yet — add them under Masters → Branch.</div>}
+            {branchM.map((b) => (
+              <label key={b.code} className="row" style={{ gap: 6, alignItems: 'center', fontSize: 13, margin: '4px 0', fontWeight: 400 }}>
+                <input type="checkbox" checked={scopeB.includes(b.code)} onChange={() => tick(scopeB, setScopeB, b.code)} style={{ width: 'auto' }} /> {b.code} — {b.name}
+              </label>
+            ))}
+          </div>
+          <div>
+            <strong style={{ fontSize: 12, color: 'var(--muted)' }}>BILLING COMPANIES</strong>
+            {!companyM.length && <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>No billing companies configured.</div>}
+            {companyM.map((c) => (
+              <label key={c.code} className="row" style={{ gap: 6, alignItems: 'center', fontSize: 13, margin: '4px 0', fontWeight: 400 }}>
+                <input type="checkbox" checked={scopeC.includes(c.code)} onChange={() => tick(scopeC, setScopeC, c.code)} style={{ width: 'auto' }} /> {c.code} — {c.name}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="row" style={{ justifyContent: 'space-between', gap: 8, marginTop: 14 }}>
+          <button className="secondary" onClick={() => { setScopeB([]); setScopeC([]); }}>Clear (see everything)</button>
+          <div className="row" style={{ gap: 8 }}>
+            <button className="secondary" onClick={() => setScopeUser(null)}>Cancel</button>
+            <button onClick={saveScope}>Save scope</button>
+          </div>
+        </div>
+      </Modal>}
 
       {grantUser && <Modal title={`Feature access — ${grantUser.fullName}`} width={720} onClose={() => setGrantUser(null)}>
         <p className="muted" style={{ marginTop: 0, fontSize: 12 }}>Set each feature's access level: <b>None</b> hides it, <b>View</b> = read-only, <b>Edit</b> = create/update, <b>Delete</b> = full including delete. This is a per-person override on top of the <strong>{departmentLabel(grantUser.department)}</strong> department default. Empty + <em>Save</em> hides everything; <em>Reset to department default</em> clears the override so the department's standard access applies again. (Role-based server permissions remain the security boundary; levels are enforced in the UI.)</p>

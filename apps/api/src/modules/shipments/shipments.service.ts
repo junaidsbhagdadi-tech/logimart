@@ -297,7 +297,8 @@ export class ShipmentsService {
       include: { pieces: { orderBy: { sequenceNo: 'asc' } } },
     });
     // First milestone: MAN (Manifested) — the timeline always opens here at booking / API push.
-    await this.prisma.scanLog.create({ data: { awb, eventType: 'MAN', remark: manualAwb ? 'Booked (manual AWB)' : 'Booked' } });
+    // Stamp it at the booking date (backdated / bulk-uploaded entries), not the upload time (#17).
+    await this.prisma.scanLog.create({ data: { awb, eventType: 'MAN', remark: manualAwb ? 'Booked (manual AWB)' : 'Booked', scanAt: created.createdAt } });
     // Single bookings: fetch the BlueDart AWB immediately — generate the waybill + register the pickup
     // in the background (non-blocking). Only when the shipment is a BlueDart carrier with no carrier AWB
     // yet. Bulk paths pass skipAutoDispatch and rely on the throttled auto-dispatch poller instead, so a
@@ -658,9 +659,9 @@ export class ShipmentsService {
   }
 
   /** Minimal active-customer list for the pickup-boy (DRIVER) mobile booking picker. */
-  async bookingCustomers(q?: string) {
+  async bookingCustomers(q?: string, scope?: bigint[] | null) {
     const s = String(q ?? '').trim();
-    const where: any = { isActive: true };
+    const where: any = { isActive: true, ...(scope ? { id: { in: scope } } : {}) };
     if (s) where.OR = [{ legalName: { contains: s, mode: 'insensitive' } }, { accountCode: { contains: s, mode: 'insensitive' } }];
     const rows = await this.prisma.b2bClient.findMany({ where, select: { id: true, legalName: true, accountCode: true }, orderBy: { legalName: 'asc' }, take: 500 });
     return rows.map((r) => ({ id: String(r.id), legalName: r.legalName, accountCode: r.accountCode }));
@@ -951,11 +952,12 @@ export class ShipmentsService {
 
   /** Recent shipments, optionally scoped to a single client, with light rollup. */
   /** Xpresion-style AWB Entry List rows (flat, filter/grid-friendly). */
-  async awbList(clientId: bigint | undefined, limit: number, search?: string, from?: string, to?: string) {
+  async awbList(clientId: bigint | undefined, limit: number, search?: string, from?: string, to?: string, scope?: bigint[] | null) {
     const s = (search ?? '').trim();
     // A search matches ACROSS ALL shipments (not just the latest page) so any AWB is findable —
     // by our AWB, the carrier's forwarding/BlueDart waybill, the customer reference, or consignee.
-    const where: any = clientId != null ? { clientId } : {};
+    // #10 — staff limited to a branch/company only see those customers' shipments.
+    const where: any = clientId != null ? { clientId } : scope ? { clientId: { in: scope } } : {};
     if (s) {
       where.OR = [
         { awb: { contains: s, mode: 'insensitive' } },
@@ -1020,9 +1022,9 @@ export class ShipmentsService {
     }));
   }
 
-  async list(clientId: bigint | undefined, limit: number) {
+  async list(clientId: bigint | undefined, limit: number, scope?: bigint[] | null) {
     const shipments = await this.prisma.shipment.findMany({
-      where: clientId != null ? { clientId } : undefined,
+      where: clientId != null ? { clientId } : scope ? { clientId: { in: scope } } : undefined,
       orderBy: { createdAt: 'desc' },
       take: Math.min(limit, 200),
       include: { pieces: { select: { status: true } }, client: { select: { legalName: true } } },

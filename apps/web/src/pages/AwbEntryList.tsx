@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
 
@@ -38,6 +38,8 @@ export function AwbEntryList() {
   const isSuper = user?.role === 'SYS_ADMIN';
   const isOps = ['HUB_MANAGER', 'SYS_ADMIN'].includes(user?.role || ''); // bulk void
   const canChangeDate = ['HUB_MANAGER', 'FINANCE_EXEC', 'SYS_ADMIN'].includes(user?.role || ''); // finance moves AWBs between billing months
+  const nav = useNavigate();
+  const [trackAwb, setTrackAwb] = useState('');
   const [rows, setRows] = useState<Row[]>([]);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [page, setPage] = useState(0);
@@ -176,7 +178,14 @@ export function AwbEntryList() {
 
   return (
     <>
-      <h1>📝 Shipment List</h1>
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+        <h1 style={{ margin: 0 }}>📝 Shipment List</h1>
+        {/* #4 — quick AWB tracking right on My Shipments. */}
+        <form className="row" style={{ gap: 6 }} onSubmit={(e) => { e.preventDefault(); const q = trackAwb.trim(); if (q) nav(`/tracker/${encodeURIComponent(q)}`); }}>
+          <input value={trackAwb} onChange={(e) => setTrackAwb(e.target.value)} placeholder="Track an AWB" style={{ width: 200 }} />
+          <button type="submit" disabled={!trackAwb.trim()}>🧭 Track</button>
+        </form>
+      </div>
       {error && <div className="error">{error}</div>}
       {msg && <div className="card" style={{ borderLeft: '4px solid var(--ok, #16a34a)', fontSize: 13 }}>{msg}</div>}
 

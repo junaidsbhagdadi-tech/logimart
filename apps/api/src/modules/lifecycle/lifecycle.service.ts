@@ -41,6 +41,8 @@ const TO_ENUM: Record<string, ShipmentStatus> = {
   RTO: ShipmentStatus.IN_TRANSIT, RTD: ShipmentStatus.DELIVERED, CAN: ShipmentStatus.CANCELLED,
 };
 
+
+type DashFilter = { vendor?: string; clientId?: string; scope?: bigint[] | null };
 @Injectable()
 export class LifecycleService {
   private readonly logger = new Logger(LifecycleService.name);
@@ -392,9 +394,10 @@ export class LifecycleService {
 
   /** #16 — Customer-left remarks awaiting CS attention (unacknowledged, not yet closed). Feeds the CS
    *  prompt bell so a note (contact number, instruction, next-day appt) reaches CS, not just tracking. */
-  async customerRequests() {
+  async customerRequests(scope?: bigint[] | null) {
     const rows = await this.prisma.shipment.findMany({
       where: {
+        ...(scope ? { clientId: { in: scope } } : {}),
         customerRemark: { not: null },
         customerRemarkAckAt: null,
         statusCode: { notIn: ['DLD', 'RTD', 'CAN'] },
@@ -425,14 +428,16 @@ export class LifecycleService {
 
   /** Customer-Service dashboard: pending / stuck shipments with aging, NDR (undelivered) + overdue flags. */
   /** Team-dashboard filter: a vendor code (case-insensitive) and/or one customer. */
-  private dashWhere(f: { vendor?: string; clientId?: string } = {}) {
+  private dashWhere(f: DashFilter = {}) {
     const w: any = {};
     if (f.vendor && String(f.vendor).trim()) w.vendor = { equals: String(f.vendor).trim(), mode: 'insensitive' };
     if (f.clientId && /^\d+$/.test(String(f.clientId))) w.clientId = BigInt(f.clientId);
+    // #10 — branch/company-scoped staff: only their customers (a picked customer outside it matches nothing).
+    if (f.scope) w.clientId = w.clientId != null ? (f.scope.includes(w.clientId) ? w.clientId : { in: [] }) : { in: f.scope };
     return w;
   }
 
-  async csDashboard(from?: string, to?: string, f: { vendor?: string; clientId?: string } = {}) {
+  async csDashboard(from?: string, to?: string, f: DashFilter = {}) {
     const gte = from ? new Date(from) : new Date(Date.now() - 30 * 86400000);
     const lte = to ? new Date(`${to}T23:59:59`) : new Date();
     const labelOf = (c: string) => LIFECYCLE.find((l) => l.code === c)?.label || c;
@@ -459,7 +464,7 @@ export class LifecycleService {
   }
 
   /** Operations dashboard: task buckets by milestone stage (with counts). */
-  async opsDashboard(f: { vendor?: string; clientId?: string } = {}) {
+  async opsDashboard(f: DashFilter = {}) {
     const grouped = await this.prisma.shipment.groupBy({ by: ['statusCode'], where: this.dashWhere(f), _count: { _all: true } });
     const c: Record<string, number> = {};
     for (const g of grouped) c[String(g.statusCode || 'MAN')] = g._count._all;
@@ -479,7 +484,7 @@ export class LifecycleService {
   }
 
   /** Shipments in one milestone bucket (drill-down for the ops dashboard). */
-  async opsBucket(code: string, limit = 2000, f: { vendor?: string; clientId?: string } = {}) {
+  async opsBucket(code: string, limit = 2000, f: DashFilter = {}) {
     const labelOf = (x: string) => LIFECYCLE.find((l) => l.code === x)?.label || x;
     const ships = await this.prisma.shipment.findMany({
       where: { statusCode: code === 'RTO' ? { in: ['RTO', 'RTD'] } : code, ...this.dashWhere(f) },
@@ -493,16 +498,17 @@ export class LifecycleService {
   }
 
   /** Counts by milestone code (for the mile dashboards). */
-  async summary() {
-    const rows = await this.prisma.shipment.groupBy({ by: ['statusCode'], _count: { _all: true } });
+  async summary(scope?: bigint[] | null) {
+    const rows = await this.prisma.shipment.groupBy({ by: ['statusCode'], where: scope ? { clientId: { in: scope } } : undefined, _count: { _all: true } });
     const counts: Record<string, number> = {};
     for (const r of rows) counts[r.statusCode || 'MAN'] = r._count._all;
     return { counts, lifecycle: LIFECYCLE };
   }
 
   /** Shipments currently at a given milestone (dashboard drill-down / worklists). */
-  async list(code?: string, limit = 100) {
-    const where = code ? { statusCode: String(code).trim().toUpperCase() } : {};
+  async list(code?: string, limit = 100, scope?: bigint[] | null) {
+    const where: any = code ? { statusCode: String(code).trim().toUpperCase() } : {};
+    if (scope) where.clientId = { in: scope };
     return this.prisma.shipment.findMany({
       where, orderBy: { statusAt: 'desc' }, take: Math.min(limit, 300),
       select: { awb: true, statusCode: true, statusAt: true, originZone: true, destZone: true, destPincode: true, consigneeName: true, consigneeCity: true, vendor: true, bagCode: true, product: true },

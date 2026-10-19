@@ -25,6 +25,9 @@ class UpdateUserDto {
   @IsOptional() featureGrants?: string[] | Record<string, string> | null;
   // Customer link for a CLIENT_ADMIN portal login; null detaches it.
   @IsOptional() clientId?: number | null;
+  // #10 — location/company data scope (BRANCH / COMPANY master codes). [] = sees everything.
+  @IsOptional() @IsArray() @IsString({ each: true }) branches?: string[];
+  @IsOptional() @IsArray() @IsString({ each: true }) companyCodes?: string[];
 }
 
 @Controller('api/v1/users')

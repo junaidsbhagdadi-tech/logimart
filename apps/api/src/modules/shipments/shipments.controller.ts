@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, NotFoundException, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles, SuperAdminOnly, Feature } from '../../common/rbac/roles.decorator';
@@ -6,6 +6,8 @@ import { ShipmentsService } from './shipments.service';
 import { BulkBookingService } from './bulk-booking.service';
 import { LabelsService } from '../labels/labels.service';
 import { CreateShipmentDto } from './dto/create-shipment.dto';
+import { PrismaService } from '../../prisma/prisma.service';
+import { assertClientInScope, scopedClientIds } from '../../common/scope/data-scope';
 
 @Controller('api/v1/shipments')
 @UseGuards(RolesGuard)
@@ -14,6 +16,7 @@ export class ShipmentsController {
     private readonly shipments: ShipmentsService,
     private readonly bulkJobs: BulkBookingService,
     private readonly labels: LabelsService,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Post()
@@ -30,8 +33,8 @@ export class ShipmentsController {
   /** Lightweight customer picker for the pickup-boy (DRIVER) mobile booking — id/name/code only. */
   @Get('booking-customers')
   @Roles(UserRole.DRIVER, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
-  bookingCustomers(@Query('q') q?: string) {
-    return this.shipments.bookingCustomers(q);
+  async bookingCustomers(@Req() req: any, @Query('q') q?: string) {
+    return this.shipments.bookingCustomers(q, await scopedClientIds(this.prisma, req.user));
   }
 
   /** Bulk booking — create up to 500 shipments from an uploaded sheet. */
@@ -192,9 +195,9 @@ export class ShipmentsController {
 
   /** List recent shipments. Client admins see only their own; staff see all. */
   @Get()
-  list(@Req() req: any, @Query('limit') limit?: string) {
+  async list(@Req() req: any, @Query('limit') limit?: string) {
     const clientId = req.user.role === UserRole.CLIENT_ADMIN && req.user.clientId != null ? BigInt(req.user.clientId) : undefined;
-    return this.shipments.list(clientId, limit ? Number(limit) : 50);
+    return this.shipments.list(clientId, limit ? Number(limit) : 50, clientId == null ? await scopedClientIds(this.prisma, req.user) : null);
   }
 
   /** AWB Entry List (Xpresion-style flat grid). Declared before ':awb'. `search` matches any AWB
@@ -215,14 +218,23 @@ export class ShipmentsController {
   }
 
   @Get('awb-list')
-  awbList(@Req() req: any, @Query('limit') limit?: string, @Query('search') search?: string, @Query('from') from?: string, @Query('to') to?: string) {
+  async awbList(@Req() req: any, @Query('limit') limit?: string, @Query('search') search?: string, @Query('from') from?: string, @Query('to') to?: string) {
     const clientId = req.user.role === UserRole.CLIENT_ADMIN && req.user.clientId != null ? BigInt(req.user.clientId) : undefined;
-    return this.shipments.awbList(clientId, limit ? Number(limit) : 300, search, from, to);
+    const scope = clientId == null ? await scopedClientIds(this.prisma, req.user) : null;
+    return this.shipments.awbList(clientId, limit ? Number(limit) : 300, search, from, to, scope);
   }
 
   @Get(':awb')
-  findByAwb(@Param('awb') awb: string) {
-    return this.shipments.findByAwb(awb);
+  async findByAwb(@Param('awb') awb: string, @Req() req: any) {
+    const s = await this.shipments.findByAwb(awb);
+    // A customer login may only open its own account group's AWBs; scoped staff only their branch/company's.
+    if (req.user.role === UserRole.CLIENT_ADMIN) {
+      const allowed = await this.shipments.bookableAccountIds(req.user.clientId);
+      if (!allowed.has(String(s.clientId))) throw new NotFoundException(`AWB ${awb} not found`);
+    } else {
+      await assertClientInScope(this.prisma, req.user, s.clientId);
+    }
+    return s;
   }
 
   /** Wrong-entry transfer — reassign the AWB to the correct customer (finance/super admin — changes who's billed). */

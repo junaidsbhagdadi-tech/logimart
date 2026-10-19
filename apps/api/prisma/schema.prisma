@@ -48,6 +48,9 @@ model User {
   featureGrants Json?    // per-user feature access. Either a legacy string[] of route-path keys (each =
                          // full access) or a { "<route>": "VIEW"|"EDIT"|"DELETE" } level map. null = role defaults.
   isActive     Boolean   @default(true)
+  // #10 — location/company data scope (BRANCH master codes / COMPANY master codes). EMPTY = sees all.
+  branches     String[]  @default([])
+  companyCodes String[]  @default([])
   // ---- Rider/driver identity (role DRIVER) — used by the mobile app's Rider-ID + PIN login ----
   riderCode    String?   @unique // RID001 — the field ID a rider logs into the app with
   pinHash      String?   // bcrypt of the rider's numeric PIN
@@ -98,7 +101,8 @@ model B2bClient {
   tel2            String?
   fax             String?
   billingState    String?
-  serviceCentre   String?
+  serviceCentre   String?   // billing company (COMPANY master code)
+  branch          String?   // #10 — owning branch (BRANCH master code); drives staff location-wise access
   origin          String?
   startDate       DateTime?
   aadhaarNo       String?

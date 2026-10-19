@@ -85,6 +85,7 @@ export class CustomersService {
           fax: dto.fax,
           billingState: dto.billingState,
           serviceCentre: dto.serviceCentre,
+          branch: dto.branch?.trim().toUpperCase() || undefined,
           origin: dto.origin,
           startDate: dto.startDate ? new Date(dto.startDate) : undefined,
           aadhaarNo: dto.aadhaarNo,
@@ -147,6 +148,7 @@ export class CustomersService {
           contactPhone: r.contactPhone || undefined, contactEmail: r.contactEmail || undefined,
           tel1: r.tel1 || undefined, billingState: r.billingState || undefined,
           serviceCentre: r.serviceCentre || undefined, origin: r.origin || undefined,
+          branch: r.branch ? String(r.branch).trim().toUpperCase() : undefined,
           customerType: r.customerType || undefined, registerType: r.registerType || undefined,
           salesPerson: r.salesPerson || undefined,
           salesPersonMobile: r.salesPersonMobile || undefined,
@@ -162,8 +164,9 @@ export class CustomersService {
     return { total: rows.length, created: results.filter((x) => x.ok).length, results };
   }
 
-  list() {
-    return this.prisma.b2bClient.findMany({ orderBy: { legalName: 'asc' } });
+  /** All customers, or only those in `ids` (#10 branch/company scope; null = unrestricted). */
+  list(ids?: bigint[] | null) {
+    return this.prisma.b2bClient.findMany({ where: ids ? { id: { in: ids } } : undefined, orderBy: { legalName: 'asc' } });
   }
 
   /**
@@ -245,6 +248,7 @@ export class CustomersService {
       where: { id: BigInt(id) },
       data: {
         ...rest,
+        ...(rest.branch !== undefined ? { branch: String(rest.branch).trim().toUpperCase() || null } : {}),
         ...parentPatch,
         ...holdPatch,
         startDate: startDate ? new Date(startDate) : undefined,

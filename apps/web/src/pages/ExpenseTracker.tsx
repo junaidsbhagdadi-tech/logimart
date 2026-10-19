@@ -15,6 +15,8 @@ export function ExpenseTracker() {
   const [err, setErr] = useState('');
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  const [branchCodes, setBranchCodes] = useState<{ code: string; name: string }[]>([]); // #10 BRANCH master suggestions
+  useEffect(() => { api.listMaster('BRANCH').then((r) => setBranchCodes(r.filter((x) => x.active !== false).map((x) => ({ code: x.code, name: x.name })))).catch(() => {}); }, []);
   // Access split: anyone with the add grant can record an expense; only the report grant sees the
   // totals / branch balances / all entries / Excel export.
   const canAdd = useRights('/expenses').edit;
@@ -71,7 +73,8 @@ export function ExpenseTracker() {
           <div style={{ gridColumn: 'span 2' }}><label>Remark</label><input value={form.remark} onChange={(e) => set('remark', e.target.value)} placeholder="e.g. ALLIED 150 box handling pickup" /></div>
           <div><label>Paid by</label><input value={form.paidBy} onChange={(e) => set('paidBy', e.target.value)} placeholder="Neha" /></div>
           <div><label>Paid to</label><input value={form.paidTo} onChange={(e) => set('paidTo', e.target.value)} placeholder="(optional)" /></div>
-          <div><label>Branch</label><input value={form.branch} onChange={(e) => set('branch', e.target.value)} placeholder="BOM / DEL / AHD" /></div>
+          <div><label>Branch</label><input value={form.branch} onChange={(e) => set('branch', e.target.value.toUpperCase())} placeholder="BOM / DEL / AHD" list="branch-codes" />
+            <datalist id="branch-codes">{branchCodes.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}</datalist></div>
           <div style={{ gridColumn: 'span 2' }}>
             <label>Attachment (bill / receipt)</label>
             <input type="file" accept="image/*,application/pdf" onChange={(e) => { onAttach(e.target.files?.[0] ?? null); e.target.value = ''; }} />
@@ -93,7 +96,7 @@ export function ExpenseTracker() {
         <div className="row" style={{ gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div><label>From</label><input type="date" value={filters.from} onChange={(e) => setFilters((f) => ({ ...f, from: e.target.value }))} /></div>
           <div><label>To</label><input type="date" value={filters.to} onChange={(e) => setFilters((f) => ({ ...f, to: e.target.value }))} /></div>
-          <div><label>Branch</label><input value={filters.branch} onChange={(e) => setFilters((f) => ({ ...f, branch: e.target.value }))} placeholder="all" /></div>
+          <div><label>Branch</label><input value={filters.branch} onChange={(e) => setFilters((f) => ({ ...f, branch: e.target.value }))} placeholder="all" list="branch-codes" /></div>
           <div><label>Category</label><select value={filters.category} onChange={(e) => setFilters((f) => ({ ...f, category: e.target.value }))}><option value="">All</option>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></div>
           <button className="secondary" onClick={exportXls} disabled={!data?.rows.length}>⬇ Excel</button>
         </div>

@@ -396,20 +396,20 @@ export class InvoiceService {
    * (delivered/RTO/undelivered/pending), billed vs unbilled, billed sales/fuel/tax, cash received &
    * outstanding. Sales come from invoiced lines (fast, no live re-rating); outstanding is the live balance.
    */
-  async misSalesSummary(from?: string, to?: string) {
+  async misSalesSummary(from?: string, to?: string, scope?: bigint[] | null) {
     const gte = from ? new Date(from) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     const lte = to ? new Date(`${to}T23:59:59`) : new Date();
     const [ships, lineItems, payAgg] = await Promise.all([
       this.prisma.shipment.findMany({
-        where: { createdAt: { gte, lte } },
+        where: { createdAt: { gte, lte }, ...(scope ? { clientId: { in: scope } } : {}) },
         select: { id: true, clientId: true, pieceCount: true, totalDeadKg: true, totalVolKg: true, chargeWeight: true, statusCode: true,
           client: { select: { legalName: true, accountCode: true, outstandingBal: true } } },
       }),
       this.prisma.invoiceLineItem.findMany({
-        where: { shipment: { createdAt: { gte, lte } } },
+        where: { shipment: { createdAt: { gte, lte }, ...(scope ? { clientId: { in: scope } } : {}) } },
         select: { shipmentId: true, amount: true, fuel: true, shipment: { select: { clientId: true } } },
       }),
-      this.prisma.ledgerEntry.groupBy({ by: ['clientId'], where: { createdAt: { gte, lte }, amount: { lt: 0 } }, _sum: { amount: true } }),
+      this.prisma.ledgerEntry.groupBy({ by: ['clientId'], where: { createdAt: { gte, lte }, amount: { lt: 0 }, ...(scope ? { clientId: { in: scope } } : {}) }, _sum: { amount: true } }),
     ]);
     const cashBy = new Map(payAgg.map((p) => [String(p.clientId), -Number(p._sum.amount || 0)]));
     const billedIds = new Set(lineItems.map((l) => l.shipmentId.toString()));
@@ -442,12 +442,14 @@ export class InvoiceService {
    * Sales dashboard by salesperson — their daily contribution: shipments booked and sales for THEIR
    * customers, split billed vs unbilled (unbilled is live-rated). Grouped on the customer's salesPerson.
    */
-  async salesByRep(from?: string, to?: string, opts: { vendor?: string; clientId?: string; groupBy?: 'rep' | 'customer' | 'vendor' } = {}) {
+  async salesByRep(from?: string, to?: string, opts: { vendor?: string; clientId?: string; groupBy?: 'rep' | 'customer' | 'vendor'; scope?: bigint[] | null } = {}) {
     const gte = from ? new Date(from) : new Date(new Date().setHours(0, 0, 0, 0));
     const lte = to ? new Date(`${to}T23:59:59`) : new Date();
     const where: any = { createdAt: { gte, lte } };
     if (opts.vendor && opts.vendor.trim()) where.vendor = { equals: opts.vendor.trim(), mode: 'insensitive' };
     if (opts.clientId && /^\d+$/.test(opts.clientId)) where.clientId = BigInt(opts.clientId);
+    // #10 — branch/company-scoped staff: only their customers (a picked customer outside it matches nothing).
+    if (opts.scope) where.clientId = where.clientId != null ? (opts.scope.includes(where.clientId) ? where.clientId : { in: [] }) : { in: opts.scope };
     const groupBy = opts.groupBy === 'customer' || opts.groupBy === 'vendor' ? opts.groupBy : 'rep';
     const ships = await this.prisma.shipment.findMany({
       where, take: 20000,
@@ -538,9 +540,10 @@ export class InvoiceService {
    * customer, so a multi/all sheet is a single combined table. Heavy (rate engine per AWB), so the
    * shipment set is capped — narrow the date range or customer set if it truncates.
    */
-  async billWorksheet(clientIds: number[] | 'all', from?: string, to?: string) {
+  async billWorksheet(clientIds: number[] | 'all', from?: string, to?: string, scope?: bigint[] | null) {
     const CAP = 25000; // a full month for all customers — pricing runs in concurrency batches, so this is safe
     const clientWhere: any = clientIds === 'all' ? {} : { id: { in: clientIds.map((n) => BigInt(n)) } };
+    if (scope) clientWhere.AND = [{ id: { in: scope } }]; // #10 — only the user's branch/company customers
     // Only billable customers (exclude cash/wallet — they never appear on the billing run).
     const billable = await this.prisma.b2bClient.findMany({
       where: { ...clientWhere, isCash: false, NOT: { accountType: 'WALLET' } },
@@ -692,7 +695,7 @@ export class InvoiceService {
     };
   }
 
-  async list(clientId?: bigint) {
+  async list(clientId?: bigint, scope?: bigint[] | null) {
     // A scoped (portal) list is only served if the customer is opted in to seeing invoices, and only
     // shows invoices that have been SENT (finance finalises + sends before the customer can see them).
     if (clientId != null) {
@@ -700,7 +703,7 @@ export class InvoiceService {
       if (!c?.canViewInvoices) throw new ForbiddenException('Invoice access is not enabled for your account. Please contact us.');
     }
     return this.prisma.invoice.findMany({
-      where: clientId != null ? { clientId, sentAt: { not: null } } : undefined,
+      where: clientId != null ? { clientId, sentAt: { not: null } } : scope ? { clientId: { in: scope } } : undefined,
       orderBy: { issuedAt: 'desc' },
       include: { lines: true },
     });
@@ -969,12 +972,12 @@ export class InvoiceService {
    * Receivables aging across all clients. Buckets each open invoice's remaining
    * balance by days past its due date.
    */
-  async aging() {
+  async aging(scope?: bigint[] | null) {
     const openStatuses: InvoiceStatus[] = [
       InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.DISPUTED, InvoiceStatus.LOCKED,
     ];
     const invoices = await this.prisma.invoice.findMany({
-      where: { status: { in: openStatuses } },
+      where: { status: { in: openStatuses }, ...(scope ? { clientId: { in: scope } } : {}) },
       select: { id: true, clientId: true, total: true, dueDate: true, client: { select: { legalName: true, accountCode: true } } },
     });
     const sums = await this.prisma.ledgerEntry.groupBy({

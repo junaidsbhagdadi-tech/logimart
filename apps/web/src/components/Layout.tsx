@@ -25,12 +25,12 @@ export function Layout() {
   const clientGroups: Group[] = [
     { title: 'Overview', items: [
       { to: '/', icon: '📊', label: 'My Dashboard', end: true },
-      { to: '/tracker', icon: '🧭', label: 'Track Shipment' },
       { to: '/pincode-search', icon: '📍', label: 'Pincode Search' },
     ] },
     { title: 'My Shipments', items: [
       { to: '/create', icon: '➕', label: 'Book Shipment' },
       { to: '/awb-list', icon: '📝', label: 'My Shipments' },
+      { to: '/tracker', icon: '🧭', label: 'Track Shipment' },
       { to: '/pickups', icon: '📦', label: 'Schedule Pickup' },
     ] },
     { title: 'Billing', items: [

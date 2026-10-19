@@ -1,15 +1,20 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles, SuperAdminOnly, Feature } from '../../common/rbac/roles.decorator';
 import { CustomersService } from './customers.service';
 import { CreateClientDto, UpdateClientDto } from './dto/customer.dto';
+import { PrismaService } from '../../prisma/prisma.service';
+import { assertClientInScope, scopedClientIds } from '../../common/scope/data-scope';
 
 @Controller('api/v1/clients')
 @UseGuards(RolesGuard)
 @Feature('/customers') // department/per-user grant for '/customers' admits these routes (additive to @Roles)
 export class CustomersController {
-  constructor(private readonly customers: CustomersService) {}
+  constructor(private readonly customers: CustomersService, private readonly prisma: PrismaService) {}
+
+  /** #10 — block a branch/company-scoped user from another branch's customer. */
+  private inScope(req: any, id: string) { return assertClientInScope(this.prisma, req.user, id); }
 
   @Post()
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
@@ -19,8 +24,8 @@ export class CustomersController {
 
   @Get()
   @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SALES, UserRole.SYS_ADMIN)
-  list() {
-    return this.customers.list();
+  async list(@Req() req: any) {
+    return this.customers.list(await scopedClientIds(this.prisma, req.user));
   }
 
   /** Bulk-create customers from an imported sheet. */
@@ -46,7 +51,7 @@ export class CustomersController {
 
   @Get(':id/fuel-surcharges')
   @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
-  listFuel(@Param('id') id: string) { return this.customers.listFuel(Number(id)); }
+  async listFuel(@Param('id') id: string, @Req() req: any) { await this.inScope(req, id); return this.customers.listFuel(Number(id)); }
   @Post(':id/fuel-surcharges')
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
   addFuel(@Param('id') id: string, @Body() d: any) { return this.customers.addFuel(Number(id), d); }
@@ -56,7 +61,7 @@ export class CustomersController {
 
   @Get(':id/other-charges')
   @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
-  listCharges(@Param('id') id: string) { return this.customers.listCharges(Number(id)); }
+  async listCharges(@Param('id') id: string, @Req() req: any) { await this.inScope(req, id); return this.customers.listCharges(Number(id)); }
   @Post(':id/other-charges')
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
   addCharge(@Param('id') id: string, @Body() d: any) { return this.customers.addCharge(Number(id), d); }
@@ -66,7 +71,7 @@ export class CustomersController {
 
   @Get(':id/volumetrics')
   @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
-  listVol(@Param('id') id: string) { return this.customers.listVol(Number(id)); }
+  async listVol(@Param('id') id: string, @Req() req: any) { await this.inScope(req, id); return this.customers.listVol(Number(id)); }
   @Post(':id/volumetrics')
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
   addVol(@Param('id') id: string, @Body() d: any) { return this.customers.addVol(Number(id), d); }
@@ -78,7 +83,7 @@ export class CustomersController {
   // they can save a pickup point as a reusable warehouse straight from the booking screen.
   @Get(':id/addresses')
   @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.WAREHOUSE_HANDLER, UserRole.SALES, UserRole.SYS_ADMIN)
-  listAddr(@Param('id') id: string) { return this.customers.listAddr(Number(id)); }
+  async listAddr(@Param('id') id: string, @Req() req: any) { await this.inScope(req, id); return this.customers.listAddr(Number(id)); }
   @Post(':id/addresses')
   @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.WAREHOUSE_HANDLER, UserRole.SYS_ADMIN)
   addAddr(@Param('id') id: string, @Body() d: any) { return this.customers.addAddr(Number(id), d); }
@@ -96,7 +101,7 @@ export class CustomersController {
 
   @Get(':id/wallet')
   @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
-  walletInfo(@Param('id') id: string) { return this.customers.walletInfo(Number(id)); }
+  async walletInfo(@Param('id') id: string, @Req() req: any) { await this.inScope(req, id); return this.customers.walletInfo(Number(id)); }
 
   @Post(':id/wallet/topup')
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
@@ -104,13 +109,15 @@ export class CustomersController {
 
   @Get(':id')
   @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SALES, UserRole.SYS_ADMIN)
-  get(@Param('id') id: string) {
+  async get(@Param('id') id: string, @Req() req: any) {
+    await this.inScope(req, id);
     return this.customers.get(Number(id));
   }
 
   @Patch(':id')
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
-  update(@Param('id') id: string, @Body() dto: UpdateClientDto) {
+  async update(@Param('id') id: string, @Body() dto: UpdateClientDto, @Req() req: any) {
+    await this.inScope(req, id);
     return this.customers.update(Number(id), dto);
   }
 

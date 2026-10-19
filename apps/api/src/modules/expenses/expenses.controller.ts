@@ -3,6 +3,7 @@ import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles, Feature } from '../../common/rbac/roles.decorator';
 import { ExpensesService, ExpenseInput } from './expenses.service';
+import { scopedBranches } from '../../common/scope/data-scope';
 
 @Controller('api/v1/expenses')
 @UseGuards(RolesGuard)
@@ -15,8 +16,8 @@ export class ExpensesController {
   @Get()
   @Feature('/expenses-report')
   @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
-  list(@Query('from') from?: string, @Query('to') to?: string, @Query('branch') branch?: string, @Query('category') category?: string) {
-    return this.svc.list({ from, to, branch, category });
+  list(@Req() req: any, @Query('from') from?: string, @Query('to') to?: string, @Query('branch') branch?: string, @Query('category') category?: string) {
+    return this.svc.list({ from, to, branch, category, branches: scopedBranches(req.user) });
   }
 
   @Post()

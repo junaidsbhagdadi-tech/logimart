@@ -33,11 +33,14 @@ export class ExpensesService {
     });
   }
 
-  async list(q: { from?: string; to?: string; branch?: string; category?: string }) {
+  async list(q: { from?: string; to?: string; branch?: string; category?: string; branches?: string[] | null }) {
     const where: any = {};
     if (q.from || q.to) where.date = { ...(q.from ? { gte: new Date(q.from) } : {}), ...(q.to ? { lte: new Date(q.to + 'T23:59:59') } : {}) };
     if (q.branch) where.branch = q.branch;
     if (q.category) where.category = q.category;
+    // #10 — a branch-scoped user only sees their branches' expenses (branch is free text → match case-insensitively).
+    const branchScope = q.branches ? { OR: q.branches.map((b) => ({ branch: { equals: b, mode: 'insensitive' as const } })) } : null;
+    if (branchScope) where.AND = [branchScope];
     const raw = await this.prisma.expense.findMany({ where, orderBy: { date: 'desc' }, take: 5000 });
     // Turn stored attachment keys into short-lived loadable URLs for the browser.
     const rows = await Promise.all(raw.map(async (r) => ({ ...r, attachmentUrl: await this.storage.resolve(r.attachmentUrl) })));
@@ -50,7 +53,7 @@ export class ExpensesService {
       if (r.branch) byBranch[r.branch] = +((byBranch[r.branch] || 0) + a).toFixed(2);
     }
     // All-time available balance per branch = Σ company-funded − Σ spent (float remaining, not date-scoped).
-    const grouped = await this.prisma.expense.groupBy({ by: ['branch'], _sum: { amount: true, companyAmount: true } });
+    const grouped = await this.prisma.expense.groupBy({ by: ['branch'], where: branchScope ?? undefined, _sum: { amount: true, companyAmount: true } });
     const balanceByBranch: Record<string, { funded: number; spent: number; balance: number }> = {};
     for (const g of grouped) {
       if (!g.branch) continue;

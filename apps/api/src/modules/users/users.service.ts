@@ -30,7 +30,7 @@ export class UsersService {
   list() {
     return this.prisma.user.findMany({
       orderBy: { id: 'asc' },
-      select: { id: true, fullName: true, email: true, role: true, department: true, hubId: true, clientId: true, isActive: true, featureGrants: true },
+      select: { id: true, fullName: true, email: true, role: true, department: true, hubId: true, clientId: true, isActive: true, featureGrants: true, branches: true, companyCodes: true },
     });
   }
 
@@ -106,8 +106,9 @@ export class UsersService {
   }
 
   /** Toggle active, change role, reset password, or assign feature access (super admin). */
-  async update(id: number, dto: { isActive?: boolean; role?: UserRole; department?: Department | null; password?: string; featureGrants?: string[] | Record<string, string> | null; clientId?: number | null }) {
+  async update(id: number, dto: { isActive?: boolean; role?: UserRole; department?: Department | null; password?: string; featureGrants?: string[] | Record<string, string> | null; clientId?: number | null; branches?: string[]; companyCodes?: string[] }) {
     const u = await this.prisma.user.findUnique({ where: { id: BigInt(id) } });
+    const codes = (a?: string[]) => [...new Set((a ?? []).map((x) => String(x).trim().toUpperCase()).filter(Boolean))];
     if (!u) throw new NotFoundException('User not found');
     return this.prisma.user.update({
       where: { id: BigInt(id) },
@@ -120,8 +121,11 @@ export class UsersService {
         // Customer link for a CLIENT_ADMIN portal login (null = internal staff). Lets ops fix a login
         // that shows "Client not found" by pointing it at the right customer.
         ...(dto.clientId !== undefined ? { clientId: dto.clientId != null ? BigInt(dto.clientId) : null } : {}),
+        // #10 — branch/company data scope; empty = unrestricted.
+        ...(dto.branches !== undefined ? { branches: codes(dto.branches) } : {}),
+        ...(dto.companyCodes !== undefined ? { companyCodes: codes(dto.companyCodes) } : {}),
       },
-      select: { id: true, fullName: true, email: true, role: true, department: true, isActive: true, featureGrants: true, clientId: true },
+      select: { id: true, fullName: true, email: true, role: true, department: true, isActive: true, featureGrants: true, clientId: true, branches: true, companyCodes: true },
     });
   }
 }

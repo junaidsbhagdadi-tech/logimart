@@ -93,6 +93,8 @@ const MASTERS: MasterDef[] = [
     F('serviceType', 'Service type', { attr: true, type: 'select', options: ['REGULAR', 'METRO', 'REMOTE'] }),
     F('country', 'Country', { attr: true }),
   ] },
+  // #10 — branches: assigned to customers + staff (Users → Access scope) for location-wise data access.
+  { key: 'BRANCH', label: 'Branch', icon: '🏬', fields: [F('code', 'Branch code'), F('name', 'Branch name'), F('city', 'City', { attr: true })] },
   { key: 'SALES_EXEC', label: 'Sales Executive', icon: '🧑‍💼', fields: [F('code', 'Code'), F('name', 'Name'), F('commissionPct', 'Commission %', { attr: true, type: 'number' })] },
   { key: 'INDUSTRY', label: 'Industry', icon: '🏭', fields: [F('code', 'Code'), F('name', 'Industry')] },
   { key: 'CONTENT', label: 'Content', icon: '📄', fields: [F('code', 'Code'), F('name', 'Content')] },
