@@ -152,6 +152,8 @@ export class ShipmentsService {
       if (!(dto.vendor && String(dto.vendor).trim()))
         throw new BadRequestException(`Forwarding no ${fwd} needs a vendor — set the carrier so it isn't billed at SELF-network rates.`);
     }
+    // DOD = a cheque/DD collected before release — it needs the amount (BlueDart also rejects ₹0 DOD).
+    if (dto.isDod && !(Number(dto.dodAmount) > 0)) throw new BadRequestException('DOD is ticked but the DOD amount is empty — enter the cheque/DD value to collect, or untick DOD.');
     const awb = manualAwb || (await this.nextAwb());
     const total = dto.pieces.length;
 
@@ -927,6 +929,15 @@ export class ShipmentsService {
     dec('shipmentValue', dto.shipmentValue);
     dec('declaredValue', dto.declaredValue);
     dec('chargeWeight', dto.chargeWeight);
+    // DOD on/off + amount, and the To-Pay freight to collect — both go to BlueDart as CollactableAmount.
+    if (dto.isDod !== undefined) data.isDod = !!dto.isDod;
+    dec('dodAmount', dto.dodAmount);
+    dec('freightToCollect', dto.freightToCollect);
+    const effDod = data.isDod ?? s.isDod;
+    if (effDod && !(Number(data.dodAmount !== undefined ? data.dodAmount : s.dodAmount) > 0)) {
+      throw new BadRequestException('DOD is on but the DOD amount is empty — enter the cheque/DD value to collect, or switch DOD off.');
+    }
+    if (data.isDod === false) { data.dodAmount = null; data.dodInstrument = null; }
 
     // Pincode / product changes → re-derive zones, ODA and EDD.
     const newDestPin = dto.destPincode !== undefined ? (String(dto.destPincode || '').trim() || null) : s.destPincode;

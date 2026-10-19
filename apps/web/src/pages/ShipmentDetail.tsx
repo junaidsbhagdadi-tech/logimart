@@ -71,6 +71,9 @@ export function ShipmentDetail() {
       goodsDesc: (s as any).goodsDesc ?? '', referenceNo: (s as any).referenceNo ?? '',
       shipmentValue: (s as any).shipmentValue != null ? String((s as any).shipmentValue) : '',
       chargeWeight: (s as any).chargeWeight != null ? String((s as any).chargeWeight) : '',
+      isDod: (s as any).isDod ? 'Y' : '',
+      dodAmount: (s as any).dodAmount != null ? String((s as any).dodAmount) : '',
+      freightToCollect: (s as any).freightToCollect != null ? String((s as any).freightToCollect) : '',
     });
     setDims(((s.pieces as any[]) || []).map((p) => ({
       sequenceNo: p.sequenceNo,
@@ -98,6 +101,9 @@ export function ShipmentDetail() {
       patch.shipmentValue = ef.shipmentValue === '' ? null : Number(ef.shipmentValue);
       // blank charge weight → null → engine recomputes from the card (divisor/CFT + round-up)
       patch.chargeWeight = ef.chargeWeight === '' ? null : Number(ef.chargeWeight);
+      patch.isDod = ef.isDod === 'Y';
+      patch.dodAmount = ef.isDod === 'Y' && ef.dodAmount !== '' ? Number(ef.dodAmount) : null;
+      patch.freightToCollect = ef.freightToCollect === '' ? null : Number(ef.freightToCollect);
       // Per-box dimensions → recompute volumetric weight server-side (no debit note).
       if (dims.length) patch.dimensions = dims.map((d) => ({ sequenceNo: d.sequenceNo, lengthCm: d.l === '' ? null : Number(d.l), widthCm: d.w === '' ? null : Number(d.w), heightCm: d.h === '' ? null : Number(d.h) }));
       if ((s as any)?.invoiced) {
@@ -516,6 +522,11 @@ export function ShipmentDetail() {
               </select>
             </div>
             <div><label>Shipment value ₹</label><input type="number" value={ef.shipmentValue} onChange={(e) => setEfield('shipmentValue', e.target.value)} /></div>
+            <div><label>Freight to collect ₹ <span className="muted">(To-Pay — collected from consignee)</span></label><input type="number" value={ef.freightToCollect ?? ''} onChange={(e) => setEfield('freightToCollect', e.target.value)} placeholder="blank = none" /></div>
+            <div>
+              <label className="row" style={{ gap: 6, alignItems: 'center' }}><input type="checkbox" checked={ef.isDod === 'Y'} onChange={(e) => setEfield('isDod', e.target.checked ? 'Y' : '')} style={{ width: 'auto' }} /> DOD (cheque/DD on delivery)</label>
+              <input type="number" value={ef.dodAmount ?? ''} onChange={(e) => setEfield('dodAmount', e.target.value)} placeholder="DOD amount ₹ (required if DOD)" disabled={ef.isDod !== 'Y'} />
+            </div>
             <div>
               <label>Chargeable weight (kg) <span className="muted">— blank = auto from rate card (divisor/CFT)</span></label>
               <input type="number" value={ef.chargeWeight} onChange={(e) => setEfield('chargeWeight', e.target.value)} placeholder="blank = auto-recompute" />

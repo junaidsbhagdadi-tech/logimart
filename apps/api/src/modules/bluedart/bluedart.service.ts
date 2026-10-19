@@ -434,6 +434,9 @@ export class BluedartService implements OnModuleInit {
     if (!(Number(s.pieceCount) > 0)) miss.push('Piece count');
     if (!(Number(s.chargeWeight ?? s.totalDeadKg) > 0)) miss.push('Weight');
     if (!(Number(s.shipmentValue ?? s.declaredValue) > 0)) miss.push('Declared/shipment value'); // BlueDart requires DeclaredValue > 0
+    // DOD goes as SubProductCode D with the draft amount as CollactableAmount — BlueDart rejects ₹0
+    // ("InvalidCollectableAmount"). Catch it here with a plain message.
+    if (s.isDod && !(Number(s.dodAmount) > 0)) miss.push('DOD amount (cheque/DD value to collect) — or untick DOD if this is not a DOD shipment');
     return miss;
   }
 
