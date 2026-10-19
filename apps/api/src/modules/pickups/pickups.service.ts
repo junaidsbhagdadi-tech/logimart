@@ -140,8 +140,11 @@ export class PickupsService {
     // CS picks the carrier (can override the customer's choice). BlueDart registers via API and returns a
     // token; any other vendor is recorded (with an optional manually-entered token) — no API for them yet.
     const vendor = (opts.vendor || p.vendor || '').trim();
-    if (/^BLUE|BDR/i.test(vendor) || (!vendor && /^BLUE|BDR/i.test(p.vendor || ''))) {
+    // BlueDart = the generic BDR code OR a per-account BlueDart vendor (476954 LOGM, 439154 XLX, …) —
+    // those previously failed the /^BLUE|BDR/ test and were only *recorded*, never sent to BlueDart.
+    if (await this.bluedart.isBlueDartVendor(vendor || p.vendor)) {
       const res = await this.bluedart.scheduleAdhocPickup({
+        vendor: vendor || p.vendor || null, bdAccountId: (p as any).bdAccountId ?? null,
         pincode: String(p.pincode ?? ''), name: p.contactName ?? '', phone: p.contactPhone ?? '',
         address1: p.pickupAddress, city: p.city ?? undefined,
         pieces: p.estPieces ?? 1, weight: p.weight != null ? Number(p.weight) : undefined,

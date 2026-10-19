@@ -42,6 +42,7 @@ export class BluedartService implements OnModuleInit {
     this.autoSyncing = true;
     try {
       const since = new Date(Date.now() - 30 * 864e5); // booked within the last 30 days
+      const codes = await this.bdVendorCodes(); // per-account BlueDart vendors count as BlueDart too
       // Cover every way a shipment is on BlueDart: our API hand-off (bdWaybill), ops recording the
       // carrier AWB manually via "Forward to vendor" (forwardingAwb, vendor BDR/BLUEDART), AND a
       // registered pickup with no waybill yet (bdPickupToken) — syncTracking discovers its waybill
@@ -51,7 +52,7 @@ export class BluedartService implements OnModuleInit {
           createdAt: { gte: since },
           OR: [
             { bdWaybill: { not: null } },
-            { AND: [{ forwardingAwb: { not: null } }, { OR: [{ vendor: { startsWith: 'BLUE', mode: 'insensitive' } }, { vendor: { equals: 'BDR', mode: 'insensitive' } }] }] },
+            { AND: [{ forwardingAwb: { not: null } }, { OR: [{ vendor: { startsWith: 'BLUE', mode: 'insensitive' } }, { vendor: { equals: 'BDR', mode: 'insensitive' } }, ...(codes.length ? [{ vendor: { in: codes } }] : [])] }] },
             { bdPickupToken: { not: null } },
           ],
         },
@@ -79,7 +80,7 @@ export class BluedartService implements OnModuleInit {
   async autoDispatch(awb: string): Promise<{ awb: string; ok: boolean; action: string; bdWaybill?: string | null; token?: string | null; error?: string }> {
     const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, vendor: true, bdWaybill: true, forwardingAwb: true, statusCode: true } });
     if (!s) return { awb, ok: false, action: 'skip', error: 'not found' };
-    if (!/BLUE|BDR/i.test(String(s.vendor || ''))) return { awb, ok: false, action: 'skip', error: 'not a BlueDart shipment' };
+    if (!(await this.isBlueDartVendor(s.vendor))) return { awb, ok: false, action: 'skip', error: 'not a BlueDart shipment' };
     if (String(s.statusCode).toUpperCase() === 'CAN') return { awb, ok: false, action: 'skip', error: 'cancelled' };
     if (s.bdWaybill) return { awb, ok: true, action: 'already', bdWaybill: s.bdWaybill };
     // Safety: a shipment that already carries a carrier AWB (recorded manually as forwardingAwb) must
@@ -119,11 +120,12 @@ export class BluedartService implements OnModuleInit {
     try {
       const since = new Date(Date.now() - 30 * 864e5);
       const retryBefore = new Date(Date.now() - 60 * 60_000);
+      const codes = await this.bdVendorCodes();
       const rows = await this.prisma.shipment.findMany({
         where: {
           createdAt: { gte: since }, bdWaybill: null, forwardingAwb: null, statusCode: { not: 'CAN' },
           AND: [
-            { OR: [{ vendor: { startsWith: 'BLUE', mode: 'insensitive' } }, { vendor: { equals: 'BDR', mode: 'insensitive' } }] },
+            { OR: [{ vendor: { startsWith: 'BLUE', mode: 'insensitive' } }, { vendor: { equals: 'BDR', mode: 'insensitive' } }, ...(codes.length ? [{ vendor: { in: codes } }] : [])] },
             ...(opts.force ? [] : [{ OR: [{ bdDispatchAt: null }, { bdDispatchAt: { lt: retryBefore } }] }]),
           ],
         },
@@ -144,7 +146,8 @@ export class BluedartService implements OnModuleInit {
 
   /** Count of BlueDart shipments still awaiting dispatch (no waybill) + how many have a failure. */
   async dispatchStatus() {
-    const base = { bdWaybill: null, forwardingAwb: null, statusCode: { not: 'CAN' }, OR: [{ vendor: { startsWith: 'BLUE', mode: 'insensitive' as const } }, { vendor: { equals: 'BDR', mode: 'insensitive' as const } }] };
+    const codes = await this.bdVendorCodes();
+    const base = { bdWaybill: null, forwardingAwb: null, statusCode: { not: 'CAN' }, OR: [{ vendor: { startsWith: 'BLUE', mode: 'insensitive' as const } }, { vendor: { equals: 'BDR', mode: 'insensitive' as const } }, ...(codes.length ? [{ vendor: { in: codes } }] : [])] };
     const [pending, failed] = await Promise.all([
       this.prisma.shipment.count({ where: base as any }),
       this.prisma.shipment.count({ where: { AND: [base, { bdError: { not: null } }] } as any }),
@@ -201,7 +204,18 @@ export class BluedartService implements OnModuleInit {
     const url = path.startsWith('http') ? path : `${BLUEDART.baseUrl}${path}`;
     const res = await fetch(url, { ...init, headers: { JWTToken: token, 'content-type': 'application/json', ...(init.headers || {}) } });
     const text = await res.text();
-    if (!res.ok) throw new BadRequestException(`BlueDart ${res.status}: ${text.slice(0, 300)}`);
+    if (!res.ok) {
+      // Pull BlueDart's own reason(s) out of the error body (Status[].StatusInformation) so the message
+      // is readable and never cut off mid-sentence; keep more of the raw body for diagnosis.
+      let reason = '';
+      try {
+        const j = JSON.parse(text);
+        const arr = [j?.['error-response'], j?.errorResponse, j?.GenerateWayBillResult, j].flat().filter(Boolean);
+        const msgs = arr.flatMap((e: any) => (Array.isArray(e?.Status) ? e.Status : []).map((x: any) => [x?.StatusCode, x?.StatusInformation].filter(Boolean).join(': ')));
+        reason = [...new Set(msgs)].filter(Boolean).join('; ');
+      } catch { /* not JSON */ }
+      throw new BadRequestException(`BlueDart ${res.status}: ${reason || text.slice(0, 1200)}`);
+    }
     try { return JSON.parse(text); } catch { return { raw: text }; }
   }
 
@@ -248,10 +262,34 @@ export class BluedartService implements OnModuleInit {
 
   /** Resolve which BlueDart account a shipment books under: its manual pick (bdAccountId), else the
    *  default configured account, else the single env account. */
-  private async resolveAccount(shipment?: { bdAccountId?: bigint | null } | null): Promise<BdAcc> {
+  /** Vendor codes that ARE BlueDart accounts (the per-account vendors: 476954, 439154, O06392, …). */
+  async bdVendorCodes(): Promise<string[]> {
+    const rows = await this.prisma.bdAccount.findMany({ where: { active: true }, select: { customerCode: true, accountCode: true } }).catch(() => [] as any[]);
+    return [...new Set(rows.flatMap((r: any) => [r.customerCode, r.accountCode]).filter(Boolean).map((x: string) => String(x).trim()))];
+  }
+
+  /** Is this vendor BlueDart — the generic BDR/BLUEDART code OR one of the per-account BlueDart vendors? */
+  async isBlueDartVendor(vendor?: string | null): Promise<boolean> {
+    const v = String(vendor ?? '').trim();
+    if (!v) return false;
+    if (/^(BLUE|BDR)/i.test(v)) return true;
+    return (await this.bdVendorCodes()).some((c) => c.toUpperCase() === v.toUpperCase());
+  }
+
+  private async resolveAccount(shipment?: { bdAccountId?: bigint | null; vendor?: string | null } | null): Promise<BdAcc> {
     if (shipment?.bdAccountId != null) {
       const a = await this.prisma.bdAccount.findUnique({ where: { id: shipment.bdAccountId } }).catch(() => null);
       if (a && a.active) return { loginId: a.loginId, licKey: a.licKey, customerCode: a.customerCode, originArea: a.areaCode };
+    }
+    // Per-account BlueDart VENDORS: the vendor code IS the BlueDart customer code (476954 = "BDR BOM LOGM",
+    // 439154 = "BDR BOM XLX", …). Book under that account — previously the vendor was ignored and every
+    // hand-off went out on the fallback account (wrong customer code → wrong BD billing / rejections).
+    const v = String(shipment?.vendor ?? '').trim();
+    if (v && !/^(BDR|BLUE ?DART|BLUEDART)$/i.test(v)) {
+      const byVendor = await this.prisma.bdAccount.findFirst({
+        where: { active: true, OR: [{ customerCode: { equals: v, mode: 'insensitive' } }, { accountCode: { equals: v, mode: 'insensitive' } }] },
+      }).catch(() => null);
+      if (byVendor) return { loginId: byVendor.loginId, licKey: byVendor.licKey, customerCode: byVendor.customerCode, originArea: byVendor.areaCode };
     }
     const def = await this.prisma.bdAccount.findFirst({ where: { isDefault: true, active: true } }).catch(() => null);
     if (def) return { loginId: def.loginId, licKey: def.licKey, customerCode: def.customerCode, originArea: def.areaCode };
@@ -337,7 +375,15 @@ export class BluedartService implements OnModuleInit {
       }
     }
     const payload = this.mapWaybill(s, acc);
-    const resp = await this.authed('/waybill/v1/GenerateWayBill', { method: 'POST', body: JSON.stringify(payload) });
+    let resp: any;
+    try {
+      resp = await this.authed('/waybill/v1/GenerateWayBill', { method: 'POST', body: JSON.stringify(payload) });
+    } catch (e: any) {
+      // Keep BlueDart's reason on the AWB (shown on the shipment page) + which account it went under.
+      const m = `${String(e?.message || e)} [account ${acc.customerCode}, ${acc.originArea}; sub-product ${payload.Request.Services.SubProductCode}, collectable ₹${payload.Request.Services.CollactableAmount}]`;
+      await this.prisma.shipment.update({ where: { id: s.id }, data: { bdError: m.slice(0, 1000) } }).catch(() => {});
+      throw new BadRequestException(m);
+    }
     // APIGEE wraps the TSD WayBillGenerationResponse in GenerateWayBillResult{ AWBNo, IsError,
     // Status[]{StatusCode,StatusInformation}, TokenNumber, AWBPrintContent }. Unwrap it for both
     // the success AWB and the error message (verified live: /Date(ms)/ pickup, numeric fields).
@@ -385,7 +431,7 @@ export class BluedartService implements OnModuleInit {
    *  Accepts our AWB (resolves the stored bdWaybill) or a BlueDart waybill number directly. */
   async cancelWaybill(awb: string) {
     this.ensure();
-    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, bdWaybill: true, bdAccountId: true } });
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, bdWaybill: true, bdAccountId: true, vendor: true } });
     const bd = s?.bdWaybill || awb;
     const acc = await this.resolveAccount(s);
     const resp = await this.authed('/waybill/v1/CancelWaybill', {
@@ -633,9 +679,10 @@ export class BluedartService implements OnModuleInit {
   /** Register an ad-hoc BlueDart pickup from a PickupRequest (no shipment/AWB). Used by CS to hand a
    *  customer's portal pickup request to BlueDart — returns the pickup token to show the customer.
    *  Outside the account's home area it's registered as an outstation to-pay (FOD) collection. */
-  async scheduleAdhocPickup(p: { pincode: string; name: string; phone: string; address1: string; address2?: string; city?: string; pieces?: number; toPay?: boolean; weight?: number; date?: string; remarks?: string }) {
+  async scheduleAdhocPickup(p: { pincode: string; name: string; phone: string; address1: string; address2?: string; city?: string; pieces?: number; toPay?: boolean; weight?: number; date?: string; remarks?: string; vendor?: string | null; bdAccountId?: bigint | null }) {
     this.ensure();
-    const acc = await this.resolveAccount(null as any);
+    // Book under the account the pickup's vendor / chosen account points to (else the default).
+    const acc = await this.resolveAccount({ vendor: p.vendor ?? null, bdAccountId: p.bdAccountId ?? null });
     const pin = String(p.pincode ?? '').trim();
     const phone = this.bdMobile(p.phone);
     const name = String(p.name ?? '').slice(0, 30);
