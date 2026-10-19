@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
+import { BulkChangeDialog } from '../components/BulkChangeDialog';
 
 type Row = {
   awb: string; invoiced?: boolean; bookDate: string; shipperName: string; customerCode: string; customerName: string;
@@ -47,6 +48,7 @@ export function AwbEntryList() {
   const [msg, setMsg] = useState('');
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [voidOpen, setVoidOpen] = useState(false);
+  const [changeOpen, setChangeOpen] = useState(false); // #14 bulk change from the vendor-bill sheet
   const [voidText, setVoidText] = useState('');
   const [range, setRange] = useState<{ from: string; to: string }>({ from: '', to: '' });
 
@@ -227,6 +229,7 @@ export function AwbEntryList() {
             {canChangeDate && sel.size > 0 && <button className="secondary" title="Change the booking / manifest date of the selected AWBs" onClick={changeDateSelected}>📅 Change date {sel.size}</button>}
             {isSuper && sel.size > 0 && <button style={{ background: 'var(--bad, #c0392b)', color: '#fff' }} title="Permanently delete the selected shipments" onClick={deleteSelected}>🗑 Delete {sel.size}</button>}
             {isSuper && <button className="secondary" style={{ color: 'var(--danger, #c0392b)' }} title="Delete ALL shipments + invoices (keeps config)" onClick={clearAll}>🧹 Clear test shipments</button>}
+            {canChangeDate && <button className="secondary" title="Upload the vendor-bill correction sheet — blank cells are left unchanged" onClick={() => setChangeOpen(true)}>✏️ Bulk change</button>}
             {isOps && <button className="secondary" title="Void many AWBs from a pasted / uploaded list" onClick={() => setVoidOpen(true)}>🚫 Void{isSuper ? ' / 🗑 Delete' : ''} by list</button>}
             <Link to="/bulk"><button className="secondary" title="Bulk import shipments from Excel">📥 Excel import</button></Link>
             <Link to="/create"><button>➕ New Shipment</button></Link>
@@ -291,6 +294,8 @@ export function AwbEntryList() {
           </div>
         </div>
       </div>
+
+      {changeOpen && <BulkChangeDialog onClose={() => setChangeOpen(false)} onDone={() => load((filters.awb || '').trim() || undefined)} />}
 
       {voidOpen && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }} onClick={() => setVoidOpen(false)}>

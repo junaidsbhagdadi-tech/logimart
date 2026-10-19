@@ -969,10 +969,28 @@ export class RateService {
     if (!ov || typeof ov !== 'object' || Array.isArray(ov)) return breakup;
     const map: Record<string, any> = ov;
     const keyOf = (l: any) => String(l.code ?? l.head).toUpperCase();
+    const num = (v: any) => (v != null && v !== '' && !Array.isArray(v) && !isNaN(Number(v)) ? r2(Number(v)) : null);
     let changed = false;
     for (const l of breakup.lines as any[]) {
-      const v = map[keyOf(l)] ?? map[l.head] ?? map[l.code];
-      if (v != null && v !== '' && !Array.isArray(v) && !isNaN(Number(v))) { l.amount = r2(Number(v)); changed = true; }
+      const v = num(map[keyOf(l)] ?? map[l.head] ?? map[l.code]);
+      if (v != null) { l.amount = v; changed = true; }
+    }
+    // Accessorial codes that map to a typed field: an override for one the card didn't produce ADDS the
+    // line (e.g. an EDL/appointment charge set from the vendor bill via bulk change), and the typed field
+    // is synced from the line so the Bill Worksheet column and the total always agree.
+    const TYPED: Record<string, [keyof ChargeBreakup, string]> = {
+      ODA: ['oda', 'Extra Delivery Location'], APPT: ['appt', 'Appointment Delivery'], TOPAY: ['topay', 'To-Pay Charges'],
+      DOD: ['dod', 'Cheque/DD on Delivery'], FOV: ['fov', 'Freight On Value'], AWB: ['awb', 'Airwaybill Charges'],
+      HANDLING: ['handling', 'Handling'], DOCKET: ['docket', 'Docket'], LOADING: ['loading', 'Loading'], UNLOADING: ['unloading', 'Unloading'], RAS: ['ras', 'Remote Area Surcharge'],
+    };
+    for (const [code, [field, head]] of Object.entries(TYPED)) {
+      const v = num(map[code]);
+      if (v == null) continue;
+      if (!(breakup.lines as any[]).some((l) => keyOf(l) === code)) { (breakup.lines as any[]).push({ code, head, amount: v }); changed = true; }
+    }
+    if (changed) for (const [code, [field]] of Object.entries(TYPED)) {
+      const l = (breakup.lines as any[]).find((x) => keyOf(x) === code);
+      if (l) (breakup as any)[field] = l.amount;
     }
     // Ad-hoc lines added on the shipment (chargeOverrides._add = [{ head, amount }]).
     const add = Array.isArray(map._add) ? map._add : [];

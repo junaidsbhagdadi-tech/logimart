@@ -466,6 +466,8 @@ export const api = {
   portalAccounts: () => request<any[]>('/api/v1/portal/accounts'),
   cancelShipment: (awb: string, reason?: string) =>
     request<{ awb: string; status: string }>(`/api/v1/shipments/${awb}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  bulkChangeAwbs: (rows: Record<string, any>[]) =>
+    request<{ total: number; changed: number; failed: number; results: { row: number; awb: string; ok: boolean; changed?: string[]; error?: string }[] }>('/api/v1/shipments/bulk-change', { method: 'POST', body: JSON.stringify({ rows }) }),
   bulkCancelAwbs: (awbs: string[], reason?: string) =>
     request<{ total: number; voided: number; results: { awb: string; ok: boolean; error?: string }[] }>(`/api/v1/shipments/bulk-cancel`, { method: 'POST', body: JSON.stringify({ awbs, reason }) }),
   bulkDateAwbs: (awbs: string[], date: string) =>

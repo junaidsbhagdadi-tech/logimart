@@ -253,6 +253,13 @@ export class ShipmentsController {
     return this.shipments.cancel(awb, req.user.sub ? BigInt(req.user.sub) : undefined, clientId, dto?.reason, { isSuper: req.user?.role === UserRole.SYS_ADMIN });
   }
 
+  /** #14 — bulk change from the vendor-bill sheet (blank cell = unchanged). Max 500 rows per call. */
+  @Post('bulk-change')
+  @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  bulkChange(@Body() dto: { rows: any[] }, @Req() req: any) {
+    return this.shipments.bulkChange((dto?.rows || []).slice(0, 500), { isSuper: req.user?.role === UserRole.SYS_ADMIN });
+  }
+
   /** Bulk void — void several AWBs at once (each guarded like the single void). */
   @Post('bulk-cancel')
   @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)

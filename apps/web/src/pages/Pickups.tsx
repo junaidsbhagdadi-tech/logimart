@@ -8,7 +8,8 @@ const blank = {
   product: '', vendor: '', refNo: '', invoiceNo: '', invoiceValue: '', ewbNo: '', notes: '', isWarehouse: false,
 };
 
-export function Pickups() {
+/** `mode='book'` = the internal Pickup Booking screen: the SAME form customers use (#7), plus a customer picker. */
+export function Pickups({ mode }: { mode?: 'book' } = {}) {
   const { user } = useAuth();
   const isClient = user?.role === 'CLIENT_ADMIN';
   const isOps = ['HUB_MANAGER', 'SYS_ADMIN'].includes(user?.role || '');
@@ -22,6 +23,12 @@ export function Pickups() {
   const [detail, setDetail] = useState<any | null>(null); // the pickup request shown in the CS detail popup
   const [handingOff, setHandingOff] = useState(''); // id currently being handed off to the vendor
   const [msg, setMsg] = useState('');
+  // Internal booking: which customer the pickup is for (customers pick nothing — it's their own account).
+  const [clients, setClients] = useState<{ id: string; accountCode: string; legalName: string }[]>([]);
+  const [custQ, setCustQ] = useState('');
+  const [custId, setCustId] = useState('');
+  useEffect(() => { if (isOps) api.listClients().then((cs: any[]) => setClients(cs.filter((c) => c.isActive !== false).map((c) => ({ id: String(c.id), accountCode: c.accountCode, legalName: c.legalName })))).catch(() => {}); }, [isOps]);
+  const custShown = clients.filter((c) => { const q = custQ.trim().toLowerCase(); return !q || `${c.accountCode} ${c.legalName}`.toLowerCase().includes(q); }).slice(0, 300);
   // BlueDart pickups (registered collections, incl. outstation to-pay) — ops view.
   const [bdPickups, setBdPickups] = useState<any[]>([]);
   const [bdSyncing, setBdSyncing] = useState('');
@@ -100,9 +107,11 @@ export function Pickups() {
   };
 
   const create = async () => {
-    setError('');
+    setError(''); setMsg('');
+    if (!isClient && !custId) { setError('Pick the customer this pickup is for.'); return; }
     try {
       await api.createPickup({
+        ...(!isClient ? { clientId: +custId } : {}),
         pickupAddress: form.pickupAddress,
         city: form.city || undefined,
         pincode: form.pincode || undefined,
@@ -119,6 +128,8 @@ export function Pickups() {
         ewbNo: form.ewbNo || undefined,
         notes: form.notes || undefined,
       });
+      const cust = clients.find((c) => c.id === custId);
+      setMsg(`✓ Pickup requested${cust ? ` for ${cust.accountCode} — ${cust.legalName}` : ''}. Hand it to a vendor from the Pickups list.`);
       setForm({ ...blank });
       load();
     } catch (e: any) { setError(e.message); }
@@ -161,13 +172,25 @@ export function Pickups() {
 
   return (
     <>
-      <h1>Pickup Requests</h1>
+      <h1>{mode === 'book' ? '📦 Pickup Booking' : 'Pickup Requests'}</h1>
       {error && <div className="error">{error}</div>}
       {msg && <div className="card" style={{ borderLeft: '4px solid var(--ok, #16a34a)', fontSize: 13 }}>{msg}</div>}
 
-      {isClient && (
+      {(isClient || (isOps && mode === 'book')) && (
         <div className="card">
           <h2>Request a pickup</h2>
+          {!isClient && (
+            <div className="grid cols-3" style={{ marginBottom: 10 }}>
+              <div><label>Customer code / name *</label><input value={custQ} onChange={(e) => setCustQ(e.target.value)} placeholder="search code or name…" /></div>
+              <div style={{ gridColumn: 'span 2' }}>
+                <label>Customer *</label>
+                <select value={custId} onChange={(e) => setCustId(e.target.value)}>
+                  <option value="">— pick customer —</option>
+                  {custShown.map((c) => <option key={c.id} value={c.id}>{c.accountCode} — {c.legalName}</option>)}
+                </select>
+              </div>
+            </div>
+          )}
           <div className="grid cols-3">
             <div style={{ gridColumn: 'span 2' }}><label>Pickup address *</label><input value={form.pickupAddress} onChange={(e) => set('pickupAddress', e.target.value)} /></div>
             <div><label>City</label><input value={form.city} onChange={(e) => set('city', e.target.value)} /></div>
@@ -187,7 +210,7 @@ export function Pickups() {
               <label>Courier partner <span className="muted" style={{ fontSize: 11 }}>(your assigned carriers)</span></label>
               <select value={form.vendor} onChange={(e) => set('vendor', e.target.value)}>
                 <option value="">— choose / assign later —</option>
-                {formVendors.map((v) => <option key={v.code} value={v.code}>{v.name}</option>)}
+                {formVendors.map((v) => <option key={v.code} value={v.code}>{isClient ? v.name : `${v.code} — ${v.name}`}</option>)}
               </select>
             </div>
             <div><label>Reference no. <span className="muted" style={{ fontSize: 11 }}>(trackable)</span></label><input value={form.refNo} onChange={(e) => set('refNo', e.target.value)} /></div>
@@ -197,9 +220,11 @@ export function Pickups() {
             <div style={{ gridColumn: 'span 2' }}><label>Notes</label><input value={form.notes} onChange={(e) => set('notes', e.target.value)} /></div>
           </div>
           <label className="row" style={{ gap: 6, marginTop: 10, fontSize: 13 }}><input type="checkbox" style={{ width: 'auto' }} checked={form.isWarehouse} onChange={(e) => set('isWarehouse', e.target.checked)} /> Save this as a warehouse / regular pickup location</label>
-          <button style={{ marginTop: 12 }} disabled={!form.pickupAddress} onClick={create}>Request pickup</button>
+          <button style={{ marginTop: 12 }} disabled={!form.pickupAddress || (!isClient && !custId)} onClick={create}>Request pickup</button>
+          {!isClient && <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>Creates a pickup request (no AWB) — it appears in <a href="/pickups">Pickups</a> to hand off to a vendor. To book a shipment with an AWB at the door instead, use <a href="/pickup-book/awb">Book at pickup (AWB)</a>.</p>}
         </div>
       )}
+      {mode === 'book' ? null : (<>
 
       {(isClient || isOps) && (
         <div className="card">
@@ -396,6 +421,7 @@ export function Pickups() {
           </div>
         </Modal>
       )}
+      </>)}
     </>
   );
 }

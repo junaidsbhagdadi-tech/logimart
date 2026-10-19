@@ -106,7 +106,10 @@ export function App() {
         <Route path="/pincode-search" element={<PincodeSearch />} />
         <Route path="/tracker/:awb" element={<TrackDetail />} />
         <Route path="/create" element={<CreateShipment />} />
-        <Route path="/pickup-book" element={<PickupBook />} />
+        {/* #7 — internal Pickup Booking = the customer's pickup-request form + customer picker; the old
+            book-a-shipment-at-pickup (AWB) form stays reachable at /pickup-book/awb. */}
+        <Route path="/pickup-book" element={<Pickups mode="book" />} />
+        <Route path="/pickup-book/awb" element={<PickupBook />} />
         <Route path="/awb-list" element={<AwbEntryList />} />
         <Route path="/bulk" element={<BulkBooking />} />
         <Route path="/walk-in" element={gate('/walk-in', isAdminFin || canMaster) ? <WalkIn /> : <Navigate to="/" replace />} />

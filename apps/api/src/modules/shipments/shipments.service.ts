@@ -626,6 +626,74 @@ export class ShipmentsService {
 
   /** Void several AWBs at once — runs the same guarded cancel() per AWB, collecting per-AWB results. */
   /**
+   * #14 — Bulk change after the vendor bill (the team's own sheet format). Per row, BLANK = unchanged:
+   * AWB (ours or the forwarding no) | Customer Code → transfer | Origin / Destination pincode, Vendor, Product
+   * → edit (re-zones) | Weight → charge weight | Invoice value → shipment value | Booking Date → date change |
+   * EDL / COD / Appointment / To-pay → per-AWB charge overrides (ODA / DOD / APPT / TOPAY).
+   * Each row goes through the same guarded paths as the single-AWB tools, so invoiced AWBs are refused.
+   */
+  async bulkChange(rows: any[], opts: { isSuper?: boolean } = {}) {
+    const blank = (v: any) => v == null || String(v).trim() === '';
+    const results: { row: number; awb: string; ok: boolean; changed?: string[]; error?: string }[] = [];
+    for (let i = 0; i < (rows || []).length; i++) {
+      const r = rows[i] || {};
+      const key = String(r.awb ?? '').trim().toUpperCase();
+      if (!key) { results.push({ row: i + 1, awb: '', ok: false, error: 'AWB is blank' }); continue; }
+      try {
+        const s = await this.prisma.shipment.findFirst({
+          where: { OR: [{ awb: key }, { forwardingAwb: { equals: key, mode: 'insensitive' } }, { bdWaybill: key }] },
+          select: { awb: true, chargeOverrides: true, _count: { select: { invoiceLines: true } } },
+        });
+        if (!s) throw new NotFoundException('AWB not found');
+        if (s._count.invoiceLines > 0) throw new ConflictException('already invoiced — cancel/rebill the invoice first');
+        const changed: string[] = [];
+        // Customer → transfer to that account.
+        if (!blank(r.customerCode)) {
+          const code = String(r.customerCode).trim();
+          const c = await this.prisma.b2bClient.findFirst({ where: { accountCode: { equals: code, mode: 'insensitive' } }, select: { id: true } });
+          if (!c) throw new NotFoundException(`customer code ${code} not found`);
+          await this.transfer(s.awb, Number(c.id));
+          changed.push('customer');
+        }
+        // Fields Edit AWB already handles (re-zones on pincode/product change).
+        const patch: any = {};
+        if (!blank(r.originPincode)) { patch.shipperPincode = String(r.originPincode).trim(); changed.push('origin'); }
+        if (!blank(r.destPincode)) { patch.destPincode = String(r.destPincode).trim(); changed.push('destination'); }
+        if (!blank(r.vendorCode)) { patch.vendor = String(r.vendorCode).trim(); changed.push('vendor'); }
+        if (!blank(r.productCode)) { patch.product = String(r.productCode).trim(); changed.push('product'); }
+        if (!blank(r.weight)) { const w = Number(r.weight); if (!(w > 0)) throw new BadRequestException(`weight "${r.weight}" is not a number`); patch.chargeWeight = w; changed.push('weight'); }
+        if (!blank(r.invoiceValue)) { const v = Number(r.invoiceValue); if (!(v >= 0)) throw new BadRequestException(`invoice value "${r.invoiceValue}" is not a number`); patch.shipmentValue = v; changed.push('invoice value'); }
+        // Charges from the vendor bill → per-AWB overrides (merged into any existing ones).
+        const chg: Record<string, number> = {};
+        const addChg = (col: any, code: string, label: string) => {
+          if (blank(col)) return;
+          const n = Number(col);
+          if (isNaN(n) || n < 0) throw new BadRequestException(`${label} "${col}" is not a number`);
+          chg[code] = n; changed.push(label);
+        };
+        addChg(r.edl, 'ODA', 'EDL'); addChg(r.cod, 'DOD', 'COD/DOD'); addChg(r.appointment, 'APPT', 'appointment'); addChg(r.topay, 'TOPAY', 'to-pay');
+        if (Object.keys(patch).length) await this.editShipment(s.awb, patch, opts);
+        if (Object.keys(chg).length) {
+          const cur = s.chargeOverrides && typeof s.chargeOverrides === 'object' && !Array.isArray(s.chargeOverrides) ? (s.chargeOverrides as any) : {};
+          await this.prisma.shipment.update({ where: { awb: s.awb }, data: { chargeOverrides: { ...cur, ...chg } } });
+        }
+        // Booking date last (moves the billing month).
+        if (!blank(r.bookingDate)) {
+          const d = await this.bulkChangeDate([s.awb], String(r.bookingDate).trim());
+          const res = d.results?.[0];
+          if (res && !res.ok) throw new BadRequestException(`booking date: ${res.error}`);
+          changed.push('booking date');
+        }
+        if (!changed.length) throw new BadRequestException('nothing to change (all columns blank)');
+        results.push({ row: i + 1, awb: s.awb, ok: true, changed });
+      } catch (e: any) {
+        results.push({ row: i + 1, awb: key, ok: false, error: e?.message ?? String(e) });
+      }
+    }
+    return { total: results.length, changed: results.filter((x) => x.ok).length, failed: results.filter((x) => !x.ok).length, results };
+  }
+
+  /**
    * Free a VOIDED shipment's AWB / LR / forwarding no so a corrected booking can reuse them (undo a
    * wrong upload → fix the sheet → re-upload). Only a cancelled (CAN), never-invoiced record qualifies;
    * returns false otherwise (the caller then treats it as a real duplicate). Nothing is deleted: the
