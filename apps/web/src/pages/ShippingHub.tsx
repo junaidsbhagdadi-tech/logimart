@@ -54,19 +54,8 @@ export function ShippingHub() {
     /* eslint-disable-next-line */
   }, [tab, search]);
 
-  // BD-forwarded shipments stay at statusCode=MAN; derive the real milestone from bdStatus for filters/badges.
-  const bdToCode = (b: string) => {
-    const u = (b || '').toUpperCase();
-    if (/UNDELIVER/.test(u)) return 'UDL';
-    if (/\bRTO\b|RETURN TO ORIG/.test(u)) return 'RTO';
-    if (/DELIVER/.test(u)) return 'DLD';
-    if (/OUT FOR DELIVERY/.test(u)) return 'OFD';
-    if (/ARRIV|REACHED|INSCAN/.test(u)) return 'DRD';
-    if (/TRANSIT|DEPART|CONNECT|BAGGED/.test(u)) return 'DPD';
-    if (/PICK/.test(u)) return 'PKD';
-    return '';
-  };
-  const effCode = (r: any) => { const c = String(r.statusCode || 'MAN').toUpperCase(); if (c === 'MAN' && r.bdStatus) { const b = bdToCode(r.bdStatus); if (b) return b; } return c; };
+  // statusCode is authoritative — the carrier syncs write BlueDart/Delhivery status through to it.
+  const effCode = (r: any) => String(r.statusCode || 'MAN').toUpperCase();
   const filtered = () => {
     if (tab === 'Exceptions') return rows.filter((r) => ['UDL', 'RTO'].includes(effCode(r)));
     if (tab === 'Returns') return rows.filter((r) => ['RTO', 'RTD'].includes(effCode(r)));

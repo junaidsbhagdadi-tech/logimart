@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DELHIVERY, delConfigured } from './delhivery.config';
+import { deriveStatusFromBd } from '../bluedart/bd-status';
 
 /**
  * Delhivery B2B / LTL API. Auth: POST /ums/login {username,password} → Bearer token (cached in
@@ -186,14 +187,16 @@ export class DelhiveryService {
 
   /** Pull the latest Delhivery LR status onto the Logimart shipment. */
   async syncTracking(awb: string) {
-    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { forwardingAwb: true } });
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { forwardingAwb: true, statusCode: true } });
     const lrn = s?.forwardingAwb;
     if (!lrn) throw new BadRequestException(`No Delhivery LR on ${awb} to track.`);
     const r: any = await this.track(lrn);
     // Tolerate a few response shapes for the latest scan.
     const scan = r?.data?.[0] ?? r?.data ?? r?.lr_status ?? r;
     const status = scan?.status ?? scan?.current_status ?? scan?.Status ?? null;
-    if (status) await this.prisma.shipment.updateMany({ where: { awb }, data: { bdStatus: String(status) } });
+    // Write the carrier status through to our milestone (same mapper as BlueDart) so lists/dashboards are right.
+    const derived = status ? deriveStatusFromBd(s?.statusCode, String(status)) : null;
+    if (status) await this.prisma.shipment.updateMany({ where: { awb }, data: { bdStatus: String(status), ...(derived ? { statusCode: derived.statusCode, status: derived.status, statusAt: new Date() } : {}) } });
     return { awb, lrn, status, location: scan?.location ?? scan?.current_location ?? null, tracking: r };
   }
 

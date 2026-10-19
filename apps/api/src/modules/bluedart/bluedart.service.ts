@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BLUEDART, bdConfigured } from './bluedart.config';
-import { deriveStatusFromBd } from './bd-status';
+import { deriveStatusFromBd, isFinalBdStatus } from './bd-status';
 
 /** The BlueDart account a shipment books under — its login + licence key + customer code + origin area. */
 interface BdAcc { loginId: string; licKey: string; customerCode: string; originArea: string; }
@@ -58,8 +58,9 @@ export class BluedartService implements OnModuleInit {
         select: { awb: true, bdStatus: true },
         orderBy: { bdSyncedAt: 'asc' }, take: 300,
       });
-      const terminal = (st?: string | null) => !!st && /deliv|dlvd|\bdl\b|cancel|rto|returned to origin/i.test(st);
-      const open = rows.filter((r) => !terminal(r.bdStatus));
+      // Stop polling only once the carrier status is FINAL (delivered / back with shipper / cancelled).
+      // The old /deliv/ test also matched "OUT FOR DELIVERY" / "UNDELIVERED" → those were never re-synced.
+      const open = rows.filter((r) => !isFinalBdStatus(r.bdStatus));
       let synced = 0;
       for (const r of open) {
         try { await this.syncTracking(r.awb); synced++; } catch { /* keep going */ }

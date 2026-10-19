@@ -44,7 +44,13 @@ export class OpscanService {
     return { ...log, shipmentUpdated: !!st };
   }
 
-  list(limit = 50) {
-    return this.prisma.scanLog.findMany({ orderBy: { scanAt: 'desc' }, take: Math.min(limit, 200) });
+  /** Recent scans; a #10 branch/company-scoped user only sees scans of their customers' AWBs. */
+  async list(limit = 50, scope?: bigint[] | null) {
+    const take = Math.min(limit, 200);
+    if (!scope) return this.prisma.scanLog.findMany({ orderBy: { scanAt: 'desc' }, take });
+    // scan_logs has no clientId — join through shipments by AWB.
+    if (!scope.length) return [];
+    return this.prisma.$queryRaw`SELECT l.* FROM scan_logs l JOIN shipments s ON s.awb = l.awb
+      WHERE s."clientId" = ANY(${scope}::bigint[]) ORDER BY l."scanAt" DESC LIMIT ${take}`;
   }
 }

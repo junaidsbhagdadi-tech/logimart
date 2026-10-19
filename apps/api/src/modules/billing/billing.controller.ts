@@ -184,15 +184,15 @@ export class BillingController {
   /** Head-wise charge breakup of billed AWBs (freight/fuel/fov/oda/…) for Excel export. */
   @Get('billing/charge-breakup')
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
-  chargeBreakup(@Query('clientId') clientId?: string, @Query('from') from?: string, @Query('to') to?: string) {
-    return this.invoices.chargeBreakup(clientId ? Number(clientId) : undefined, from, to);
+  async chargeBreakup(@Req() req: any, @Query('clientId') clientId?: string, @Query('from') from?: string, @Query('to') to?: string) {
+    return this.invoices.chargeBreakup(clientId ? Number(clientId) : undefined, from, to, await this.scope(req));
   }
 
   /** AWB-wise profit/loss: vendor cost (uploaded bills) vs our sell (rate engine). */
   @Get('billing/pnl')
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
-  pnl(@Query('from') from?: string, @Query('to') to?: string) {
-    return this.invoices.pnl(from, to);
+  async pnl(@Req() req: any, @Query('from') from?: string, @Query('to') to?: string) {
+    return this.invoices.pnl(from, to, await this.scope(req));
   }
 
   /** Receivables aging across all clients (current / 1-30 / 31-60 / 61-90 / 90+). */

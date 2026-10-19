@@ -6,10 +6,10 @@ export class StatsService {
   constructor(private readonly prisma: PrismaService) {}
 
   /** Revenue by month for the last N months (for the dashboard trend chart). */
-  private async revenueTrend(months = 6) {
+  private async revenueTrend(months = 6, scope?: bigint[] | null) {
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
-    const invoices = await this.prisma.invoice.findMany({ where: { issuedAt: { gte: start } }, select: { total: true, issuedAt: true } });
+    const invoices = await this.prisma.invoice.findMany({ where: { issuedAt: { gte: start }, ...(scope ? { clientId: { in: scope } } : {}) }, select: { total: true, issuedAt: true } });
     const buckets: { key: string; label: string; total: number }[] = [];
     for (let i = months - 1; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -25,21 +25,23 @@ export class StatsService {
     return buckets.map((b) => ({ label: b.label, total: +b.total.toFixed(2) }));
   }
 
-  async overview() {
+  /** Dashboard KPIs; a #10 branch/company-scoped user gets them for their customers only. */
+  async overview(scope?: bigint[] | null) {
     const now = new Date();
+    const sw: any = scope ? { clientId: { in: scope } } : {};
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
     const [byStatus, total, exceptions, clients, monthInvoices, piecesInTransit, revenueTrend] = await Promise.all([
-      this.prisma.shipment.groupBy({ by: ['status'], _count: { _all: true } }),
-      this.prisma.shipment.count(),
-      this.prisma.shipment.count({ where: { status: { in: ['EXCEPTION', 'PARTIAL'] } } }),
-      this.prisma.b2bClient.findMany({ select: { outstandingBal: true, isCreditHold: true } }),
+      this.prisma.shipment.groupBy({ by: ['status'], where: sw, _count: { _all: true } }),
+      this.prisma.shipment.count({ where: sw }),
+      this.prisma.shipment.count({ where: { ...sw, status: { in: ['EXCEPTION', 'PARTIAL'] } } }),
+      this.prisma.b2bClient.findMany({ where: scope ? { id: { in: scope } } : undefined, select: { outstandingBal: true, isCreditHold: true } }),
       this.prisma.invoice.findMany({
-        where: { issuedAt: { gte: monthStart } },
+        where: { issuedAt: { gte: monthStart }, ...sw },
         select: { total: true },
       }),
-      this.prisma.shipmentPiece.count({ where: { status: { in: ['LOADED', 'IN_TRANSIT'] } } }),
-      this.revenueTrend(6),
+      this.prisma.shipmentPiece.count({ where: { status: { in: ['LOADED', 'IN_TRANSIT'] }, ...(scope ? { shipment: sw } : {}) } }),
+      this.revenueTrend(6, scope),
     ]);
 
     const statusMap: Record<string, number> = {};
@@ -60,32 +62,26 @@ export class StatsService {
   }
 
   /** Windowed KPIs for the multi-carrier Shipping Hub home (today / 7d / 30d). */
-  async hubSummary(window: 'today' | '7d' | '30d' = '7d', clientId?: bigint) {
+  async hubSummary(window: 'today' | '7d' | '30d' = '7d', clientId?: bigint, scope?: bigint[] | null) {
     const now = new Date();
     const since = window === 'today' ? new Date(new Date().setHours(0, 0, 0, 0)) : new Date(now.getTime() - (window === '30d' ? 30 : 7) * 864e5);
-    const base: any = { createdAt: { gte: since }, ...(clientId != null ? { clientId } : {}) };
+    const cw: any = clientId != null ? { clientId } : scope ? { clientId: { in: scope } } : {}; // #10 scope
+    const base: any = { createdAt: { gte: since }, ...cw };
     const inSet = (codes: string[]) => ({ ...base, statusCode: { in: codes } });
-    const ci = 'insensitive' as const;
-    // Carrier-forwarded shipments keep statusCode=MAN; their real status is in bdStatus (free text).
-    // Count delivered/in-transit/exceptions from BOTH the internal milestone AND the carrier status,
-    // guarding against double-counting (a BD row is MAN by milestone → excluded from the native set).
-    const [total, nDeliv, bdDeliv, nOfd, bdOfd, nTransit, bdTransit, nExc, bdExc, returns, pendingBooking, byCarrier, pendingReqPickups, bdPendingPickups] = await Promise.all([
+    // statusCode is the single source of truth: the carrier syncs (BlueDart / Delhivery) write their
+    // status through to it via bluedart/bd-status.ts, so no free-text bdStatus matching is needed here.
+    const [total, delivered, outForDelivery, inTransit, exceptions, returns, pendingBooking, byCarrier, pendingReqPickups, bdPendingPickups] = await Promise.all([
       this.prisma.shipment.count({ where: base }),
-      this.prisma.shipment.count({ where: inSet(['DLD', 'RTD']) }),
-      this.prisma.shipment.count({ where: { ...base, statusCode: { notIn: ['DLD', 'RTD'] }, bdStatus: { contains: 'DELIVERED', mode: ci }, NOT: { bdStatus: { contains: 'UNDELIVERED', mode: ci } } } }),
+      this.prisma.shipment.count({ where: inSet(['DLD']) }),
       this.prisma.shipment.count({ where: inSet(['OFD']) }),
-      this.prisma.shipment.count({ where: { ...base, statusCode: { not: 'OFD' }, bdStatus: { contains: 'OUT FOR DELIVERY', mode: ci } } }),
       this.prisma.shipment.count({ where: inSet(['PKD', 'ORD', 'DPD', 'DRD']) }),
-      this.prisma.shipment.count({ where: { ...base, statusCode: 'MAN', bdStatus: { not: null }, NOT: [{ bdStatus: { contains: 'DELIVERED', mode: ci } }, { bdStatus: { contains: 'OUT FOR DELIVERY', mode: ci } }, { bdStatus: { contains: 'RTO', mode: ci } }, { bdStatus: { contains: 'RETURN', mode: ci } }] } }),
       this.prisma.shipment.count({ where: inSet(['UDL', 'RTO']) }),
-      this.prisma.shipment.count({ where: { ...base, statusCode: { notIn: ['UDL', 'RTO'] }, OR: [{ bdStatus: { contains: 'UNDELIVERED', mode: ci } }, { bdStatus: { contains: 'RTO', mode: ci } }] } }),
-      this.prisma.shipment.count({ where: { ...base, OR: [{ statusCode: { in: ['RTO', 'RTD'] } }, { bdStatus: { contains: 'RTO', mode: ci } }, { bdStatus: { contains: 'RETURN', mode: ci } }] } }),
+      this.prisma.shipment.count({ where: inSet(['RTO', 'RTD']) }),
       this.prisma.shipment.count({ where: { ...base, statusCode: 'MAN', bdStatus: null, bdWaybill: null, forwardingAwb: null } }),
       this.prisma.shipment.groupBy({ by: ['vendor'], where: base, _count: { _all: true } }),
-      this.prisma.pickupRequest.count({ where: { status: { in: ['REQUESTED', 'ASSIGNED'] as any }, ...(clientId != null ? { clientId } : {}) } }),
-      this.prisma.shipment.count({ where: { bdPickupToken: { not: null }, bdWaybill: null, statusCode: { not: 'CAN' }, ...(clientId != null ? { clientId } : {}) } }),
+      this.prisma.pickupRequest.count({ where: { status: { in: ['REQUESTED', 'ASSIGNED'] as any }, ...cw } }),
+      this.prisma.shipment.count({ where: { bdPickupToken: { not: null }, bdWaybill: null, statusCode: { not: 'CAN' }, ...cw } }),
     ]);
-    const delivered = nDeliv + bdDeliv, outForDelivery = nOfd + bdOfd, inTransit = nTransit + bdTransit, exceptions = nExc + bdExc;
     const carriers = byCarrier.map((c) => ({ vendor: c.vendor || 'SELF', count: c._count._all })).sort((a, b) => b.count - a.count);
     return {
       window, total, delivered, inTransit, outForDelivery, exceptions, returns, pendingBooking,

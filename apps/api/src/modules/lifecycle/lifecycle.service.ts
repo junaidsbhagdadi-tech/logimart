@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ShipmentStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { effectiveCode } from '../bluedart/bd-status';
 import { RateService } from '../billing/rate.service';
 import { StorageService } from '../storage/storage.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -249,22 +250,8 @@ export class LifecycleService {
         }
       } catch { /* ignore malformed cache */ }
     }
-    const bdToCode = (st: string): string | null => {
-      const u = String(st).toUpperCase();
-      if (/UNDELIVER|NOT DELIVER|UNDEL/.test(u)) return 'UDL';
-      if (/RTO|RETURN TO ORIG/.test(u)) return 'RTO';
-      if (/DELIVER/.test(u)) return 'DLD';
-      if (/OUT FOR DELIVERY|\bOFD\b/.test(u)) return 'OFD';
-      if (/ARRIV|REACHED|IN ?SCAN|RECEIVED AT|DESTINATION/.test(u)) return 'DRD';
-      if (/IN ?TRANSIT|DEPART|BAGGED|CONNECT|FORWARD|OUTSCAN/.test(u)) return 'DPD';
-      if (/PICK/.test(u)) return 'PKD';
-      return null;
-    };
-    const ORDER = ['MAN', 'PKD', 'ORD', 'DPD', 'DRD', 'OFD', 'DLD'];
-    let effCode = String(s.statusCode ?? 'MAN');
-    const bdStage = (s as any).bdStatus ? bdToCode(String((s as any).bdStatus)) : null;
-    if (bdStage === 'UDL' || bdStage === 'RTO') { if (effCode !== 'DLD' && effCode !== 'RTD') effCode = bdStage; }
-    else if (bdStage && ORDER.indexOf(bdStage) > ORDER.indexOf(effCode)) effCode = bdStage;
+    // Same mapper the carrier sync writes through with (bluedart/bd-status.ts) — covers a sync not yet run.
+    const effCode = effectiveCode(s.statusCode, (s as any).bdStatus);
     const effLabel = labelOf(effCode);
     const bdLatestLoc = bdScanRows.length ? bdScanRows.reduce((a, b) => (a.at > b.at ? a : b)).location : null;
 

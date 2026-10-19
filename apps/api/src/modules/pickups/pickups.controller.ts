@@ -4,6 +4,8 @@ import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles } from '../../common/rbac/roles.decorator';
 import { PickupsService } from './pickups.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { assertClientInScope, scopedClientIds } from '../../common/scope/data-scope';
 
 class CreatePickupDto {
   @IsOptional() @IsInt() clientId?: number; // ignored for client admins (taken from token)
@@ -44,7 +46,7 @@ class HandoffDto {
 @Controller('api/v1/pickups')
 @UseGuards(RolesGuard)
 export class PickupsController {
-  constructor(private readonly pickups: PickupsService) {}
+  constructor(private readonly pickups: PickupsService, private readonly prisma: PrismaService) {}
 
   @Post()
   @Roles(UserRole.CLIENT_ADMIN, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
@@ -64,23 +66,26 @@ export class PickupsController {
   }
 
   @Get()
-  list(@Req() req: any) {
+  async list(@Req() req: any) {
     const clientId = req.user.role === UserRole.CLIENT_ADMIN && req.user.clientId != null ? BigInt(req.user.clientId) : undefined;
-    return this.pickups.list(clientId);
+    return this.pickups.list(clientId, clientId == null ? await scopedClientIds(this.prisma, req.user) : null);
   }
 
   /** Unified pickups across all carriers (internal requests + BlueDart) — for the mobile Pickups app. */
   @Get('unified')
-  unified(@Req() req: any, @Query('status') status?: string, @Query('carrier') carrier?: string, @Query('window') window?: string) {
+  async unified(@Req() req: any, @Query('status') status?: string, @Query('carrier') carrier?: string, @Query('window') window?: string) {
     const clientId = req.user.role === UserRole.CLIENT_ADMIN ? Number(req.user.clientId) : undefined;
-    return this.pickups.unified({ status, carrier, window: (window as any) || 'all', clientId });
+    const scope = clientId == null ? await scopedClientIds(this.prisma, req.user) : null;
+    return this.pickups.unified({ status, carrier, window: (window as any) || 'all', clientId, scope });
   }
 
   /** Full detail for the CS pickup-request popup. */
   @Get(':id')
   @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
-  detail(@Param('id') id: string) {
-    return this.pickups.detail(Number(id));
+  async detail(@Param('id') id: string, @Req() req: any) {
+    const p = await this.pickups.detail(Number(id));
+    await assertClientInScope(this.prisma, req.user, p.clientId);
+    return p;
   }
 
   /** CS hands the pickup off to a vendor → BlueDart generates a pickup token; other vendors record it

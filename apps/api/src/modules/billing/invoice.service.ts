@@ -623,7 +623,7 @@ export class InvoiceService {
    * AWB-wise profit/loss: vendor cost (uploaded vendor bills) vs our sell (rate engine).
    * Matches a vendor bill to our shipment by carrier waybill (bdWaybill) or our AWB.
    */
-  async pnl(from?: string, to?: string) {
+  async pnl(from?: string, to?: string, scope?: bigint[] | null) {
     const where: any = {};
     if (from || to) where.pickupDate = { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) };
     const bills = await this.prisma.vendorBill.findMany({ where, orderBy: { createdAt: 'desc' }, take: 20000 });
@@ -644,6 +644,8 @@ export class InvoiceService {
         where: { OR: or },
         include: { pieces: true, client: { select: { legalName: true, accountCode: true, isCash: true, accountType: true } } },
       }) : null;
+      // #10 — a branch/company-scoped user only sees bills matched to their own customers.
+      if (scope && (!ship || !scope.includes(ship.clientId))) return null;
       // Cash / Wallet (prepaid) shipments are settled at booking — excluded from P&L.
       if (ship?.client && (ship.client.isCash || ship.client.accountType === 'WALLET')) return null;
       let sell = 0, ourAwb: string | null = null, customer: string | null = null;
@@ -742,9 +744,11 @@ export class InvoiceService {
    * Heads come from the stored per-line breakup; legacy lines fall back to freight/
    * fuel/other so nothing is lost.
    */
-  async chargeBreakup(clientId?: number, from?: string, to?: string) {
+  async chargeBreakup(clientId?: number, from?: string, to?: string, scope?: bigint[] | null) {
     const where: Prisma.InvoiceWhereInput = {};
     if (clientId) where.clientId = BigInt(clientId);
+    // #10 — scoped user: only their customers (a picked customer outside it matches nothing).
+    if (scope) where.clientId = clientId ? (scope.includes(BigInt(clientId)) ? BigInt(clientId) : { in: [] }) : { in: scope };
     if (from || to) where.periodEnd = { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) };
 
     const invoices = await this.prisma.invoice.findMany({

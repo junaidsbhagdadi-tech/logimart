@@ -90,9 +90,9 @@ export class PickupsService {
 
   /** Client admins see only their own requests; ops staff see all. Each row carries the requesting
    *  customer's code + name (for the CS list). */
-  async list(clientId?: bigint) {
+  async list(clientId?: bigint, scope?: bigint[] | null) {
     const rows = await this.prisma.pickupRequest.findMany({
-      where: clientId != null ? { clientId } : undefined,
+      where: clientId != null ? { clientId } : scope ? { clientId: { in: scope } } : undefined,
       orderBy: { createdAt: 'desc' },
     });
     const ids = [...new Set(rows.map((r) => r.clientId))];
@@ -169,12 +169,14 @@ export class PickupsService {
 
   /** Unified pickups across all carriers — internal pickup requests (any vendor / rider) merged with
    *  carrier-registered pickups (BlueDart). Powers the mobile Pickups app. Normalised + filterable. */
-  async unified(params: { status?: string; carrier?: string; window?: 'today' | 'upcoming' | 'all'; clientId?: number } = {}) {
+  async unified(params: { status?: string; carrier?: string; window?: 'today' | 'upcoming' | 'all'; clientId?: number; scope?: bigint[] | null } = {}) {
     const cf = params.clientId != null ? BigInt(params.clientId) : undefined;
+    // Customer login → its account; #10 branch/company-scoped staff → their customers.
+    const cw: any = cf != null ? { clientId: cf } : params.scope ? { clientId: { in: params.scope } } : {};
     const [reqs, bds] = await Promise.all([
-      this.prisma.pickupRequest.findMany({ where: cf != null ? { clientId: cf } : {}, orderBy: { createdAt: 'desc' }, take: 400 }),
+      this.prisma.pickupRequest.findMany({ where: cw, orderBy: { createdAt: 'desc' }, take: 400 }),
       this.prisma.shipment.findMany({
-        where: { bdPickupToken: { not: null }, ...(cf != null ? { clientId: cf } : {}) },
+        where: { bdPickupToken: { not: null }, ...cw },
         orderBy: { bdPickupAt: 'desc' }, take: 400,
         select: { awb: true, clientId: true, bdPickupToken: true, bdPickupAt: true, bdWaybill: true, bdStatus: true, statusCode: true, shipperName: true, shipperAddress1: true, shipperCity: true, shipperPincode: true, shipperContact: true, pieceCount: true },
       }),

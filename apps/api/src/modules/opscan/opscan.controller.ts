@@ -3,11 +3,13 @@ import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles } from '../../common/rbac/roles.decorator';
 import { OpscanService } from './opscan.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { scopedClientIds } from '../../common/scope/data-scope';
 
 @Controller('api/v1/opscan')
 @UseGuards(RolesGuard)
 export class OpscanController {
-  constructor(private readonly svc: OpscanService) {}
+  constructor(private readonly svc: OpscanService, private readonly prisma: PrismaService) {}
 
   @Post()
   @Roles(UserRole.DRIVER, UserRole.WAREHOUSE_HANDLER, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
@@ -17,7 +19,7 @@ export class OpscanController {
 
   @Get()
   @Roles(UserRole.DRIVER, UserRole.WAREHOUSE_HANDLER, UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
-  list(@Query('limit') limit?: string) {
-    return this.svc.list(limit ? Number(limit) : 50);
+  async list(@Req() req: any, @Query('limit') limit?: string) {
+    return this.svc.list(limit ? Number(limit) : 50, await scopedClientIds(this.prisma, req.user));
   }
 }
