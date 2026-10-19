@@ -148,6 +148,13 @@ export class BluedartController {
     return this.bd.schedulePickup(awb, body || {});
   }
 
+  /** Cancel the BlueDart pickup on one AWB (and clear its token so it can be re-handed-off). */
+  @Post('pickup-cancel/:awb')
+  @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  cancelShipmentPickup(@Param('awb') awb: string) {
+    return this.bd.cancelShipmentPickup(awb);
+  }
+
   /** Cancel a BlueDart pickup by token (may 415 if CancelPickup isn't enabled on the APIGEE app). */
   @Post('pickup-cancel')
   @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)

@@ -321,7 +321,14 @@ export class BluedartService implements OnModuleInit {
       // own payment term; isToPayShipper is just the carrier leg term — see schedulePickup.)
       try {
         const pk = await this.schedulePickup(awb);
-        return { awb, bdWaybill: null, token: pk.token, labelBase64: null, outstation: true, action: 'outstation-pickup', response: pk.response };
+        // Say exactly what happened — the old UI showed only "no waybill returned", hiding that a pickup
+        // was booked (and why). A wrong shipper pincode (e.g. a Mumbai address with a Bengaluru PIN)
+        // lands here too, so name the pincode/area/city so ops can spot it.
+        const pin = (s as any).shipperPincode ?? (s as any).client?.pincode ?? '?';
+        const reason = `Pickup pincode ${pin} is in BlueDart area ${org.area}, outside this BlueDart account's area (${home}), so BlueDart can't issue a waybill. ` +
+          `An outstation pickup was registered instead${pk.token ? ` (token ${pk.token})` : ''}; the waybill is picked up automatically once BlueDart collects it.` +
+          ((s as any).shipperCity ? ` Shipper city on the AWB is ${(s as any).shipperCity} — if that's where the pickup really is, the pincode is wrong: cancel this pickup, fix the pincode on Edit AWB and hand off again.` : '');
+        return { awb, bdWaybill: null, token: pk.token, labelBase64: null, outstation: true, action: 'outstation-pickup', reason, originArea: org.area, accountArea: home, response: pk.response };
       } catch (e: any) {
         throw new BadRequestException(
           `${awb} originates in ${org.area} (pin ${(s as any).shipperPincode ?? (s as any).client?.pincode ?? '?'}), outside the selected BlueDart account's area (${home}). ` +
@@ -342,6 +349,14 @@ export class BluedartService implements OnModuleInit {
       throw new BadRequestException(`BlueDart rejected the waybill: ${msg || JSON.stringify(result).slice(0, 300)}`);
     }
     const bdWaybill = result?.AWBNo || result?.awbNo || null;
+    if (!bdWaybill) {
+      // BlueDart answered without an error flag but also without an AWB — don't report a silent
+      // "success": record what it said on the shipment (bdError) and surface it.
+      const said = (result?.Status ?? result?.status ?? []).map((x: any) => x?.StatusInformation ?? x?.statusInformation ?? x?.StatusCode).filter(Boolean).join('; ');
+      const msg = `BlueDart returned no waybill${said ? `: ${said}` : ` (response: ${JSON.stringify(result ?? resp).slice(0, 300)})`}`;
+      await this.prisma.shipment.update({ where: { id: s.id }, data: { bdError: msg.slice(0, 500) } }).catch(() => {});
+      throw new BadRequestException(msg);
+    }
     // AWBPrintContent comes back as a byte ARRAY from APIGEE (not a base64 string) — convert it, else
     // storing it into the String column bdLabel throws a Prisma validation error (which previously
     // aborted the whole hand-off AFTER the AWB was already created).
@@ -669,6 +684,17 @@ export class BluedartService implements OnModuleInit {
       throw new BadRequestException(`BlueDart cancel pickup failed: ${this.bdStatusMsg(result) || JSON.stringify(result).slice(0, 300)}`);
     }
     return { tokenNo, cancelled: true, response: resp };
+  }
+
+  /** Cancel the BlueDart pickup registered on one AWB and clear it from the shipment, so it can be
+   *  corrected (e.g. wrong pickup pincode) and handed off again. */
+  async cancelShipmentPickup(awb: string) {
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, bdPickupToken: true, bdPickupAt: true, bdWaybill: true } });
+    if (!s) throw new BadRequestException(`AWB ${awb} not found`);
+    if (!s.bdPickupToken) throw new BadRequestException(`${awb} has no BlueDart pickup registered.`);
+    const r = await this.cancelPickup(s.bdPickupToken, s.bdPickupAt ? s.bdPickupAt.toISOString() : undefined);
+    await this.prisma.shipment.update({ where: { id: s.id }, data: { bdPickupToken: null, bdPickupAt: null, bdDispatchAt: null, bdError: null } });
+    return { awb, tokenNo: s.bdPickupToken, cancelled: r.cancelled };
   }
 
   /** Shipments with a BlueDart pickup registered — powers the "BlueDart pickups" section on the

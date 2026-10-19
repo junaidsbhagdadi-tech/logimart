@@ -282,7 +282,20 @@ export function ShipmentDetail() {
   const handoffBd = async () => {
     if (!confirm('Hand this shipment off to BlueDart (generate waybill)?')) return;
     setError(''); setMsg('');
-    try { const r = await api.bdHandoff(awb!); setMsg(r.bdWaybill ? `📦 Handed to BlueDart — waybill ${r.bdWaybill}` : 'Hand-off sent (no waybill returned).'); load(); }
+    try {
+      const r = await api.bdHandoff(awb!);
+      if (r.bdWaybill) setMsg(`📦 Handed to BlueDart — waybill ${r.bdWaybill}`);
+      // Out-of-area origin → BlueDart registers an outstation PICKUP (no waybill). Say so, and why.
+      else if (r.outstation) setError(`⚠ No waybill — outstation pickup booked instead${r.token ? ` (token ${r.token})` : ''}. ${r.reason ?? ''}`);
+      else setError('BlueDart returned no waybill — see the hand-off error below.');
+      load();
+    }
+    catch (e: any) { setError(e.message); load(); }
+  };
+  const cancelBdPickup = async () => {
+    if (!confirm('Cancel the BlueDart pickup registered on this AWB? Use this when the pickup was booked with wrong details (e.g. wrong pincode) — fix them on Edit AWB, then Hand to BlueDart again.')) return;
+    setError(''); setMsg('');
+    try { const r = await api.bdCancelShipmentPickup(awb!); setMsg(`Pickup token ${r.tokenNo} cancelled with BlueDart.`); load(); }
     catch (e: any) { setError(e.message); }
   };
   const trackBd = async () => {
@@ -664,7 +677,10 @@ export function ShipmentDetail() {
           <div><label>E-way bill</label>{s.ewbNo ?? '—'}</div>
           {s.product && <div><label>Product</label>{s.product}{s.docType ? ` · ${s.docType}` : ''}</div>}
           {s.bdWaybill && <div><label>BlueDart AWB</label>{s.bdWaybill}{s.bdStatus ? ` · ${s.bdStatus}` : ''}</div>}
-          {(s as any).bdPickupToken && <div><label>BlueDart pickup</label>Token {(s as any).bdPickupToken}{(s as any).bdPickupAt ? ` · pickup ${new Date((s as any).bdPickupAt).toLocaleDateString('en-GB')}` : ''}</div>}
+          {(s as any).bdPickupToken && <div><label>BlueDart pickup</label>Token {(s as any).bdPickupToken}{(s as any).bdPickupAt ? ` · pickup ${new Date((s as any).bdPickupAt).toLocaleDateString('en-GB')}` : ''}
+            {!s.bdWaybill && <div className="muted" style={{ fontSize: 11.5 }}>Pickup only — no waybill yet (fetched automatically once BlueDart collects).{' '}
+              <button className="secondary" style={{ padding: '1px 8px', fontSize: 11.5, color: 'var(--bad, #c0392b)' }} onClick={cancelBdPickup}>Cancel pickup</button></div>}
+          </div>}
           {!s.bdWaybill && (s as any).bdError && <div><label>BlueDart hand-off error</label><span style={{ color: 'var(--bad, #c0392b)', fontSize: 12 }}>{(s as any).bdError}</span></div>}
           {s.chargeWeight && <div><label>Charge weight</label>{s.chargeWeight} kg</div>}
           <div>
