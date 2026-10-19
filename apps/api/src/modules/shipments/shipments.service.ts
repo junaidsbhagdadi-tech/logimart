@@ -9,6 +9,7 @@ import { NotesService } from '../notes/notes.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { DelhiveryService } from '../delhivery/delhivery.service';
 import { BluedartService } from '../bluedart/bluedart.service';
+import { StorageService } from '../storage/storage.service';
 import { CreateShipmentDto } from './dto/create-shipment.dto';
 
 @Injectable()
@@ -20,6 +21,7 @@ export class ShipmentsService {
     private readonly notifications: NotificationsService,
     private readonly delhivery: DelhiveryService,
     private readonly bluedart: BluedartService,
+    private readonly storage: StorageService,
   ) {}
 
   /** Volumetric weight in kg from cm dimensions. Uses the customer/product card's divisor and, for
@@ -414,8 +416,32 @@ export class ShipmentsService {
     const s = await this.ownedShipment(awb, clientId);
     const remark = String(dto.remark || '').trim();
     if (!remark) throw new BadRequestException('Enter a remark.');
-    await this.prisma.shipment.update({ where: { id: s.id }, data: { customerRemark: remark, customerRemarkAt: new Date() } });
+    // Clear the CS acknowledgement so a NEW remark lights the CS bell again.
+    await this.prisma.shipment.update({ where: { id: s.id }, data: { customerRemark: remark, customerRemarkAt: new Date(), customerRemarkAckAt: null } });
     return { ok: true };
+  }
+
+  /** CS comments awaiting the customer (unread), across every account the login may book under. */
+  async portalCsComments(clientId: number) {
+    const allowed = [...(await this.bookableAccountIds(clientId))].map((x) => BigInt(x));
+    if (!allowed.length) return [];
+    const rows = await this.prisma.shipment.findMany({
+      where: { clientId: { in: allowed }, csComment: { not: null }, csCommentReadAt: null },
+      select: { awb: true, csComment: true, csCommentAt: true, consigneeName: true, consigneeCity: true, destPincode: true },
+      orderBy: { csCommentAt: 'desc' }, take: 50,
+    });
+    return rows.map((r) => ({ awb: r.awb, comment: r.csComment, at: r.csCommentAt, consignee: r.consigneeName, destination: r.consigneeCity ?? r.destPincode }));
+  }
+
+  /** Customer acknowledges a CS comment — optionally replying, which goes to the CS bell as a remark. */
+  async portalCsCommentRead(awb: string, clientId: number, dto: { reply?: string }) {
+    const s = await this.ownedShipment(awb, clientId);
+    const reply = String(dto?.reply || '').trim();
+    await this.prisma.shipment.update({
+      where: { id: s.id },
+      data: { csCommentReadAt: new Date(), ...(reply ? { customerRemark: reply, customerRemarkAt: new Date(), customerRemarkAckAt: null } : {}) },
+    });
+    return { ok: true, replied: !!reply };
   }
 
   /**
@@ -601,17 +627,30 @@ export class ShipmentsService {
   /** Change the booking date (createdAt) on several AWBs — for wrong-date corrections. Blocks
    *  already-invoiced AWBs (a date change would move their billing period). */
   async bulkChangeDate(awbs: string[], newDate: string, clientId?: number) {
-    const when = new Date(newDate);
-    if (isNaN(when.getTime())) throw new ConflictException('Invalid date.');
+    // Accept YYYY-MM-DD (date input) or DD-MM-YYYY / DD/MM/YYYY (typed), with optional HH:MM.
+    const raw = String(newDate ?? '').trim();
+    const dmy = raw.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:[ T](\d{1,2}):(\d{2}))?$/);
+    const when = dmy ? new Date(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]), Number(dmy[4] ?? 10), Number(dmy[5] ?? 0)) : new Date(raw);
+    if (isNaN(when.getTime())) throw new ConflictException('Invalid date — use DD-MM-YYYY.');
+    if (when.getTime() > Date.now() + 86400000) throw new ConflictException('Booking date cannot be in the future.');
     const list = [...new Set((awbs || []).map((a) => String(a).trim().toUpperCase()).filter(Boolean))];
     const results: { awb: string; ok: boolean; error?: string }[] = [];
     for (const awb of list) {
       try {
-        const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, clientId: true, _count: { select: { invoiceLines: true } } } });
+        const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, clientId: true, createdAt: true, expectedDelivery: true, _count: { select: { invoiceLines: true } } } });
         if (!s) throw new NotFoundException(`AWB ${awb} not found`);
         if (clientId != null && String(s.clientId) !== String(clientId)) throw new NotFoundException(`AWB ${awb} not found`);
         if (s._count.invoiceLines > 0) throw new ConflictException('already invoiced — cannot change its date');
-        await this.prisma.shipment.update({ where: { id: s.id }, data: { createdAt: when } });
+        // Move the whole booking: booking date, the manifest (MAN) scan the tracker shows as "Order Date",
+        // and the promised delivery by the same shift (EDD = booking + TAT).
+        const shift = when.getTime() - new Date(s.createdAt).getTime();
+        await this.prisma.$transaction([
+          this.prisma.shipment.update({
+            where: { id: s.id },
+            data: { createdAt: when, ...(s.expectedDelivery ? { expectedDelivery: new Date(new Date(s.expectedDelivery).getTime() + shift) } : {}) },
+          }),
+          this.prisma.scanLog.updateMany({ where: { awb, eventType: 'MAN' }, data: { scanAt: when } }),
+        ]);
         results.push({ awb, ok: true });
       } catch (e: any) { results.push({ awb, ok: false, error: e?.message ?? String(e) }); }
     }
@@ -675,6 +714,29 @@ export class ShipmentsService {
       select: { awb: true, dodHandedOverAt: true },
     });
     return { ...updated, message: `DOD draft handed over to consignor for ${awb}.` };
+  }
+
+  /** DOD cheque proof: the photo of the collected cheque/DD, and the courier AWB + date it was forwarded
+   *  to the consignor under. Any field may be sent alone; blanks leave the stored value unchanged. */
+  async dodCheque(awb: string, dto: { dataUrl?: string; courierAwb?: string; forwardedAt?: string; reference?: string }) {
+    const s = await this.prisma.shipment.findUnique({ where: { awb: String(awb).trim().toUpperCase() }, select: { id: true, awb: true, isDod: true, product: true } });
+    if (!s) throw new NotFoundException(`AWB ${awb} not found`);
+    if (!s.isDod && String(s.product ?? '').toUpperCase() !== 'DOD') throw new ForbiddenException(`${s.awb} is not a DOD shipment.`);
+    const data: any = {};
+    if (dto.dataUrl) {
+      if (!String(dto.dataUrl).startsWith('data:image/')) throw new BadRequestException('Upload an image of the cheque (JPG/PNG).');
+      data.dodChequeUrl = await this.storage.store(dto.dataUrl, 'dod-cheque');
+    }
+    if (dto.courierAwb != null && String(dto.courierAwb).trim()) data.dodCourierAwb = String(dto.courierAwb).trim();
+    if (dto.forwardedAt) {
+      const d = new Date(dto.forwardedAt);
+      if (isNaN(d.getTime())) throw new BadRequestException('Invalid forwarding date.');
+      data.dodForwardedAt = d;
+    }
+    if (dto.reference != null && String(dto.reference).trim()) data.dodReference = String(dto.reference).trim();
+    if (!Object.keys(data).length) throw new BadRequestException('Nothing to save — add the cheque photo, courier AWB or forwarding date.');
+    await this.prisma.shipment.update({ where: { id: s.id }, data });
+    return { ok: true, awb: s.awb, saved: Object.keys(data) };
   }
 
   /** To-Pay — record the freight collected from the consignee at delivery. */

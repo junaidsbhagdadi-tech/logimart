@@ -199,6 +199,21 @@ export class ShipmentsController {
 
   /** AWB Entry List (Xpresion-style flat grid). Declared before ':awb'. `search` matches any AWB
    *  across all shipments (not just the latest page). */
+  /** Portal: CS comments awaiting the customer (drives the customer's popup). Declared before ':awb'. */
+  @Get('portal/cs-comments')
+  @Roles(UserRole.CLIENT_ADMIN)
+  portalCsComments(@Req() req: any) {
+    if (req.user.clientId == null) return [];
+    return this.shipments.portalCsComments(Number(req.user.clientId));
+  }
+
+  /** Portal: mark a CS comment read, optionally replying (the reply lights the CS bell). */
+  @Post(':awb/portal-cs-read')
+  @Roles(UserRole.CLIENT_ADMIN)
+  portalCsRead(@Param('awb') awb: string, @Body() dto: { reply?: string }, @Req() req: any) {
+    return this.shipments.portalCsCommentRead(awb, Number(req.user.clientId), dto || {});
+  }
+
   @Get('awb-list')
   awbList(@Req() req: any, @Query('limit') limit?: string, @Query('search') search?: string, @Query('from') from?: string, @Query('to') to?: string) {
     const clientId = req.user.role === UserRole.CLIENT_ADMIN && req.user.clientId != null ? BigInt(req.user.clientId) : undefined;
@@ -233,9 +248,10 @@ export class ShipmentsController {
     return this.shipments.bulkCancel(dto?.awbs || [], req.user.sub ? BigInt(req.user.sub) : undefined, undefined, dto?.reason, { isSuper: req.user?.role === UserRole.SYS_ADMIN });
   }
 
-  /** Bulk booking-date change — correct the booking date (createdAt) on several AWBs (not invoiced). */
+  /** Bulk booking-date change — correct the booking date (createdAt) on several AWBs (not invoiced).
+   *  Finance uses this to move shipments into the month they're billed in. */
   @Post('bulk-date')
-  @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
   bulkDate(@Body() dto: { awbs: string[]; date: string }) {
     return this.shipments.bulkChangeDate(dto?.awbs || [], dto?.date);
   }
@@ -281,6 +297,13 @@ export class ShipmentsController {
   @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
   handoverDod(@Param('awb') awb: string) {
     return this.shipments.handoverDod(awb);
+  }
+
+  /** DOD — cheque photo + courier AWB/date the cheque was forwarded under (from the tracking page). */
+  @Post(':awb/dod/cheque')
+  @Roles(UserRole.DRIVER, UserRole.WAREHOUSE_HANDLER, UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  dodCheque(@Param('awb') awb: string, @Body() dto: { dataUrl?: string; courierAwb?: string; forwardedAt?: string; reference?: string }) {
+    return this.shipments.dodCheque(awb, dto || {});
   }
 
   /** To-Pay — record freight collected from the consignee at delivery. */

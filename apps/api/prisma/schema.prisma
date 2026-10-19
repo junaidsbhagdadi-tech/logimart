@@ -523,6 +523,10 @@ model Shipment {
   customerRemark   String?   // remark left by the customer via their portal (surfaced to CS + on tracking)
   customerRemarkAt DateTime?
   customerRemarkAckAt DateTime? // #16 — when CS acknowledged the latest customer remark (clears the CS prompt)
+  // CS → customer comment: shown to the customer as a popup on their portal until they read/respond.
+  csComment        String?   @db.Text
+  csCommentAt      DateTime?
+  csCommentReadAt  DateTime?
   referenceNo    String?
 
   vehicleNo      String?
@@ -576,6 +580,9 @@ model Shipment {
   dodCollectedAt   DateTime?      // set when the draft is collected (delivery gate)
   dodCollectedById BigInt?
   dodHandedOverAt  DateTime?      // draft handed over to the consignor
+  dodChequeUrl     String?        @db.Text // photo of the collected cheque/DD (Spaces key or inline data URI)
+  dodCourierAwb    String?        // courier AWB the cheque was forwarded to the consignor under
+  dodForwardedAt   DateTime?      // date the cheque was forwarded
 
   pieces ShipmentPiece[]
   pods   Pod[]
@@ -835,6 +842,7 @@ model LedgerEntry {
   invoiceId    BigInt?
   invoice      Invoice? @relation(fields: [invoiceId], references: [id])
   entryType    String   // charge | payment | adjustment | credit_note
+  reference    String?  // payment reference — UTR / cheque no. / mode, for reconciliation
   amount       Decimal  @db.Decimal(14, 2) // +debit / -credit to receivable
   balanceAfter Decimal  @db.Decimal(14, 2)
   createdAt    DateTime @default(now())

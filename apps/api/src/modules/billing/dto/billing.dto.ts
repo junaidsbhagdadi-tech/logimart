@@ -24,4 +24,5 @@ export class PayDto {
   @IsOptional() @IsNumber() @Min(0) tds?: number;
   @IsOptional() @IsNumber() @Min(0) other?: number;
   @IsOptional() @IsString() otherNote?: string;
+  @IsOptional() @IsString() reference?: string; // UTR / cheque no. / mode
 }

@@ -442,29 +442,48 @@ export class InvoiceService {
    * Sales dashboard by salesperson — their daily contribution: shipments booked and sales for THEIR
    * customers, split billed vs unbilled (unbilled is live-rated). Grouped on the customer's salesPerson.
    */
-  async salesByRep(from?: string, to?: string) {
+  async salesByRep(from?: string, to?: string, opts: { vendor?: string; clientId?: string; groupBy?: 'rep' | 'customer' | 'vendor' } = {}) {
     const gte = from ? new Date(from) : new Date(new Date().setHours(0, 0, 0, 0));
     const lte = to ? new Date(`${to}T23:59:59`) : new Date();
+    const where: any = { createdAt: { gte, lte } };
+    if (opts.vendor && opts.vendor.trim()) where.vendor = { equals: opts.vendor.trim(), mode: 'insensitive' };
+    if (opts.clientId && /^\d+$/.test(opts.clientId)) where.clientId = BigInt(opts.clientId);
+    const groupBy = opts.groupBy === 'customer' || opts.groupBy === 'vendor' ? opts.groupBy : 'rep';
     const ships = await this.prisma.shipment.findMany({
-      where: { createdAt: { gte, lte } }, take: 3000,
+      where, take: 20000,
       include: { pieces: { select: { status: true, deadKg: true, volKg: true, lengthCm: true, widthCm: true, heightCm: true } },
-        client: { select: { salesPerson: true, salesPersonMobile: true, salesPersonEmail: true } } },
+        client: { select: { id: true, legalName: true, accountCode: true, salesPerson: true, salesPersonMobile: true, salesPersonEmail: true } } },
     });
-    const billed = new Map((await this.prisma.invoiceLineItem.findMany({ where: { shipment: { createdAt: { gte, lte } } }, select: { shipmentId: true, amount: true } })).map((l) => [l.shipmentId.toString(), Number(l.amount)]));
+    const billed = new Map((await this.prisma.invoiceLineItem.findMany({ where: { shipmentId: { in: ships.map((s) => s.id) } }, select: { shipmentId: true, amount: true } })).map((l) => [l.shipmentId.toString(), Number(l.amount)]));
+    // Price the unbilled ones through the rate engine in concurrency batches (was one-at-a-time).
+    const unbilledAmt = new Map<string, number>();
+    const unbilled = ships.filter((s) => !billed.has(s.id.toString()));
+    for (let i = 0; i < unbilled.length; i += 12) {
+      await Promise.all(unbilled.slice(i, i + 12).map(async (s) => {
+        const ch = await this.rates.chargesForShipment(s as any, s.pieces as any).catch(() => null);
+        unbilledAmt.set(s.id.toString(), ch ? Number(ch.subtotal || 0) : 0);
+      }));
+    }
     const n2 = (x: number) => +Number(x || 0).toFixed(2);
     const M = new Map<string, any>();
     for (const s of ships) {
       const rep = (s.client?.salesPerson || '(unassigned)').trim() || '(unassigned)';
-      if (!M.has(rep)) M.set(rep, { salesPerson: rep, mobile: s.client?.salesPersonMobile ?? '', email: s.client?.salesPersonEmail ?? '', shipments: 0, billedCount: 0, unbilledCount: 0, billedSales: 0, unbilledSales: 0 });
-      const r = M.get(rep); r.shipments++;
+      const key = groupBy === 'customer' ? String(s.client?.id ?? '') : groupBy === 'vendor' ? (String(s.vendor || 'SELF').toUpperCase()) : rep;
+      if (!M.has(key)) M.set(key, {
+        key, salesPerson: rep, mobile: s.client?.salesPersonMobile ?? '', email: s.client?.salesPersonEmail ?? '',
+        customer: groupBy === 'customer' ? (s.client?.legalName ?? '') : '', accountCode: groupBy === 'customer' ? (s.client?.accountCode ?? '') : '',
+        vendor: groupBy === 'vendor' ? key : '',
+        shipments: 0, billedCount: 0, unbilledCount: 0, billedSales: 0, unbilledSales: 0,
+      });
+      const r = M.get(key); r.shipments++;
       const b = billed.get(s.id.toString());
       if (b != null) { r.billedCount++; r.billedSales += b; }
-      else { r.unbilledCount++; const ch = await this.rates.chargesForShipment(s as any, s.pieces as any); r.unbilledSales += ch ? Number(ch.subtotal || 0) : 0; }
+      else { r.unbilledCount++; r.unbilledSales += unbilledAmt.get(s.id.toString()) ?? 0; }
     }
     const rows = [...M.values()].map((r) => ({ ...r, billedSales: n2(r.billedSales), unbilledSales: n2(r.unbilledSales), totalSales: n2(r.billedSales + r.unbilledSales) })).sort((a, b) => b.totalSales - a.totalSales);
     const totals: any = {};
     for (const k of ['shipments', 'billedCount', 'unbilledCount', 'billedSales', 'unbilledSales', 'totalSales']) totals[k] = n2(rows.reduce((t, r) => t + r[k], 0));
-    return { from: gte, to: lte, count: rows.length, rows, totals };
+    return { from: gte, to: lte, groupBy, count: rows.length, rows, totals, truncated: ships.length >= 20000 };
   }
 
   /** Customer ids with at least one shipment in the period, excluding cash/wallet (prepaid) accounts. */
@@ -867,42 +886,46 @@ export class InvoiceService {
     tds = 0,
     other = 0,
     otherNote?: string,
+    reference?: string,
   ) {
-    const invoice = await this.prisma.invoice.findUnique({ where: { id: BigInt(invoiceId) } });
-    if (!invoice) throw new NotFoundException('Invoice not found');
-    const client = await this.prisma.b2bClient.findUnique({ where: { id: invoice.clientId } });
-    if (!client) throw new NotFoundException('Client not found');
-
+    amount = Math.max(0, Number(amount) || 0); tds = Math.max(0, Number(tds) || 0); other = Math.max(0, Number(other) || 0);
     const settled = +(amount + tds + other).toFixed(2);
-    let balance = Number(client.outstandingBal);
+    if (settled <= 0) throw new BadRequestException('Enter the amount received (and/or TDS / other deduction).');
 
-    const entry = async (entryType: string, amt: number) => {
-      balance = +(balance - amt).toFixed(2);
-      await this.prisma.ledgerEntry.create({
-        data: {
-          clientId: client.id,
-          invoiceId: invoice.id,
-          entryType,
-          amount: new Prisma.Decimal(-amt),
-          balanceAfter: new Prisma.Decimal(balance),
-        },
-      });
-    };
-    if (amount > 0) await entry('payment', amount);
-    if (tds > 0) await entry('tds', tds);
-    if (other > 0) await entry(otherNote ? `adjustment:${otherNote}` : 'adjustment', other);
+    return this.prisma.$transaction(async (tx) => {
+      const invoice = await tx.invoice.findUnique({ where: { id: BigInt(invoiceId) } });
+      if (!invoice) throw new NotFoundException('Invoice not found');
+      if (invoice.status === InvoiceStatus.DRAFT) throw new BadRequestException('Lock the invoice before recording a payment against it.');
+      if (invoice.status === InvoiceStatus.PAID) throw new BadRequestException(`${invoice.invoiceNo} is already fully paid.`);
+      const client = await tx.b2bClient.findUnique({ where: { id: invoice.clientId } });
+      if (!client) throw new NotFoundException('Client not found');
 
-    const fullyPaid = settled >= Number(invoice.total) - 0.01;
-    await this.prisma.invoice.update({
-      where: { id: invoice.id },
-      data: { status: fullyPaid ? InvoiceStatus.PAID : InvoiceStatus.PARTIALLY_PAID },
+      // What's still owed on THIS invoice = signed sum of its ledger (charge/debit +, payments/credits −).
+      const sum = await tx.ledgerEntry.aggregate({ where: { invoiceId: invoice.id }, _sum: { amount: true } });
+      const remainingBefore = +Number(sum._sum.amount ?? invoice.total).toFixed(2);
+      if (settled > remainingBefore + 0.01) {
+        throw new BadRequestException(`That settles ₹${settled.toLocaleString('en-IN')} but only ₹${remainingBefore.toLocaleString('en-IN')} is outstanding on ${invoice.invoiceNo}.`);
+      }
+
+      let balance = Number(client.outstandingBal);
+      const entry = async (entryType: string, amt: number, ref?: string) => {
+        balance = +(balance - amt).toFixed(2);
+        await tx.ledgerEntry.create({
+          data: { clientId: client.id, invoiceId: invoice.id, entryType, amount: new Prisma.Decimal(-amt), balanceAfter: new Prisma.Decimal(balance), reference: ref?.trim() || null },
+        });
+      };
+      if (amount > 0) await entry('payment', amount, reference);
+      if (tds > 0) await entry('tds', tds, reference);
+      if (other > 0) await entry(otherNote ? `adjustment:${otherNote}` : 'adjustment', other, reference);
+
+      // Fully paid when the CUMULATIVE settlement clears the invoice (not just this one payment).
+      const remainingAfter = +(remainingBefore - settled).toFixed(2);
+      const fullyPaid = remainingAfter <= 0.01;
+      await tx.invoice.update({ where: { id: invoice.id }, data: { status: fullyPaid ? InvoiceStatus.PAID : InvoiceStatus.PARTIALLY_PAID } });
+      const stillOverLimit = balance > Number(client.creditLimit);
+      await tx.b2bClient.update({ where: { id: client.id }, data: { outstandingBal: new Prisma.Decimal(balance), isCreditHold: stillOverLimit } });
+      return { invoiceId, received: amount, tds, other, settled, remaining: remainingAfter, newBalance: balance, fullyPaid, creditHold: stillOverLimit };
     });
-    const stillOverLimit = balance > Number(client.creditLimit);
-    await this.prisma.b2bClient.update({
-      where: { id: client.id },
-      data: { outstandingBal: new Prisma.Decimal(balance), isCreditHold: stillOverLimit },
-    });
-    return { invoiceId, received: amount, tds, other, settled, newBalance: balance, fullyPaid, creditHold: stillOverLimit };
   }
 
   /**

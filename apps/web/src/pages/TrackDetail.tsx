@@ -63,6 +63,29 @@ export function TrackDetail() {
     r.readAsDataURL(file);
   };
 
+  // DOD — cheque photo + courier AWB / forwarding date (asked automatically on DOD shipments).
+  const [dodForm, setDodForm] = useState({ reference: '', courierAwb: '', forwardedAt: '' });
+  const [dodBusy, setDodBusy] = useState(false);
+  useEffect(() => {
+    if (!d) return;
+    const x: any = d;
+    setDodForm({ reference: x.dodReference ?? '', courierAwb: x.dodCourierAwb ?? '', forwardedAt: x.dodForwardedAt ? String(x.dodForwardedAt).slice(0, 10) : '' });
+  }, [d]);
+  const saveDod = async (dataUrl?: string) => {
+    if (!d) return;
+    setDodBusy(true); setError(''); setMsg('');
+    try {
+      await api.dodCheque((d as any).awb, { dataUrl, reference: dodForm.reference || undefined, courierAwb: dodForm.courierAwb || undefined, forwardedAt: dodForm.forwardedAt || undefined });
+      setD(await api.lifecycleDetail((d as any).awb)); setMsg(dataUrl ? 'Cheque photo uploaded.' : 'DOD cheque details saved.');
+    } catch (err: any) { setError(err.message); } finally { setDodBusy(false); }
+  };
+  const uploadCheque = (file?: File) => {
+    if (!file) return;
+    const r = new FileReader();
+    r.onload = () => saveDod(String(r.result));
+    r.readAsDataURL(file);
+  };
+
   const search = async (val?: string, e?: FormEvent) => {
     e?.preventDefault(); setError(''); setMsg(''); setD(null);
     const q = (val ?? awb).trim().toUpperCase();
@@ -199,7 +222,11 @@ export function TrackDetail() {
               <Field label="AWB Number" value={d.awb} />
               <Field label="Customer" value={(d as any).customerName} />
               <Field label="Account No." value={(d as any).accountCode} color="var(--brand)" />
+              <Field label="Forwarding Vendor" value={(d as any).vendorName ?? (d as any).vendor ?? '—'} color="var(--brand)" />
               <Field label="Forwarding No." value={d.forwardingAwb} color="var(--brand)" />
+              <Field label="Weight (booked)" value={(d as any).chargeWeight != null ? `${Number((d as any).actualWeight).toLocaleString('en-IN')} kg actual · ${Number((d as any).chargeWeight).toLocaleString('en-IN')} kg chargeable` : '—'} />
+              <Field label="Pieces" value={(d as any).pieceCount ?? '—'} />
+              {(d as any).referenceNo && <Field label="Reference No." value={(d as any).referenceNo} />}
               {(d as any).carrierWaybill && <Field label="BlueDart Waybill" value={(d as any).carrierWaybill} color="var(--brand)" />}
               {(d as any).carrierStatus && <Field label="BlueDart Status" value={(d as any).carrierStatus} color="var(--ok, #16a34a)" />}
               {(d as any).pickupStage && <Field label="BlueDart Pickup" value={(d as any).pickupStage === 'PICKED' ? '✓ Picked up by BlueDart' : '🕑 Scheduled with BlueDart — pending collection'} color={(d as any).pickupStage === 'PICKED' ? 'var(--ok, #16a34a)' : 'var(--warn, #d97706)'} />}
@@ -229,6 +256,29 @@ export function TrackDetail() {
                 ? <span>🖼 <a href={d.deliveryPod} target="_blank" rel="noreferrer">view</a>{!isClient && <> · <label style={{ cursor: 'pointer', color: 'var(--brand)' }}>replace<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => uploadPodImg(e.target.files?.[0])} /></label></>}</span>
                 : (isClient ? '—' : <label style={{ cursor: 'pointer', color: 'var(--brand)' }}>⬆ Upload POD<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => uploadPodImg(e.target.files?.[0])} /></label>)} />
             </div>
+            {(d as any).isDod && (() => {
+              const x: any = d;
+              const incomplete = !x.dodChequeUrl || !x.dodCourierAwb || !x.dodForwardedAt;
+              return (
+                <div className="card" style={{ borderLeft: `4px solid ${incomplete ? 'var(--warn, #d97706)' : 'var(--ok, #16a34a)'}`, marginTop: 12 }}>
+                  <h3 style={{ margin: '0 0 4px' }}>💳 DOD cheque {incomplete ? <span className="badge EXCEPTION" style={{ fontSize: 11 }}>details needed</span> : <span className="badge DELIVERED" style={{ fontSize: 11 }}>complete</span>}</h3>
+                  {incomplete && !isClient && <div className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>This is a DOD shipment — upload the cheque photo and record the courier AWB and date it was forwarded under.</div>}
+                  <div className="grid cols-4" style={{ gap: 12, alignItems: 'end' }}>
+                    <div>
+                      <label>Cheque photo</label>
+                      <div style={{ fontSize: 13 }}>
+                        {x.dodChequeUrl ? <a href={x.dodChequeUrl} target="_blank" rel="noreferrer">🖼 view</a> : <span className="muted">not uploaded</span>}
+                        {!isClient && <> · <label style={{ cursor: 'pointer', color: 'var(--brand)' }}>{x.dodChequeUrl ? 'replace' : '⬆ upload'}<input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} disabled={dodBusy} onChange={(e) => { uploadCheque(e.target.files?.[0]); e.target.value = ''; }} /></label></>}
+                      </div>
+                    </div>
+                    <div><label>Cheque / DD no.</label><input value={dodForm.reference} disabled={isClient} onChange={(e) => setDodForm((f) => ({ ...f, reference: e.target.value }))} /></div>
+                    <div><label>Forwarded by courier AWB</label><input value={dodForm.courierAwb} disabled={isClient} onChange={(e) => setDodForm((f) => ({ ...f, courierAwb: e.target.value }))} /></div>
+                    <div><label>Forwarding date</label><input type="date" value={dodForm.forwardedAt} disabled={isClient} onChange={(e) => setDodForm((f) => ({ ...f, forwardedAt: e.target.value }))} /></div>
+                  </div>
+                  {!isClient && <button style={{ marginTop: 10 }} disabled={dodBusy} onClick={() => saveDod()}>{dodBusy ? 'Saving…' : 'Save DOD details'}</button>}
+                </div>
+              );
+            })()}
             {(d as any).vendorContacts?.length > 0 && (
               <div className="card" style={{ borderLeft: '4px solid var(--brand)', marginTop: 12 }}>
                 <h3 style={{ margin: '0 0 6px' }}>🏢 Carrier branch contacts <span className="muted" style={{ fontSize: 12, fontWeight: 400 }}>— who to call for this route (📍 = current branch)</span></h3>

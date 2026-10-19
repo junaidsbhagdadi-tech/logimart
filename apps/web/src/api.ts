@@ -15,6 +15,12 @@ export class ApiError extends Error {
   }
 }
 
+/** "?a=1&b=2" from an object, skipping empty values ('' / null / undefined). */
+function qs(p: Record<string, unknown>): string {
+  const parts = Object.entries(p).filter(([, v]) => v != null && v !== '').map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`);
+  return parts.length ? `?${parts.join('&')}` : '';
+}
+
 async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
   const token = getToken();
   const res = await fetch(BASE + path, {
@@ -383,6 +389,8 @@ export const api = {
     request<{ message: string }>(`/api/v1/shipments/${awb}/dod/collect`, { method: 'POST', body: JSON.stringify(body) }),
   handoverDod: (awb: string) =>
     request<{ message: string }>(`/api/v1/shipments/${awb}/dod/handover`, { method: 'POST' }),
+  dodCheque: (awb: string, body: { dataUrl?: string; reference?: string; courierAwb?: string; forwardedAt?: string }) =>
+    request<{ ok: boolean; saved: string[] }>(`/api/v1/shipments/${awb}/dod/cheque`, { method: 'POST', body: JSON.stringify(body) }),
   collectFreight: (awb: string, amount: number) =>
     request<{ message: string }>(`/api/v1/shipments/${awb}/collect-freight`, { method: 'POST', body: JSON.stringify({ amount }) }),
   setForwarding: (awb: string, body: { vendor?: string; forwardingAwb?: string }) =>
@@ -428,6 +436,9 @@ export const api = {
     request<{ ok: boolean }>(`/api/v1/shipments/${awb}/portal-appointment`, { method: 'POST', body: JSON.stringify(body) }),
   portalRemark: (awb: string, remark: string) =>
     request<{ ok: boolean }>(`/api/v1/shipments/${awb}/portal-remark`, { method: 'POST', body: JSON.stringify({ remark }) }),
+  portalCsComments: () => request<{ awb: string; comment: string; at: string; consignee: string | null; destination: string | null }[]>('/api/v1/shipments/portal/cs-comments'),
+  portalCsRead: (awb: string, reply?: string) =>
+    request<{ ok: boolean; replied: boolean }>(`/api/v1/shipments/${awb}/portal-cs-read`, { method: 'POST', body: JSON.stringify({ reply: reply || undefined }) }),
   portalRateEstimate: (body: { product: string; vendor?: string; originPincode?: string; destPincode: string; deadKg: number; pcs?: number; declaredValue?: number }) =>
     request<{ ok: boolean; message?: string; subtotal?: number; gst?: number; total?: number; chargeableKg?: number; isOda?: boolean; lines?: any[]; basis?: string }>('/api/v1/shipments/portal-rate-estimate', { method: 'POST', body: JSON.stringify(body) }),
   portalRateEstimateVendors: (body: { product: string; originPincode?: string; destPincode: string; deadKg: number; pcs?: number; declaredValue?: number; lengthCm?: number; widthCm?: number; heightCm?: number }) =>
@@ -445,12 +456,12 @@ export const api = {
     request<{ total: number; changed: number; results: { awb: string; ok: boolean; error?: string }[] }>(`/api/v1/shipments/bulk-date`, { method: 'POST', body: JSON.stringify({ awbs, date }) }),
   listInvoices: () => request<Invoice[]>('/api/v1/billing/invoices'),
   getInvoice: (id: string) => request<Invoice>(`/api/v1/billing/invoices/${id}`),
-  csDashboard: (from?: string, to?: string) =>
-    request<{ count: number; ndrCount: number; overdueCount: number; rows: any[] }>(`/api/v1/lifecycle/cs-dashboard${from || to ? `?${from ? 'from=' + from : ''}${from && to ? '&' : ''}${to ? 'to=' + to : ''}` : ''}`),
-  opsDashboard: () => request<{ buckets: { key: string; label: string; count: number }[]; byCode: Record<string, number> }>('/api/v1/lifecycle/ops-dashboard'),
-  opsBucket: (code: string) => request<any[]>(`/api/v1/lifecycle/ops-bucket/${code}`),
-  salesByRep: (from?: string, to?: string) =>
-    request<{ from: string; to: string; count: number; totals: any; rows: any[] }>(`/api/v1/billing/mis/sales-by-rep${from || to ? `?${from ? 'from=' + from : ''}${from && to ? '&' : ''}${to ? 'to=' + to : ''}` : ''}`),
+  csDashboard: (from?: string, to?: string, f: { vendor?: string; clientId?: string } = {}) =>
+    request<{ count: number; ndrCount: number; overdueCount: number; rows: any[] }>(`/api/v1/lifecycle/cs-dashboard${qs({ from, to, ...f })}`),
+  opsDashboard: (f: { vendor?: string; clientId?: string } = {}) => request<{ buckets: { key: string; label: string; count: number }[]; byCode: Record<string, number> }>(`/api/v1/lifecycle/ops-dashboard${qs(f)}`),
+  opsBucket: (code: string, f: { vendor?: string; clientId?: string } = {}) => request<any[]>(`/api/v1/lifecycle/ops-bucket/${code}${qs(f)}`),
+  salesByRep: (from?: string, to?: string, f: { vendor?: string; clientId?: string; groupBy?: string } = {}) =>
+    request<{ from: string; to: string; groupBy?: string; count: number; totals: any; rows: any[]; truncated?: boolean }>(`/api/v1/billing/mis/sales-by-rep${qs({ from, to, ...f })}`),
   clearShipments: () => request<{ ok: boolean; totalDeleted: number; cleared: Record<string, number>; kept: string[] }>('/api/v1/admin/clear-shipments', { method: 'POST' }),
   resetCustomersShipments: () => request<{ ok: boolean; totalDeleted: number; cleared: Record<string, number>; kept: string[] }>('/api/v1/admin/reset-customers-shipments', { method: 'POST' }),
   bulkDeleteShipments: (awbs: string[]) => request<{ ok: boolean; deleted: number; detail: Record<string, number> }>('/api/v1/shipments/bulk-delete', { method: 'POST', body: JSON.stringify({ awbs }) }),
@@ -477,8 +488,8 @@ export const api = {
     request('/api/v1/billing/invoices/' + invoiceId + '/undispute', {
       method: 'POST', body: JSON.stringify({ shipmentId }),
     }),
-  payInvoice: (invoiceId: string, body: { amount: number; tds?: number; other?: number; otherNote?: string }) =>
-    request<{ settled: number; newBalance: number; fullyPaid: boolean }>(
+  payInvoice: (invoiceId: string, body: { amount: number; tds?: number; other?: number; otherNote?: string; reference?: string }) =>
+    request<{ settled: number; remaining: number; newBalance: number; fullyPaid: boolean }>(
       '/api/v1/billing/invoices/' + invoiceId + '/pay',
       { method: 'POST', body: JSON.stringify(body) },
     ),
@@ -595,7 +606,7 @@ export const api = {
   deleteMaster: (type: string, code: string) => request(`/api/v1/masters/${type}/${encodeURIComponent(code)}`, { method: 'DELETE' }),
 
   // ---- operational scans (pickup-in, out-scan, manifest-in, undelivered, miss-route) ----
-  recordScan: (body: { awb: string; eventType: string; serviceCenter?: string; remark?: string }) =>
+  recordScan: (body: { awb: string; eventType: string; serviceCenter?: string; remark?: string; notifyCustomer?: boolean }) =>
     request<{ awb: string; eventType: string; shipmentUpdated: boolean }>('/api/v1/opscan', { method: 'POST', body: JSON.stringify(body) }),
   listScans: (limit = 50) => request<{ id: string; awb: string; eventType: string; serviceCenter: string | null; scanAt: string }[]>(`/api/v1/opscan?limit=${limit}`),
 

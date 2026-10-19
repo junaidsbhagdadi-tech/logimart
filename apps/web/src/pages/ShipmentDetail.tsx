@@ -269,8 +269,13 @@ export function ShipmentDetail() {
   const addComment = async () => {
     const text = prompt('Progress comment / remark for this shipment:');
     if (!text) return;
+    // Optionally push it to the customer — they get a popup on their portal to read and reply.
+    const notifyCustomer = confirm('Show this comment to the CUSTOMER?\n\nOK = they get a popup on their portal login to read and respond.\nCancel = internal note only (tracking history).');
     setError(''); setMsg('');
-    try { await api.recordScan({ awb: awb!, eventType: 'COMMENT', remark: text }); setMsg('💬 Comment added to tracking.'); }
+    try {
+      await api.recordScan({ awb: awb!, eventType: 'COMMENT', remark: text, notifyCustomer });
+      setMsg(notifyCustomer ? '💬 Comment added and sent to the customer’s portal.' : '💬 Internal comment added to tracking.');
+    }
     catch (e: any) { setError(e.message); }
   };
 
@@ -402,9 +407,22 @@ export function ShipmentDetail() {
           {canAssign && (s.bdWaybill || (/BLUE|BDR/i.test(String((s as any).vendor || '')) && (s as any).forwardingAwb)) && <button className="secondary" onClick={trackBd}>🔎 BlueDart track</button>}
           {canAssign && s.bdWaybill && String((s as any).statusCode).toUpperCase() !== 'CAN' && <button className="secondary" onClick={cancelBd}>🚫 Cancel BlueDart</button>}
           {s.bdWaybill && <a href={`/shipments/${s.awb}/bd-awb`} target="_blank" rel="noreferrer"><button className="secondary">🖨 BlueDart AWB</button></a>}
-          {canAssign && String((s as any).statusCode).toUpperCase() !== 'CAN' && <button className="secondary" onClick={pickupBd} title={String((s as any).paymentTerm).toUpperCase() === 'TO_PAY' ? 'Register a BlueDart to-pay (FOD) pickup — works from outside the home area' : 'Register a BlueDart pickup for this shipment'}>📅 BlueDart pickup{String((s as any).paymentTerm).toUpperCase() === 'TO_PAY' ? ' (to-pay)' : ''}</button>}
+          {canAssign && String((s as any).statusCode).toUpperCase() !== 'CAN' && (() => {
+            const toPay = String((s as any).paymentTerm).toUpperCase() === 'TO_PAY' || ['FOD', 'TOSFC', 'TAPEX', 'TODP'].includes(String((s as any).product ?? '').toUpperCase());
+            return <button className="secondary" onClick={pickupBd} title={toPay ? 'Register a BlueDart to-pay (FOD) pickup — works from outside the home area' : 'Register a BlueDart pickup for this shipment'}>📅 BlueDart pickup{toPay ? ' (to-pay)' : ''}</button>;
+          })()}
           {isFinance && <button className="secondary" onClick={() => { setReweighMode((v) => !v); setMsg(''); }}>⚖ {reweighMode ? 'Cancel re-weigh' : 'Re-weigh'}</button>}
           {((canEditCharges && !(s as any).invoiced) || (isSysAdmin && (s as any).invoiced)) && <button className="secondary" onClick={openEdit} title={(s as any).invoiced ? 'Super-admin: edit an already-invoiced AWB (does NOT change the raised invoice)' : 'Edit product, consignee, vendor & other details'}>✏️ Edit AWB{(s as any).invoiced ? ' (invoiced)' : ''}</button>}
+          {canEditCharges && !(s as any).invoiced && <button className="secondary" title="Change the booking / manifest date (e.g. to bill it in another month)" onClick={async () => {
+            const t = new Date((s as any).createdAt ?? Date.now()); const p = (n: number) => String(n).padStart(2, '0');
+            const date = window.prompt(`New booking / manifest date for ${s.awb} (DD-MM-YYYY):`, `${p(t.getDate())}-${p(t.getMonth() + 1)}-${t.getFullYear()}`);
+            if (!date) return;
+            try {
+              const r = await api.bulkDateAwbs([s.awb], date);
+              if (r.changed) { setMsg(`📅 Booking date changed to ${date}.`); load(); }
+              else setError(r.results[0]?.error || 'Not changed.');
+            } catch (e: any) { setError(e.message); }
+          }}>📅 Change date</button>}
           {isFinance && <button className="secondary" onClick={() => { setTransferOpen((v) => !v); setMsg(''); setError(''); }} title="Wrong-entry transfer to another customer">🔄 Transfer</button>}
           <Link to={`/shipments/${s.awb}/labels`}><button>🏷 Print labels</button></Link>
           <a href={`/shipments/${s.awb}/bd-label`} target="_blank" rel="noreferrer"><button>🏷 Courier label</button></a>

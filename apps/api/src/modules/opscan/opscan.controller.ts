@@ -11,7 +11,7 @@ export class OpscanController {
 
   @Post()
   @Roles(UserRole.DRIVER, UserRole.WAREHOUSE_HANDLER, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
-  record(@Body() dto: { awb: string; eventType: string; serviceCenter?: string; remark?: string }, @Req() req: any) {
+  record(@Body() dto: { awb: string; eventType: string; serviceCenter?: string; remark?: string; notifyCustomer?: boolean }, @Req() req: any) {
     return this.svc.record(dto, req.user?.sub ? BigInt(req.user.sub) : undefined);
   }
 

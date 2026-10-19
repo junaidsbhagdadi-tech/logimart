@@ -15,8 +15,12 @@ export class OpscanService {
   constructor(private readonly prisma: PrismaService) {}
 
   /** Record an operational scan (pickup-in, out-scan, manifest-in, undelivered, miss-route). */
-  async record(dto: { awb: string; eventType: string; serviceCenter?: string; remark?: string }, userId?: bigint) {
+  async record(dto: { awb: string; eventType: string; serviceCenter?: string; remark?: string; notifyCustomer?: boolean }, userId?: bigint) {
     const awb = (dto.awb || '').trim().toUpperCase();
+    // A CS comment flagged for the customer is pushed to their portal as a popup until they read / reply.
+    if (dto.eventType === 'COMMENT' && dto.notifyCustomer && dto.remark?.trim()) {
+      await this.prisma.shipment.updateMany({ where: { awb }, data: { csComment: dto.remark.trim(), csCommentAt: new Date(), csCommentReadAt: null } });
+    }
     const log = await this.prisma.scanLog.create({
       data: {
         awb,

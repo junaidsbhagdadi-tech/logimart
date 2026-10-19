@@ -189,7 +189,7 @@ export class LifecycleService {
     if (!shipment) throw new BadRequestException(`AWB ${awb} not found.`);
     await this.assertOwnedByClient(shipment.clientId, clientId);
     const labelOf = (c: string) => LIFECYCLE.find((l) => l.code === c)?.label || c;
-    const timeline = logs.map((l) => ({ code: l.eventType, label: labelOf(l.eventType), at: l.scanAt, remark: l.remark }));
+    const timeline = logs.filter((l) => clientId == null || l.eventType !== 'COMMENT').map((l) => ({ code: l.eventType, label: labelOf(l.eventType), at: l.scanAt, remark: l.remark }));
     return { ...shipment, currentLabel: labelOf(String(shipment.statusCode || 'MAN')), timeline };
   }
 
@@ -266,10 +266,32 @@ export class LifecycleService {
     const effLabel = labelOf(effCode);
     const bdLatestLoc = bdScanRows.length ? bdScanRows.reduce((a, b) => (a.at > b.at ? a : b)).location : null;
 
+    // Forwarding vendor's display name (shipments store the vendor CODE, e.g. "BDR").
+    const vendorName = s.vendor
+      ? (await this.prisma.vendor.findFirst({ where: { vendorCode: { equals: String(s.vendor), mode: 'insensitive' } }, select: { name: true } }).catch(() => null))?.name ?? null
+      : null;
+    const isDodShip = !!s.isDod || String(s.product ?? '').toUpperCase() === 'DOD';
+
     return {
       awb: s.awb,
       forwardingAwb: s.forwardingAwb ?? null,
       vendor: s.vendor ?? null,
+      vendorName,
+      // Booking-time weights / pieces, so a tracker lookup shows the full booking picture.
+      actualWeight: Number(s.totalDeadKg ?? 0),
+      volWeight: Number(s.totalVolKg ?? 0),
+      chargeWeight: s.chargeWeight != null ? Number(s.chargeWeight) : Math.max(Number(s.totalDeadKg ?? 0), Number(s.totalVolKg ?? 0)),
+      pieceCount: s.pieceCount,
+      referenceNo: (s as any).referenceNo ?? null,
+      bookedAt: s.createdAt,
+      // DOD (cheque/DD on delivery): the collected cheque photo + where it was forwarded.
+      isDod: isDodShip,
+      dodReference: (s as any).dodReference ?? null,
+      dodBankName: (s as any).dodBankName ?? null,
+      dodCollectedAt: (s as any).dodCollectedAt ?? null,
+      dodChequeUrl: await this.storage.resolve((s as any).dodChequeUrl),
+      dodCourierAwb: (s as any).dodCourierAwb ?? null,
+      dodForwardedAt: (s as any).dodForwardedAt ?? null,
       // BlueDart carrier hand-off / pickup — the waybill (auto-discovered by reference once collected),
       // its live status, and the pickup stage (SCHEDULED once registered → PICKED once collected).
       carrierWaybill: (s as any).bdWaybill ?? null,
@@ -318,7 +340,8 @@ export class LifecycleService {
       },
       pieces: s.pieces,
       scans: [
-        ...logs.map((l) => ({ at: l.scanAt as Date, code: l.eventType, label: labelOf(l.eventType), location: l.serviceCenter ?? null, by: uname(l.scannedById), reason: ['UDL', 'RTO', 'CAN'].includes(l.eventType) ? l.remark : null, remark: l.remark })),
+        // A customer login never sees internal staff COMMENTs (customer-directed ones arrive as a portal popup).
+        ...logs.filter((l) => clientId == null || l.eventType !== 'COMMENT').map((l) => ({ at: l.scanAt as Date, code: l.eventType, label: labelOf(l.eventType), location: l.serviceCenter ?? null, by: uname(l.scannedById), reason: ['UDL', 'RTO', 'CAN'].includes(l.eventType) ? l.remark : null, remark: l.remark })),
         ...bdScanRows,
       ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()),
     };
@@ -401,14 +424,22 @@ export class LifecycleService {
   }
 
   /** Customer-Service dashboard: pending / stuck shipments with aging, NDR (undelivered) + overdue flags. */
-  async csDashboard(from?: string, to?: string) {
+  /** Team-dashboard filter: a vendor code (case-insensitive) and/or one customer. */
+  private dashWhere(f: { vendor?: string; clientId?: string } = {}) {
+    const w: any = {};
+    if (f.vendor && String(f.vendor).trim()) w.vendor = { equals: String(f.vendor).trim(), mode: 'insensitive' };
+    if (f.clientId && /^\d+$/.test(String(f.clientId))) w.clientId = BigInt(f.clientId);
+    return w;
+  }
+
+  async csDashboard(from?: string, to?: string, f: { vendor?: string; clientId?: string } = {}) {
     const gte = from ? new Date(from) : new Date(Date.now() - 30 * 86400000);
     const lte = to ? new Date(`${to}T23:59:59`) : new Date();
     const labelOf = (c: string) => LIFECYCLE.find((l) => l.code === c)?.label || c;
     const ships = await this.prisma.shipment.findMany({
-      where: { createdAt: { gte, lte }, statusCode: { notIn: ['DLD', 'RTD', 'CAN'] } },
-      orderBy: { createdAt: 'asc' }, take: 1500,
-      select: { awb: true, statusCode: true, statusAt: true, createdAt: true, consigneeName: true, consigneePhone: true, consigneeCity: true, destZone: true, expectedDelivery: true, exceptionFlag: true, client: { select: { legalName: true, accountCode: true } } },
+      where: { createdAt: { gte, lte }, statusCode: { notIn: ['DLD', 'RTD', 'CAN'] }, ...this.dashWhere(f) },
+      orderBy: { createdAt: 'asc' }, take: 5000,
+      select: { awb: true, statusCode: true, statusAt: true, createdAt: true, vendor: true, forwardingAwb: true, consigneeName: true, consigneePhone: true, consigneeCity: true, destZone: true, expectedDelivery: true, exceptionFlag: true, client: { select: { legalName: true, accountCode: true } } },
     });
     const now = Date.now();
     const rows = ships.map((s) => {
@@ -416,6 +447,7 @@ export class LifecycleService {
       const edd = s.expectedDelivery ? new Date(s.expectedDelivery).getTime() : null;
       return {
         awb: s.awb, customer: s.client?.legalName ?? '', code: s.client?.accountCode ?? '',
+        vendor: s.vendor ?? '', forwardingAwb: s.forwardingAwb ?? '', bookedAt: s.createdAt,
         consignee: s.consigneeName ?? '', phone: s.consigneePhone ?? '', destination: s.consigneeCity ?? s.destZone ?? '',
         statusCode: code, status: labelOf(code),
         ageDays: Math.floor((now - new Date(s.createdAt).getTime()) / 86400000),
@@ -427,8 +459,8 @@ export class LifecycleService {
   }
 
   /** Operations dashboard: task buckets by milestone stage (with counts). */
-  async opsDashboard() {
-    const grouped = await this.prisma.shipment.groupBy({ by: ['statusCode'], _count: { _all: true } });
+  async opsDashboard(f: { vendor?: string; clientId?: string } = {}) {
+    const grouped = await this.prisma.shipment.groupBy({ by: ['statusCode'], where: this.dashWhere(f), _count: { _all: true } });
     const c: Record<string, number> = {};
     for (const g of grouped) c[String(g.statusCode || 'MAN')] = g._count._all;
     return {
@@ -447,14 +479,17 @@ export class LifecycleService {
   }
 
   /** Shipments in one milestone bucket (drill-down for the ops dashboard). */
-  async opsBucket(code: string, limit = 300) {
+  async opsBucket(code: string, limit = 2000, f: { vendor?: string; clientId?: string } = {}) {
     const labelOf = (x: string) => LIFECYCLE.find((l) => l.code === x)?.label || x;
     const ships = await this.prisma.shipment.findMany({
-      where: { statusCode: code === 'RTO' ? { in: ['RTO', 'RTD'] } : code },
+      where: { statusCode: code === 'RTO' ? { in: ['RTO', 'RTD'] } : code, ...this.dashWhere(f) },
       orderBy: { statusAt: 'asc' }, take: limit,
-      select: { awb: true, statusCode: true, statusAt: true, consigneeCity: true, destZone: true, currentLocation: true, client: { select: { legalName: true } } },
+      select: { awb: true, statusCode: true, statusAt: true, createdAt: true, vendor: true, forwardingAwb: true, consigneeCity: true, destZone: true, currentLocation: true, client: { select: { legalName: true, accountCode: true } } },
     });
-    return ships.map((s) => ({ awb: s.awb, customer: s.client?.legalName ?? '', destination: s.consigneeCity ?? s.destZone ?? '', at: s.statusAt, location: s.currentLocation ?? '', status: labelOf(String(s.statusCode || 'MAN')) }));
+    return ships.map((s) => ({
+      awb: s.awb, customer: s.client?.legalName ?? '', code: s.client?.accountCode ?? '', vendor: s.vendor ?? '', forwardingAwb: s.forwardingAwb ?? '',
+      bookedAt: s.createdAt, destination: s.consigneeCity ?? s.destZone ?? '', at: s.statusAt, location: s.currentLocation ?? '', status: labelOf(String(s.statusCode || 'MAN')),
+    }));
   }
 
   /** Counts by milestone code (for the mile dashboards). */

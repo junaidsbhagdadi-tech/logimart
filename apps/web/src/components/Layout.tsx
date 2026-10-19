@@ -47,6 +47,22 @@ export function Layout() {
   const [custOpen, setCustOpen] = useState(false);
   const loadCustReqs = () => api.customerRequests().then(setCustReqs).catch(() => {});
   const ackCust = async (awb: string) => { try { await api.ackCustomerRequest(awb); setCustReqs((r) => r.filter((x) => x.awb !== awb)); } catch { /* ignore */ } };
+  // Customer side: CS comments awaiting the customer — opens automatically so they read & respond.
+  const [csMsgs, setCsMsgs] = useState<{ awb: string; comment: string; at: string; consignee: string | null; destination: string | null }[]>([]);
+  const [csOpen, setCsOpen] = useState(false);
+  const [csReply, setCsReply] = useState<Record<string, string>>({});
+  const loadCsMsgs = () => api.portalCsComments().then((m) => { setCsMsgs(m); if (m.length) setCsOpen(true); }).catch(() => {});
+  useEffect(() => {
+    if (!user || user.role !== 'CLIENT_ADMIN') return;
+    loadCsMsgs();
+    const t = setInterval(() => api.portalCsComments().then(setCsMsgs).catch(() => {}), 60000);
+    return () => clearInterval(t);
+  }, [user]);
+  const answerCs = async (awb: string, withReply: boolean) => {
+    const reply = withReply ? (csReply[awb] || '').trim() : '';
+    if (withReply && !reply) return;
+    try { await api.portalCsRead(awb, reply || undefined); setCsMsgs((m) => m.filter((x) => x.awb !== awb)); } catch { /* keep it in the list */ }
+  };
   // Customer pickup requests awaiting CS hand-off (not yet handed to a vendor).
   const [pendPickups, setPendPickups] = useState<any[]>([]);
   const [pickOpen, setPickOpen] = useState(false);
@@ -56,7 +72,7 @@ export function Layout() {
     api.upcomingAppointments().then(setAppts).catch(() => {});
     loadCustReqs();
     loadPendPickups();
-    const t = setInterval(loadPendPickups, 60000); // poll for new pickup requests
+    const t = setInterval(() => { loadPendPickups(); loadCustReqs(); }, 60000); // poll new pickup requests + customer replies
     return () => clearInterval(t);
   }, [user]);
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -335,6 +351,37 @@ export function Layout() {
                 </div>
               ))}
               <div className="muted" style={{ fontSize: 11, textAlign: 'center', marginTop: 4 }}>Open Pickups to hand off to a vendor →</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {isClient && csMsgs.length > 0 && (
+        <div style={{ position: 'fixed', top: 14, right: 18, zIndex: 1200 }}>
+          <button onClick={() => setCsOpen((o) => !o)} title="Messages from our customer-service team"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 20, fontSize: 13, fontWeight: 700, boxShadow: '0 2px 8px rgba(0,0,0,.15)', background: 'var(--brand, #0e7490)', color: '#fff', border: 'none' }}>
+            💬 {csMsgs.length} message{csMsgs.length > 1 ? 's' : ''} from us
+          </button>
+          {csOpen && (
+            <div style={{ position: 'absolute', right: 0, top: 44, width: 420, maxWidth: 'calc(100vw - 36px)', maxHeight: 480, overflowY: 'auto', background: 'var(--surface, #fff)', border: '1px solid var(--line, #d7dadf)', borderRadius: 12, boxShadow: '0 8px 28px rgba(0,0,0,.18)', padding: 10 }}>
+              <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <strong style={{ fontSize: 14 }}>💬 Our team needs your attention</strong>
+                <button className="secondary" style={{ padding: '2px 8px', fontSize: 12 }} onClick={() => setCsOpen(false)}>✕</button>
+              </div>
+              {csMsgs.map((c) => (
+                <div key={c.awb} style={{ padding: '8px 10px', borderRadius: 8, marginBottom: 6, borderLeft: '3px solid var(--brand, #0e7490)', background: 'var(--surface-2, #f1f3f6)' }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, cursor: 'pointer' }} onClick={() => { setCsOpen(false); nav(`/tracker/${c.awb}`); }}>
+                    {c.awb} <span className="muted" style={{ fontWeight: 500 }}>· {c.consignee || '—'}{c.destination ? ` · ${c.destination}` : ''}</span>
+                  </div>
+                  <div style={{ fontSize: 13, margin: '4px 0' }}>“{c.comment}”</div>
+                  <div className="muted" style={{ fontSize: 11, marginBottom: 6 }}>{c.at ? new Date(c.at).toLocaleString('en-GB') : ''}</div>
+                  <textarea rows={2} value={csReply[c.awb] || ''} onChange={(e) => setCsReply((r) => ({ ...r, [c.awb]: e.target.value }))} placeholder="Type your reply (optional)…" style={{ width: '100%', fontSize: 13 }} />
+                  <div className="row" style={{ gap: 6, marginTop: 6, justifyContent: 'flex-end' }}>
+                    <button className="secondary" style={{ padding: '3px 10px', fontSize: 12 }} onClick={() => answerCs(c.awb, false)}>✓ Got it</button>
+                    <button style={{ padding: '3px 10px', fontSize: 12 }} disabled={!(csReply[c.awb] || '').trim()} onClick={() => answerCs(c.awb, true)}>Send reply</button>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>

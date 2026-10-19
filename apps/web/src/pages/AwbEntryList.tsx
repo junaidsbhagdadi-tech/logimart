@@ -36,7 +36,8 @@ const PAGE = 10;
 export function AwbEntryList() {
   const { user } = useAuth();
   const isSuper = user?.role === 'SYS_ADMIN';
-  const isOps = ['HUB_MANAGER', 'SYS_ADMIN'].includes(user?.role || ''); // bulk void / date-change
+  const isOps = ['HUB_MANAGER', 'SYS_ADMIN'].includes(user?.role || ''); // bulk void
+  const canChangeDate = ['HUB_MANAGER', 'FINANCE_EXEC', 'SYS_ADMIN'].includes(user?.role || ''); // finance moves AWBs between billing months
   const [rows, setRows] = useState<Row[]>([]);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [page, setPage] = useState(0);
@@ -125,7 +126,8 @@ export function AwbEntryList() {
   const changeDateSelected = async () => {
     if (sel.size === 0) return;
     const awbs = Array.from(sel);
-    const date = window.prompt(`Change the booking date of ${awbs.length} AWB(s) to (YYYY-MM-DD):`, new Date().toISOString().slice(0, 10));
+    const t = new Date(); const p = (n: number) => String(n).padStart(2, '0');
+    const date = window.prompt(`Change the booking / manifest date of ${awbs.length} AWB(s) to (DD-MM-YYYY):\n\nThe tracker's order date and the EDD move with it. Already-invoiced AWBs are skipped.`, `${p(t.getDate())}-${p(t.getMonth() + 1)}-${t.getFullYear()}`);
     if (!date) return;
     setError(''); setMsg('Updating…');
     try {
@@ -193,7 +195,7 @@ export function AwbEntryList() {
           </div>
           <div className="row" style={{ gap: 8 }}>
             {isOps && sel.size > 0 && <button className="secondary" title="Void the selected AWBs — excluded from billing, record kept (reversible)" onClick={voidSelected}>🚫 Void {sel.size}</button>}
-            {isOps && sel.size > 0 && <button className="secondary" title="Change the booking date of the selected AWBs" onClick={changeDateSelected}>📅 Change date {sel.size}</button>}
+            {canChangeDate && sel.size > 0 && <button className="secondary" title="Change the booking / manifest date of the selected AWBs" onClick={changeDateSelected}>📅 Change date {sel.size}</button>}
             {isSuper && sel.size > 0 && <button style={{ background: 'var(--bad, #c0392b)', color: '#fff' }} title="Permanently delete the selected shipments" onClick={deleteSelected}>🗑 Delete {sel.size}</button>}
             {isSuper && <button className="secondary" style={{ color: 'var(--danger, #c0392b)' }} title="Delete ALL shipments + invoices (keeps config)" onClick={clearAll}>🧹 Clear test shipments</button>}
             {isOps && <button className="secondary" title="Void many AWBs from a pasted / uploaded list" onClick={() => setVoidOpen(true)}>🚫 Void by list</button>}
@@ -206,11 +208,11 @@ export function AwbEntryList() {
           <table>
             <thead>
               <tr>
-                {isOps && <th style={{ width: 32 }}><input type="checkbox" checked={allSelected} onChange={toggleSelAll} style={{ width: 'auto' }} title="Select all (filtered)" /></th>}
+                {canChangeDate && <th style={{ width: 32 }}><input type="checkbox" checked={allSelected} onChange={toggleSelAll} style={{ width: 'auto' }} title="Select all (filtered)" /></th>}
                 {COLS.map((c) => <th key={c.key}>{c.label}</th>)}<th>Action</th>
               </tr>
               <tr>
-                {isOps && <th></th>}
+                {canChangeDate && <th></th>}
                 {COLS.map((c) => (
                   <th key={c.key} style={{ padding: 4 }}>
                     <input value={filters[c.key] || ''} onChange={(e) => setFilter(c.key, e.target.value)} placeholder={c.label}
@@ -223,7 +225,7 @@ export function AwbEntryList() {
             <tbody>
               {slice.map((r) => (
                 <tr key={r.awb} style={sel.has(r.awb) ? { background: 'var(--bg-soft, #f2f4f7)' } : undefined}>
-                  {isOps && <td><input type="checkbox" checked={sel.has(r.awb)} onChange={() => toggleSel(r.awb)} style={{ width: 'auto' }} /></td>}
+                  {canChangeDate && <td><input type="checkbox" checked={sel.has(r.awb)} onChange={() => toggleSel(r.awb)} style={{ width: 'auto' }} /></td>}
                   <td><Link to={`/shipments/${r.awb}`}><strong>{r.awb}</strong></Link>{r.invoiced && <span title="Invoiced — locked for editing" style={{ marginLeft: 6 }}>🔒</span>}</td>
                   <td>{fmtDate(r.bookDate)}</td>
                   <td>{r.shipperName}</td>

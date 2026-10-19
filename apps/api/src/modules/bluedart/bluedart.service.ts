@@ -427,16 +427,26 @@ export class BluedartService implements OnModuleInit {
   private bdProductCode(s: any): string {
     const p = String(s.product ?? '').toUpperCase();
     if (BLUEDART.productMap[p]) return BLUEDART.productMap[p];
+    // Reverse/to-pay variants carry the base product after a TO/T prefix (TODP→DP, TOSFC→SFC, TAPEX→APEX).
+    const base = p === 'TODP' ? 'DP' : p === 'TOSFC' ? 'SFC' : p === 'TAPEX' ? 'APEX' : p;
     const sm = String(s.serviceMode ?? '');
-    if (/AIR|APEX/i.test(sm + p)) return 'A';           // Dart Apex (air)
-    if (/\bDP\b|TDD|NDD|PRIORITY/i.test(p)) return 'D'; // Domestic Priority (air express / courier)
-    return 'E';                                          // Surface / Ground (was wrongly 'D')
+    if (/AIR|APEX/i.test(sm + base)) return 'A';           // Dart Apex (air)
+    if (/\bDP\b|TDD|NDD|PRIORITY/i.test(base)) return 'D'; // Domestic Priority (air express / courier)
+    return 'E';                                             // Surface / Ground
+  }
+
+  /** To-pay (freight collected at delivery) — set either as the payment term or by product: FOD
+   *  (freight on delivery) and the reverse products, which are billed as "Reverse pick up (Topay)".
+   *  Every shipment in this system is booked PREPAID, so the product is what actually signals to-pay. */
+  private isToPay(s: any): boolean {
+    if (String(s?.paymentTerm ?? '').toUpperCase() === 'TO_PAY') return true;
+    return ['FOD', 'TOSFC', 'TAPEX', 'TODP'].includes(String(s?.product ?? '').toUpperCase());
   }
 
   /** BlueDart→Logimart pay-mode → SubProductCode: P=Prepaid, C=COD, A=FOD(To-Pay), D=DOD. */
   private bdSubProduct(s: any): string {
     if (s.isDod) return 'D';
-    if (String(s.paymentTerm).toUpperCase() === 'TO_PAY') return 'A';
+    if (this.isToPay(s)) return 'A';
     return 'P';
   }
 
@@ -452,7 +462,7 @@ export class BluedartService implements OnModuleInit {
       g.Count += 1; dimGroups.set(k, g);
     }
     const dims = [...dimGroups.values()];
-    const codAmount = s.isDod ? Number(s.dodAmount || 0) : (String(s.paymentTerm).toUpperCase() === 'TO_PAY' ? Number(s.freightToCollect || 0) : 0);
+    const codAmount = s.isDod ? Number(s.dodAmount || 0) : (this.isToPay(s) ? Number(s.freightToCollect || 0) : 0);
 
     return {
       Request: {
@@ -468,7 +478,7 @@ export class BluedartService implements OnModuleInit {
           Sender: (s.shipperName ?? s.client?.legalName ?? '').slice(0, 20),
           // To-Pay (FOD) shipments must be flagged so BlueDart collects freight at destination — this
           // is also what lets a To-Pay pickup be raised outside the account's home area.
-          isToPayCustomer: String(s.paymentTerm).toUpperCase() === 'TO_PAY',
+          isToPayCustomer: this.isToPay(s),
         },
         Consignee: {
           ConsigneeName: (s.consigneeName ?? '').slice(0, 30),
@@ -536,7 +546,7 @@ export class BluedartService implements OnModuleInit {
     const when = dto.date ? new Date(dto.date) : new Date();
     // ShipmentPickupTime is "HH:MM"; BLUEDART_PICKUP_TIME is stored HHMM.
     const time = dto.time || String(BLUEDART.pickupTime || '1600').replace(/^(\d{2})(\d{2})$/, '$1:$2');
-    const toPay = String(s.paymentTerm).toUpperCase() === 'TO_PAY';
+    const toPay = this.isToPay(s);
     const weight = Number(Number(s.chargeWeight ?? s.totalDeadKg ?? 1).toFixed(2));
     const name = String(s.shipperName ?? s.client?.legalName ?? '').slice(0, 30);
     const addr1 = String(s.shipperAddress1 ?? s.client?.addressLine ?? '').trim();

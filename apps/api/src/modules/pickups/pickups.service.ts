@@ -145,7 +145,9 @@ export class PickupsService {
         pincode: String(p.pincode ?? ''), name: p.contactName ?? '', phone: p.contactPhone ?? '',
         address1: p.pickupAddress, city: p.city ?? undefined,
         pieces: p.estPieces ?? 1, weight: p.weight != null ? Number(p.weight) : undefined,
-        toPay: opts.toPay, date: opts.date, remarks: `Portal pickup #${id}`,
+        // To-pay if CS ticked it, or the requested product is a to-pay / reverse product.
+        toPay: opts.toPay || ['FOD', 'TOSFC', 'TAPEX', 'TODP'].includes(String(p.product ?? '').toUpperCase()),
+        date: opts.date, remarks: `Portal pickup #${id}`,
       });
       const updated = await this.prisma.pickupRequest.update({
         where: { id: BigInt(id) }, data: { token: res.token, handoffAt: new Date(), vendor: vendor || 'BDR', status: PickupStatus.ASSIGNED },

@@ -74,16 +74,20 @@ export class LifecycleController {
   /** Customer-Service dashboard — pending/stuck shipments + NDR. */
   @Get('cs-dashboard')
   @Roles(...OPS, UserRole.SALES)
-  csDashboard(@Query('from') from?: string, @Query('to') to?: string) { return this.svc.csDashboard(from, to); }
+  csDashboard(@Query('from') from?: string, @Query('to') to?: string, @Query('vendor') vendor?: string, @Query('clientId') clientId?: string) {
+    return this.svc.csDashboard(from, to, { vendor, clientId });
+  }
 
-  /** Operations dashboard — task buckets by stage. */
+  /** Operations dashboard — task buckets by stage (optionally one vendor / one customer). */
   @Get('ops-dashboard')
   @Roles(...OPS, UserRole.SALES)
-  opsDashboard() { return this.svc.opsDashboard(); }
+  opsDashboard(@Query('vendor') vendor?: string, @Query('clientId') clientId?: string) { return this.svc.opsDashboard({ vendor, clientId }); }
 
   @Get('ops-bucket/:code')
-  @Roles(...OPS)
-  opsBucket(@Param('code') code: string) { return this.svc.opsBucket(String(code).toUpperCase()); }
+  @Roles(...OPS, UserRole.SALES)
+  opsBucket(@Param('code') code: string, @Query('vendor') vendor?: string, @Query('clientId') clientId?: string) {
+    return this.svc.opsBucket(String(code).toUpperCase(), 2000, { vendor, clientId });
+  }
 
   @Post('bag')
   @Roles(...OPS)

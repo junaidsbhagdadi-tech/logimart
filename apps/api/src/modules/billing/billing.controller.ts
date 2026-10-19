@@ -74,21 +74,23 @@ export class BillingController {
   /** Lock a line under dispute (clean lines stay payable). */
   @Post('billing/invoices/:id/dispute')
   @Roles(UserRole.FINANCE_EXEC, UserRole.CLIENT_ADMIN, UserRole.SYS_ADMIN)
-  dispute(@Param('id') id: string, @Body() dto: DisputeDto) {
+  async dispute(@Param('id') id: string, @Body() dto: DisputeDto, @Req() req: any) {
+    await this.assertClientInvoice(req, Number(id));
     return this.invoices.dispute(Number(id), dto.shipmentId, dto.reason);
   }
 
   /** Clear a line's dispute and unlock it. */
   @Post('billing/invoices/:id/undispute')
   @Roles(UserRole.FINANCE_EXEC, UserRole.CLIENT_ADMIN, UserRole.SYS_ADMIN)
-  undispute(@Param('id') id: string, @Body() dto: { shipmentId: number }) {
+  async undispute(@Param('id') id: string, @Body() dto: { shipmentId: number }, @Req() req: any) {
+    await this.assertClientInvoice(req, Number(id));
     return this.invoices.undispute(Number(id), Number(dto?.shipmentId));
   }
 
   @Post('billing/invoices/:id/pay')
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
   pay(@Param('id') id: string, @Body() dto: PayDto) {
-    return this.invoices.pay(Number(id), dto.amount, dto.tds ?? 0, dto.other ?? 0, dto.otherNote);
+    return this.invoices.pay(Number(id), dto.amount, dto.tds ?? 0, dto.other ?? 0, dto.otherNote, dto.reference);
   }
 
   /** Lock (issue) a DRAFT invoice — posts the ledger charge and freezes it (#5). */
@@ -150,8 +152,8 @@ export class BillingController {
   /** Sales dashboard by salesperson — daily contribution incl. unbilled. */
   @Get('billing/mis/sales-by-rep')
   @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SALES, UserRole.SYS_ADMIN)
-  salesByRep(@Query('from') from?: string, @Query('to') to?: string) {
-    return this.invoices.salesByRep(from, to);
+  salesByRep(@Query('from') from?: string, @Query('to') to?: string, @Query('vendor') vendor?: string, @Query('clientId') clientId?: string, @Query('groupBy') groupBy?: string) {
+    return this.invoices.salesByRep(from, to, { vendor, clientId, groupBy: groupBy as any });
   }
 
   /** Bill-working export (per-AWB charge breakdown) for a client — matches the bill sheet. */
@@ -215,14 +217,24 @@ export class BillingController {
 
   @Get('billing/clients/:id/statement')
   @Roles(UserRole.FINANCE_EXEC, UserRole.CLIENT_ADMIN, UserRole.SYS_ADMIN)
-  statement(@Param('id') id: string) {
-    return this.invoices.statement(Number(id));
+  statement(@Param('id') id: string, @Req() req: any) {
+    // A customer login only ever gets its OWN statement, whatever id is in the URL.
+    const cid = req.user.role === UserRole.CLIENT_ADMIN ? Number(this.clientIdOf(req)) : Number(id);
+    return this.invoices.statement(cid);
   }
 
   /** Credit limit / outstanding / hold status. */
   @Get('clients/:id/credit')
   @Roles(UserRole.FINANCE_EXEC, UserRole.CLIENT_ADMIN, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
-  credit(@Param('id') id: string) {
-    return this.invoices.getCredit(Number(id));
+  credit(@Param('id') id: string, @Req() req: any) {
+    const cid = req.user.role === UserRole.CLIENT_ADMIN ? Number(this.clientIdOf(req)) : Number(id);
+    return this.invoices.getCredit(cid);
+  }
+
+  /** A customer login may only act on its own, already-sent invoices. */
+  private async assertClientInvoice(req: any, invoiceId: number) {
+    if (req.user.role !== UserRole.CLIENT_ADMIN) return;
+    const inv = await this.invoices.get(invoiceId);
+    if (String((inv as any).clientId) !== String(this.clientIdOf(req)) || !(inv as any).sentAt) throw new NotFoundException('Invoice not found');
   }
 }
