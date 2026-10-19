@@ -12,6 +12,7 @@ export function BillWorksheet() {
   const [to, setTo] = useState('');
   const [data, setData] = useState<{ columns: { header: string; key: string }[]; client: any; count: number; rows: Record<string, any>[]; truncated?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [prog, setProg] = useState<{ done: number; total: number } | null>(null);
   const [err, setErr] = useState('');
 
   useEffect(() => { api.listClients().then(setClients).catch(() => {}); }, []);
@@ -21,9 +22,10 @@ export function BillWorksheet() {
 
   const run = async () => {
     if (!allCustomers && clientIds.length === 0) { setErr('Select at least one customer, or tick “All customers”.'); return; }
-    setErr(''); setBusy(true); setData(null);
-    try { setData(await api.billWorksheet(allCustomers ? 'all' : clientIds, from || undefined, to || undefined)); }
-    catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+    setErr(''); setBusy(true); setData(null); setProg(null);
+    // Runs on the server in the background (a full month takes minutes) — progress shows AWBs priced.
+    try { setData(await api.billWorksheet(allCustomers ? 'all' : clientIds, from || undefined, to || undefined, (done, total) => setProg({ done, total }))); }
+    catch (e: any) { setErr(e.message); } finally { setBusy(false); setProg(null); }
   };
 
   const exportXlsx = async () => {
@@ -71,12 +73,12 @@ export function BillWorksheet() {
                 </div>
               </>
             )}
-            {allCustomers && <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>Runs for every billable customer (cash / wallet excluded). A full month is fine; it caps at 25,000 AWBs.</div>}
+            {allCustomers && <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>Runs for every billable customer (cash / wallet excluded). A full month is fine (runs in the background — you can watch the progress); it caps at 25,000 AWBs.</div>}
           </div>
           <div><label>From <span className="muted">(opt.)</span></label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
           <div><label>To <span className="muted">(opt.)</span></label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
           <div className="row" style={{ gap: 8 }}>
-            <button onClick={run} disabled={busy}>{busy ? 'Working…' : 'Generate'}</button>
+            <button onClick={run} disabled={busy}>{busy ? (prog?.total ? `Pricing ${prog.done.toLocaleString()} / ${prog.total.toLocaleString()}…` : 'Working…') : 'Generate'}</button>
             {data && <button className="secondary" onClick={exportXlsx}>⬇ Excel</button>}
           </div>
         </div>

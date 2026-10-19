@@ -91,7 +91,9 @@ function PnlTab() {
   const [sign, setSign] = useState<'all' | 'pos' | 'zero' | 'neg'>('all');
   const [vendor, setVendor] = useState('');
 
-  const run = async () => { setErr(''); setBusy(true); try { setData(await api.getPnl(from || undefined, to || undefined)); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
+  const [prog, setProg] = useState<{ done: number; total: number } | null>(null);
+  // Background job on the server (was a 504 on even a few days) — progress = vendor bills priced.
+  const run = async () => { setErr(''); setBusy(true); setProg(null); try { setData(await api.getPnl(from || undefined, to || undefined, (done, total) => setProg({ done, total }))); } catch (e: any) { setErr(e.message); } finally { setBusy(false); setProg(null); } };
   useEffect(() => { run(); /* eslint-disable-next-line */ }, []);
 
   const vendors = Array.from(new Set((data?.rows ?? []).map((r) => String(r.vendorCode ?? '').trim()).filter(Boolean))).sort();
@@ -122,7 +124,7 @@ function PnlTab() {
         <div className="row" style={{ gap: 12, alignItems: 'flex-end' }}>
           <div><label>From <span className="muted">(opt.)</span></label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
           <div><label>To <span className="muted">(opt.)</span></label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
-          <button onClick={run} disabled={busy}>{busy ? 'Working…' : 'Refresh'}</button>
+          <button onClick={run} disabled={busy}>{busy ? (prog?.total ? `Pricing ${prog.done.toLocaleString()} / ${prog.total.toLocaleString()}…` : 'Working…') : 'Refresh'}</button>
           <button className="secondary" onClick={exportXls} disabled={!rows.length}>⬇ Excel</button>
         </div>
         <div className="row" style={{ gap: 10, alignItems: 'flex-end', marginTop: 10 }}>

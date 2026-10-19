@@ -195,6 +195,21 @@ export class BillingController {
     return this.invoices.pnl(from, to, await this.scope(req));
   }
 
+  /** Start a background Bill Worksheet / Vendor P&L run (a month is longer than the gateway timeout →
+   *  was a 504). Returns a job id; poll GET billing/reports/:id for progress, then the result. */
+  @Post('billing/reports/:kind')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  async startReport(@Param('kind') kind: string, @Body() body: { clientIds?: number[] | 'all'; from?: string; to?: string }, @Req() req: any) {
+    if (kind !== 'worksheet' && kind !== 'pnl') throw new BadRequestException('Unknown report.');
+    return this.invoices.startReport(kind, body || {}, await this.scope(req), req.user?.sub ? BigInt(req.user.sub) : null);
+  }
+
+  @Get('billing/reports/:id')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  reportStatus(@Param('id') id: string, @Req() req: any) {
+    return this.invoices.reportStatus(BigInt(id), req.user?.sub ? BigInt(req.user.sub) : null, req.user?.role === UserRole.SYS_ADMIN);
+  }
+
   /** Receivables aging across all clients (current / 1-30 / 31-60 / 61-90 / 90+). */
   @Get('billing/aging')
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)

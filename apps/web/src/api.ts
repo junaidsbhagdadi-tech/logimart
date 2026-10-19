@@ -54,6 +54,19 @@ async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
+/** Start a background report (Bill Worksheet / Vendor P&L) and poll it until done. A month of AWBs takes
+ *  longer than the gateway allows for one request (was a 504), so the server runs it as a job. */
+async function runReport<T>(kind: 'worksheet' | 'pnl', params: Record<string, unknown>, onProgress?: (done: number, total: number) => void): Promise<T> {
+  const { jobId } = await request<{ jobId: string }>(`/api/v1/billing/reports/${kind}`, { method: 'POST', body: JSON.stringify(params) });
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const j = await request<{ status: string; progress: number; total: number; error?: string | null; result?: T | null }>(`/api/v1/billing/reports/${jobId}`);
+    if (j.status === 'DONE') return j.result as T;
+    if (j.status === 'FAILED') throw new ApiError(500, j.error || 'Report failed — please retry.');
+    onProgress?.(j.progress, j.total);
+  }
+}
+
 // ---- types ----
 export interface Piece {
   id: string;
@@ -417,11 +430,12 @@ export const api = {
     request<{ ok: boolean; awb: string; overrides: Record<string, number> | null }>(`/api/v1/shipments/${awb}/charge-overrides`, { method: 'POST', body: JSON.stringify({ overrides }) }),
   transferShipment: (awb: string, clientId: string | number) =>
     request<{ awb: string; transferredTo: { id: string; legalName: string; accountCode: string } }>(`/api/v1/shipments/${awb}/transfer`, { method: 'POST', body: JSON.stringify({ clientId }) }),
-  // Pass a single id, an array of ids, or 'all'.
-  billWorksheet: (target: string | number | (string | number)[] | 'all', from?: string, to?: string) => {
-    const q = target === 'all' ? 'all=1' : Array.isArray(target) ? `clientIds=${target.join(',')}` : `clientId=${target}`;
-    return request<{ columns: { header: string; key: string }[]; client: { accountCode: string; legalName: string }; count: number; rows: Record<string, any>[]; truncated?: boolean }>(
-      `/api/v1/billing/bill-worksheet?${q}${from ? `&from=${from}` : ''}${to ? `&to=${to}` : ''}`);
+  // Pass a single id, an array of ids, or 'all'. Runs as a background job (a month is longer than the
+  // gateway timeout — was a 504); onProgress(done, total) reports how many AWBs are priced so far.
+  billWorksheet: (target: string | number | (string | number)[] | 'all', from?: string, to?: string, onProgress?: (done: number, total: number) => void) => {
+    const clientIds = target === 'all' ? 'all' : (Array.isArray(target) ? target : [target]).map(Number);
+    return runReport<{ columns: { header: string; key: string }[]; client: { accountCode: string; legalName: string }; count: number; rows: Record<string, any>[]; truncated?: boolean }>(
+      'worksheet', { clientIds, from, to }, onProgress);
   },
   chargeBreakup: (clientId?: string | number, from?: string, to?: string) =>
     request<{
@@ -598,7 +612,8 @@ export const api = {
   listEdl: (network?: string) => request<any[]>(`/api/v1/rate-cards/edl${network ? `?network=${network}` : ''}`),
   listVendorBills: (vendorCode?: string) => request<any[]>(`/api/v1/vendor-bills${vendorCode ? `?vendorCode=${vendorCode}` : ''}`),
   bulkVendorBills: (rows: any[]) => request<{ imported: number; failed: number; errors: any[] }>('/api/v1/vendor-bills/bulk', { method: 'POST', body: JSON.stringify({ rows }) }),
-  getPnl: (from?: string, to?: string) => request<{ count: number; totalSell: number; totalCost: number; totalMargin: number; rows: any[] }>(`/api/v1/billing/pnl${from || to ? `?${from ? `from=${from}` : ''}${to ? `&to=${to}` : ''}` : ''}`),
+  getPnl: (from?: string, to?: string, onProgress?: (done: number, total: number) => void) =>
+    runReport<{ count: number; totalSell: number; totalCost: number; totalMargin: number; rows: any[] }>('pnl', { from, to }, onProgress),
   listHubs: () => request<{ id: string; code: string; name: string; zone: string }[]>('/api/v1/hubs'),
 
   // ---- generic master data (Zone, Country, State, Product, Charge, …) ----

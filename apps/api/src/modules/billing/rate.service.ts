@@ -41,6 +41,22 @@ const BASE_DIESEL = 98.33; // reference base diesel ₹/L — DSC = basePct + ma
 export class RateService {
   constructor(private readonly prisma: PrismaService, private readonly perBox: PerBoxService) {}
 
+  // Short-lived read cache for lookups that DON'T vary per AWB — masters, settings, a customer's rate
+  // cards / other charges / fuel / volumetric rules, the diesel price, the EDL matrix, pincodes. A
+  // month's Bill Worksheet / P&L prices ~15k AWBs and each one used to re-run the same ~15 queries
+  // (→ 504 timeouts). TTL 20s: a rate-card or master edit is picked up within 20 seconds.
+  private static memo = new Map<string, { exp: number; v: Promise<any> }>();
+  private cached<T>(key: string, fn: () => Promise<T>, ttlMs = 20_000): Promise<T> {
+    const now = Date.now();
+    const hit = RateService.memo.get(key);
+    if (hit && hit.exp > now) return hit.v as Promise<T>;
+    const v = fn();
+    RateService.memo.set(key, { exp: now + ttlMs, v });
+    v.catch(() => RateService.memo.delete(key));
+    if (RateService.memo.size > 20000) for (const [k, e] of RateService.memo) if (e.exp <= now) RateService.memo.delete(k);
+    return v;
+  }
+
   findRate(clientId: bigint, originZone: string, destZone: string, serviceMode: ServiceMode) {
     return this.prisma.rateCard.findFirst({
       where: { clientId, originZone, destZone, serviceMode, effectiveFrom: { lte: new Date() } },
@@ -195,7 +211,7 @@ export class RateService {
   private async currentDieselPrice(asOf?: Date): Promise<number> {
     const where: any = { fuelType: 'DIESEL' };
     if (asOf) where.effectiveFrom = { lte: asOf };
-    const fp = await this.prisma.fuelPrice.findFirst({ where, orderBy: { effectiveFrom: 'desc' } });
+    const fp = await this.cached(`diesel:${asOf ? asOf.getTime() : 'now'}`, () => this.prisma.fuelPrice.findFirst({ where, orderBy: { effectiveFrom: 'desc' } }));
     return fp ? Number(fp.price) : 0;
   }
 
@@ -206,23 +222,23 @@ export class RateService {
    */
   /** Customer FOV (Freight On Value) % + min, from the Other Charges "FREIGHT ON VALUE" row. */
   private async customerFov(clientId: bigint): Promise<{ pct: number; min: number } | null> {
-    const oc = await this.prisma.customerOtherCharge.findFirst({
+    const oc = await this.cached(`fov:${clientId}`, () => this.prisma.customerOtherCharge.findFirst({
       where: { clientId, chargeDesc: { in: ['FREIGHT ON VALUE', 'FOV'] } },
       orderBy: { id: 'desc' },
-    });
+    }));
     return oc ? { pct: Number(oc.value ?? 0), min: Number(oc.minimumValue ?? 0) } : null;
   }
 
   private async customerFuelPct(clientId: bigint): Promise<number> {
-    const fs = await this.prisma.customerFuelSurcharge.findFirst({
+    const fs = await this.cached(`fsc:${clientId}`, () => this.prisma.customerFuelSurcharge.findFirst({
       where: { clientId, OR: [{ fromDate: null }, { fromDate: { lte: new Date() } }] },
       orderBy: { id: 'desc' },
-    });
+    }));
     if (!fs) return 0;
     // Params come from the row; a linked Fuel Mechanism master (if set) overrides them.
     let mode = fs.mode, basePct: any = fs.basePct, baseFuel: any = fs.baseFuelPrice, step: any = fs.stepPerRupee, flat: any = fs.percentage, cap: any = fs.maxPct;
     if (fs.mechanism) {
-      const m = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'FUEL_MECHANISM', code: fs.mechanism } } });
+      const m = await this.cached(`mech:${fs.mechanism}`, () => this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'FUEL_MECHANISM', code: fs.mechanism! } } }));
       const a: any = m?.attrs || {};
       if (m) {
         mode = a.mode || mode; basePct = a.basePct ?? basePct; baseFuel = a.baseFuelPrice ?? baseFuel; flat = a.percentage ?? flat; cap = a.maxPct ?? cap;
@@ -252,7 +268,7 @@ export class RateService {
 
   /** Customer CFT/volumetric rule (matches product/service when the row specifies them). */
   private async customerVolRule(clientId: bigint, shipment: any) {
-    const rules = await this.prisma.customerVolumetric.findMany({ where: { clientId }, orderBy: { id: 'desc' } });
+    const rules = await this.cached(`vol:${clientId}`, () => this.prisma.customerVolumetric.findMany({ where: { clientId }, orderBy: { id: 'desc' } }));
     if (!rules.length) return null;
     const eq = (a: any, b: any) => !a || (b != null && String(a).toUpperCase() === String(b).toUpperCase());
     return rules.find((r) => eq(r.product, shipment.product) && eq(r.service, shipment.serviceMode)) || rules[0];
@@ -288,9 +304,9 @@ export class RateService {
 
   /** Price a shipment from the Xpresion slab tariff; null if no slab matches (caller falls back). */
   async chargesFromSlabs(shipment: any, chargeableKg: number): Promise<ChargeBreakup | null> {
-    const slabs = await this.prisma.clientRateSlab.findMany({
+    const slabs = await this.cached(`slabs:${shipment.clientId}`, () => this.prisma.clientRateSlab.findMany({
       where: { OR: [{ clientId: shipment.clientId }, { clientId: null }], fromDate: { lte: new Date() } },
-    });
+    }));
     if (!slabs.length) return null;
     const matched = slabs.filter((s) => this.slabMatches(s, shipment));
     if (!matched.length) return null;
@@ -339,10 +355,10 @@ export class RateService {
   /** Best-matching active card for the shipment: same product, then exact network > SELF > any. */
   async resolveRateCard(shipment: any) {
     const now = new Date();
-    const cards = await this.prisma.customerRateCard.findMany({
+    const cards = await this.cached(`cards:${shipment.clientId}`, () => this.prisma.customerRateCard.findMany({
       where: { clientId: shipment.clientId, isActive: true, validFrom: { lte: now }, OR: [{ validTo: null }, { validTo: { gte: now } }] },
       include: { slabs: true },
-    });
+    }));
     if (!cards.length) return null;
     const prod = String(shipment.product ?? '').toUpperCase();
     // Transport family of a product/service — so a shipment booked as ROAD_PTL / SURFACE resolves
@@ -362,7 +378,7 @@ export class RateService {
     // Canonical network "brand" for a vendor/network string, resolved via the Vendor master so
     // vendor code / name / service variants of the same carrier match (e.g. BLUEDART-SFC ↔ BDR ↔
     // BLUEDART all collapse to BLUEDART). Non-BlueDart resolves to the vendor code.
-    const vendors = await this.prisma.vendor.findMany({ select: { vendorCode: true, name: true } });
+    const vendors = await this.cached('vendors', () => this.prisma.vendor.findMany({ select: { vendorCode: true, name: true } }));
     const norm = (s: any) => String(s ?? '').replace(/[^a-z0-9]/gi, '').toUpperCase();
     const brand = (s: any): string => {
       const n = norm(s);
@@ -403,7 +419,7 @@ export class RateService {
     // Per-customer DSC override: the card can carry its OWN base DSC % and base diesel price; the step %
     // (per ₹ rise) and cap still come from the default DYNAMIC mechanism. (feedback: base %/price per customer)
     if (wantDynamic && (card.dscBasePct != null || card.dscBaseFuelPrice != null)) {
-      const mechs0 = await this.prisma.masterEntry.findMany({ where: { type: 'FUEL_MECHANISM', active: true } });
+      const mechs0 = await this.cached('mechs', () => this.prisma.masterEntry.findMany({ where: { type: 'FUEL_MECHANISM', active: true } }));
       const dyn = mechs0.find((x) => String((x.attrs as any)?.mode).toUpperCase() === 'DYNAMIC' && (x.attrs as any)?.isDefault)
         ?? mechs0.find((x) => String((x.attrs as any)?.mode).toUpperCase() === 'DYNAMIC');
       const a: any = dyn?.attrs || {};
@@ -415,7 +431,7 @@ export class RateService {
       const raw = basePct + Math.max(0, diesel - ref) * step;
       return Math.max(0, Math.min(cap > 0 ? cap : DEFAULT_FUEL_CAP, +raw.toFixed(2)));
     }
-    const mechs = await this.prisma.masterEntry.findMany({ where: { type: 'FUEL_MECHANISM', active: true } });
+    const mechs = await this.cached('mechs', () => this.prisma.masterEntry.findMany({ where: { type: 'FUEL_MECHANISM', active: true } }));
     const isDyn = (m: any) => String((m.attrs as any)?.mode ?? 'FLAT').toUpperCase() === 'DYNAMIC';
     // An explicitly-linked mechanism wins only if it matches the required family (keeps air off diesel).
     if (card.fuelMechanism) { const r = mechs.find((x) => x.code === card.fuelMechanism); if (r && isDyn(r) === wantDynamic) return this.pctFromMechanism(r, asOf); }
@@ -451,7 +467,7 @@ export class RateService {
   /** FSC % from a FUEL_MECHANISM master code (0 if missing). */
   private async mechanismPct(code?: string | null): Promise<number> {
     if (!code) return 0;
-    const m = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'FUEL_MECHANISM', code } } });
+    const m = await this.cached(`mech:${code}`, () => this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'FUEL_MECHANISM', code } } }));
     return m ? this.pctFromMechanism(m) : 0;
   }
 
@@ -513,7 +529,7 @@ export class RateService {
    * NCR — origin pincode), or BOTH. Config: MasterEntry SETTING/GREEN_TAX attrs { direction, prefixes }.
    */
   private async greenTaxApplies(shipment: any): Promise<boolean> {
-    const cfg = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'SETTING', code: 'GREEN_TAX' } } }).catch(() => null);
+    const cfg = await this.cached('set:GREEN_TAX', () => this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'SETTING', code: 'GREEN_TAX' } } }).catch(() => null));
     const a: any = cfg?.attrs || {};
     const direction = String(a.direction || 'INBOUND').toUpperCase();
     const prefixes: string[] = Array.isArray(a.prefixes) && a.prefixes.length
@@ -529,7 +545,7 @@ export class RateService {
 
   /** OSW (oversize/overweight) config: dimension + per-piece weight thresholds + per-kg rate by weight slab. */
   private async oswSetting(): Promise<{ thresholdCm: number; thresholdKg: number; slabs: { fromKg: number; toKg: number; perKg: number }[] }> {
-    const cfg = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'SETTING', code: 'OSW' } } }).catch(() => null);
+    const cfg = await this.cached('set:OSW', () => this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'SETTING', code: 'OSW' } } }).catch(() => null));
     const a: any = cfg?.attrs || {};
     const thresholdCm = Number(a.thresholdCm) > 0 ? Number(a.thresholdCm) : 119;
     const thresholdKg = Number(a.thresholdKg) > 0 ? Number(a.thresholdKg) : 69;
@@ -550,7 +566,7 @@ export class RateService {
 
   /** MCC (Metro Congestion Charge) config: the metro cities it applies to (origin or destination). */
   private async mccSetting(): Promise<string[]> {
-    const cfg = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'SETTING', code: 'MCC' } } }).catch(() => null);
+    const cfg = await this.cached('set:MCC', () => this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'SETTING', code: 'MCC' } } }).catch(() => null));
     const a: any = cfg?.attrs || {};
     const cities = Array.isArray(a.cities) && a.cities.length ? a.cities : Object.keys(RateService.METRO_ALIAS);
     return cities.map((c: any) => String(c).toUpperCase());
@@ -565,7 +581,7 @@ export class RateService {
 
   /** RAS (Remote Area Surcharge) config: per-kg rate + the destination states it applies to. */
   private async rasSetting(): Promise<{ perKg: number; states: string[] }> {
-    const cfg = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'SETTING', code: 'RAS' } } }).catch(() => null);
+    const cfg = await this.cached('set:RAS', () => this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'SETTING', code: 'RAS' } } }).catch(() => null));
     const a: any = cfg?.attrs || {};
     const perKg = Number(a.perKg) || 0;
     const states = (Array.isArray(a.states) ? a.states : []).map((s: any) => String(s).toLowerCase().replace(/[^a-z]/g, '')).filter(Boolean);
@@ -582,7 +598,7 @@ export class RateService {
     if (String(destPin.region ?? '').toUpperCase() === 'NORTHEAST') return r2(Math.max(weightKg * 15, 3000));
     const dist = destPin.edlDistanceKm != null ? Number(destPin.edlDistanceKm) : null;
     if (dist == null) return 0;
-    const rows = await this.prisma.edlRate.findMany({ where: { network } });
+    const rows = await this.cached(`edl:${network}`, () => this.prisma.edlRate.findMany({ where: { network } }));
     const cell = rows.find((r) => dist >= r.kmFrom && dist <= r.kmTo && weightKg >= r.wtFromKg && weightKg <= r.wtToKg);
     if (cell) return r2(Number(cell.rate));
     const byKm = dist > 500 ? dist * 14 : 0;
@@ -600,14 +616,14 @@ export class RateService {
     // charge codes fall back to SELF. So you upload SELF once and every carrier inherits the add-ons.
     if (String(card.network ?? 'SELF').toUpperCase() !== 'SELF') {
       const now = new Date();
-      const selfCard: any = await this.prisma.customerRateCard.findFirst({
+      const selfCard: any = await this.cached(`selfcard:${shipment.clientId}:${card.product}`, () => this.prisma.customerRateCard.findFirst({
         where: {
           clientId: shipment.clientId, isActive: true, product: card.product,
           network: { equals: 'SELF', mode: 'insensitive' },
           validFrom: { lte: now }, OR: [{ validTo: null }, { validTo: { gte: now } }],
         },
         include: { slabs: true },
-      });
+      }));
       if (selfCard) {
         const merged: any = { ...selfCard, ...card };
         for (const k of Object.keys(selfCard)) if (merged[k] == null) merged[k] = selfCard[k];
@@ -665,7 +681,7 @@ export class RateService {
     // when the card leaves a charge blank; COURIER (DP/TDD/NDD) never inherits — its accessorials
     // bill only when explicitly set on the rate card.
     const cardCJ: any = card.charges || {};
-    const chargeRows = await this.prisma.masterEntry.findMany({ where: { type: 'CHARGE', active: true } });
+    const chargeRows = await this.cached('chargemaster', () => this.prisma.masterEntry.findMany({ where: { type: 'CHARGE', active: true } }));
     const mdef: Record<string, any> = {};
     if (!isCourier) for (const m of chargeRows) { const a: any = m.attrs || {}; mdef[m.code.toUpperCase()] = { value: a.rate, min: a.min, perKg: a.perKg }; }
     // effective value: rate-card (if set) → master default (cargo only) → legacy fixed column.
@@ -685,8 +701,8 @@ export class RateService {
     // For cargo: the network EDL matrix wins when the destination is an EDL location; else the card's ODA.
     // Load origin/dest pincode rows once (cargo only) — reused by ODA, EDL and RAS.
     const [destPin, originPin] = !isCourier ? await Promise.all([
-      shipment.destPincode ? this.prisma.pincode.findUnique({ where: { pincode: shipment.destPincode } }) : null,
-      shipment.shipperPincode ? this.prisma.pincode.findUnique({ where: { pincode: shipment.shipperPincode } }) : null,
+      shipment.destPincode ? this.cached(`pin:${shipment.destPincode}`, () => this.prisma.pincode.findUnique({ where: { pincode: shipment.destPincode } })) : null,
+      shipment.shipperPincode ? this.cached(`pin:${shipment.shipperPincode}`, () => this.prisma.pincode.findUnique({ where: { pincode: shipment.shipperPincode } })) : null,
     ]) : [null, null];
     let oda = 0;
     let odaLabel = 'ODA';
@@ -907,7 +923,7 @@ export class RateService {
    */
   private async applyCustomerOtherCharges(shipment: any, breakup: ChargeBreakup | null): Promise<ChargeBreakup | null> {
     if (!breakup || shipment.clientId == null) return breakup;
-    const rows = await this.prisma.customerOtherCharge.findMany({ where: { clientId: shipment.clientId } });
+    const rows = await this.cached(`oc:${shipment.clientId}`, () => this.prisma.customerOtherCharge.findMany({ where: { clientId: shipment.clientId } }));
     if (!rows.length) return breakup;
     const now = new Date();
     const norm = (s: any) => String(s ?? '').replace(/[^a-z0-9]/gi, '').toUpperCase();

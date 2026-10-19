@@ -540,7 +540,7 @@ export class InvoiceService {
    * customer, so a multi/all sheet is a single combined table. Heavy (rate engine per AWB), so the
    * shipment set is capped — narrow the date range or customer set if it truncates.
    */
-  async billWorksheet(clientIds: number[] | 'all', from?: string, to?: string, scope?: bigint[] | null) {
+  async billWorksheet(clientIds: number[] | 'all', from?: string, to?: string, scope?: bigint[] | null, onProgress?: (done: number, total: number) => void) {
     const CAP = 25000; // a full month for all customers — pricing runs in concurrency batches, so this is safe
     const clientWhere: any = clientIds === 'all' ? {} : { id: { in: clientIds.map((n) => BigInt(n)) } };
     if (scope) clientWhere.AND = [{ id: { in: scope } }]; // #10 — only the user's branch/company customers
@@ -554,7 +554,11 @@ export class InvoiceService {
     }
     const byId = new Map(billable.map((c) => [String(c.id), c]));
     const where: any = { clientId: { in: billable.map((c) => c.id) } };
-    if (from || to) where.createdAt = { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) };
+    // Whole IST days: `to` used to be read as midnight at the START of that day → the last day's AWBs
+    // were silently left out (e.g. 01-09 → 30-09 missed all of Sep 30).
+    const istStart = (d: string) => new Date(/T/.test(d) ? d : `${d}T00:00:00+05:30`);
+    const istEnd = (d: string) => new Date(/T/.test(d) ? d : `${d}T23:59:59.999+05:30`);
+    if (from || to) where.createdAt = { ...(from ? { gte: istStart(from) } : {}), ...(to ? { lte: istEnd(to) } : {}) };
     const shipments = await this.prisma.shipment.findMany({
       where, orderBy: { createdAt: 'asc' }, take: CAP + 1,
       include: { pieces: { select: { status: true, deadKg: true, volKg: true, lengthCm: true, widthCm: true, heightCm: true } } },
@@ -608,9 +612,11 @@ export class InvoiceService {
     };
     const rows: Record<string, any>[] = [];
     const CONC = 12;
+    onProgress?.(0, list.length);
     for (let i = 0; i < list.length; i += CONC) {
       const batch = await Promise.all(list.slice(i, i + CONC).map(buildRow));
       for (const r of batch) if (r) rows.push(r);
+      onProgress?.(Math.min(i + CONC, list.length), list.length);
     }
     // Header label: the one customer's name for a single pick, else a summary of the set.
     const label = clientIds !== 'all' && clientIds.length === 1
@@ -623,27 +629,70 @@ export class InvoiceService {
    * AWB-wise profit/loss: vendor cost (uploaded vendor bills) vs our sell (rate engine).
    * Matches a vendor bill to our shipment by carrier waybill (bdWaybill) or our AWB.
    */
-  async pnl(from?: string, to?: string, scope?: bigint[] | null) {
+  /** Kick off a Bill Worksheet / Vendor P&L in the background; the caller polls reportStatus(). */
+  async startReport(kind: 'worksheet' | 'pnl', params: { clientIds?: number[] | 'all'; from?: string; to?: string }, scope: bigint[] | null, userId: bigint | null) {
+    // Housekeeping: results are big (a month = ~15k rows) — drop runs older than a day.
+    await this.prisma.reportJob.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - 864e5) } } }).catch(() => {});
+    const job = await this.prisma.reportJob.create({ data: { kind, params: params as any, createdById: userId } });
+    let last = 0;
+    const onProgress = (done: number, total: number) => {
+      const now = Date.now();
+      if (now - last < 1500 && done < total) return; // throttle progress writes
+      last = now;
+      this.prisma.reportJob.update({ where: { id: job.id }, data: { progress: done, total } }).catch(() => {});
+    };
+    void (async () => {
+      try {
+        const result = kind === 'worksheet'
+          ? await this.billWorksheet(params.clientIds ?? 'all', params.from, params.to, scope, onProgress)
+          : await this.pnl(params.from, params.to, scope, onProgress);
+        await this.prisma.reportJob.update({ where: { id: job.id }, data: { status: 'DONE', result: JSON.parse(JSON.stringify(result, (_k, v) => (typeof v === 'bigint' ? v.toString() : v))), finishedAt: new Date() } });
+      } catch (e: any) {
+        await this.prisma.reportJob.update({ where: { id: job.id }, data: { status: 'FAILED', error: String(e?.message || e).slice(0, 500), finishedAt: new Date() } }).catch(() => {});
+      }
+    })();
+    return { jobId: job.id.toString() };
+  }
+
+  /** Progress of a background report; includes the result once DONE. Only the starter (or a super admin) can read it. */
+  async reportStatus(id: bigint, userId: bigint | null, isSuper: boolean) {
+    const j = await this.prisma.reportJob.findUnique({ where: { id } });
+    if (!j || (!isSuper && j.createdById != null && j.createdById !== userId)) throw new NotFoundException('Report not found');
+    return { id: j.id.toString(), kind: j.kind, status: j.status, progress: j.progress, total: j.total, error: j.error, result: j.status === 'DONE' ? j.result : null };
+  }
+
+  async pnl(from?: string, to?: string, scope?: bigint[] | null, onProgress?: (done: number, total: number) => void) {
     const where: any = {};
-    if (from || to) where.pickupDate = { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) };
+    // Whole IST days (an end date used to cut off at the START of that day).
+    if (from || to) where.pickupDate = { ...(from ? { gte: new Date(`${from}T00:00:00+05:30`) } : {}), ...(to ? { lte: new Date(`${to}T23:59:59.999+05:30`) } : {}) };
     const bills = await this.prisma.vendorBill.findMany({ where, orderBy: { createdAt: 'desc' }, take: 20000 });
+    // Match ALL bills to shipments up front in a few indexed IN-queries (by our AWB, forwarding no,
+    // BlueDart waybill or customer ref). The old per-bill case-insensitive findFirst couldn't use an index
+    // → a full scan of every shipment PER BILL, which is what timed the P&L out (504) on even a few days.
+    const allKeys = [...new Set(bills.flatMap((b) => [b.awb, b.forwardingNo]).map((k) => String(k ?? '').trim()).filter(Boolean))];
+    const keyVariants = [...new Set(allKeys.flatMap((k) => [k, k.toUpperCase()]))];
+    const shipByKey = new Map<string, any>();
+    for (let i = 0; i < keyVariants.length; i += 2000) {
+      const chunk = keyVariants.slice(i, i + 2000);
+      const found = await this.prisma.shipment.findMany({
+        where: { OR: [{ awb: { in: chunk } }, { forwardingAwb: { in: chunk } }, { bdWaybill: { in: chunk } }, { referenceNo: { in: chunk } }] },
+        include: { pieces: true, client: { select: { legalName: true, accountCode: true, isCash: true, accountType: true } } },
+      });
+      // Priority when keys collide: our AWB > forwarding no > BD waybill > customer ref (set in reverse).
+      for (const f of ['referenceNo', 'bdWaybill', 'forwardingAwb', 'awb'] as const) {
+        for (const s of found) { const v = (s as any)[f]; if (v) shipByKey.set(String(v).trim().toUpperCase(), s); }
+      }
+    }
+    onProgress?.(0, bills.length);
+    let done = 0;
     // Reconcile + price each bill. This is heavy (a shipment lookup + a rate-engine recompute per bill),
     // so run it in bounded-concurrency batches instead of one-at-a-time — a month's worth of bills used
     // to time out serially. Each bill yields a row, or null when it's a prepaid (cash/wallet) shipment.
     const priceOne = async (b: any): Promise<any | null> => {
       // #12 — match the vendor bill to our shipment by AWB OR forwarding number, either of which can
       // land in the bill's `awb` or `forwardingNo` column — match every key against every id field.
-      const keys = Array.from(new Set([b.awb, b.forwardingNo].map((k) => String(k ?? '').trim()).filter(Boolean)));
-      const or = keys.flatMap((k) => [
-        { awb: { equals: k, mode: 'insensitive' as const } },
-        { forwardingAwb: { equals: k, mode: 'insensitive' as const } },
-        { bdWaybill: { equals: k, mode: 'insensitive' as const } },
-        { referenceNo: { equals: k, mode: 'insensitive' as const } },
-      ]);
-      const ship = or.length ? await this.prisma.shipment.findFirst({
-        where: { OR: or },
-        include: { pieces: true, client: { select: { legalName: true, accountCode: true, isCash: true, accountType: true } } },
-      }) : null;
+      const keys = Array.from(new Set([b.awb, b.forwardingNo].map((k) => String(k ?? '').trim().toUpperCase()).filter(Boolean)));
+      const ship = keys.map((k) => shipByKey.get(k)).find(Boolean) ?? null;
       // #10 — a branch/company-scoped user only sees bills matched to their own customers.
       if (scope && (!ship || !scope.includes(ship.clientId))) return null;
       // Cash / Wallet (prepaid) shipments are settled at booking — excluded from P&L.
@@ -666,6 +715,7 @@ export class InvoiceService {
     for (let i = 0; i < bills.length; i += CONC) {
       const batch = await Promise.all(bills.slice(i, i + CONC).map(priceOne));
       for (const r of batch) if (r) rows.push(r);
+      done += batch.length; onProgress?.(done, bills.length);
     }
     const totSell = rows.reduce((s, r) => s + r.sell, 0);
     const totCost = rows.reduce((s, r) => s + r.cost, 0);

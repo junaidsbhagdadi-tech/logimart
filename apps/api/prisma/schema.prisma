@@ -1441,6 +1441,25 @@ model BulkBookingJob {
 }
 
 /// One shipment row queued in a bulk-booking job. `payload` is the CreateShipmentDto built by the web.
+/// Long-running report (Bill Worksheet / Vendor P&L) run in the background — a month of AWBs takes
+/// longer than the HTTP gateway allows (was a 504). The browser polls progress, then reads `result`.
+model ReportJob {
+  id          BigInt    @id @default(autoincrement())
+  kind        String    // worksheet | pnl
+  params      Json
+  status      String    @default("RUNNING") // RUNNING | DONE | FAILED
+  progress    Int       @default(0)
+  total       Int       @default(0)
+  result      Json?
+  error       String?
+  createdById BigInt?
+  createdAt   DateTime  @default(now())
+  finishedAt  DateTime?
+
+  @@index([createdAt])
+  @@map("report_jobs")
+}
+
 model BulkBookingJobRow {
   id      BigInt         @id @default(autoincrement())
   jobId   BigInt

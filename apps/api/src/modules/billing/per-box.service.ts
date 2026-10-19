@@ -15,6 +15,7 @@ const r2 = (n: number) => +n.toFixed(2);
  */
 @Injectable()
 export class PerBoxService {
+  private static memo = new Map<string, { exp: number; v: Promise<any[]> }>();
   constructor(private readonly prisma: PrismaService) {}
 
   // ---- management (CRUD) ----
@@ -52,10 +53,20 @@ export class PerBoxService {
     const product = shipment?.product;
     if (clientId == null || !product) return null;
 
-    const cards = await this.prisma.perBoxRateCard.findMany({
-      where: { clientId: BigInt(clientId), product: String(product), isActive: true },
-      include: { slabs: { orderBy: { fromKg: 'asc' } } },
-    });
+    // 20s cache per customer×product — a month's billing run prices thousands of AWBs for the same few
+    // customers; re-querying per AWB was a big part of the Bill Worksheet / P&L 504 timeouts.
+    const key = `${clientId}:${String(product)}`;
+    const hit = PerBoxService.memo.get(key);
+    let pending = hit && hit.exp > Date.now() ? hit.v : null;
+    if (!pending) {
+      pending = this.prisma.perBoxRateCard.findMany({
+        where: { clientId: BigInt(clientId), product: String(product), isActive: true },
+        include: { slabs: { orderBy: { fromKg: 'asc' } } },
+      });
+      PerBoxService.memo.set(key, { exp: Date.now() + 20_000, v: pending });
+      if (PerBoxService.memo.size > 5000) PerBoxService.memo.clear();
+    }
+    const cards: any[] = await pending;
     if (!cards.length) return null;
 
     // Prefer a card whose network matches the shipment's vendor, else SELF, else the first.
