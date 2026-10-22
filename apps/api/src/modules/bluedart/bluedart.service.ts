@@ -78,7 +78,7 @@ export class BluedartService implements OnModuleInit {
    *  origin that can't generate a waybill, falls back to an outstation to-pay pickup so BD still gets
    *  the collection request. Any failure is captured on the shipment (bdError) for retry. */
   async autoDispatch(awb: string): Promise<{ awb: string; ok: boolean; action: string; bdWaybill?: string | null; token?: string | null; error?: string }> {
-    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, vendor: true, bdWaybill: true, forwardingAwb: true, statusCode: true } });
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, vendor: true, bdWaybill: true, forwardingAwb: true, statusCode: true, bdPickupToken: true } });
     if (!s) return { awb, ok: false, action: 'skip', error: 'not found' };
     if (!(await this.isBlueDartVendor(s.vendor))) return { awb, ok: false, action: 'skip', error: 'not a BlueDart shipment' };
     if (String(s.statusCode).toUpperCase() === 'CAN') return { awb, ok: false, action: 'skip', error: 'cancelled' };
@@ -87,6 +87,9 @@ export class BluedartService implements OnModuleInit {
     // NOT get a freshly-generated waybill — that would duplicate the AWB. Auto-dispatch only creates
     // waybills for shipments with no carrier number yet.
     if (s.forwardingAwb) return { awb, ok: true, action: 'already', bdWaybill: s.forwardingAwb };
+    // A pickup is already registered (e.g. an out-of-area to-pay pickup): BlueDart assigns the waybill at
+    // collection and tracking-by-reference picks it up. Re-dispatching registered a NEW pickup every hour.
+    if (s.bdPickupToken) return { awb, ok: true, action: 'already', token: s.bdPickupToken };
     await this.prisma.shipment.update({ where: { id: s.id }, data: { bdDispatchAt: new Date() } }).catch(() => {});
     try {
       const r = await this.generateWaybill(awb); // generates AWB + schedules pickup (RegisterPickup:true)
@@ -123,7 +126,7 @@ export class BluedartService implements OnModuleInit {
       const codes = await this.bdVendorCodes();
       const rows = await this.prisma.shipment.findMany({
         where: {
-          createdAt: { gte: since }, bdWaybill: null, forwardingAwb: null, statusCode: { not: 'CAN' },
+          createdAt: { gte: since }, bdWaybill: null, forwardingAwb: null, bdPickupToken: null, statusCode: { not: 'CAN' },
           AND: [
             { OR: [{ vendor: { startsWith: 'BLUE', mode: 'insensitive' } }, { vendor: { equals: 'BDR', mode: 'insensitive' } }, ...(codes.length ? [{ vendor: { in: codes } }] : [])] },
             ...(opts.force ? [] : [{ OR: [{ bdDispatchAt: null }, { bdDispatchAt: { lt: retryBefore } }] }]),
@@ -147,7 +150,7 @@ export class BluedartService implements OnModuleInit {
   /** Count of BlueDart shipments still awaiting dispatch (no waybill) + how many have a failure. */
   async dispatchStatus() {
     const codes = await this.bdVendorCodes();
-    const base = { bdWaybill: null, forwardingAwb: null, statusCode: { not: 'CAN' }, OR: [{ vendor: { startsWith: 'BLUE', mode: 'insensitive' as const } }, { vendor: { equals: 'BDR', mode: 'insensitive' as const } }, ...(codes.length ? [{ vendor: { in: codes } }] : [])] };
+    const base = { bdWaybill: null, forwardingAwb: null, bdPickupToken: null, statusCode: { not: 'CAN' }, OR: [{ vendor: { startsWith: 'BLUE', mode: 'insensitive' as const } }, { vendor: { equals: 'BDR', mode: 'insensitive' as const } }, ...(codes.length ? [{ vendor: { in: codes } }] : [])] };
     const [pending, failed] = await Promise.all([
       this.prisma.shipment.count({ where: base as any }),
       this.prisma.shipment.count({ where: { AND: [base, { bdError: { not: null } }] } as any }),

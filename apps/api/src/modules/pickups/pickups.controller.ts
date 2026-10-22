@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nest
 import { IsBoolean, IsInt, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
-import { Roles } from '../../common/rbac/roles.decorator';
+import { Roles, Feature } from '../../common/rbac/roles.decorator';
 import { PickupsService } from './pickups.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { assertClientInScope, scopedClientIds } from '../../common/scope/data-scope';
@@ -35,6 +35,11 @@ class CompleteDto {
   @IsOptional() @IsNumber() weight?: number;
   @IsOptional() @IsInt() pieces?: number;
   @IsOptional() @IsNumber() value?: number;
+  // Destination + consignee → books the billable shipment for the customer at mark-picked.
+  @IsOptional() @IsString() destPincode?: string;
+  @IsOptional() @IsString() consigneeName?: string;
+  @IsOptional() @IsString() consigneePhone?: string;
+  @IsOptional() @IsString() consigneeAddress?: string;
 }
 class HandoffDto {
   @IsOptional() @IsString() vendor?: string;
@@ -45,6 +50,7 @@ class HandoffDto {
 
 @Controller('api/v1/pickups')
 @UseGuards(RolesGuard)
+@Feature('/pickups') // CS / ops granted Pickups (EDIT) can book, hand off, assign and mark picked
 export class PickupsController {
   constructor(private readonly pickups: PickupsService, private readonly prisma: PrismaService) {}
 

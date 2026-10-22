@@ -9,6 +9,7 @@ export function Invoices() {
   const isFinance = user?.role === 'FINANCE_EXEC' || user?.role === 'SYS_ADMIN';
   const rights = useRights('/invoices');
   const isSuper = user?.role === 'SYS_ADMIN';
+  const isClient = user?.role === 'CLIENT_ADMIN'; // customer portal view — hide staff-only controls
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [credit, setCredit] = useState<Credit | null>(null);
   // #11 — configurable invoice-number series (CONFIG/INVOICE_SERIES { prefix, nextNo, pad, fromDate }).
@@ -307,17 +308,17 @@ export function Invoices() {
           <div className="row" style={{ gap: 8 }}>
             <button className="secondary" onClick={() => { setFClient(''); setFFrom(''); setFTo(''); setQ(''); }}>Reset</button>
             <button className="secondary" onClick={exportXls} disabled={!filtered.length}>⬇ Excel</button>
-            <button className="secondary" onClick={chargeBreakupXls} disabled={bkBusy} title="Head-wise charge breakup (freight/fuel/FOV/ODA/…) of billed AWBs">{bkBusy ? 'Exporting…' : '⬇ Charge breakup'}</button>
+            {!isClient && <button className="secondary" onClick={chargeBreakupXls} disabled={bkBusy} title="Head-wise charge breakup (freight/fuel/FOV/ODA/…) of billed AWBs">{bkBusy ? 'Exporting…' : '⬇ Charge breakup'}</button>}
             <button onClick={printAll} disabled={!filtered.length}>🖨 Print all</button>
           </div>
         </div>
         <div className="grid cols-4" style={{ gap: 10, marginTop: 10 }}>
-          <div><label style={{ fontSize: 12 }}>Customer</label>
+          {!isClient && <div><label style={{ fontSize: 12 }}>Customer</label>
             <select value={fClient} onChange={(e) => setFClient(e.target.value)}>
               <option value="">All customers</option>
               {clients.map((c) => <option key={c.id} value={c.accountCode}>{c.accountCode} — {c.legalName}</option>)}
             </select>
-          </div>
+          </div>}
           <div><label style={{ fontSize: 12 }}>From</label><input type="date" value={fFrom} onChange={(e) => setFFrom(e.target.value)} /></div>
           <div><label style={{ fontSize: 12 }}>To</label><input type="date" value={fTo} onChange={(e) => setFTo(e.target.value)} /></div>
           <div><label style={{ fontSize: 12 }}>Search</label><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="invoice no / customer" /></div>
@@ -340,7 +341,9 @@ export function Invoices() {
 
         {filtered.length === 0 ? (
           invoices.length === 0
-            ? <p className="muted">No invoices yet — use <b>Generate consolidated invoice</b> above to bill a customer's delivered shipments for a period, and it'll show up here.</p>
+            ? (isClient
+              ? <p className="muted">No invoices to show yet. Invoices appear here once our accounts team sends them to you.</p>
+              : <p className="muted">No invoices yet — use <b>Generate consolidated invoice</b> above to bill a customer's delivered shipments for a period, and it'll show up here. (Customers see an invoice only after you click <b>✉ Send</b> on it.)</p>)
             : <p className="muted">No invoices match these filters. <button className="secondary" style={{ padding: '2px 8px', fontSize: 12 }} onClick={() => { setFClient(''); setFFrom(''); setFTo(''); setQ(''); }}>Clear filters</button></p>
         ) : (
           <div style={{ overflowX: 'auto' }}>

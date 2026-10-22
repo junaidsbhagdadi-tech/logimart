@@ -32,7 +32,7 @@ export class ShipmentsController {
 
   /** Lightweight customer picker for the pickup-boy (DRIVER) mobile booking — id/name/code only. */
   @Get('booking-customers')
-  @Roles(UserRole.DRIVER, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  @Roles(UserRole.DRIVER, UserRole.HUB_MANAGER, UserRole.WAREHOUSE_HANDLER, UserRole.FINANCE_EXEC, UserRole.SALES, UserRole.SYS_ADMIN)
   async bookingCustomers(@Req() req: any, @Query('q') q?: string) {
     return this.shipments.bookingCustomers(q, await scopedClientIds(this.prisma, req.user));
   }

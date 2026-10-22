@@ -718,6 +718,9 @@ export class ShipmentsService {
           forwardingAwb: s.forwardingAwb && !s.forwardingAwb.endsWith(tag) ? `${s.forwardingAwb}${tag}` : s.forwardingAwb,
         },
       }),
+      // Boxes too: their childId (`<AWB>-001`…) is unique, so leaving it made the corrected re-booking
+      // fail with "Unique constraint failed on childId" for every voided AWB.
+      this.prisma.$executeRaw`UPDATE shipment_pieces SET "childId" = "childId" || ${tag}, "barcodeValue" = "barcodeValue" || ${tag} WHERE "shipmentId" = ${s.id} AND "childId" NOT LIKE ${'%' + tag}`,
       this.prisma.scanLog.updateMany({ where: { awb: old }, data: { awb: newAwb } }),
       this.prisma.bulkBookingJobRow.updateMany({ where: { awb: old }, data: { awb: newAwb } }),
       this.prisma.notification.updateMany({ where: { awb: old }, data: { awb: newAwb } }),

@@ -222,7 +222,9 @@ export function CreateShipment() {
   const clearDraft = () => { try { localStorage.removeItem(DRAFT_KEY); } catch { /* */ } };
   const startFresh = () => { clearDraft(); window.location.reload(); };
 
-  useEffect(() => { if (!ownClientId) api.listClients().then(setClients).catch(() => {}); }, [ownClientId]);
+  // Full customer list where the role allows it; otherwise (e.g. a pickup boy on the phone) the light
+  // id/code/name picker — before, the list silently failed and the customer name never showed.
+  useEffect(() => { if (!ownClientId) api.listClients().then(setClients).catch(() => api.bookingCustomers().then((cs: any[]) => setClients(cs as any)).catch(() => {})); }, [ownClientId]);
 
   // #12a — prefill the customer's default vendor at booking (treated like a manual pick, so the
   // rate-based auto-carrier won't override it; staff can still change it).

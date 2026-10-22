@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles } from '../../common/rbac/roles.decorator';
@@ -16,8 +16,16 @@ export class MastersController {
     UserRole.WAREHOUSE_HANDLER,
     UserRole.FINANCE_EXEC,
     UserRole.SYS_ADMIN,
+    UserRole.DRIVER,
+    UserRole.SALES,
   )
-  list(@Param('type') type: string) {
+  list(@Param('type') type: string, @Req() req: any) {
+    // Pickup boys (mobile booking) and Sales need the product list etc. — but only the non-sensitive
+    // lists, never COMPANY (bank / invoice series), SETTING or CHARGE rates.
+    const limited = req.user?.role === UserRole.DRIVER || req.user?.role === UserRole.SALES;
+    if (limited && !['PRODUCT', 'PRODUCT_TYPE', 'ZONE', 'BRANCH', 'CONTENT', 'INSTRUCTION'].includes(String(type).toUpperCase())) {
+      throw new ForbiddenException('Not available for your role.');
+    }
     return this.masters.list(type);
   }
 

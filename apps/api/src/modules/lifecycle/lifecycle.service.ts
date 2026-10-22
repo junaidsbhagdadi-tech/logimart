@@ -425,14 +425,35 @@ export class LifecycleService {
   }
 
   async csDashboard(from?: string, to?: string, f: DashFilter = {}) {
-    const gte = from ? new Date(from) : new Date(Date.now() - 30 * 86400000);
-    const lte = to ? new Date(`${to}T23:59:59`) : new Date();
+    // Whole IST days (the end date used to stop at 23:59 UTC = 05:29 IST next day / start at 05:30 IST).
+    const gte = from ? new Date(`${from}T00:00:00+05:30`) : new Date(Date.now() - 30 * 86400000);
+    const lte = to ? new Date(`${to}T23:59:59.999+05:30`) : new Date();
     const labelOf = (c: string) => LIFECYCLE.find((l) => l.code === c)?.label || c;
     const ships = await this.prisma.shipment.findMany({
       where: { createdAt: { gte, lte }, statusCode: { notIn: ['DLD', 'RTD', 'CAN'] }, ...this.dashWhere(f) },
       orderBy: { createdAt: 'asc' }, take: 5000,
-      select: { awb: true, statusCode: true, statusAt: true, createdAt: true, vendor: true, forwardingAwb: true, consigneeName: true, consigneePhone: true, consigneeCity: true, destZone: true, expectedDelivery: true, exceptionFlag: true, client: { select: { legalName: true, accountCode: true } } },
+      select: { awb: true, statusCode: true, statusAt: true, createdAt: true, vendor: true, forwardingAwb: true, consigneeName: true, consigneePhone: true, consigneeCity: true, destZone: true, expectedDelivery: true, exceptionFlag: true, bdScans: true, client: { select: { legalName: true, accountCode: true } } },
     });
+    // Pickup date: our own PKD scan (earliest), else the carrier's "picked up" scan from the BlueDart history.
+    const pickedAt = new Map<string, Date>();
+    const awbs = ships.map((s) => s.awb);
+    for (let i = 0; i < awbs.length; i += 2000) {
+      const g = await this.prisma.scanLog.groupBy({ by: ['awb'], where: { awb: { in: awbs.slice(i, i + 2000) }, eventType: 'PKD' }, _min: { scanAt: true } });
+      for (const r of g) if (r._min.scanAt) pickedAt.set(r.awb, r._min.scanAt);
+    }
+    const MON: Record<string, number> = { JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5, JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11 };
+    const bdPicked = (raw: string | null): Date | null => {
+      if (!raw) return null;
+      try {
+        const scans: any[] = JSON.parse(raw);
+        const hits = scans.filter((x) => /PICK(ED)?\s*UP/i.test(String(x?.scan ?? '')));
+        const p = hits[hits.length - 1]; // newest-first list → the last match is the first pickup
+        const m = String(p?.date ?? '').match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
+        if (!m) return null;
+        const [hh, mm] = String(p.time ?? '00:00').split(':').map(Number);
+        return new Date(Date.UTC(+m[3], MON[m[2].toUpperCase()] ?? 0, +m[1], (hh || 0) - 5, (mm || 0) - 30)); // IST → UTC
+      } catch { return null; }
+    };
     const now = Date.now();
     const rows = ships.map((s) => {
       const code = String(s.statusCode || 'MAN');
@@ -440,6 +461,7 @@ export class LifecycleService {
       return {
         awb: s.awb, customer: s.client?.legalName ?? '', code: s.client?.accountCode ?? '',
         vendor: s.vendor ?? '', forwardingAwb: s.forwardingAwb ?? '', bookedAt: s.createdAt,
+        pickedAt: pickedAt.get(s.awb) ?? bdPicked(s.bdScans) ?? null,
         consignee: s.consigneeName ?? '', phone: s.consigneePhone ?? '', destination: s.consigneeCity ?? s.destZone ?? '',
         statusCode: code, status: labelOf(code),
         ageDays: Math.floor((now - new Date(s.createdAt).getTime()) / 86400000),

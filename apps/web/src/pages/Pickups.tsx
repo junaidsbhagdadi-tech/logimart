@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { Modal } from '../components/Modal';
+import { useRights } from '../rights';
 
 const blank = {
   pickupAddress: '', city: '', pincode: '', contactName: '', contactPhone: '', estPieces: '1', weight: '',
@@ -12,7 +13,9 @@ const blank = {
 export function Pickups({ mode }: { mode?: 'book' } = {}) {
   const { user } = useAuth();
   const isClient = user?.role === 'CLIENT_ADMIN';
-  const isOps = ['HUB_MANAGER', 'SYS_ADMIN'].includes(user?.role || '');
+  // Staff who act on pickups: ops + CS (anyone with EDIT on Pickups) — CS couldn't see the action buttons before.
+  const pickRights = useRights('/pickups');
+  const isOps = !isClient && (['HUB_MANAGER', 'SYS_ADMIN', 'ADMIN', 'WAREHOUSE_HANDLER'].includes(user?.role || '') || pickRights.edit);
   const [rows, setRows] = useState<any[]>([]);
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'yesterday'>('all'); // #I — see yesterday's pickups
   const [riders, setRiders] = useState<any[]>([]);
@@ -160,12 +163,16 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
 
   // Mark-picked modal (capture AWB / weight / pcs / value).
   const [pickedFor, setPickedFor] = useState<any | null>(null);
-  const [pk, setPk] = useState({ awb: '', weight: '', pieces: '', value: '' });
-  const openPicked = (p: any) => { setPickedFor(p); setPk({ awb: p.pickedAwb || '', weight: p.pickedWeight || '', pieces: String(p.estPieces || ''), value: p.pickedValue || p.invoiceValue || '' }); setError(''); };
+  const [pk, setPk] = useState({ awb: '', weight: '', pieces: '', value: '', destPincode: '', consigneeName: '', consigneePhone: '' });
+  const openPicked = (p: any) => { setPickedFor(p); setPk({ awb: p.pickedAwb || '', weight: p.pickedWeight || p.weight || '', pieces: String(p.estPieces || ''), value: p.pickedValue || p.invoiceValue || '', destPincode: '', consigneeName: '', consigneePhone: '' }); setError(''); };
   const doPicked = async () => {
     if (!pickedFor) return;
     try {
-      await api.completePickup(String(pickedFor.id), { awb: pk.awb || undefined, weight: pk.weight ? +pk.weight : undefined, pieces: pk.pieces ? +pk.pieces : undefined, value: pk.value ? +pk.value : undefined });
+      const r: any = await api.completePickup(String(pickedFor.id), { awb: pk.awb || undefined, weight: pk.weight ? +pk.weight : undefined, pieces: pk.pieces ? +pk.pieces : undefined, value: pk.value ? +pk.value : undefined,
+        destPincode: pk.destPincode || undefined, consigneeName: pk.consigneeName || undefined, consigneePhone: pk.consigneePhone || undefined });
+      setMsg(r?.shipment?.booked ? `✓ Picked — AWB ${r.shipment.awb} booked to the customer (it will be billed).`
+        : r?.shipment ? `✓ Picked — linked to the already-booked AWB ${r.shipment.awb}.`
+        : pk.awb ? '✓ Picked. Add the destination pincode to book it for billing (or book the AWB separately).' : '✓ Marked picked.');
       setPickedFor(null); load();
     } catch (e: any) { setError(e.message); }
   };
@@ -414,6 +421,13 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
             <div><label>Weight (kg)</label><input type="number" value={pk.weight} onChange={(e) => setPk((s) => ({ ...s, weight: e.target.value }))} /></div>
             <div><label>Pieces</label><input type="number" value={pk.pieces} onChange={(e) => setPk((s) => ({ ...s, pieces: e.target.value }))} /></div>
             <div style={{ gridColumn: 'span 2' }}><label>Invoice value ₹</label><input type="number" value={pk.value} onChange={(e) => setPk((s) => ({ ...s, value: e.target.value }))} /></div>
+            <div style={{ gridColumn: 'span 2', borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+              <strong style={{ fontSize: 12.5 }}>Book it for billing</strong>
+              <div className="muted" style={{ fontSize: 11.5 }}>With an AWB + destination pincode the shipment is booked to this customer now (marked Picked) and goes on their bill. An AWB that's already booked is just linked.</div>
+            </div>
+            <div><label>Destination pincode</label><input value={pk.destPincode} maxLength={6} onChange={(e) => setPk((s) => ({ ...s, destPincode: e.target.value }))} /></div>
+            <div><label>Consignee phone</label><input value={pk.consigneePhone} onChange={(e) => setPk((s) => ({ ...s, consigneePhone: e.target.value }))} /></div>
+            <div style={{ gridColumn: 'span 2' }}><label>Consignee name</label><input value={pk.consigneeName} onChange={(e) => setPk((s) => ({ ...s, consigneeName: e.target.value }))} /></div>
           </div>
           <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
             <button className="secondary" onClick={() => setPickedFor(null)}>Cancel</button>

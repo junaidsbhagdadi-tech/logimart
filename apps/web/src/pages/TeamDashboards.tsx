@@ -92,8 +92,8 @@ function CS({ opts }: { opts: { customers: Opt[]; vendors: Opt[] } }) {
   const exportXls = () => downloadXlsx(
     `cs-pending-${from}_${to}${f.vendor ? '-' + f.vendor : ''}.xlsx`,
     `NDR / Pending report ${from} → ${to}${filtLabel(f, opts) ? ' · ' + filtLabel(f, opts) : ''}`,
-    ['AWB', 'Booked', 'Customer', 'Code', 'Vendor', 'Forwarding No', 'Consignee', 'Phone', 'Destination', 'Status', 'Age (days)', 'EDD', 'Overdue', 'NDR', 'Remark'],
-    rows.map((r) => [r.awb, d10(r.bookedAt), r.customer, r.code, r.vendor || 'SELF', r.forwardingAwb, r.consignee, r.phone, r.destination, r.status, r.ageDays, d10(r.edd), r.overdue ? 'YES' : '', r.ndr ? 'YES' : '', r.remark ?? '']),
+    ['AWB', 'Booked', 'Picked', 'Customer', 'Code', 'Vendor', 'Forwarding No', 'Consignee', 'Phone', 'Destination', 'Status', 'Age (days)', 'EDD', 'Overdue', 'NDR', 'Remark'],
+    rows.map((r) => [r.awb, d10(r.bookedAt), d10(r.pickedAt), r.customer, r.code, r.vendor || 'SELF', r.forwardingAwb, r.consignee, r.phone, r.destination, r.status, r.ageDays, d10(r.edd), r.overdue ? 'YES' : '', r.ndr ? 'YES' : '', r.remark ?? '']),
   );
   return (
     <>
@@ -115,14 +115,16 @@ function CS({ opts }: { opts: { customers: Opt[]; vendors: Opt[] } }) {
             ))}
           </div>
           <div className="card" style={{ overflowX: 'auto' }}>
-            <table style={{ minWidth: 1200, fontSize: 12.5 }}>
-              <thead><tr><th>AWB</th><th>Customer</th><th>Vendor</th><th>Consignee</th><th>Phone</th><th>Destination</th><th>Status</th><th style={{ textAlign: 'right' }}>Age</th><th>EDD</th><th>Remark</th></tr></thead>
+            <table style={{ minWidth: 1350, fontSize: 12.5 }}>
+              <thead><tr><th>AWB</th><th>Customer</th><th>Vendor</th><th>Booked</th><th>Picked</th><th>Consignee</th><th>Phone</th><th>Destination</th><th>Status</th><th style={{ textAlign: 'right' }}>Age</th><th>EDD</th><th>Remark</th></tr></thead>
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.awb} style={r.ndr ? { background: '#fdecea' } : r.overdue ? { background: '#fff6e6' } : undefined}>
                     <td><Link to={`/tracker/${r.awb}`}><strong>{r.awb}</strong></Link></td>
                     <td>{r.customer}<div className="muted" style={{ fontSize: 11 }}>{r.code}</div></td>
                     <td>{r.vendor || 'SELF'}{r.forwardingAwb ? <div className="muted" style={{ fontSize: 11 }}>{r.forwardingAwb}</div> : null}</td>
+                    <td>{d10(r.bookedAt)}</td>
+                    <td>{r.pickedAt ? d10(r.pickedAt) : <span className="muted">not yet</span>}</td>
                     <td>{r.consignee || '—'}</td>
                     <td>{r.phone ? <a href={`tel:${r.phone}`}>{r.phone}</a> : '—'}</td>
                     <td>{r.destination}</td>
@@ -132,7 +134,7 @@ function CS({ opts }: { opts: { customers: Opt[]; vendors: Opt[] } }) {
                     <td>{r.remark || '—'}</td>
                   </tr>
                 ))}
-                {rows.length === 0 && <tr><td colSpan={10} className="muted" style={{ textAlign: 'center', padding: 18 }}>Nothing pending in this range 🎉</td></tr>}
+                {rows.length === 0 && <tr><td colSpan={12} className="muted" style={{ textAlign: 'center', padding: 18 }}>Nothing pending in this range 🎉</td></tr>}
               </tbody>
             </table>
           </div>

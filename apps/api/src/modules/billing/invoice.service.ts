@@ -1216,7 +1216,9 @@ export class InvoiceService {
     }
 
     // invoices + remaining
-    const invoices = await this.prisma.invoice.findMany({ where: { clientId: cid }, orderBy: { issuedAt: 'desc' }, take: 8, select: { id: true, invoiceNo: true, periodStart: true, periodEnd: true, total: true, dueDate: true, status: true } });
+    // Only SENT invoices — the dashboard used to list unsent ones too, which then 404'd ("Invoice not
+    // found") on click and never appeared on the customer's Invoices page.
+    const invoices = await this.prisma.invoice.findMany({ where: { clientId: cid, sentAt: { not: null } }, orderBy: { issuedAt: 'desc' }, take: 8, select: { id: true, invoiceNo: true, periodStart: true, periodEnd: true, total: true, dueDate: true, status: true } });
     const sums = await this.prisma.ledgerEntry.groupBy({ by: ['invoiceId'], where: { clientId: cid, invoiceId: { not: null } }, _sum: { amount: true } });
     const remMap = new Map(sums.map((s) => [String(s.invoiceId), Number(s._sum.amount ?? 0)]));
     let overdue = 0;

@@ -834,10 +834,22 @@ export class RateService {
       amt = r2(amt);
       if (amt > 0) { customLines.push({ head: cm.name, amount: amt }); customTotal += amt; if ((cm.attrs as any)?.applyFuel) fuelableExtra += amt; }
     }
-    // Charges marked "FSC applicable" add to the fuel-surcharge base.
-    // Fuel surcharge is charged on freight + ODA/EDL + the AWB (airwaybill) charge + FOV + the
-    // reverse-pickup charge (reverse products), plus any "FSC applicable" custom charges.
-    const fuelBaseExtra = fuelableExtra + oda + awb + fov + (isReverse ? topay : 0);
+    // Fuel surcharge base = freight + every charge whose CHARGE master is ticked "FSC applicable"
+    // (attrs.applyFuel). Previously the tick was only honoured for CUSTOM charges — built-ins used a
+    // hard-coded set (ODA/AWB/FOV + to-pay on reverse products only), so ticking FSC on To-pay, DOD,
+    // Green tax (ECC), Appointment, RAS… did nothing. A charge with no tick set keeps the old default.
+    const fscFlag = (code: string, dflt: boolean) => {
+      const m = chargeRows.find((r) => String(r.code).toUpperCase() === code);
+      const f = (m?.attrs as any)?.applyFuel;
+      return f === undefined || f === null ? dflt : !!f;
+    };
+    const greenCode = greenRow ? String(greenRow.code).toUpperCase() : 'ENVIRONMENT';
+    const fuelBaseExtra = fuelableExtra
+      + (fscFlag('ODA', true) ? oda : 0) + (fscFlag('AWB', true) ? awb : 0) + (fscFlag('FOV', true) ? fov : 0)
+      + (fscFlag('TOPAY', isReverse) ? topay : 0) + (fscFlag('DOD', false) ? dod : 0) + (fscFlag('APPT', false) ? appt : 0)
+      + (fscFlag(greenCode, false) ? environment : 0) + (fscFlag('RAS', false) ? ras : 0)
+      + (fscFlag('LOAD', false) ? loading + unloading : 0) + (fscFlag('OSW', false) || fscFlag('OSP', false) ? osw : 0)
+      + (fscFlag('HANDLING', false) ? handling : 0) + (fscFlag('DOCKET', false) ? docket : 0) + (fscFlag('EMERGENCY', false) ? emergency : 0);
     if (fuelBaseExtra > 0 && fuelPct > 0) fuel = r2(fuel + (fuelBaseExtra * fuelPct) / 100);
 
     const lines: { code: string; head: string; amount: number }[] = [{ code: 'FREIGHT', head: `Freight (${priceBasis})`, amount: freight }];

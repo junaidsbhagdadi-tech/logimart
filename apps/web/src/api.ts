@@ -853,7 +853,7 @@ export const api = {
     request<{ total: number; created: number; results: { row: string; ok: boolean; error?: string }[] }>('/api/v1/pickups/bulk', { method: 'POST', body: JSON.stringify({ rows, vendor: vendor || undefined }) }),
   assignPickup: (id: string, riderId: number) =>
     request(`/api/v1/pickups/${id}/assign`, { method: 'POST', body: JSON.stringify({ riderId }) }),
-  completePickup: (id: string, body: { awb?: string; weight?: number; pieces?: number; value?: number } = {}) =>
+  completePickup: (id: string, body: { awb?: string; weight?: number; pieces?: number; value?: number; destPincode?: string; consigneeName?: string; consigneePhone?: string; consigneeAddress?: string } = {}) =>
     request(`/api/v1/pickups/${id}/complete`, { method: 'POST', body: JSON.stringify(body) }),
   pickupDetail: (id: string) => request<any>(`/api/v1/pickups/${id}`),
   pickupHandoff: (id: string, body: { vendor?: string; toPay?: boolean; date?: string; token?: string } = {}) =>

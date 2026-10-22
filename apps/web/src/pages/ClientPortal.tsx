@@ -18,6 +18,17 @@ export function ClientPortal() {
 
   const [appt, setAppt] = useState<{ awb: string; date: string; remark: string } | null>(null);
   const [msg, setMsg] = useState('');
+  // Search across ALL the customer's shipments (AWB / forwarding no / reference / consignee), not just the recent 12.
+  const [shipQ, setShipQ] = useState('');
+  const [shipHits, setShipHits] = useState<any[] | null>(null);
+  useEffect(() => {
+    const q = shipQ.trim();
+    if (!q) { setShipHits(null); return; }
+    const t = setTimeout(() => {
+      api.awbList(50, q).then((rows: any[]) => setShipHits(rows.map((r) => ({ awb: r.awb, createdAt: r.bookDate, destination: r.destination, statusCode: r.statusCode || 'MAN', hasPod: false })))).catch(() => setShipHits([]));
+    }, 350);
+    return () => clearTimeout(t);
+  }, [shipQ]);
   const reload = () => api.portalOverview().then(setD).catch(() => {});
   const saveAppt = async () => {
     if (!appt) return;
@@ -159,8 +170,9 @@ export function ClientPortal() {
 
           <div className="card">
             <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ margin: 0 }}>Recent shipments</h2>
-              <div className="row" style={{ gap: 8 }}>
+              <h2 style={{ margin: 0 }}>{shipHits ? `Search results (${shipHits.length})` : 'Recent shipments'}</h2>
+              <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+                <input value={shipQ} onChange={(e) => setShipQ(e.target.value)} placeholder="🔍 AWB / reference / consignee" style={{ width: 230, padding: '5px 10px', fontSize: 13 }} />
                 <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={exportShipments}>⬇ Export CSV</button>
                 <Link to="/awb-list" className="muted" style={{ fontSize: 12 }}>view all →</Link>
               </div>
@@ -169,7 +181,7 @@ export function ClientPortal() {
               <table>
                 <thead><tr><th>AWB</th><th>Booked</th><th>Destination</th><th>Status</th><th></th></tr></thead>
                 <tbody>
-                  {d.recentShipments.map((s: any) => (
+                  {(shipHits ?? d.recentShipments).map((s: any) => (
                     <tr key={s.awb}>
                       <td><Link to={`/tracker/${s.awb}`}><strong>{s.awb}</strong></Link></td>
                       <td>{dd(s.createdAt)}</td>
@@ -184,7 +196,7 @@ export function ClientPortal() {
                       </td>
                     </tr>
                   ))}
-                  {d.recentShipments.length === 0 && <tr><td colSpan={5} className="muted">No shipments yet — book your first one.</td></tr>}
+                  {(shipHits ?? d.recentShipments).length === 0 && <tr><td colSpan={5} className="muted">{shipHits ? 'No shipment matches that search.' : 'No shipments yet — book your first one.'}</td></tr>}
                 </tbody>
               </table>
             </div>

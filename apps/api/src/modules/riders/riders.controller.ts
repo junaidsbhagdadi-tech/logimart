@@ -29,7 +29,9 @@ class ResetPinDto {
 export class RidersController {
   constructor(private readonly riders: RidersService) {}
 
+  /** Rider list — CS needs it too, to assign a pickup to a rider by name. */
   @Get()
+  @Roles(UserRole.SYS_ADMIN, UserRole.HUB_MANAGER, UserRole.WAREHOUSE_HANDLER)
   list() {
     return this.riders.list();
   }

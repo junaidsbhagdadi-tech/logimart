@@ -13,6 +13,7 @@ export const FEATURE_CATALOG: FeatureSection[] = [
   ] },
   { section: 'Operations', features: [
     { to: '/create', label: 'New Shipment' },
+    { to: '/pickup-book', label: 'Pickup Booking' },
     { to: '/awb-list', label: 'Shipment List' },
     { to: '/bulk', label: 'Bulk Booking' },
     { to: '/walk-in', label: 'Walk-in Counter' },
