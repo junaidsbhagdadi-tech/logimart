@@ -14,11 +14,34 @@ class BulkSyncResult {
   List<String> get settled => [...accepted, ...duplicate];
 }
 
+/// An API error carrying the server's own message (Nest returns `{ message }`, sometimes a list).
+class ApiException implements Exception {
+  final int status;
+  final String message;
+  ApiException(this.status, this.message);
+  @override
+  String toString() => message;
+}
+
+/// The signed-in user (from /auth/me).
+class Me {
+  final String id;
+  final String fullName;
+  final String role;
+  final String? riderCode;
+  Me(this.id, this.fullName, this.role, this.riderCode);
+  bool get isRider => role == 'DRIVER';
+}
+
 class ApiClient {
   ApiClient._();
   static final ApiClient instance = ApiClient._();
 
+  /// Called when the server rejects the token (expired / revoked) — the app returns to login.
+  void Function()? onUnauthorized;
+
   String? _token;
+  Me? me;
 
   Future<String?> token() async {
     if (_token != null) return _token;
@@ -35,9 +58,56 @@ class ApiClient {
 
   Future<void> logout() async {
     _token = null;
+    me = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('token');
   }
+
+  // ---- low-level helpers ----
+
+  Future<Map<String, String>> _headers({bool json = false}) async {
+    final t = await token();
+    return {
+      if (json) 'content-type': 'application/json',
+      if (t != null) 'authorization': 'Bearer $t',
+    };
+  }
+
+  dynamic _decode(http.Response res) {
+    dynamic body;
+    try {
+      body = res.body.isEmpty ? null : jsonDecode(res.body);
+    } catch (_) {
+      body = null;
+    }
+    if (res.statusCode >= 200 && res.statusCode < 300) return body;
+    var msg = 'Request failed (${res.statusCode})';
+    if (body is Map && body['message'] != null) {
+      final m = body['message'];
+      msg = m is List ? m.join('\n') : m.toString();
+    }
+    if (res.statusCode == 401) {
+      onUnauthorized?.call();
+      msg = 'Session expired — please sign in again.';
+    }
+    throw ApiException(res.statusCode, msg);
+  }
+
+  Future<dynamic> get(String path) async {
+    final res = await http
+        .get(Uri.parse('$kApiBase$path'), headers: await _headers())
+        .timeout(const Duration(seconds: 30));
+    return _decode(res);
+  }
+
+  Future<dynamic> post(String path, [Object? body]) async {
+    final res = await http
+        .post(Uri.parse('$kApiBase$path'), headers: await _headers(json: true), body: jsonEncode(body ?? {}))
+        .timeout(const Duration(seconds: 90));
+    return _decode(res);
+  }
+
+  // ---- auth ----
 
   Future<void> login(String email, String password) async {
     final res = await http.post(
@@ -46,7 +116,7 @@ class ApiClient {
       body: jsonEncode({'email': email, 'password': password}),
     );
     if (res.statusCode != 201 && res.statusCode != 200) {
-      throw Exception('Login failed: ${res.statusCode}');
+      throw ApiException(res.statusCode, 'Wrong email or password');
     }
     await _saveToken(jsonDecode(res.body)['accessToken'] as String);
   }
@@ -59,45 +129,76 @@ class ApiClient {
       body: jsonEncode({'riderCode': riderCode.trim().toUpperCase(), 'pin': pin.trim()}),
     );
     if (res.statusCode != 201 && res.statusCode != 200) {
-      throw Exception('Invalid Rider ID or PIN');
+      throw ApiException(res.statusCode, 'Invalid Rider ID or PIN');
     }
     await _saveToken(jsonDecode(res.body)['accessToken'] as String);
   }
 
-  /// The signed-in rider's assigned pickups + deliveries for the day.
-  Future<Map<String, dynamic>> myTasks() async {
-    final t = await token();
-    final res = await http.get(
-      Uri.parse('$kApiBase/api/v1/rider/tasks'),
-      headers: {'authorization': 'Bearer $t'},
-    );
-    if (res.statusCode != 200) {
-      throw Exception('Could not load tasks: ${res.statusCode}');
-    }
-    return jsonDecode(res.body) as Map<String, dynamic>;
+  Future<Me> loadMe() async {
+    final m = await get('/api/v1/auth/me') as Map<String, dynamic>;
+    me = Me('${m['id']}', '${m['fullName'] ?? ''}', '${m['role'] ?? ''}', m['riderCode'] as String?);
+    return me!;
   }
 
-  /// Record cash / To-Pay freight collected at delivery (allowed for DRIVER).
-  Future<Map<String, dynamic>> recordCod(String awb, double amount) async {
-    final t = await token();
-    final res = await http.post(
-      Uri.parse('$kApiBase/api/v1/shipments/$awb/collect-freight'),
-      headers: {'content-type': 'application/json', 'authorization': 'Bearer $t'},
-      body: jsonEncode({'amount': amount}),
-    );
-    if (res.statusCode != 201 && res.statusCode != 200) {
-      throw Exception('Collection failed: ${res.statusCode} ${res.body}');
-    }
-    return jsonDecode(res.body) as Map<String, dynamic>;
-  }
+  // ---- rider tasks ----
+
+  /// The signed-in rider's open pickups + deliveries, and today's done counts.
+  Future<Map<String, dynamic>> myTasks() async => await get('/api/v1/rider/tasks') as Map<String, dynamic>;
+
+  /// Mark a pickup request collected. With a destination (and no existing AWB) the server books
+  /// the billable shipment and moves it to Picked.
+  Future<Map<String, dynamic>> completePickup(String id, Map<String, dynamic> body) async =>
+      await post('/api/v1/pickups/$id/complete', body) as Map<String, dynamic>;
+
+  // ---- shipments / delivery ----
+
+  Future<Map<String, dynamic>> shipment(String awb) async =>
+      await get('/api/v1/shipments/${Uri.encodeComponent(awb.trim().toUpperCase())}') as Map<String, dynamic>;
+
+  /// Milestone scan (OFD / DLD / UDL …) for one or more AWBs. DLD needs a POD image data URL.
+  Future<Map<String, dynamic>> lifecycleScan(List<String> awbs, String code, {String? remark, String? podDataUrl}) async =>
+      await post('/api/v1/lifecycle/scan', {
+        'awbs': awbs,
+        'code': code,
+        if (remark != null) 'remark': remark,
+        if (podDataUrl != null) 'podDataUrl': podDataUrl,
+      }) as Map<String, dynamic>;
+
+  Future<void> collectDod(String awb, String reference, {String? bankName}) =>
+      post('/api/v1/shipments/$awb/dod/collect', {
+        'reference': reference,
+        if (bankName != null && bankName.isNotEmpty) 'bankName': bankName,
+      });
+
+  /// Record cash / To-Pay freight collected at delivery.
+  Future<void> collectFreight(String awb, double amount) =>
+      post('/api/v1/shipments/$awb/collect-freight', {'amount': amount});
+
+  // ---- booking ----
+
+  Future<List<Map<String, dynamic>>> bookingCustomers() async =>
+      (await get('/api/v1/shipments/booking-customers') as List).cast<Map<String, dynamic>>();
+
+  Future<List<Map<String, dynamic>>> master(String type) async =>
+      (await get('/api/v1/masters/$type') as List).cast<Map<String, dynamic>>();
+
+  Future<List<Map<String, dynamic>>> vendors() async =>
+      (await get('/api/v1/vendors') as List).cast<Map<String, dynamic>>();
+
+  Future<Map<String, dynamic>> pincode(String pin) async =>
+      await get('/api/v1/pincodes/$pin') as Map<String, dynamic>;
+
+  Future<Map<String, dynamic>> createShipment(Map<String, dynamic> body) async =>
+      await post('/api/v1/shipments', body) as Map<String, dynamic>;
+
+  // ---- offline scan sync ----
 
   /// Push a batch of offline scans. The server is idempotent on clientEventId,
   /// so re-sending after a flaky connection is always safe.
   Future<BulkSyncResult> bulkSync(String deviceId, List<Scan> scans) async {
-    final t = await token();
     final res = await http.post(
       Uri.parse('$kApiBase/api/v1/scans/bulk-sync'),
-      headers: {'content-type': 'application/json', 'authorization': 'Bearer $t'},
+      headers: await _headers(json: true),
       body: jsonEncode({
         'deviceId': deviceId,
         'events': scans.map((s) => s.toSyncJson()).toList(),
@@ -112,27 +213,5 @@ class ApiClient {
       (body['duplicate'] as List).cast<String>(),
       (body['rejected'] as List).cast<Map<String, dynamic>>(),
     );
-  }
-
-  Future<Map<String, dynamic>> recordPod(
-    String awb, {
-    required double lat,
-    required double lng,
-    required int piecesDelivered,
-    bool force = false,
-  }) async {
-    final t = await token();
-    final res = await http.post(
-      Uri.parse('$kApiBase/api/v1/shipments/$awb/pod${force ? '?force=true' : ''}'),
-      headers: {'content-type': 'application/json', 'authorization': 'Bearer $t'},
-      body: jsonEncode({'gpsLat': lat, 'gpsLng': lng, 'piecesDelivered': piecesDelivered}),
-    );
-    if (res.statusCode == 409) {
-      throw Exception('Missing pieces — POD blocked. Use force to record a short delivery.');
-    }
-    if (res.statusCode != 201 && res.statusCode != 200) {
-      throw Exception('POD failed: ${res.statusCode} ${res.body}');
-    }
-    return jsonDecode(res.body) as Map<String, dynamic>;
   }
 }

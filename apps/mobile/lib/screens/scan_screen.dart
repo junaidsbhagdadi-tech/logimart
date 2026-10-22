@@ -5,9 +5,8 @@ import '../config.dart';
 import '../local_queue.dart';
 import '../models/scan.dart';
 import '../sync_service.dart';
-import '../api_client.dart';
-import 'login_screen.dart';
 
+/// Hub / checkpoint scanning — offline-first; scans queue on the phone and sync when online.
 class ScanScreen extends StatefulWidget {
   const ScanScreen({super.key});
   @override
@@ -67,15 +66,6 @@ class _ScanScreenState extends State<ScanScreen> {
     await _refreshPending();
   }
 
-  Future<void> _logout() async {
-    await ApiClient.instance.logout();
-    if (mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-      );
-    }
-  }
-
   @override
   void dispose() {
     _controller.dispose();
@@ -85,18 +75,12 @@ class _ScanScreenState extends State<ScanScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Scan'),
-        actions: [
-          IconButton(onPressed: _logout, icon: const Icon(Icons.logout)),
-        ],
-      ),
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.all(8),
             child: DropdownButtonFormField<String>(
-              value: _checkpoint,
+              initialValue: _checkpoint,
               decoration: const InputDecoration(labelText: 'Checkpoint'),
               items: kCheckpoints
                   .map((c) => DropdownMenuItem(value: c, child: Text(c)))

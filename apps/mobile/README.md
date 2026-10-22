@@ -1,60 +1,60 @@
-# Logimart Scanner (Flutter) — Ground-Ops Mobile
+# ExcelEx Rider (Flutter) — field app for Logimart ERP
 
-Offline-first MPS scanning client for warehouse handlers and drivers.
+Android app for pickup boys, delivery riders and ground staff. Talks to the same API as the web
+app (`https://erp.logimart.co.in`, see `lib/config.dart`).
 
-## What it does (Module 2)
-- **Camera scanning** of child barcodes via `mobile_scanner` (ML Kit). Works with
-  integrated hardware scanners (Zebra/Honeywell) too — they emit the same scan events.
-- **Checkpoint selector** — PICKUP / HUB_IN / HUB_OUT / LOAD / UNLOAD / DELIVERY.
-- **Offline-first queue** — every scan is written to a local SQLite WAL queue with a
-  client-generated `clientEventId` (UUID). Scans survive dead zones, basements, and
-  app restarts.
-- **Idempotent sync** — `SyncService` drains the queue to `POST /api/v1/scans/bulk-sync`
-  in batches of 500. The server dedups on `clientEventId`, so re-sends are safe; we only
-  clear locally what the server reports as `accepted` or `duplicate`. Auto-syncs when
-  connectivity returns.
+## What it does
+| Tab | Who | What |
+|---|---|---|
+| **Pickups** | riders | Pickups assigned to me (`GET /rider/tasks`), call / map, **Mark picked** → `POST /pickups/:id/complete` books the shipment (needs destination pincode + consignee unless CS already generated the AWB at hand-off). Today's picked / delivered counts. |
+| **Deliveries** | riders + staff | **Take out for delivery** (scan many AWBs → `OFD`; the rider becomes the delivery rider), my open deliveries, find any AWB. Delivery screen: collect DOD cheque/DD and To-Pay freight, **POD photo (mandatory)** → `DLD`, or **Undelivered** with a reason → `UDL`. |
+| **Book** | riders + staff | Quick booking — same payload as web Quick Book (customer, product, carrier, consignee, boxes + weight, AWB / forwarding / invoice / e-way scannable). |
+| **Scan** | everyone | Offline-first checkpoint scanning: scans queue in SQLite and sync to `POST /scans/bulk-sync` (idempotent on `clientEventId`) when the network returns. |
 
-## Run it
-This folder contains `pubspec.yaml` + `lib/` only. Generate the platform projects once:
+Login: riders use **Rider ID + PIN** (web → Riders & Drivers); staff can switch to email + password.
+Staff logins don't get the Pickups tab (the rider task list is per rider).
+
+## Build the APK (Windows)
+One-time toolchain (no admin needed) lives in `C:\dev`: `flutter` (stable), `jdk17`, `android-sdk`
+(platforms 35/36, build-tools, NDK 28.2). Then:
 
 ```bash
 cd apps/mobile
-flutter create .            # generates android/ ios/ etc. (keeps lib/ & pubspec.yaml)
 flutter pub get
-flutter run --dart-define=API_BASE=https://brave-respect-production-1357.up.railway.app
+flutter build apk --release      # → build/app/outputs/flutter-apk/app-release.apk
 ```
 
-Default API base is already the Railway UAT URL (see `lib/config.dart`); override with
-`--dart-define=API_BASE=...` for production.
+**Signing:** release builds are signed with `C:\dev\logimart-keys\logimart-release.jks` via
+`C:\dev\logimart-keys\key.properties` (override with `LOGIMART_KEY_PROPS`). Both are deliberately
+**outside the repo**. Keep a backup — Android only installs updates signed with the same key; lose it
+and every rider has to uninstall + reinstall.
 
-**Login:** riders sign in with their **Rider ID + PIN** (created in the web admin →
-Riders & Drivers → the ID/PIN card is shown once on create). Tap *Staff sign-in* for
-warehouse handlers/managers using email + password (seeded `warehouse@logimart.com` /
-`logimart1234`). Default API base is now the Render prod URL (`lib/config.dart`).
+Bump `version:` in `pubspec.yaml` (e.g. `1.0.1+3`) for every release so phones accept the update.
 
-## Permissions to add after `flutter create`
-- **Android** — `android/app/src/main/AndroidManifest.xml`:
-  `<uses-permission android:name="android.permission.CAMERA"/>` and (for POD GPS)
-  `ACCESS_FINE_LOCATION`.
-- **iOS** — `ios/Runner/Info.plist`: `NSCameraUsageDescription` and
-  `NSLocationWhenInUseUsageDescription`.
+## Publish
+Copy the APK to the server; riders install from the link (also shown on the web Riders page):
 
-## Test the offline guarantee
-1. Put the phone in airplane mode.
-2. Scan a batch of child labels — watch **Pending** climb; nothing is lost.
-3. Re-enable network → auto-sync (or tap **Sync now**). Pending drops to 0.
-4. Re-run sync — the server returns those as `duplicate`, so no double-counting.
+```bash
+scp build/app/outputs/flutter-apk/app-release.apk root@168.144.77.53:/var/www/logimart-downloads/excelex-rider.apk
+```
+→ `https://erp.logimart.co.in/downloads/excelex-rider.apk` (nginx `location /downloads/`).
+On the phone: open the link → allow "install unknown apps" for the browser once → Install.
 
 ## Layout
 ```
 lib/
-├─ main.dart            # app entry; routes to login or scanner by token
-├─ config.dart          # API base + checkpoint list
-├─ api_client.dart      # login, bulk-sync, POD
-├─ local_queue.dart     # SQLite offline queue
-├─ sync_service.dart    # idempotent drain + auto-sync on reconnect
+├─ main.dart              # session restore (/auth/me) → login or home
+├─ config.dart            # API base + checkpoint list
+├─ api_client.dart        # all API calls; 401 → back to login
+├─ ui.dart                # status chip, camera barcode scanner, POD photo, call/map, dialogs
+├─ local_queue.dart       # SQLite offline scan queue
+├─ sync_service.dart      # idempotent drain + auto-sync on reconnect
 ├─ models/scan.dart
 └─ screens/
    ├─ login_screen.dart
-   └─ scan_screen.dart  # camera + checkpoint + pending count + sync
+   ├─ home_shell.dart     # bottom tabs
+   ├─ pickups_screen.dart
+   ├─ deliveries_screen.dart
+   ├─ book_screen.dart
+   └─ scan_screen.dart
 ```

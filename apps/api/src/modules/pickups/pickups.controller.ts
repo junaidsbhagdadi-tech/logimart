@@ -118,7 +118,7 @@ export class PickupsController {
 
   @Post(':id/complete')
   @Roles(UserRole.DRIVER, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
-  complete(@Param('id') id: string, @Body() body: CompleteDto) {
-    return this.pickups.complete(Number(id), body || {});
+  complete(@Param('id') id: string, @Body() body: CompleteDto, @Req() req: any) {
+    return this.pickups.complete(Number(id), body || {}, req.user?.sub ? BigInt(req.user.sub) : undefined);
   }
 }

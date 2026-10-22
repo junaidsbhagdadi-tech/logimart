@@ -152,6 +152,8 @@ export class LifecycleService {
           ...(dto.location ? { currentLocation: dto.location } : {}),
           ...(dto.bagCode ? { bagCode: dto.bagCode } : autoBag ? { bagCode: autoBag } : {}),
           ...(['UDL', 'RTO', 'CAN'].includes(code) ? { exceptionFlag: dto.remark || code } : {}),
+          // A rider taking it out for delivery (rider app OFD scan) owns the delivery → it shows in their task list.
+          ...(code === 'OFD' && userId && String(role || '').toUpperCase() === 'DRIVER' ? { deliveryRiderId: userId } : {}),
         },
       });
       await this.prisma.scanLog.create({ data: { awb, eventType: code, scanAt: at, remark: dto.remark || null, serviceCenter: dto.location || null, scannedById: userId ?? null } });

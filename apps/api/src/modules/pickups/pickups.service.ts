@@ -137,7 +137,7 @@ export class PickupsService {
    * shipment is BOOKED now under the pickup's customer (product/vendor/pickup address from the request)
    * and moved to Picked — so it lands on the customer's bill. Without a destination it's recorded only.
    */
-  async complete(id: number, captured: { awb?: string; weight?: number; pieces?: number; value?: number; destPincode?: string; consigneeName?: string; consigneePhone?: string; consigneeAddress?: string } = {}) {
+  async complete(id: number, captured: { awb?: string; weight?: number; pieces?: number; value?: number; destPincode?: string; consigneeName?: string; consigneePhone?: string; consigneeAddress?: string } = {}, userId?: bigint) {
     const p = await this.exists(id);
     let shipment: { awb: string; booked: boolean } | null = null;
     // Default to the shipment already booked at the BlueDart hand-off (request.pickedAwb).
@@ -149,14 +149,14 @@ export class PickupsService {
         // Physically collected → move a still-Booked shipment to Picked.
         if (String(existing.statusCode || 'MAN') === 'MAN') {
           await this.prisma.shipment.update({ where: { awb: existing.awb }, data: { statusCode: 'PKD', status: 'PICKED_UP' as any, statusAt: new Date() } });
-          await this.prisma.scanLog.create({ data: { awb: existing.awb, eventType: 'PKD', remark: `Picked — pickup request #${id}` } });
+          await this.prisma.scanLog.create({ data: { awb: existing.awb, eventType: 'PKD', remark: `Picked — pickup request #${id}`, scannedById: userId ?? null } });
         }
         shipment = { awb: existing.awb, booked: false };
       } else if (captured.destPincode && String(captured.destPincode).trim()) {
         const created: any = await this.bookFromPickup(p, { awb, destPincode: String(captured.destPincode), consigneeName: captured.consigneeName, consigneePhone: captured.consigneePhone, consigneeAddress: captured.consigneeAddress, weight: captured.weight, pieces: captured.pieces, value: captured.value });
         // It's physically collected → Picked, and carry the carrier pickup token so tracking finds the waybill.
         await this.prisma.shipment.update({ where: { awb: created.awb }, data: { statusCode: 'PKD', status: 'PICKED_UP' as any, statusAt: new Date(), ...(p.token ? { bdPickupToken: p.token, bdPickupAt: p.handoffAt ?? new Date() } : {}) } });
-        await this.prisma.scanLog.create({ data: { awb: created.awb, eventType: 'PKD', remark: `Picked — pickup request #${id}` } });
+        await this.prisma.scanLog.create({ data: { awb: created.awb, eventType: 'PKD', remark: `Picked — pickup request #${id}`, scannedById: userId ?? null } });
         shipment = { awb: created.awb, booked: true };
       }
     }

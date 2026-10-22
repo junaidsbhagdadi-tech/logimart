@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 
+/** Android rider app (APK) — hosted on the ERP server, see apps/mobile/README.md. */
+const APP_URL = `${window.location.origin}/downloads/excelex-rider.apk`;
+
 const blank = { fullName: '', phone: '', vehicleNo: '', hubId: '', pin: '' };
 
 export function Riders() {
@@ -21,7 +24,8 @@ export function Riders() {
   const hubName = (id: any) => { const h = hubs.find((x) => String(x.id) === String(id)); return h ? `${h.code}` : '—'; };
 
   const credText = (c: { riderCode: string; pin: string }) =>
-    `ExcelEx Express Rider app login\nRider ID: ${c.riderCode}\nPIN: ${c.pin}\nOpen the ExcelEx Rider app and sign in with your Rider ID + PIN.`;
+    `ExcelEx Express Rider app login\nRider ID: ${c.riderCode}\nPIN: ${c.pin}\nInstall the app: ${APP_URL}
+Open the ExcelEx Rider app and sign in with your Rider ID + PIN.`;
   const copyCred = async () => {
     if (!cred) return;
     try { await navigator.clipboard.writeText(credText(cred)); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* visible to copy */ }
@@ -63,7 +67,7 @@ export function Riders() {
   return (
     <>
       <h1>🛵 Riders &amp; Drivers</h1>
-      <p className="muted" style={{ marginTop: -8 }}>Field staff who use the ExcelEx Rider mobile app. Each rider signs in with their <strong>Rider ID + PIN</strong>.</p>
+      <p className="muted" style={{ marginTop: -8 }}>Field staff who use the ExcelEx Rider mobile app. Each rider signs in with their <strong>Rider ID + PIN</strong>. Android app: <a href={APP_URL}>download the APK</a> (open the link on the rider's phone).</p>
       {error && <div className="error">{error}</div>}
       {msg && <div className="card" style={{ borderLeft: '4px solid var(--brand)' }}>{msg}</div>}
       {cred && (
