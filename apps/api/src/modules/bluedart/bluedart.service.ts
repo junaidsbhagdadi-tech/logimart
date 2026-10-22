@@ -352,7 +352,7 @@ export class BluedartService implements OnModuleInit {
     const org = await this.areaInfoFor((s as any).shipperPincode ?? (s as any).client?.pincode);
     const dst = await this.areaInfoFor((s as any).destPincode);
     // Pickup OUTSIDE the account's home area = a TO-PAY booking (billed to this account): ask BlueDart for
-    // a real waybill with OriginArea = the pickup's area + isToPayCustomer. Only if BlueDart refuses it
+    // a real waybill: OriginArea = the account's HOME area, CustomerPincode = the remote pickup, IsToPayCustomer. Only if BlueDart refuses it
     // (the account isn't enabled for that area yet) fall back to a pickup-only registration, and say why.
     const home = String(acc.originArea || '').toUpperCase();
     const outstation = !!(home && org.area && org.area.toUpperCase() !== home);
@@ -369,13 +369,13 @@ export class BluedartService implements OnModuleInit {
         throw new BadRequestException(`${awb}: BlueDart refused the to-pay waybill from ${org.area} (${bdRefusal}) and the pickup-only fallback failed too: ${String(e?.message || e)}`);
       }
     };
-    const payload = this.mapWaybill(s, acc, outstation ? { originArea: org.area.toUpperCase(), outstation: true } : {});
+    const payload = this.mapWaybill(s, acc, outstation ? { outstation: true } : {}); // OriginArea stays the account's home area
     let resp: any;
     try {
       resp = await this.authed('/waybill/v1/GenerateWayBill', { method: 'POST', body: JSON.stringify(payload) });
     } catch (e: any) {
       // Keep BlueDart's reason on the AWB (shown on the shipment page) + which account it went under.
-      const m = `${String(e?.message || e)} [account ${acc.customerCode}, origin ${payload.Request.Shipper.OriginArea}; sub-product ${payload.Request.Services.SubProductCode}, to-pay ${payload.Request.Shipper.isToPayCustomer}, collectable ₹${payload.Request.Services.CollactableAmount}]`;
+      const m = `${String(e?.message || e)} [account ${acc.customerCode}, origin ${payload.Request.Shipper.OriginArea}; sub-product ${payload.Request.Services.SubProductCode}, to-pay ${payload.Request.Shipper.IsToPayCustomer}, collectable ₹${payload.Request.Services.CollactableAmount}]`;
       if (outstation) return pickupOnlyFallback(m);
       await this.prisma.shipment.update({ where: { id: s.id }, data: { bdError: m.slice(0, 1000) } }).catch(() => {});
       throw new BadRequestException(m);
@@ -539,8 +539,9 @@ export class BluedartService implements OnModuleInit {
     return {
       Request: {
         Shipper: {
-          // Out-of-area (to-pay) booking: BlueDart validates OriginArea against the pickup pincode's service
-          // centre, so it must be the PICKUP's area; in-area it's the account's home area.
+          // Always the ACCOUNT's home area (BOM) — also for an out-of-area to-pay booking, where the remote
+          // pickup goes in CustomerPincode. (Verified live 2026-10-22: home area + remote pincode + the to-pay
+          // flag → waybill issued; OriginArea = the pickup's area → "UnauthorizedUser".)
           OriginArea: opts.originArea || acc.originArea || BLUEDART.originArea || String(s.originZone ?? '').slice(0, 3).toUpperCase(),
           CustomerCode: acc.customerCode,
           CustomerName: (s.shipperName ?? s.client?.legalName ?? '').slice(0, 30),
@@ -553,7 +554,10 @@ export class BluedartService implements OnModuleInit {
           // TO-PAY = carriage from outside the account's home area, billed to THIS account (TSD: "when
           // mutually agreed for shipment carriage from any place other than place of contract signup").
           // Set for the to-pay products and for any out-of-area pickup. (Consignee-pays is FOD → SubProduct A.)
-          isToPayCustomer: this.isToPay(s) || !!opts.outstation,
+          // CAPITAL "I": the APIGEE gateway reads `IsToPayCustomer` (BlueDart's own example); the PDF spec's
+          // `isToPayCustomer` is silently ignored — every earlier to-pay attempt went as a normal booking and
+          // was refused for the area. Verified live 2026-10-22 on BOM457730 + BOM439154 (BLR/GZB, Surface/Apex).
+          IsToPayCustomer: this.isToPay(s) || !!opts.outstation,
         },
         Consignee: {
           ConsigneeName: (s.consigneeName ?? '').slice(0, 30),
