@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, type BulkJob } from '../api';
 import { useAuth } from '../auth';
 import { mapMode } from '../productMode';
+import { fmtDateTime } from '../format';
 
 /** Bulk booking — paste or upload a CSV (export from Excel) → many AWBs at once.
  * MPS: one row per BOX; rows sharing the same `ref` are grouped into a single AWB
@@ -302,7 +303,7 @@ export function BulkBooking() {
             {!!job.skipped && job.skipped > 0 && <> <span className="badge AT_HUB" title="Already booked (re-upload) — skipped">{job.skipped.toLocaleString()} skipped</span></>}
             {job.failed > 0 && <> <span className="badge EXCEPTION">{job.failed.toLocaleString()} failed</span></>}
             {(job.status === 'RUNNING' || job.status === 'PENDING') && <> · <button className="secondary" style={{ padding: '2px 10px', fontSize: 12 }} onClick={() => api.cancelBulkJob(job.id).then(() => watchJob(job.id))}>Stop</button></>}
-            {job.undoneAt && <> · <span className="badge EXCEPTION" title={`Undone ${new Date(job.undoneAt).toLocaleString('en-IN')}`}>UNDONE · {(job.voided ?? 0).toLocaleString()} voided</span></>}
+            {job.undoneAt && <> · <span className="badge EXCEPTION" title={`Undone ${fmtDateTime(job.undoneAt)}`}>UNDONE · {(job.voided ?? 0).toLocaleString()} voided</span></>}
             {job.succeeded > 0 && !job.undoneAt && job.status !== 'RUNNING' && job.status !== 'PENDING' && <> · <button className="secondary" style={{ padding: '2px 10px', fontSize: 12, color: 'var(--bad, #c0392b)' }} onClick={() => undoBatch(job.id, job.succeeded)}>↩ Undo file (void {job.succeeded.toLocaleString()})</button></>}
           </div>
           {(job.status === 'RUNNING' || job.status === 'PENDING') && (
@@ -341,8 +342,8 @@ export function BulkBooking() {
             <tbody>
               {recent.map((j) => (
                 <tr key={j.id}>
-                  <td>{new Date(j.createdAt).toLocaleString('en-IN')}</td>
-                  <td>{j.undoneAt ? <span className="badge EXCEPTION" title={`Undone ${new Date(j.undoneAt).toLocaleString('en-IN')}`}>UNDONE</span> : <span className={`badge ${j.status === 'DONE' ? 'DELIVERED' : j.status === 'CANCELLED' ? 'EXCEPTION' : 'AT_HUB'}`}>{j.status}</span>}</td>
+                  <td>{fmtDateTime(j.createdAt)}</td>
+                  <td>{j.undoneAt ? <span className="badge EXCEPTION" title={`Undone ${fmtDateTime(j.undoneAt)}`}>UNDONE</span> : <span className={`badge ${j.status === 'DONE' ? 'DELIVERED' : j.status === 'CANCELLED' ? 'EXCEPTION' : 'AT_HUB'}`}>{j.status}</span>}</td>
                   <td>{j.processed.toLocaleString()}/{j.total.toLocaleString()}</td>
                   <td>{j.succeeded.toLocaleString()}{j.undoneAt ? <div className="muted" style={{ fontSize: 11 }}>{(j.voided ?? 0).toLocaleString()} voided</div> : null}</td>
                   <td>{j.skipped ? <span className="badge AT_HUB" title="Already booked — skipped">{j.skipped.toLocaleString()}</span> : '0'}</td>

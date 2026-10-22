@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../api';
+import { fmtDate } from '../format';
 
 const STATUSES = ['BOOKED', 'PICKED_UP', 'IN_TRANSIT', 'CUSTOMS', 'ARRIVED', 'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED'];
 const CHARGE_CODES = ['FREIGHT', 'FUEL', 'CUSTOMS', 'CLEARANCE', 'HANDLING', 'DO', 'THC', 'DOCUMENTATION', 'PICKUP', 'DELIVERY', 'INSURANCE', 'MISC'];
@@ -70,7 +71,7 @@ export function IntlShipmentDetail() {
           <F label="Declared value" value={d.declaredValue != null ? `${d.currency} ${Number(d.declaredValue).toLocaleString()}` : '—'} />
           <F label="HS code" value={d.hsCode} />
           <F label="Goods" value={d.goodsDesc} />
-          <F label="ETD → ETA" value={`${d.etd ? new Date(d.etd).toLocaleDateString('en-GB') : '—'} → ${d.eta ? new Date(d.eta).toLocaleDateString('en-GB') : '—'}`} />
+          <F label="ETD → ETA" value={`${d.etd ? fmtDate(d.etd) : '—'} → ${d.eta ? fmtDate(d.eta) : '—'}`} />
         </div>
         <div className="grid cols-2" style={{ gap: 16, marginTop: 14 }}>
           <div className="card" style={{ margin: 0 }}><h3 style={{ marginTop: 0 }}>Shipper</h3><div style={{ fontSize: 13 }}>{d.shipperName || '—'}<br />{d.shipperAddress}<br />{[d.shipperCity, d.shipperCountry].filter(Boolean).join(', ')}<br />{d.shipperContact}</div></div>

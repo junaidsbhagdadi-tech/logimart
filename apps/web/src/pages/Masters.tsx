@@ -4,6 +4,7 @@ import { Modal } from '../components/Modal';
 import { AirFuelDefaults } from '../components/AirFuelDefaults';
 import { GreenTax } from './GreenTax';
 import { Surcharges } from './Surcharges';
+import { fmtDate } from '../format';
 
 type Field = { key: string; label: string; type?: 'text' | 'number' | 'select' | 'checkbox' | 'date'; options?: string[]; attr?: boolean };
 type MasterDef = { key: string; label: string; icon: string; fields: Field[] };
@@ -285,7 +286,7 @@ export function Masters() {
               <input type="date" value={newDieselDate} onChange={(e) => setNewDieselDate(e.target.value)} style={{ width: 160 }} />
             </div>
             <button onClick={saveDiesel} disabled={!newDiesel}>Update price</button>
-            <span className="muted" style={{ fontSize: 13 }}>In force: <strong>{diesel != null ? `₹${diesel}/L` : 'not set'}</strong>{dieselFrom ? ` since ${new Date(dieselFrom).toLocaleDateString('en-GB')}` : ''}</span>
+            <span className="muted" style={{ fontSize: 13 }}>In force: <strong>{diesel != null ? `₹${diesel}/L` : 'not set'}</strong>{dieselFrom ? ` since ${fmtDate(dieselFrom)}` : ''}</span>
           </div>
           <p className="muted" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>Set the price + its <strong>effective date</strong> whenever diesel moves. Surface/DSC shipments are priced on the rate <strong>in force when they were booked</strong> — so a price change only affects shipments on/after its effective date. Base reference is fixed at <strong>₹98.33</strong> (base DSC applies there). Air/FSC uses a fixed %, unaffected.</p>
         </div>

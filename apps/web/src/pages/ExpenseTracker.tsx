@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { useRights } from '../rights';
+import { fmtDate } from '../format';
 
 const MODES = ['CASH', 'GPAY', 'UPI', 'A/C TRANSFER', 'CARD', 'CHEQUE'];
 const CATEGORIES = ['Vehicle', 'Office expense', 'Stationary', 'Internet charges', 'Staff welfare', 'Freight', 'Fuel', 'Rent', 'Repairs', 'Other'];
@@ -49,7 +50,7 @@ export function ExpenseTracker() {
     if (!data?.rows.length) return;
     const XLSX = await import('xlsx');
     const head = ['Date', 'Mode', 'Category', 'Remark', 'Amount', 'Paid by', 'Paid to', 'Branch'];
-    const rows = data.rows.map((r) => [new Date(r.date).toLocaleDateString('en-GB'), r.mode, r.category, r.remark ?? '', Number(r.amount), r.paidBy ?? '', r.paidTo ?? '', r.branch ?? '']);
+    const rows = data.rows.map((r) => [fmtDate(r.date), r.mode, r.category, r.remark ?? '', Number(r.amount), r.paidBy ?? '', r.paidTo ?? '', r.branch ?? '']);
     const ws = XLSX.utils.aoa_to_sheet([head, ...rows]);
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Expenses');
     XLSX.writeFile(wb, `expenses-${today()}.xlsx`);
@@ -137,7 +138,7 @@ export function ExpenseTracker() {
                 <tbody>
                   {data.rows.map((r) => (
                     <tr key={r.id}>
-                      <td>{new Date(r.date).toLocaleDateString('en-GB')}</td><td>{r.mode}</td><td>{r.category}</td><td>{r.remark || '—'}</td>
+                      <td>{fmtDate(r.date)}</td><td>{r.mode}</td><td>{r.category}</td><td>{r.remark || '—'}</td>
                       <td style={{ textAlign: 'right', fontWeight: 600 }}>{money(Number(r.amount))}</td>
                       <td style={{ textAlign: 'right' }}>{r.companyAmount != null ? money(Number(r.companyAmount)) : '—'}</td>
                       <td>{r.paidBy || '—'}</td><td>{r.paidTo || '—'}</td><td>{r.branch || '—'}</td>

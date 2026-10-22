@@ -2,6 +2,8 @@ import { FormEvent, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../api';
 import { Logo } from '../components/Logo';
+import { fmtDateTime } from '../format';
+import { StatusBadge } from '../components/StatusBadge';
 
 type Result = Awaited<ReturnType<typeof api.track>>;
 
@@ -46,7 +48,7 @@ export function Track() {
           <div style={{ marginTop: 18 }}>
             <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <strong>{result.awb}</strong>
-              <span className={`badge ${result.status}`}>{result.currentLabel}</span>
+              <StatusBadge code={(result as any).statusCode || result.status} label={result.currentLabel} />
             </div>
             <p className="muted" style={{ marginTop: 4 }}>
               To {result.destination} · {result.delivered}/{result.pieceCount} boxes delivered{result.isShort && ' · SHORT'}
@@ -70,7 +72,7 @@ export function Track() {
                       {(t as any).carrier && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: 'var(--brand)', border: '1px solid var(--brand)', borderRadius: 4, padding: '1px 5px' }}>{(t as any).carrier}</span>}
                     </div>
                     {(t as any).location && <div className="muted" style={{ fontSize: 12 }}>📍 {(t as any).location}</div>}
-                    <div className="muted" style={{ fontSize: 12 }}>{new Date(t.at).toLocaleString('en-IN')}</div>
+                    <div className="muted" style={{ fontSize: 12 }}>{fmtDateTime(t.at)}</div>
                   </div>
                 ))}
               </div>

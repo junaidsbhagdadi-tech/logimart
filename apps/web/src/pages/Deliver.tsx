@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api, Shipment } from '../api';
 import { useAuth } from '../auth';
 import { Logo } from '../components/Logo';
+import { StatusBadge } from '../components/StatusBadge';
 
 /** Full-screen, phone-first delivery screen: find AWB → capture POD (JPG/PDF) → deliver. */
 export function Deliver() {
@@ -94,7 +95,7 @@ export function Deliver() {
                   <strong>{d.consigneeName || d.awb}</strong>
                   <div className="muted" style={{ fontSize: 12 }}>{d.awb} · {d.address || ''}</div>
                 </div>
-                <span className={`badge ${d.status}`}>{d.status}</span>
+                <StatusBadge code={d.status} />
               </button>
             ))}
           </>
@@ -104,7 +105,7 @@ export function Deliver() {
           <div className="deliver-card">
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <strong style={{ fontSize: 18 }}>{s.awb}</strong>
-              <span className={`badge ${s.status}`}>{s.status}</span>
+              <StatusBadge code={(s as any).statusCode || s.status} />
             </div>
             <div className="deliver-consignee">
               <div style={{ fontWeight: 700, fontSize: 17 }}>{s.consigneeName || '—'}</div>

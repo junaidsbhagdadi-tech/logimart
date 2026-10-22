@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../api';
+import { fmtDate } from '../format';
 
 /** Printable commercial invoice + packing summary for an international job. */
 export function IntlDocument() {
@@ -11,7 +12,7 @@ export function IntlDocument() {
   if (err) return <div className="error" style={{ margin: 20 }}>{err}</div>;
   if (!d) return <div style={{ margin: 20 }}>Loading…</div>;
 
-  const dt = (s?: string | null) => (s ? new Date(s).toLocaleDateString('en-GB') : '—');
+  const dt = (s?: string | null) => (s ? fmtDate(s) : '—');
   const money = (n: any) => `${d.currency} ${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
   const box: React.CSSProperties = { border: '1px solid #333', padding: 8, fontSize: 12 };
   const th: React.CSSProperties = { border: '1px solid #333', padding: '4px 6px', fontSize: 11, textAlign: 'left', background: '#f0f0f0' };

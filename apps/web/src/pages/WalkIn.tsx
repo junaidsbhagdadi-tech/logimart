@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api, Client } from '../api';
 import { COMPANY } from '../company';
 import { expandCity } from '../lib/cityCodes';
+import { fmtDateTime } from '../format';
 
 const money = (v: any) => `₹${Number(v ?? 0).toLocaleString('en-IN')}`;
 
@@ -48,7 +49,7 @@ export function WalkIn() {
   const reprint = async () => {
     const a = reprintAwb.trim(); if (!a) return;
     setErr('');
-    try { const r: any = await api.cashReceipt(a); setReceipt({ ...r, at: r.at ? new Date(r.at).toLocaleString('en-IN') : '' }); }
+    try { const r: any = await api.cashReceipt(a); setReceipt({ ...r, at: r.at ? fmtDateTime(r.at) : '' }); }
     catch (e: any) { setErr(e.message); }
   };
 
@@ -121,7 +122,7 @@ export function WalkIn() {
       const receiptBase = {
         awb, product: form.product, sender: form.senderName, senderGstin: form.senderGstin,
         consignee: form.consigneeName, consigneeGstin: form.consigneeGstin, destPincode: form.consigneePincode,
-        destCity: form.consigneeCity, deadKg: boxDead, pieces: pieces.length, at: new Date().toLocaleString('en-IN'),
+        destCity: form.consigneeCity, deadKg: boxDead, pieces: pieces.length, at: fmtDateTime(new Date()),
       };
       // "As Agreed" → booked, no amount keyed, no payment taken.
       if (isAgreed) {

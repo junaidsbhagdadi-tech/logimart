@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { fmtDate } from '../format';
 
 export type ParsedSlab = { originZone: string; zone: string; rateType: string; weight: number; rate: number };
 export type ParseResult = {
@@ -459,7 +460,7 @@ export function printRateCardsPdf(clientName: string, cards: any[]): void {
   };
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Rate cards — ${esc(clientName)}</title>`
     + `<style>body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:24px;font-size:12px}h1{font-size:18px;margin:0 0 2px}.sub{color:#666;margin:0 0 16px}section.card{border:1px solid #ccc;border-radius:6px;padding:12px;margin-bottom:14px;page-break-inside:avoid}h3{margin:0 0 6px;font-size:14px}.meta{color:#333;margin-bottom:8px}table{border-collapse:collapse;width:100%;margin-top:6px}th,td{border:1px solid #ccc;padding:4px 6px;text-align:center}th{background:#f0f0f0}table.acc{max-width:420px}.muted{color:#888}@media print{body{margin:10mm}}</style></head>`
-    + `<body><h1>Rate Card — ${esc(clientName)}</h1><p class="sub">Generated ${new Date().toLocaleDateString('en-GB')} · ${cards.length} card(s)</p>`
+    + `<body><h1>Rate Card — ${esc(clientName)}</h1><p class="sub">Generated ${fmtDate(new Date())} · ${cards.length} card(s)</p>`
     + cards.map(cardHtml).join('')
     + `<script>window.onload=function(){setTimeout(function(){window.print();},250);};<\/script></body></html>`;
   const w = window.open('', '_blank');

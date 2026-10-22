@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
+import { fmtDate } from '../format';
 
 const COLS: { key: string; label: string; num?: boolean; money?: boolean }[] = [
   { key: 'code', label: 'Cust Code' },
@@ -65,7 +66,7 @@ export function SalesMis() {
       {error && <div className="error">{error}</div>}
       {data && (
         <div className="card" style={{ overflowX: 'auto' }}>
-          <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>{data.count} customer(s) · {new Date(data.from).toLocaleDateString('en-GB')} → {new Date(data.to).toLocaleDateString('en-GB')}</div>
+          <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>{data.count} customer(s) · {fmtDate(data.from)} → {fmtDate(data.to)}</div>
           <table style={{ minWidth: 1500, fontSize: 12.5 }}>
             <thead><tr>{COLS.map((c) => <th key={c.key} style={{ whiteSpace: 'nowrap', textAlign: c.money || c.num ? 'right' : 'left' }}>{c.label}</th>)}</tr></thead>
             <tbody>

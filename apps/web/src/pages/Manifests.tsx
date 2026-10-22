@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
+import { StatusBadge } from '../components/StatusBadge';
 
 export function Manifests() {
   const [rows, setRows] = useState<any[]>([]);
@@ -124,7 +125,7 @@ export function Manifests() {
             <thead><tr><th>AWB</th><th>Boxes</th><th>Status</th></tr></thead>
             <tbody>
               {(sel.shipments || []).map((s: any) => (
-                <tr key={s.awb}><td>{s.awb}</td><td>{s.pieceCount}</td><td><span className={`badge ${s.status}`}>{s.status}</span></td></tr>
+                <tr key={s.awb}><td>{s.awb}</td><td>{s.pieceCount}</td><td><StatusBadge code={(s as any).statusCode || s.status} /></td></tr>
               ))}
               {(sel.shipments || []).length === 0 && <tr><td colSpan={3} className="muted">No consignments attached.</td></tr>}
             </tbody>

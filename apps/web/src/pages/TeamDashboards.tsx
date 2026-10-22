@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
+import { fmtDate, fmtDateTime } from '../format';
 
 const TABS = ['Customer Service', 'Sales', 'Operations'] as const;
 type Tab = (typeof TABS)[number];
 const today = () => new Date().toISOString().slice(0, 10);
 const monthStart = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10); };
 const money = (v: any) => `₹${Number(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const d10 = (v: any) => (v ? new Date(v).toLocaleDateString('en-GB') : '—');
+const d10 = (v: any) => (v ? fmtDate(v) : '—');
 
 type Filt = { vendor: string; clientId: string };
 type Opt = { value: string; label: string };
@@ -239,7 +240,7 @@ function Ops({ opts }: { opts: { customers: Opt[]; vendors: Opt[] } }) {
     if (!drill) return;
     downloadXlsx(`ops-${drill.code}${f.vendor ? '-' + f.vendor : ''}.xlsx`, `${drill.label}${filtLabel(f, opts) ? ' · ' + filtLabel(f, opts) : ''}`,
       ['AWB', 'Booked', 'Customer', 'Code', 'Vendor', 'Forwarding No', 'Destination', 'Location', 'Status', 'Since'],
-      drill.rows.map((r) => [r.awb, d10(r.bookedAt), r.customer, r.code, r.vendor || 'SELF', r.forwardingAwb, r.destination, r.location || '', r.status, r.at ? new Date(r.at).toLocaleString('en-IN') : '']));
+      drill.rows.map((r) => [r.awb, d10(r.bookedAt), r.customer, r.code, r.vendor || 'SELF', r.forwardingAwb, r.destination, r.location || '', r.status, r.at ? fmtDateTime(r.at) : '']));
   };
   return (
     <>
@@ -270,7 +271,7 @@ function Ops({ opts }: { opts: { customers: Opt[]; vendors: Opt[] } }) {
                   <td><Link to={`/tracker/${r.awb}`}><strong>{r.awb}</strong></Link></td>
                   <td>{r.customer}<div className="muted" style={{ fontSize: 11 }}>{r.code}</div></td>
                   <td>{r.vendor || 'SELF'}{r.forwardingAwb ? <div className="muted" style={{ fontSize: 11 }}>{r.forwardingAwb}</div> : null}</td>
-                  <td>{r.destination}</td><td>{r.location || '—'}</td><td>{r.at ? new Date(r.at).toLocaleString('en-IN') : '—'}</td>
+                  <td>{r.destination}</td><td>{r.location || '—'}</td><td>{r.at ? fmtDateTime(r.at) : '—'}</td>
                 </tr>
               ))}
               {drill.rows.length === 0 && <tr><td colSpan={6} className="muted" style={{ textAlign: 'center', padding: 16 }}>Empty.</td></tr>}

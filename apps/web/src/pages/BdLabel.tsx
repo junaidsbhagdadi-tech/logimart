@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api, MasterLabel } from '../api';
 import { Barcode } from '../components/Barcode';
+import { fmtDate } from '../format';
 
 /** #5 — BlueDart-style two-part shipping label (top: shipping label, bottom: box-details slip). */
 const money = (v?: number | null) =>
   v != null ? Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
-const dt = (v?: string) => (v ? new Date(v).toLocaleDateString('en-GB') : '');
+const dt = (v?: string) => (v ? fmtDate(v) : '');
 
 export function BdLabel() {
   const { awb } = useParams();

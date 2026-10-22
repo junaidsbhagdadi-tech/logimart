@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { Modal } from '../components/Modal';
 import { useAuth } from '../auth';
+import { fmtDate } from '../format';
 
 // Finance + SuperAdmin (and Admin) approve deductions; everyone else (Customer Service) only posts.
 const CAN_APPROVE = new Set(['FINANCE_EXEC', 'SYS_ADMIN', 'ADMIN']);
@@ -30,7 +31,7 @@ const COLS: { key: string; label: string; req: boolean; date?: boolean; num?: bo
 ];
 const STATUS_OPTS = ['pending', 'approved', 'rejected', 'closed', 'disputed'];
 const blank: Record<string, string> = Object.fromEntries(COLS.map((c) => [c.key, '']));
-const d10 = (v: any) => (v ? new Date(v).toLocaleDateString('en-GB') : '');
+const d10 = (v: any) => (v ? fmtDate(v) : '');
 const isoDate = (v: any) => { const d = new Date(v); return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10); };
 const cell = (r: any, c: { key: string; date?: boolean; num?: boolean }) =>
   c.date ? d10(r[c.key]) : c.num ? (r[c.key] != null ? Number(r[c.key]).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '') : (r[c.key] ?? '');

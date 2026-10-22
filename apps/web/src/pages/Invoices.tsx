@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api, Credit, Invoice } from '../api';
 import { useAuth } from '../auth';
 import { useRights } from '../rights';
+import { fmtDate, fmtDateTime } from '../format';
 
 export function Invoices() {
   const { user } = useAuth();
@@ -96,7 +97,7 @@ export function Invoices() {
       const data = await api.chargeBreakup(clientId, fFrom || undefined, fTo || undefined);
       if (!data.rows.length) { setError('No billed AWBs match these filters — generate an invoice first, or widen the date range.'); return; }
       const XLSX = await import('xlsx');
-      const dd = (s: string | null) => (s ? new Date(s).toLocaleDateString('en-GB') : '');
+      const dd = (s: string | null) => (s ? fmtDate(s) : '');
       const headCols = data.heads;
 
       // Sheet 1 — per-AWB detail
@@ -372,7 +373,7 @@ export function Invoices() {
                         <button style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }} title="Lock / issue this invoice" onClick={() => lockInv(inv)}>🔒 Lock</button>
                       </>}
                       {isFinance && rights.edit && inv.status !== 'DRAFT' && !inv.sentAt && <button style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }} title="Send to the customer — makes it visible on their portal" onClick={() => sendInv(inv)}>✉ Send</button>}
-                      {inv.sentAt && <span className="badge DELIVERED" style={{ fontSize: 11, marginRight: 4 }} title={`Sent ${new Date(inv.sentAt).toLocaleString('en-GB')}`}>✓ Sent</span>}
+                      {inv.sentAt && <span className="badge DELIVERED" style={{ fontSize: 11, marginRight: 4 }} title={`Sent ${fmtDateTime(inv.sentAt)}`}>✓ Sent</span>}
                       {isFinance && rights.del && inv.status !== 'PAID' && inv.status !== 'PARTIALLY_PAID' && (
                         <button className="secondary" style={{ padding: '3px 8px', fontSize: 12, color: 'var(--danger, #c0392b)' }} title="Delete invoice" onClick={() => delInv(inv)}>🗑</button>
                       )}

@@ -5,6 +5,33 @@ import { hasFeature, effectiveGrants } from '../rights';
 import { api } from '../api';
 import { Logo } from './Logo';
 import { FeedbackWidget } from './FeedbackWidget';
+import {
+  LayoutDashboard, Gauge, Activity, Compass, MapPin, PlusCircle, Zap, Package, ClipboardList, List, Upload, Store, Bike, Inbox,
+  Globe, PlaneTakeoff, Coins, ScanLine, PackageCheck, Boxes, Route, Truck, Send, Receipt, FileSpreadsheet, TrendingUp, BookOpen,
+  Scale, ShieldCheck, Users, Building2, Handshake, Car, Wallet, Banknote, FolderOpen, Contact, LineChart, Container, Shuffle, Map as MapIcon,
+  Database, Calculator, PieChart, Stethoscope, UserCog, Plug, History, MessageSquare, Archive, type LucideIcon,
+} from 'lucide-react';
+import { fmtDateTime } from '../format';
+
+// One line icon per menu entry (route → icon). Replaces the emoji, which render differently on every
+// device and repeated (two 🚚, two 📦). Unknown routes fall back to the item's emoji.
+const NAV_ICON: Record<string, LucideIcon> = {
+  '/': LayoutDashboard, '/hub': Gauge, '/team-dashboards': Activity, '/tracker': Compass, '/pincode-search': MapPin,
+  '/create': PlusCircle, '/quick-book': Zap, '/pickup-book': Package, '/handover': ClipboardList, '/awb-list': List,
+  '/bulk': Upload, '/walk-in': Store, '/deliver': Bike, '/pickups': Inbox,
+  '/intl': Globe, '/intl/book': PlaneTakeoff, '/intl/rate-cards': Coins,
+  '/fm': LayoutDashboard, '/fm/pickup-outscan': ScanLine, '/fm/bulk-pickup-outscan': Upload, '/fm/update-pickup': PackageCheck,
+  '/mm': LayoutDashboard, '/mm/inscan-shipment': ScanLine, '/mm/bagging': Boxes, '/mm/trips': Route, '/mm/inscan-trip': Truck,
+  '/lm': LayoutDashboard, '/lm/inscan-shipment': ScanLine, '/lm/inscan-trip': Truck, '/lm/delivery-outscan': Send,
+  '/lm/update-delivery': PackageCheck, '/lm/bulk-delivery-update': Upload,
+  '/invoices': Receipt, '/bill-worksheet': FileSpreadsheet, '/sales-mis': TrendingUp, '/receivables': BookOpen, '/notes': Scale,
+  '/claims': ShieldCheck, '/customers': Users, '/companies': Building2, '/vendors': Handshake, '/vehicles': Car,
+  '/vendor-bills': Wallet, '/expenses': Banknote, '/documents': FolderOpen, '/contact-directory': Contact, '/sales': LineChart,
+  '/ftl-rates': Container, '/per-box-rates': Boxes, '/service-mapping': Shuffle, '/pincodes': MapIcon, '/masters': Database,
+  '/bulk-rate-upload': Upload, '/tax': Calculator, '/reports': PieChart, '/data-health': Stethoscope, '/riders': Bike,
+  '/users': UserCog, '/bluedart': Plug, '/audit': History, '/feedback': MessageSquare, '/archive': Archive,
+};
+const NavIcon = ({ to, fallback }: { to: string; fallback: string }) => { const Ic = NAV_ICON[to]; return Ic ? <Ic aria-hidden /> : <>{fallback}</>; };
 
 type Item = { to: string; icon: string; label: string; end?: boolean; show?: boolean };
 type Group = { title: string; items: Item[] };
@@ -250,7 +277,7 @@ export function Layout() {
                 <div className="group-items">
                   {items.map((it) => (
                     <NavLink key={it.to} to={it.to} end={it.end} title={it.label}>
-                      <span className="ico">{it.icon}</span>
+                      <span className="ico"><NavIcon to={it.to} fallback={it.icon} /></span>
                       <span className="lbl">{it.label}</span>
                     </NavLink>
                   ))}
@@ -322,7 +349,7 @@ export function Layout() {
                     <div style={{ cursor: 'pointer', flex: 1 }} onClick={() => { setCustOpen(false); nav(`/tracker/${c.awb}`); }}>
                       <div style={{ fontWeight: 700, fontSize: 13 }}>{c.awb} <span className="muted" style={{ fontWeight: 500 }}>· {c.customer || c.consignee || '—'}{c.accountCode ? ` (${c.accountCode})` : ''}</span></div>
                       <div style={{ fontSize: 12.5, margin: '2px 0' }}>“{c.remark}”</div>
-                      <div className="muted" style={{ fontSize: 11 }}>{c.remarkAt ? new Date(c.remarkAt).toLocaleString('en-GB') : ''}{c.apptDate ? ` · 📅 appt ${apptDay(c.apptDate)}` : ''} · {c.statusCode}</div>
+                      <div className="muted" style={{ fontSize: 11 }}>{c.remarkAt ? fmtDateTime(c.remarkAt) : ''}{c.apptDate ? ` · 📅 appt ${apptDay(c.apptDate)}` : ''} · {c.statusCode}</div>
                     </div>
                     <button className="secondary" style={{ padding: '2px 8px', fontSize: 11, whiteSpace: 'nowrap' }} title="Mark handled" onClick={() => ackCust(c.awb)}>✓ Done</button>
                   </div>
@@ -349,7 +376,7 @@ export function Layout() {
                 <div key={p.id} style={{ padding: '8px 10px', borderRadius: 8, marginBottom: 4, borderLeft: '3px solid var(--brand, #0e7490)', background: 'var(--surface-2, #f1f3f6)', cursor: 'pointer' }} onClick={() => { setPickOpen(false); nav('/pickups'); }}>
                   <div style={{ fontWeight: 700, fontSize: 13 }}>#{p.id} <span className="muted" style={{ fontWeight: 500 }}>· {p.estPieces} box{p.estPieces > 1 ? 'es' : ''}{p.cargoMode ? ` · ${p.cargoMode}` : ''}</span></div>
                   <div style={{ fontSize: 12.5, margin: '2px 0' }}>{p.pickupAddress}{p.city ? `, ${p.city}` : ''}{p.pincode ? ` - ${p.pincode}` : ''}</div>
-                  <div className="muted" style={{ fontSize: 11 }}>{p.contactName ?? ''}{p.contactPhone ? ` · ${p.contactPhone}` : ''}{p.createdAt ? ` · ${new Date(p.createdAt).toLocaleString('en-GB')}` : ''}</div>
+                  <div className="muted" style={{ fontSize: 11 }}>{p.contactName ?? ''}{p.contactPhone ? ` · ${p.contactPhone}` : ''}{p.createdAt ? ` · ${fmtDateTime(p.createdAt)}` : ''}</div>
                 </div>
               ))}
               <div className="muted" style={{ fontSize: 11, textAlign: 'center', marginTop: 4 }}>Open Pickups to hand off to a vendor →</div>
@@ -376,7 +403,7 @@ export function Layout() {
                     {c.awb} <span className="muted" style={{ fontWeight: 500 }}>· {c.consignee || '—'}{c.destination ? ` · ${c.destination}` : ''}</span>
                   </div>
                   <div style={{ fontSize: 13, margin: '4px 0' }}>“{c.comment}”</div>
-                  <div className="muted" style={{ fontSize: 11, marginBottom: 6 }}>{c.at ? new Date(c.at).toLocaleString('en-GB') : ''}</div>
+                  <div className="muted" style={{ fontSize: 11, marginBottom: 6 }}>{c.at ? fmtDateTime(c.at) : ''}</div>
                   <textarea rows={2} value={csReply[c.awb] || ''} onChange={(e) => setCsReply((r) => ({ ...r, [c.awb]: e.target.value }))} placeholder="Type your reply (optional)…" style={{ width: '100%', fontSize: 13 }} />
                   <div className="row" style={{ gap: 6, marginTop: 6, justifyContent: 'flex-end' }}>
                     <button className="secondary" style={{ padding: '3px 10px', fontSize: 12 }} onClick={() => answerCs(c.awb, false)}>✓ Got it</button>

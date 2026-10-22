@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api, ShipmentRow } from '../api';
 import { useAuth } from '../auth';
 import { modeLabel } from '../productMode';
+import { StatusBadge } from '../components/StatusBadge';
 
 type Stats = Awaited<ReturnType<typeof api.statsOverview>>;
 
@@ -94,7 +95,7 @@ export function Dashboard() {
                   <td>{modeLabel(r.serviceMode)}</td>
                   <td>{r.delivered}/{r.pieceCount}</td>
                   <td>{r.totalDeadKg} / {r.totalVolKg} kg</td>
-                  <td><span className={`badge ${r.status}`}>{r.status}</span></td>
+                  <td><StatusBadge code={(r as any).statusCode || r.status} /></td>
                 </tr>
               ))}
             </tbody>

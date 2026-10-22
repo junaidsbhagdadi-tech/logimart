@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
+import { fmtDate } from '../format';
 
 const MODE_LABEL: Record<string, string> = { EXPRESS: 'Express', AIR_FREIGHT: 'Air', OCEAN_FCL: 'Ocean FCL', OCEAN_LCL: 'Ocean LCL' };
 
@@ -45,7 +46,7 @@ export function IntlShipments() {
                   <td>{r.volumeCbm ?? '—'}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>{r.houseNo || r.masterNo || '—'}</td>
                   <td><span className={`badge ${r.status}`}>{r.status}</span></td>
-                  <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{r.etd ? new Date(r.etd).toLocaleDateString('en-GB') : '—'} → {r.eta ? new Date(r.eta).toLocaleDateString('en-GB') : '—'}</td>
+                  <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{r.etd ? fmtDate(r.etd) : '—'} → {r.eta ? fmtDate(r.eta) : '—'}</td>
                 </tr>
               ))}
               {rows.length === 0 && <tr><td colSpan={12} className="muted">No international jobs{q || mode || status ? ' for this filter' : ' yet'}.</td></tr>}

@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../api';
 import { Barcode } from '../components/Barcode';
+import { fmtDate } from '../format';
 
 const rup = (v: any) => (v == null || v === '' ? '' : Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-const d10 = (v: any) => (v ? new Date(v).toLocaleDateString('en-GB') : '');
+const d10 = (v: any) => (v ? fmtDate(v) : '');
 // date + 24h time (dd/mm/yyyy HH:MM) for the booking/pickup stamp
-const dt10 = (v: any) => (v ? `${new Date(v).toLocaleDateString('en-GB')} ${new Date(v).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })}` : '');
+const dt10 = (v: any) => (v ? `${fmtDate(v)} ${new Date(v).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })}` : '');
 
 /** Physical consignment note / AWB print, per product format:
  *  DP → ExcelEx Express · APEX → Blue Dart Apex · SURFACE → Blue Dart Surfaceline.

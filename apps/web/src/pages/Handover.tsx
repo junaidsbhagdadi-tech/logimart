@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { COMPANY } from '../company';
+import { fmtDateTime } from '../format';
 
 /**
  * Vendor handover manifest — after booking, list the day's shipments for a carrier, tick what's being
@@ -109,7 +110,7 @@ export function HandoverPrint() {
       <div style={{ display: 'flex', gap: 24, fontSize: 12, margin: '10px 0' }}>
         <div><b>Vendor:</b> {vendorName}{vendor ? ` (${vendor})` : ''}</div>
         <div><b>Booking date:</b> {date.split('-').reverse().join('-')}</div>
-        <div><b>Printed:</b> {now.toLocaleString('en-IN')}</div>
+        <div><b>Printed:</b> {fmtDateTime(now)}</div>
         <div><b>Shipments:</b> {rows.length} · <b>Pieces:</b> {pcs} · <b>Weight:</b> {kg.toFixed(2)} kg</div>
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>

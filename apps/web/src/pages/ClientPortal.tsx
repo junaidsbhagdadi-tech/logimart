@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
+import { fmtDate } from '../format';
+import { StatusBadge } from '../components/StatusBadge';
 
 const inr = (n: any) => '₹' + Number(n ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
 const compact = (n: any) => { const v = Number(n ?? 0); return v >= 1e7 ? `₹${(v / 1e7).toFixed(2)}Cr` : v >= 1e5 ? `₹${(v / 1e5).toFixed(2)}L` : inr(v); };
@@ -63,7 +65,7 @@ export function ClientPortal() {
     try {
       const rows = await api.awbList(2000);
       const head = ['AWB', 'Booked', 'Destination', 'Status', 'Pieces'];
-      const body = rows.map((r: any) => [r.awb, r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-GB') : '', r.route ?? r.destZone ?? '', r.status ?? r.statusCode ?? '', r.pieceCount ?? '']);
+      const body = rows.map((r: any) => [r.awb, r.createdAt ? fmtDate(r.createdAt) : '', r.route ?? r.destZone ?? '', r.status ?? r.statusCode ?? '', r.pieceCount ?? '']);
       const csv = [head, ...body].map((r) => r.map((c: any) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
       const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
       const a = document.createElement('a'); a.href = url; a.download = `my-shipments-${new Date().toISOString().slice(0, 10)}.csv`; a.click(); URL.revokeObjectURL(url);
@@ -186,7 +188,7 @@ export function ClientPortal() {
                       <td><Link to={`/tracker/${s.awb}`}><strong>{s.awb}</strong></Link></td>
                       <td>{dd(s.createdAt)}</td>
                       <td>{s.destination}</td>
-                      <td><span className={`badge ${STATUS_CLS[s.statusCode] ?? 'CREATED'}`}>{s.statusCode}</span></td>
+                      <td><StatusBadge code={s.statusCode} /></td>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         <Link to={`/tracker/${s.awb}`}><button className="secondary" style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }}>🧭 Track</button></Link>
                         {!['DLD', 'CAN', 'RTD'].includes(s.statusCode) && <button className="secondary" style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }} title="Request an appointment delivery date/time" onClick={() => setAppt({ awb: s.awb, date: '', remark: '' })}>📅 Appt</button>}

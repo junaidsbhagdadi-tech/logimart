@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
+import { fmtDateTime } from '../format';
 
 const ACTION_BADGE: Record<string, string> = { create: 'DELIVERED', update: 'PARTIAL', delete: 'EXCEPTION' };
 
@@ -32,7 +33,7 @@ export function AuditLog() {
           <tbody>
             {rows.map((r) => (
               <tr key={r.id}>
-                <td className="muted" style={{ fontSize: 12 }}>{new Date(r.createdAt).toLocaleString('en-IN')}</td>
+                <td className="muted" style={{ fontSize: 12 }}>{fmtDateTime(r.createdAt)}</td>
                 <td>{r.userName ?? '—'}</td>
                 <td className="muted" style={{ fontSize: 11 }}>{r.role ?? '—'}</td>
                 <td><span className={`badge ${ACTION_BADGE[r.action] ?? ''}`}>{r.action}</span></td>

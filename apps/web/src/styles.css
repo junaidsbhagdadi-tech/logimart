@@ -36,6 +36,14 @@
   --radius: 18px;
   --shadow: 0 1px 2px rgba(14,70,70,.05), 0 12px 32px -14px rgba(13,120,120,.18);
   --shadow-lg: 0 24px 60px -20px rgba(13,120,120,.30);
+  /* status tones (badges) — one set for the whole app, redefined for dark below */
+  --st-booked-bg: #e7eef0; --st-booked-fg: #3d5a61;
+  --st-moving-bg: #dcebff; --st-moving-fg: #1f5fbf;
+  --st-ofd-bg:    #fff1d1; --st-ofd-fg:    #8a5a00;
+  --st-done-bg:   #d4f6e6; --st-done-fg:   #0a7a52;
+  --st-problem-bg:#fde3e5; --st-problem-fg:#b22633;
+  --st-return-bg: #ece4fb; --st-return-fg: #5b34b8;
+  --st-void-bg:   #eceff1; --st-void-fg:   #6b7b80;
 }
 
 /* ===== AURORA · DARK — the one dark palette (Aurora only; no other skins) ===== */
@@ -49,6 +57,13 @@
   --border: #1c3a3e; --ok: #38d79a; --warn: #e0a83a; --bad: #f47a72;
   --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px -14px rgba(0,0,0,.6);
   --shadow-lg: 0 24px 60px -20px rgba(0,0,0,.7);
+  --st-booked-bg: #1d3438; --st-booked-fg: #b6cdd0;
+  --st-moving-bg: #13304f; --st-moving-fg: #8fbcff;
+  --st-ofd-bg:    #3a2d0e; --st-ofd-fg:    #f2c766;
+  --st-done-bg:   #0e3324; --st-done-fg:   #5fe0a6;
+  --st-problem-bg:#3d1519; --st-problem-fg:#ff9aa1;
+  --st-return-bg: #2a1f45; --st-return-fg: #c4b0ff;
+  --st-void-bg:   #1d2b2e; --st-void-fg:   #8fa3a6;
 }
 
 /* dark-mode backdrop — replace the light body wash */
@@ -218,7 +233,9 @@ label { font-size: 12px; font-weight: 600; color: var(--muted); display: block; 
 .nav-group.closed .group-head .chev { transform: rotate(-90deg); }
 .nav-group.closed .group-items { display: none; }
 .group-items { display: flex; flex-direction: column; gap: 1px; }
-.sidebar nav a .ico { width: 18px; text-align: center; flex-shrink: 0; }
+.sidebar nav a .ico { width: 18px; text-align: center; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
+.sidebar nav a .ico svg { width: 17px; height: 17px; stroke-width: 1.9; opacity: .85; }
+.sidebar nav a.active .ico svg { opacity: 1; }
 
 /* ---- rail toggle + collapsed (icons-only) mode ---- */
 .rail-toggle {
@@ -275,12 +292,34 @@ tbody tr { transition: background .12s; }
 tbody tr:hover td { background: var(--sky-soft); }
 
 .badge { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 11.5px; font-weight: 700; letter-spacing: .2px; }
-.badge.CREATED, .badge.PICKED_UP, .badge.REQUESTED, .badge.DRAFT, .badge.ISSUED { background: var(--sky-soft); color: #0d5a82; }
-.badge.AT_HUB, .badge.LOADED, .badge.IN_TRANSIT, .badge.OUT_FOR_DELIVERY, .badge.ASSIGNED, .badge.PARTIALLY_PAID { background:#fff3d6; color:#946200; }
-.badge.DELIVERED, .badge.PICKED, .badge.PAID { background:#d4f6e6; color:#0a7a52; }
-.badge.PARTIAL, .badge.EXCEPTION, .badge.MISSING, .badge.DAMAGED, .badge.DISPUTED, .badge.CANCELLED { background:#fde3e5; color:#b22633; }
-.badge.TO_PAY { background:#fff0d6; color:#9a5b00; }
-.badge.DOD { background:#ece4fb; color:#5b34b8; }
+.badge.CREATED, .badge.REQUESTED, .badge.DRAFT, .badge.ISSUED { background: var(--st-booked-bg); color: var(--st-booked-fg); }
+.badge.PICKED_UP, .badge.AT_HUB, .badge.LOADED, .badge.IN_TRANSIT, .badge.ASSIGNED { background: var(--st-moving-bg); color: var(--st-moving-fg); }
+.badge.OUT_FOR_DELIVERY, .badge.PARTIALLY_PAID, .badge.TO_PAY { background: var(--st-ofd-bg); color: var(--st-ofd-fg); }
+.badge.DELIVERED, .badge.PICKED, .badge.PAID { background: var(--st-done-bg); color: var(--st-done-fg); }
+.badge.PARTIAL, .badge.EXCEPTION, .badge.MISSING, .badge.DAMAGED, .badge.DISPUTED, .badge.CANCELLED { background: var(--st-problem-bg); color: var(--st-problem-fg); }
+.badge.DOD { background: var(--st-return-bg); color: var(--st-return-fg); }
+
+/* StatusBadge — one label + colour per shipment status, app-wide */
+.st { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 700; letter-spacing: .2px; white-space: nowrap; }
+.st-booked  { background: var(--st-booked-bg);  color: var(--st-booked-fg); }
+.st-moving  { background: var(--st-moving-bg);  color: var(--st-moving-fg); }
+.st-ofd     { background: var(--st-ofd-bg);     color: var(--st-ofd-fg); }
+.st-done    { background: var(--st-done-bg);    color: var(--st-done-fg); }
+.st-problem { background: var(--st-problem-bg); color: var(--st-problem-fg); }
+.st-return  { background: var(--st-return-bg);  color: var(--st-return-fg); }
+.st-void    { background: var(--st-void-bg);    color: var(--st-void-fg); text-decoration: line-through; }
+
+/* Action bar + "More" menu (shipment page) */
+.actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.actions button, .actions .btn-like { display: inline-flex; align-items: center; gap: 6px; }
+.actions svg, .menu svg { width: 16px; height: 16px; flex-shrink: 0; }
+.more { position: relative; }
+.menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 230px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-lg); padding: 6px; }
+.menu .menu-head { font-size: 10.5px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: var(--faint); padding: 8px 10px 4px; }
+.menu .menu-item { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: none; border: 0; box-shadow: none; color: var(--text); font-size: 13px; font-weight: 500; padding: 8px 10px; border-radius: 8px; cursor: pointer; text-decoration: none; }
+.menu .menu-item:hover, .menu .menu-item:focus-visible { background: var(--sky-soft); outline: none; }
+.menu .menu-item.danger { color: var(--bad); }
+.menu .menu-sep { height: 1px; background: var(--border); margin: 6px 4px; }
 
 .grid { display: grid; gap: 14px; }
 .grid.cols-3 { grid-template-columns: repeat(3, 1fr); }

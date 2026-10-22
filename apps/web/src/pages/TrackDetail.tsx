@@ -2,6 +2,8 @@ import { FormEvent, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
+import { fmtDate } from '../format';
+import { StatusBadge } from '../components/StatusBadge';
 
 type Detail = Awaited<ReturnType<typeof api.lifecycleDetail>>;
 
@@ -189,7 +191,7 @@ export function TrackDetail() {
                           <td>{r.consignee || '—'}</td>
                           <td>{r.destination || '—'}</td>
                           <td>{r.found ? `${r.delivered}/${r.pieceCount}` : '—'}</td>
-                          <td>{r.expectedDelivery ? new Date(r.expectedDelivery).toLocaleDateString('en-GB') : '—'}</td>
+                          <td>{r.expectedDelivery ? fmtDate(r.expectedDelivery) : '—'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -430,7 +432,7 @@ export function TrackDetail() {
                     <tr key={p.childId}>
                       <td><strong>{p.childId}</strong></td><td>{p.sequenceNo}</td><td>{p.deadKg}</td><td>{p.volKg}</td>
                       <td>{[p.lengthCm, p.widthCm, p.heightCm].filter(Boolean).join('×') || '—'}</td>
-                      <td><span className={`badge ${p.status}`}>{p.status}</span></td>
+                      <td><StatusBadge code={p.status} /></td>
                     </tr>
                   ))}
                 </tbody>

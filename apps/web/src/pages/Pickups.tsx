@@ -3,6 +3,7 @@ import { api } from '../api';
 import { useAuth } from '../auth';
 import { Modal } from '../components/Modal';
 import { useRights } from '../rights';
+import { fmtDate, fmtDateTime } from '../format';
 
 const blank = {
   pickupAddress: '', city: '', pincode: '', contactName: '', contactPhone: '', estPieces: '1', weight: '',
@@ -296,7 +297,7 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
           <tbody>
             {visibleRows.map((p) => (
               <tr key={p.id}>
-                <td>{p.id}</td><td style={{ whiteSpace: 'nowrap' }}>{p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-GB') : '—'}</td>
+                <td>{p.id}</td><td style={{ whiteSpace: 'nowrap' }}>{p.createdAt ? fmtDate(p.createdAt) : '—'}</td>
                 {isOps && <td><button className="link" style={{ textAlign: 'left' }} onClick={() => openDetail(p)} title="View full pickup detail">{p.customerName ?? '—'}{p.customerCode ? <span className="muted" style={{ fontSize: 11 }}> ({p.customerCode})</span> : null}</button></td>}
                 <td>{p.product ?? p.cargoMode ?? '—'}</td>
                 <td style={{ whiteSpace: 'nowrap' }} title={p.pickupAddress}>{[p.city, p.pincode].filter(Boolean).join(' · ') || '—'}</td>
@@ -340,14 +341,14 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
                 <tr key={p.awb}>
                   <td style={{ whiteSpace: 'nowrap' }}><a href={`/shipments/${p.awb}`}>{p.awb}</a></td>
                   <td>{p.token}</td>
-                  <td style={{ whiteSpace: 'nowrap' }}>{p.pickupAt ? new Date(p.pickupAt).toLocaleDateString('en-GB') : '—'}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{p.pickupAt ? fmtDate(p.pickupAt) : '—'}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>{p.origin ?? '—'} → {p.dest ?? '—'}</td>
                   <td>{p.pieces}</td>
                   <td>{p.paymentTerm === 'TO_PAY' ? <span className="badge TO_PAY">TO-PAY</span> : <span className="muted" style={{ fontSize: 12 }}>PREPAID</span>}</td>
                   <td>{p.stage === 'PICKED' ? <span className="badge DELIVERED">PICKED</span> : <span className="badge CREATED">SCHEDULED</span>}</td>
                   <td>{p.waybill ?? <span className="muted" style={{ fontSize: 12 }}>pending</span>}</td>
                   <td>{p.status ? <span className="badge">{p.status}</span> : <span className="muted">—</span>}</td>
-                  <td className="muted" style={{ whiteSpace: 'nowrap', fontSize: 11.5 }}>{p.syncedAt ? new Date(p.syncedAt).toLocaleString('en-GB') : '—'}</td>
+                  <td className="muted" style={{ whiteSpace: 'nowrap', fontSize: 11.5 }}>{p.syncedAt ? fmtDateTime(p.syncedAt) : '—'}</td>
                   <td><button className="secondary" style={{ padding: '4px 10px' }} disabled={bdSyncing === p.awb} onClick={() => syncBd(p.awb)}>{bdSyncing === p.awb ? '…' : '🔎 Sync'}</button></td>
                 </tr>
               ))}
@@ -391,7 +392,7 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
                 <div><div className="muted">Invoice</div>{detail.invoiceNo ?? '—'}{detail.invoiceValue ? ` · ₹${Number(detail.invoiceValue).toLocaleString('en-IN')}` : ''}</div>
                 <div><div className="muted">E-way bill</div>{detail.ewbNo ?? '—'}</div>
                 {detail.notes && <div style={{ gridColumn: 'span 2' }}><div className="muted">Notes</div>{detail.notes}</div>}
-                {detail.token && <div style={{ gridColumn: 'span 2' }}><div className="muted">Vendor pickup token</div><strong>{detail.token}</strong>{detail.vendor ? ` · ${detail.vendor}` : ''}{detail.handoffAt ? ` · ${new Date(detail.handoffAt).toLocaleString('en-GB')}` : ''}</div>}
+                {detail.token && <div style={{ gridColumn: 'span 2' }}><div className="muted">Vendor pickup token</div><strong>{detail.token}</strong>{detail.vendor ? ` · ${detail.vendor}` : ''}{detail.handoffAt ? ` · ${fmtDateTime(detail.handoffAt)}` : ''}</div>}
               </div>
               <div className="row" style={{ justifyContent: 'space-between', gap: 8, marginTop: 18, alignItems: 'center', flexWrap: 'wrap' }}>
                 <span className="muted" style={{ fontSize: 12 }}>{detail.token ? 'Already handed to the carrier — the token shows on the customer’s panel.' : 'Hand off to a vendor to generate a pickup token for this request.'}</span>

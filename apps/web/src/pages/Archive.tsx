@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { Modal } from '../components/Modal';
+import { fmtDate } from '../format';
 
 // Legacy old-system data archive — SUPER ADMIN ONLY. Small files stored inline (≤25 MB);
 // large zips should be linked (Drive/Spaces URL).
@@ -100,7 +101,7 @@ export function Archive() {
                 <td>{r.fiscalYear ?? '—'}</td>
                 <td>{r.fileUrl ? '🔗 link' : r.fileName ? `📎 ${r.fileName}` : '—'}</td>
                 <td>{r.fileUrl ? '—' : fmtSize(r.sizeBytes) || '—'}</td>
-                <td style={{ whiteSpace: 'nowrap' }}>{new Date(r.createdAt).toLocaleDateString('en-IN')}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>{fmtDate(r.createdAt)}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>
                   <button className="secondary" style={{ padding: '3px 9px', fontSize: 12, marginRight: 6 }} onClick={() => download(r.id, r.fileName)}>⬇ Open</button>
                   <button className="secondary" style={{ padding: '3px 9px', fontSize: 12 }} onClick={() => del(r.id)}>🗑</button>

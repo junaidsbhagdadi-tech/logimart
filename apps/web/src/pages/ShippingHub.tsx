@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
+import { fmtDate } from '../format';
+import { StatusBadge } from '../components/StatusBadge';
 
 const WINDOWS: [string, string][] = [['today', 'Today'], ['7d', '7 days'], ['30d', '30 days']];
 const TABS = ['Home', 'Shipments', 'Exceptions', 'Returns', 'Analytics'] as const;
@@ -65,7 +67,7 @@ export function ShippingHub() {
   const dispatchBd = async () => { setBusy(true); setMsg(''); try { const r = await api.bdDispatchAll(); setMsg(r.message); } catch (e: any) { setMsg(e.message); } finally { setBusy(false); } };
   const markPicked = async (p: any) => { if (p.source !== 'REQUEST' || !p.requestId) return; try { await api.completePickup(p.requestId); api.pickupsUnified({ window: 'all' }).then(setPickups); } catch { /* */ } };
 
-  const dt = (s?: string | null) => (s ? new Date(s).toLocaleDateString('en-GB') : '—');
+  const dt = (s?: string | null) => (s ? fmtDate(s) : '—');
   const pendingPickups = pickups.filter((p) => p.status === 'PENDING' || p.status === 'SCHEDULED');
 
   return (
@@ -172,7 +174,7 @@ export function ShippingHub() {
                   <div className="card" style={{ margin: 0, padding: 10 }}>
                     <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                       <strong>{r.awb}</strong>
-                      <span className="badge" style={{ background: statusColor(code), color: '#fff' }}>{STATUS_LABEL[code] || code}</span>
+                      <StatusBadge code={code} label={STATUS_LABEL[code] || undefined} />
                     </div>
                     <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>{r.consigneeName || '—'} → {r.destination || '—'} · {r.vendor || 'SELF'}{r.forwardingAwb ? ` · ${r.forwardingAwb}` : ''}{r.bdStatus ? ` · ${r.bdStatus}` : ''}</div>
                   </div>

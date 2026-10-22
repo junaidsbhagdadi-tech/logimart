@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react';
+import { MoreMenu } from '../components/MoreMenu';
+import { StatusBadge } from '../components/StatusBadge';
+import { ArrowLeft, Compass, Tag, Send, Camera, PenLine, Pencil, Barcode, Printer, FileText, CalendarClock, Search, XCircle, UserPlus, MessageSquare, RefreshCw, IndianRupee, Scale, CalendarDays, ArrowRightLeft, Ban } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { api, RateQuote, Shipment } from '../api';
 import { useAuth } from '../auth';
 import { modeLabel } from '../productMode';
+import { fmtDate, fmtDateTime } from '../format';
 
 export function ShipmentDetail() {
   const { awb } = useParams();
@@ -16,6 +20,8 @@ export function ShipmentDetail() {
   const canHandover = ['HUB_MANAGER', 'FINANCE_EXEC', 'SYS_ADMIN'].includes(user?.role || '');
   const canEditCharges = ['HUB_MANAGER', 'FINANCE_EXEC', 'SYS_ADMIN'].includes(user?.role || '');
   const [s, setS] = useState<Shipment | null>(null);
+  const [bdCodes, setBdCodes] = useState<string[]>([]);
+  useEffect(() => { api.bdAccountOptions().then((r) => setBdCodes(r.flatMap((a) => [a.customerCode, a.accountCode].filter(Boolean).map((x) => String(x).toUpperCase())))).catch(() => {}); }, []);
   const [quote, setQuote] = useState<RateQuote | null>(null);
   const [editCharges, setEditCharges] = useState(false);
   const [edited, setEdited] = useState<Record<string, string>>({});
@@ -389,6 +395,23 @@ export function ShipmentDetail() {
   if (error && !s) return <div className="error">{error}</div>;
   if (!s) return <p className="muted">Loading…</p>;
 
+  // Which carrier this AWB is on — drives which hand-off / carrier actions show up front.
+  const vendorUp = String((s as any).vendor || '').toUpperCase();
+  const carrier: 'BD' | 'DLY' | 'OTHER' = (/^(BLUE|BDR)/.test(vendorUp) || bdCodes.includes(vendorUp) || !!s.bdWaybill) ? 'BD' : (/DELHIVERY|^DLY$/.test(vendorUp) ? 'DLY' : 'OTHER');
+  const isCan = String((s as any).statusCode).toUpperCase() === 'CAN';
+  const isDone = isCan || ['DLD', 'RTD'].includes(String((s as any).statusCode).toUpperCase());
+  const canEditAwb = (canEditCharges && !(s as any).invoiced) || (isSysAdmin && !!(s as any).invoiced);
+  const changeBookingDate = async () => {
+    const t = new Date((s as any).createdAt ?? Date.now()); const p2 = (n: number) => String(n).padStart(2, '0');
+    const date = window.prompt(`New booking / manifest date for ${s.awb} (DD-MM-YYYY):`, `${p2(t.getDate())}-${p2(t.getMonth() + 1)}-${t.getFullYear()}`);
+    if (!date) return;
+    try {
+      const r = await api.bulkDateAwbs([s.awb], date);
+      if (r.changed) { setMsg(`Booking date changed to ${date}.`); load(); }
+      else setError(r.results[0]?.error || 'Not changed.');
+    } catch (e: any) { setError(e.message); }
+  };
+
   return (
     <>
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -404,54 +427,56 @@ export function ShipmentDetail() {
             <div className="muted" style={{ fontSize: 13, fontWeight: 600 }}>📤 Shipper: {(s as any).shipperName}</div>
           )}
         </div>
-        <div className="row">
-          <button className="secondary" onClick={() => window.history.back()}>← Back</button>
-          <button className="secondary" onClick={load}>↻ Refresh</button>
-          <Link to={`/tracker/${s.awb}`}><button className="secondary" title="Track this shipment — status, pieces & weight">🧭 Track</button></Link>
-          {isFinance && <button className="secondary" onClick={getQuote}>₹ Rate quote</button>}
-          <button className="secondary" onClick={generateEway}>🛣 E-way bill</button>
-          {canAssign && <button className="secondary" onClick={assignRider}>🧑‍✈️ Assign rider</button>}
-          {canPod && (
-            <label className="secondary" style={{ padding: '9px 12px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
-              {podFile ? `📷 ${podFile.name.slice(0, 14)}…` : '📷 POD photo'}
+        {/* Action bar: the few everyday actions up front; everything else under "More", grouped. Carrier
+            buttons only for this shipment's own carrier (BlueDart / Delhivery), others stay reachable in More. */}
+        <div className="actions">
+          <button className="secondary" onClick={() => window.history.back()}><ArrowLeft aria-hidden /> Back</button>
+          <Link to={`/tracker/${s.awb}`}><button className="secondary" title="Track this shipment — status, pieces & weight"><Compass aria-hidden /> Track</button></Link>
+          <Link to={`/shipments/${s.awb}/labels`}><button className="secondary"><Tag aria-hidden /> Print labels</button></Link>
+          {canAssign && !isCan && carrier === 'BD' && !s.bdWaybill && <button onClick={handoffBd}><Send aria-hidden /> Hand to BlueDart</button>}
+          {canAssign && !isCan && carrier === 'DLY' && !(s as any).forwardingAwb && <button onClick={handoffDel}><Send aria-hidden /> Hand to Delhivery</button>}
+          {canPod && !isDone && (
+            <label className="secondary btn-like" style={{ padding: '9px 12px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+              <Camera aria-hidden /> {podFile ? `${podFile.name.slice(0, 14)}…` : 'POD photo'}
               <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={(e) => setPodFile(e.target.files?.[0] ?? null)} />
             </label>
           )}
-          {canPod && <button onClick={recordPod}>✍ Record POD</button>}
-          {canPod && <button className="secondary" onClick={addComment}>💬 Comment</button>}
-          {canAssign && <button className="secondary" onClick={handoffBd}>📦 Hand to BlueDart</button>}
-          {canAssign && <button className="secondary" onClick={handoffDel}>📦 Hand to Delhivery</button>}
-          {canAssign && String((s as any).vendor).toUpperCase() === 'DELHIVERY' && (s as any).forwardingAwb && <button className="secondary" onClick={cancelDel}>🚫 Cancel Delhivery</button>}
-          {canEditCharges && !(s as any).invoiced && String((s as any).statusCode).toUpperCase() !== 'CAN' && <button className="secondary" style={{ color: 'var(--bad, #c0392b)' }} onClick={voidAwb} title="Void a wrong AWB — excluded from billing">🚫 Void AWB</button>}
-          {canAssign && (s.bdWaybill || (/BLUE|BDR/i.test(String((s as any).vendor || '')) && (s as any).forwardingAwb)) && <button className="secondary" onClick={trackBd}>🔎 BlueDart track</button>}
-          {canAssign && s.bdWaybill && String((s as any).statusCode).toUpperCase() !== 'CAN' && <button className="secondary" onClick={cancelBd}>🚫 Cancel BlueDart</button>}
-          {s.bdWaybill && <a href={`/shipments/${s.awb}/bd-awb`} target="_blank" rel="noreferrer"><button className="secondary">🖨 BlueDart AWB</button></a>}
-          {canAssign && String((s as any).statusCode).toUpperCase() !== 'CAN' && (() => {
-            const toPay = String((s as any).paymentTerm).toUpperCase() === 'TO_PAY' || ['FOD', 'TOSFC', 'TAPEX', 'TODP'].includes(String((s as any).product ?? '').toUpperCase());
-            return <button className="secondary" onClick={pickupBd} title={toPay ? 'Register a BlueDart to-pay (FOD) pickup — works from outside the home area' : 'Register a BlueDart pickup for this shipment'}>📅 BlueDart pickup{toPay ? ' (to-pay)' : ''}</button>;
-          })()}
-          {isFinance && <button className="secondary" onClick={() => { setReweighMode((v) => !v); setMsg(''); }}>⚖ {reweighMode ? 'Cancel re-weigh' : 'Re-weigh'}</button>}
-          {((canEditCharges && !(s as any).invoiced) || (isSysAdmin && (s as any).invoiced)) && <button className="secondary" onClick={openEdit} title={(s as any).invoiced ? 'Super-admin: edit an already-invoiced AWB (does NOT change the raised invoice)' : 'Edit product, consignee, vendor & other details'}>✏️ Edit AWB{(s as any).invoiced ? ' (invoiced)' : ''}</button>}
-          {canEditCharges && !(s as any).invoiced && <button className="secondary" title="Change the booking / manifest date (e.g. to bill it in another month)" onClick={async () => {
-            const t = new Date((s as any).createdAt ?? Date.now()); const p = (n: number) => String(n).padStart(2, '0');
-            const date = window.prompt(`New booking / manifest date for ${s.awb} (DD-MM-YYYY):`, `${p(t.getDate())}-${p(t.getMonth() + 1)}-${t.getFullYear()}`);
-            if (!date) return;
-            try {
-              const r = await api.bulkDateAwbs([s.awb], date);
-              if (r.changed) { setMsg(`📅 Booking date changed to ${date}.`); load(); }
-              else setError(r.results[0]?.error || 'Not changed.');
-            } catch (e: any) { setError(e.message); }
-          }}>📅 Change date</button>}
-          {isFinance && <button className="secondary" onClick={() => { setTransferOpen((v) => !v); setMsg(''); setError(''); }} title="Wrong-entry transfer to another customer">🔄 Transfer</button>}
-          <Link to={`/shipments/${s.awb}/labels`}><button>🏷 Print labels</button></Link>
-          <a href={`/shipments/${s.awb}/bd-label`} target="_blank" rel="noreferrer"><button>🏷 Courier label</button></a>
-          <a href={`/shipments/${s.awb}/awb-print`} target="_blank" rel="noreferrer"><button>🖨 Print AWB</button></a>
+          {canPod && !isDone && <button onClick={recordPod}><PenLine aria-hidden /> Record POD</button>}
+          {canEditAwb && <button className="secondary" onClick={openEdit} title={(s as any).invoiced ? 'Super-admin: edit an already-invoiced AWB (does NOT change the raised invoice)' : 'Edit product, consignee, vendor & other details'}><Pencil aria-hidden /> Edit AWB{(s as any).invoiced ? ' (invoiced)' : ''}</button>}
+          <MoreMenu sections={[
+            { title: 'Documents', items: [
+              { label: 'Courier label', icon: <Barcode aria-hidden />, href: `/shipments/${s.awb}/bd-label` },
+              { label: 'Print AWB', icon: <Printer aria-hidden />, href: `/shipments/${s.awb}/awb-print` },
+              { label: 'BlueDart AWB print', icon: <Printer aria-hidden />, href: `/shipments/${s.awb}/bd-awb`, show: !!s.bdWaybill },
+              { label: 'E-way bill', icon: <FileText aria-hidden />, onClick: generateEway },
+            ] },
+            { title: 'Carrier', items: [
+              { label: 'Hand to BlueDart', icon: <Send aria-hidden />, onClick: handoffBd, show: canAssign && !isCan && carrier !== 'BD' && !s.bdWaybill },
+              { label: 'Hand to Delhivery', icon: <Send aria-hidden />, onClick: handoffDel, show: canAssign && !isCan && carrier !== 'DLY' },
+              { label: 'BlueDart pickup', icon: <CalendarClock aria-hidden />, onClick: pickupBd, show: canAssign && !isCan && carrier === 'BD', title: 'Register a BlueDart pickup for this shipment' },
+              { label: 'Refresh BlueDart tracking', icon: <Search aria-hidden />, onClick: trackBd, show: canAssign && (!!s.bdWaybill || (carrier === 'BD' && !!(s as any).forwardingAwb)) },
+              { label: 'Cancel BlueDart waybill', icon: <XCircle aria-hidden />, onClick: cancelBd, danger: true, show: canAssign && !!s.bdWaybill && !isCan },
+              { label: 'Cancel Delhivery', icon: <XCircle aria-hidden />, onClick: cancelDel, danger: true, show: canAssign && carrier === 'DLY' && !!(s as any).forwardingAwb },
+            ] },
+            { title: 'Operations', items: [
+              { label: 'Assign rider', icon: <UserPlus aria-hidden />, onClick: assignRider, show: canAssign },
+              { label: 'Comment', icon: <MessageSquare aria-hidden />, onClick: addComment, show: canPod },
+              { label: 'Refresh', icon: <RefreshCw aria-hidden />, onClick: load },
+            ] },
+            { title: 'Finance & admin', items: [
+              { label: 'Rate quote', icon: <IndianRupee aria-hidden />, onClick: getQuote, show: isFinance },
+              { label: reweighMode ? 'Cancel re-weigh' : 'Re-weigh', icon: <Scale aria-hidden />, onClick: () => { setReweighMode((v) => !v); setMsg(''); }, show: isFinance },
+              { label: 'Change booking date', icon: <CalendarDays aria-hidden />, onClick: changeBookingDate, show: canEditCharges && !(s as any).invoiced, title: 'Change the booking / manifest date (e.g. to bill it in another month)' },
+              { label: 'Transfer to another customer', icon: <ArrowRightLeft aria-hidden />, onClick: () => { setTransferOpen((v) => !v); setMsg(''); setError(''); }, show: isFinance },
+              { label: 'Void AWB', icon: <Ban aria-hidden />, onClick: voidAwb, danger: true, show: canEditCharges && !(s as any).invoiced && !isCan, title: 'Void a wrong AWB — excluded from billing' },
+            ] },
+          ]} />
         </div>
       </div>
 
       {/* Sticky at-a-glance summary — stays visible while scrolling the AWB. */}
       <div className="card" style={{ position: 'sticky', top: 8, zIndex: 6, display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', padding: '10px 16px', marginBottom: 14, boxShadow: 'var(--shadow)' }}>
-        <span className={`badge ${s.status}`}>{s.status}</span>
+        <StatusBadge code={(s as any).statusCode || s.status} />
         <strong style={{ fontSize: 13.5 }}>
           {[(s as any).originLocation || (s as any).shipperCity, (s as any).shipperPincode].filter(Boolean).join(' ') || s.originZone}
           {' → '}
@@ -575,7 +600,7 @@ export function ShipmentDetail() {
             <div><label>Forwarding AWB <span className="muted">(vendor's carrier AWB)</span></label><input value={fwd.forwardingAwb} onChange={(e) => setFwd((f) => ({ ...f, forwardingAwb: e.target.value }))} placeholder="e.g. 58001396353" /></div>
             <div><button onClick={forward}>Save hand-off</button></div>
           </div>
-          {(s.vendor || s.forwardingAwb) && <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>Current: {s.vendor || '—'}{s.forwardingAwb ? ` · fwd AWB ${s.forwardingAwb}` : ''}{s.forwardingAt ? ` · ${new Date(s.forwardingAt).toLocaleString('en-IN')}` : ''}</div>}
+          {(s.vendor || s.forwardingAwb) && <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>Current: {s.vendor || '—'}{s.forwardingAwb ? ` · fwd AWB ${s.forwardingAwb}` : ''}{s.forwardingAt ? ` · ${fmtDateTime(s.forwardingAt)}` : ''}</div>}
         </div>
       )}
 
@@ -666,7 +691,7 @@ export function ShipmentDetail() {
 
       <div className="card">
         <div className="grid cols-3">
-          <div><label>Status</label><span className={`badge ${s.status}`}>{s.status}</span></div>
+          <div><label>Status</label><StatusBadge code={(s as any).statusCode || s.status} /></div>
           <div><label>Service</label>{modeLabel(s.serviceMode)}{s.product ? ` · ${s.product}` : ''}</div>
           <div><label>Route (zones)</label>{s.originZone} → {s.destZone}</div>
           <div><label>Origin → Destination</label>{[(s as any).originLocation || (s as any).shipperCity, (s as any).shipperPincode].filter(Boolean).join(' ') || '—'} → {[(s as any).consigneeCity, (s as any).destPincode].filter(Boolean).join(' ') || '—'}</div>
@@ -688,7 +713,7 @@ export function ShipmentDetail() {
           <div><label>E-way bill</label>{s.ewbNo ?? '—'}</div>
           {s.product && <div><label>Product</label>{s.product}{s.docType ? ` · ${s.docType}` : ''}</div>}
           {s.bdWaybill && <div><label>BlueDart AWB</label>{s.bdWaybill}{s.bdStatus ? ` · ${s.bdStatus}` : ''}</div>}
-          {(s as any).bdPickupToken && <div><label>BlueDart pickup</label>Token {(s as any).bdPickupToken}{(s as any).bdPickupAt ? ` · pickup ${new Date((s as any).bdPickupAt).toLocaleDateString('en-GB')}` : ''}
+          {(s as any).bdPickupToken && <div><label>BlueDart pickup</label>Token {(s as any).bdPickupToken}{(s as any).bdPickupAt ? ` · pickup ${fmtDate((s as any).bdPickupAt)}` : ''}
             {!s.bdWaybill && <div className="muted" style={{ fontSize: 11.5 }}>Pickup only — no waybill yet (fetched automatically once BlueDart collects).{' '}
               <button className="secondary" style={{ padding: '1px 8px', fontSize: 11.5, color: 'var(--bad, #c0392b)' }} onClick={cancelBdPickup}>Cancel pickup</button></div>}
           </div>}
@@ -714,7 +739,7 @@ export function ShipmentDetail() {
                 <span style={{ position: 'absolute', left: -18, top: 3, width: 10, height: 10, borderRadius: '50%', background: i === track.length - 1 ? 'var(--brand)' : 'var(--ok, #16a34a)' }} />
                 {i !== track.length - 1 && <span style={{ position: 'absolute', left: -14, top: 13, bottom: 0, width: 2, background: 'var(--border)' }} />}
                 <div style={{ fontWeight: 700, fontSize: 13 }}>{t.label} <span className="muted" style={{ fontWeight: 400 }}>({t.code})</span></div>
-                <div className="muted" style={{ fontSize: 12 }}>{new Date(t.at).toLocaleString('en-IN')}{t.remark ? ` · ${t.remark}` : ''}</div>
+                <div className="muted" style={{ fontSize: 12 }}>{fmtDateTime(t.at)}{t.remark ? ` · ${t.remark}` : ''}</div>
               </div>
             ))}
           </div>
@@ -829,7 +854,7 @@ export function ShipmentDetail() {
                     <td><input type="number" style={{ width: 60 }} placeholder={String((p as any).heightCm ?? '')} value={rwd[p.sequenceNo]?.h ?? ''} onChange={(e) => setDim(p.sequenceNo, 'h', e.target.value)} /></td>
                   </>
                 )}
-                <td><span className={`badge ${p.status}`}>{p.status}</span></td>
+                <td><StatusBadge code={p.status} /></td>
               </tr>
             ))}
             {reweighMode && extra.map((b, i) => (
