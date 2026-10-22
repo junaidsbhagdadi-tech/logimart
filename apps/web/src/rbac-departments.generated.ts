@@ -18,7 +18,7 @@ export type DeptLevel = 'VIEW' | 'EDIT' | 'DELETE';
 export const DEPARTMENT_DEFAULTS: Record<string, Record<string, DeptLevel>> = {
   OPERATIONS: {
     '/': 'VIEW', '/tracker': 'VIEW', '/pincode-search': 'VIEW',
-    '/create': 'EDIT', '/awb-list': 'EDIT', '/bulk': 'EDIT', '/deliver': 'EDIT', '/pickups': 'EDIT', '/pickup-book': 'EDIT', '/walk-in': 'EDIT',
+    '/create': 'EDIT', '/awb-list': 'EDIT', '/bulk': 'EDIT', '/deliver': 'EDIT', '/pickups': 'EDIT', '/pickup-book': 'EDIT', '/quick-book': 'EDIT', '/handover': 'EDIT', '/walk-in': 'EDIT',
     '/fm': 'VIEW', '/fm/pickup-outscan': 'EDIT', '/fm/bulk-pickup-outscan': 'EDIT', '/fm/update-pickup': 'EDIT',
     '/mm': 'VIEW', '/mm/inscan-shipment': 'EDIT', '/mm/bagging': 'EDIT', '/mm/trips': 'EDIT', '/mm/inscan-trip': 'EDIT',
     '/lm': 'VIEW', '/lm/inscan-shipment': 'EDIT', '/lm/inscan-trip': 'EDIT', '/lm/delivery-outscan': 'EDIT',
@@ -27,7 +27,7 @@ export const DEPARTMENT_DEFAULTS: Record<string, Record<string, DeptLevel>> = {
   },
   CUSTOMER_SERVICE: {
     '/': 'VIEW', '/team-dashboards': 'VIEW', '/tracker': 'VIEW', '/pincode-search': 'VIEW',
-    '/create': 'EDIT', '/awb-list': 'EDIT', '/bulk': 'EDIT', '/pickups': 'EDIT', '/pickup-book': 'EDIT',
+    '/create': 'EDIT', '/awb-list': 'EDIT', '/bulk': 'EDIT', '/pickups': 'EDIT', '/pickup-book': 'EDIT', '/quick-book': 'EDIT', '/handover': 'EDIT',
     '/customers': 'EDIT', '/claims': 'EDIT', '/documents': 'EDIT', '/notes': 'VIEW', '/invoices': 'VIEW',
     '/reports': 'VIEW', '/contact-directory': 'EDIT',
   },

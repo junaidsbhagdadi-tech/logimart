@@ -532,6 +532,7 @@ model Shipment {
   csCommentAt      DateTime?
   csCommentReadAt  DateTime?
   referenceNo    String?
+  custInvoiceNo  String?   // customer's own invoice no for the goods (quick booking / scanned)
 
   vehicleNo      String?
   ftlVehicleType String?   // 8ft | 10ft | 14ft | 17ft | 20ft | 32FT SXL | 32ft MXL

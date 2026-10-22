@@ -28,6 +28,8 @@ import { BdAwbPrint } from './pages/BdAwbPrint';
 import { BlueDart } from './pages/BlueDart';
 import { BillWorksheet } from './pages/BillWorksheet';
 import { Pickups } from './pages/Pickups';
+import { QuickBook } from './pages/QuickBook';
+import { Handover, HandoverPrint } from './pages/Handover';
 import { ShippingHub } from './pages/ShippingHub';
 import { Companies } from './pages/Companies';
 import { IntlShipments } from './pages/IntlShipments';
@@ -96,6 +98,7 @@ export function App() {
       <Route path="/invoices/:id/print" element={<InvoicePrint />} />
       <Route path="/notes/:id/print" element={<NotePrint />} />
       <Route path="/shipments/:awb/awb-print" element={<AwbPrint />} />
+      <Route path="/handover/print" element={<HandoverPrint />} />
       <Route path="/shipments/:awb/bd-label" element={<BdLabel />} />
       <Route path="/shipments/:awb/bd-awb" element={<BdAwbPrint />} />
       <Route path="/intl/:idOrJob/document" element={<IntlDocument />} />
@@ -109,6 +112,8 @@ export function App() {
         {/* #7 — internal Pickup Booking = the customer's pickup-request form + customer picker; the old
             book-a-shipment-at-pickup (AWB) form stays reachable at /pickup-book/awb. */}
         <Route path="/pickup-book" element={<Pickups mode="book" />} />
+        <Route path="/quick-book" element={<QuickBook />} />
+        <Route path="/handover" element={<Handover />} />
         <Route path="/pickup-book/awb" element={<PickupBook />} />
         <Route path="/awb-list" element={<AwbEntryList />} />
         <Route path="/bulk" element={<BulkBooking />} />

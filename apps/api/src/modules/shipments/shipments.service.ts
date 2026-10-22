@@ -270,6 +270,7 @@ export class ShipmentsService {
         isMedical: dto.isMedical ?? false,
         apptDelivery: dto.apptDelivery ?? false,
         referenceNo: dto.referenceNo || null,
+        custInvoiceNo: (dto as any).invoiceNo || null,
         goodsDesc: dto.goodsDesc,
         hsnCode: dto.hsnCode,
         consignorGstin: dto.consignorGstin,
@@ -776,8 +777,13 @@ export class ShipmentsService {
     const s = String(q ?? '').trim();
     const where: any = { isActive: true, ...(scope ? { id: { in: scope } } : {}) };
     if (s) where.OR = [{ legalName: { contains: s, mode: 'insensitive' } }, { accountCode: { contains: s, mode: 'insensitive' } }];
-    const rows = await this.prisma.b2bClient.findMany({ where, select: { id: true, legalName: true, accountCode: true }, orderBy: { legalName: 'asc' }, take: 500 });
-    return rows.map((r) => ({ id: String(r.id), legalName: r.legalName, accountCode: r.accountCode }));
+    // Light picker for pickup boys / quick booking: identity + the pickup defaults (address, city, pincode,
+    // phone, default carrier) — no credit / financial fields.
+    const rows = await this.prisma.b2bClient.findMany({
+      where, orderBy: { legalName: 'asc' }, take: 2000,
+      select: { id: true, legalName: true, accountCode: true, addressLine: true, city: true, state: true, pincode: true, contactPhone: true, contactName: true, defaultVendor: true },
+    });
+    return rows.map((r) => ({ ...r, id: String(r.id) }));
   }
 
   /**
@@ -1090,9 +1096,10 @@ export class ShipmentsService {
       ];
     }
     // Booking-date range filter (bookDate = createdAt). `to` is inclusive of the whole day.
-    const gte = from ? new Date(from) : null;
-    let lte: Date | null = null;
-    if (to) { lte = new Date(to); lte.setHours(23, 59, 59, 999); }
+    // Whole IST days (the server runs in UTC, so a bare date used to start at 05:30 IST and end at
+    // 05:29 IST the next morning — early-morning bookings fell into the wrong day).
+    const gte = from ? new Date(/T/.test(from) ? from : `${from}T00:00:00+05:30`) : null;
+    const lte: Date | null = to ? new Date(/T/.test(to) ? to : `${to}T23:59:59.999+05:30`) : null;
     if (gte || lte) where.createdAt = { ...(gte ? { gte } : {}), ...(lte ? { lte } : {}) };
     // When the caller filters (by date or search) we're pulling a bounded, intentional set, so lift the
     // default 300/500 cap; otherwise keep it small for the default "latest" view.

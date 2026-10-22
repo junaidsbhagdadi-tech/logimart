@@ -128,7 +128,9 @@ export function Layout() {
     ] },
     { title: 'Operations', items: [
       { to: '/create', icon: '➕', label: 'New Shipment' },
+      { to: '/quick-book', icon: '⚡', label: 'Quick Booking' },
       { to: '/pickup-book', icon: '📦', label: 'Pickup Booking' },
+      { to: '/handover', icon: '📋', label: 'Handover Manifest' },
       { to: '/awb-list', icon: '📝', label: 'Shipment List' },
       { to: '/bulk', icon: '📥', label: 'Bulk Booking' },
       { to: '/walk-in', icon: '🧾', label: 'Walk-in Counter', show: isAdminFin || canMaster },

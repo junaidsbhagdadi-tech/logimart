@@ -138,7 +138,7 @@ export class PickupsService {
           shipperName: p.contactName || client?.legalName || undefined, shipperAddress1: p.pickupAddress, shipperCity: p.city ?? undefined,
           shipperPincode: p.pincode ?? undefined, shipperMobile: p.contactPhone ?? undefined,
           consigneeName: captured.consigneeName || undefined, consigneePhone: captured.consigneePhone || undefined, consigneeAddress: captured.consigneeAddress || undefined,
-          vendor: p.vendor || undefined, referenceNo: p.refNo || undefined, ewbNo: p.ewbNo || undefined,
+          vendor: p.vendor || undefined, referenceNo: p.refNo || undefined, ewbNo: p.ewbNo || undefined, invoiceNo: p.invoiceNo || undefined,
           declaredValue: value, shipmentValue: value,
           pieces: Array.from({ length: pcs }, () => ({ deadKg: +(kg / pcs).toFixed(3) })),
         } as any, { skipAutoDispatch: true });

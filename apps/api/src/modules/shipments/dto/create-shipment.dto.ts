@@ -55,7 +55,8 @@ export class CreateShipmentDto {
   @IsOptional() @IsString() consignorGstin?: string;
   @IsOptional() @IsString() consigneeGstin?: string;
   @IsOptional() @IsNumber() declaredValue?: number;
-  @IsOptional() @IsString() ewbNo?: string; // e-way bill no. (required when invoice value ≥ ₹50k)
+  @IsOptional() @IsString() ewbNo?: string;
+  @IsOptional() @IsString() invoiceNo?: string; // customer's invoice no for the goods → Shipment.custInvoiceNo // e-way bill no. (required when invoice value ≥ ₹50k)
   @IsOptional() @IsString() forwardingAwb?: string; // vendor's carrier AWB, entered at booking
 
   // ---- shipper (sender) — separate party from the billing customer ----

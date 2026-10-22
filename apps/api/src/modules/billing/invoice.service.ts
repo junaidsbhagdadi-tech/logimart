@@ -591,7 +591,7 @@ export class InvoiceService {
       const gst = +(sub * GST_RATE).toFixed(2);
       return {
         AWBNo: s.awb, BookingDate: d10(s.createdAt), CustomerCode: client.accountCode, CustomerName: client.legalName,
-        Invoice_No: '', Invoice_Date: '', Cust_Invoice_No: s.referenceNo ?? '', Cust_Invoice_Date: '',
+        Invoice_No: '', Invoice_Date: '', Cust_Invoice_No: s.custInvoiceNo ?? s.referenceNo ?? '', Cust_Invoice_Date: '',
         Shipment_Value: num(s.shipmentValue ?? s.declaredValue), COD_Amount: 0, AddField7: '', Vendor_InvoiceNo: '',
         Shipper: s.shipperName ?? '', ManifestNo: '', VendorCode: vendorCode(s.vendor), ProductCode: s.product ?? '',
         Origin: s.originZone ?? '', PaymentType: s.paymentTerm === 'TO_PAY' ? 'T' : 'R', Pieces: s.pieceCount,
