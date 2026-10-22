@@ -351,39 +351,32 @@ export class BluedartService implements OnModuleInit {
     // Capture origin+dest "AREA / SC" codes for the shipping label (ORG/DST line).
     const org = await this.areaInfoFor((s as any).shipperPincode ?? (s as any).client?.pincode);
     const dst = await this.areaInfoFor((s as any).destPincode);
-    // The pickup pincode's area must match the SELECTED account's area, else BlueDart can't generate a
-    // waybill (cryptic "UnauthorizedUser" / area-SC-region). Point ops at the right account / to-pay pickup.
+    // Pickup OUTSIDE the account's home area = a TO-PAY booking (billed to this account): ask BlueDart for
+    // a real waybill with OriginArea = the pickup's area + isToPayCustomer. Only if BlueDart refuses it
+    // (the account isn't enabled for that area yet) fall back to a pickup-only registration, and say why.
     const home = String(acc.originArea || '').toUpperCase();
-    if (home && org.area && org.area.toUpperCase() !== home) {
-      // Out-of-area origin: BlueDart can't mint a waybill across areas on a single-area account, so hand
-      // it off as an outstation (to-pay/FOD) PICKUP instead — the same fallback the auto-dispatcher uses.
-      // This is what makes a To-Pay / outstation shipment bookable from the manual "Hand to BlueDart"
-      // button, instead of a dead-end error. (The Logimart customer is still billed per the shipment's
-      // own payment term; isToPayShipper is just the carrier leg term — see schedulePickup.)
+    const outstation = !!(home && org.area && org.area.toUpperCase() !== home);
+    const pickupOnlyFallback = async (bdRefusal: string) => {
+      const pin = (s as any).shipperPincode ?? (s as any).client?.pincode ?? '?';
       try {
         const pk = await this.schedulePickup(awb);
-        // Say exactly what happened — the old UI showed only "no waybill returned", hiding that a pickup
-        // was booked (and why). A wrong shipper pincode (e.g. a Mumbai address with a Bengaluru PIN)
-        // lands here too, so name the pincode/area/city so ops can spot it.
-        const pin = (s as any).shipperPincode ?? (s as any).client?.pincode ?? '?';
-        const reason = `Pickup pincode ${pin} is in BlueDart area ${org.area}, outside this BlueDart account's area (${home}), so BlueDart can't issue a waybill. ` +
-          `An outstation pickup was registered instead${pk.token ? ` (token ${pk.token})` : ''}; the waybill is picked up automatically once BlueDart collects it.` +
-          ((s as any).shipperCity ? ` Shipper city on the AWB is ${(s as any).shipperCity} — if that's where the pickup really is, the pincode is wrong: cancel this pickup, fix the pincode on Edit AWB and hand off again.` : '');
+        const reason = `Pickup pincode ${pin} is in BlueDart area ${org.area}, outside this account's home area (${home}). BlueDart refused the to-pay waybill (${bdRefusal}), ` +
+          `so only a pickup was registered${pk.token ? ` (token ${pk.token})` : ''} — no AWB. Ask BlueDart to enable to-pay bookings from ${org.area} for account ${acc.customerCode}, or book it under a ${org.area} account.` +
+          ((s as any).shipperCity ? ` (Shipper city on the AWB: ${(s as any).shipperCity} — if the pickup is really there, the pincode is wrong.)` : '');
+        await this.prisma.shipment.update({ where: { id: s.id }, data: { bdError: reason.slice(0, 1000) } }).catch(() => {});
         return { awb, bdWaybill: null, token: pk.token, labelBase64: null, outstation: true, action: 'outstation-pickup', reason, originArea: org.area, accountArea: home, response: pk.response };
       } catch (e: any) {
-        throw new BadRequestException(
-          `${awb} originates in ${org.area} (pin ${(s as any).shipperPincode ?? (s as any).client?.pincode ?? '?'}), outside the selected BlueDart account's area (${home}). ` +
-          `Tried an outstation (To-Pay) pickup but it failed: ${String(e?.message || e)}. Add a ${org.area} BlueDart account on Edit AWB, or fix the shipper details and retry.`,
-        );
+        throw new BadRequestException(`${awb}: BlueDart refused the to-pay waybill from ${org.area} (${bdRefusal}) and the pickup-only fallback failed too: ${String(e?.message || e)}`);
       }
-    }
-    const payload = this.mapWaybill(s, acc);
+    };
+    const payload = this.mapWaybill(s, acc, outstation ? { originArea: org.area.toUpperCase(), outstation: true } : {});
     let resp: any;
     try {
       resp = await this.authed('/waybill/v1/GenerateWayBill', { method: 'POST', body: JSON.stringify(payload) });
     } catch (e: any) {
       // Keep BlueDart's reason on the AWB (shown on the shipment page) + which account it went under.
-      const m = `${String(e?.message || e)} [account ${acc.customerCode}, ${acc.originArea}; sub-product ${payload.Request.Services.SubProductCode}, collectable ₹${payload.Request.Services.CollactableAmount}]`;
+      const m = `${String(e?.message || e)} [account ${acc.customerCode}, origin ${payload.Request.Shipper.OriginArea}; sub-product ${payload.Request.Services.SubProductCode}, to-pay ${payload.Request.Shipper.isToPayCustomer}, collectable ₹${payload.Request.Services.CollactableAmount}]`;
+      if (outstation) return pickupOnlyFallback(m);
       await this.prisma.shipment.update({ where: { id: s.id }, data: { bdError: m.slice(0, 1000) } }).catch(() => {});
       throw new BadRequestException(m);
     }
@@ -395,6 +388,7 @@ export class BluedartService implements OnModuleInit {
       const msg = (result?.Status ?? result?.status ?? [])
         .map((x: any) => x?.StatusInformation ?? x?.statusInformation ?? x?.StatusCode)
         .filter(Boolean).join('; ');
+      if (outstation) return pickupOnlyFallback(msg || 'rejected');
       throw new BadRequestException(`BlueDart rejected the waybill: ${msg || JSON.stringify(result).slice(0, 300)}`);
     }
     const bdWaybill = result?.AWBNo || result?.awbNo || null;
@@ -503,23 +497,32 @@ export class BluedartService implements OnModuleInit {
     return 'E';                                             // Surface / Ground
   }
 
-  /** To-pay (freight collected at delivery) — set either as the payment term or by product: FOD
-   *  (freight on delivery) and the reverse products, which are billed as "Reverse pick up (Topay)".
-   *  Every shipment in this system is booked PREPAID, so the product is what actually signals to-pay. */
+  /** TO-PAY (BlueDart sense): carriage from OUTSIDE the account's home area, billed to the account
+   *  that registers it → `isToPayCustomer: true` with a normal PREPAID sub-product. The to-pay products
+   *  (TOSFC / TAPEX / TODP) signal it; an out-of-area pickup is to-pay regardless of product.
+   *  NOT the same as FOD (below) — to-pay is never collected from the consignee. */
   private isToPay(s: any): boolean {
-    if (String(s?.paymentTerm ?? '').toUpperCase() === 'TO_PAY') return true;
-    return ['FOD', 'TOSFC', 'TAPEX', 'TODP'].includes(String(s?.product ?? '').toUpperCase());
+    return ['TOSFC', 'TAPEX', 'TODP'].includes(String(s?.product ?? '').toUpperCase());
   }
 
-  /** BlueDart→Logimart pay-mode → SubProductCode: P=Prepaid, C=COD, A=FOD(To-Pay), D=DOD. */
+  /** FOD (Freight On Delivery): freight collected FROM THE CONSIGNEE → SubProductCode A with the amount
+   *  to collect. The FOD product, or a shipment booked with the "To-Pay / freight collect" payment term
+   *  (Logimart's freightToCollect = what the consignee pays). */
+  private isFod(s: any): boolean {
+    return String(s?.product ?? '').toUpperCase() === 'FOD' || String(s?.paymentTerm ?? '').toUpperCase() === 'TO_PAY';
+  }
+
+  /** SubProductCode (TSD): P=Prepaid, C=COD, A=FOD (consignee pays freight), D=DOD, B=DOD+FOD.
+   *  To-pay is NOT a sub-product — it's the isToPayCustomer flag on a prepaid (P) waybill. */
   private bdSubProduct(s: any): string {
+    if (s.isDod && this.isFod(s)) return 'B';
     if (s.isDod) return 'D';
-    if (this.isToPay(s)) return 'A';
+    if (this.isFod(s)) return 'A';
     return 'P';
   }
 
   /** Map Logimart shipment → BlueDart GenerateWayBill request (TSD v2.7), under account `acc`. */
-  private mapWaybill(s: any, acc: BdAcc) {
+  private mapWaybill(s: any, acc: BdAcc, opts: { originArea?: string; outstation?: boolean } = {}) {
     // Dimensions grouped by identical box size, with a Count per size (TSD Dimension object).
     const dimGroups = new Map<string, { Length: number; Breadth: number; Height: number; Count: number }>();
     for (const p of s.pieces ?? []) {
@@ -530,12 +533,15 @@ export class BluedartService implements OnModuleInit {
       g.Count += 1; dimGroups.set(k, g);
     }
     const dims = [...dimGroups.values()];
-    const codAmount = s.isDod ? Number(s.dodAmount || 0) : (this.isToPay(s) ? Number(s.freightToCollect || 0) : 0);
+    // CollactableAmount: the draft value for DOD, the consignee's freight for FOD; to-pay collects nothing.
+    const codAmount = s.isDod ? Number(s.dodAmount || 0) : (this.isFod(s) ? Number(s.freightToCollect || 0) : 0);
 
     return {
       Request: {
         Shipper: {
-          OriginArea: acc.originArea || BLUEDART.originArea || String(s.originZone ?? '').slice(0, 3).toUpperCase(),
+          // Out-of-area (to-pay) booking: BlueDart validates OriginArea against the pickup pincode's service
+          // centre, so it must be the PICKUP's area; in-area it's the account's home area.
+          OriginArea: opts.originArea || acc.originArea || BLUEDART.originArea || String(s.originZone ?? '').slice(0, 3).toUpperCase(),
           CustomerCode: acc.customerCode,
           CustomerName: (s.shipperName ?? s.client?.legalName ?? '').slice(0, 30),
           CustomerAddress1: (s.shipperAddress1 ?? s.client?.addressLine ?? '').slice(0, 30),
@@ -544,9 +550,10 @@ export class BluedartService implements OnModuleInit {
           CustomerMobile: this.bdShipperMobile(s),
           CustomerGSTNumber: s.consignorGstin ?? s.client?.gstin ?? '',
           Sender: (s.shipperName ?? s.client?.legalName ?? '').slice(0, 20),
-          // To-Pay (FOD) shipments must be flagged so BlueDart collects freight at destination — this
-          // is also what lets a To-Pay pickup be raised outside the account's home area.
-          isToPayCustomer: this.isToPay(s),
+          // TO-PAY = carriage from outside the account's home area, billed to THIS account (TSD: "when
+          // mutually agreed for shipment carriage from any place other than place of contract signup").
+          // Set for the to-pay products and for any out-of-area pickup. (Consignee-pays is FOD → SubProduct A.)
+          isToPayCustomer: this.isToPay(s) || !!opts.outstation,
         },
         Consignee: {
           ConsigneeName: (s.consigneeName ?? '').slice(0, 30),

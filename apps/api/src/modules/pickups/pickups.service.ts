@@ -110,6 +110,27 @@ export class PickupsService {
     });
   }
 
+  /** Book the shipment for a pickup request under its customer (product / vendor / pickup address from the
+   *  request; destination + consignee from the caller). Used by mark-picked and the BlueDart hand-off. */
+  private async bookFromPickup(p: any, d: { awb?: string; destPincode: string; consigneeName?: string; consigneePhone?: string; consigneeAddress?: string; weight?: number; pieces?: number; value?: number; vendor?: string }) {
+    const pcs = Math.max(1, Math.floor(Number(d.pieces ?? p.estPieces ?? 1)));
+    const kg = Number(d.weight ?? p.weight ?? 0) || 0.5;
+    const product = String(p.product || 'SFC').toUpperCase();
+    const surface = /SFC|SURFACE|ROAD|RAIL|TOSFC|HUB/.test(product) || /ROAD|SURFACE/i.test(String(p.cargoMode ?? ''));
+    const client = await this.prisma.b2bClient.findUnique({ where: { id: p.clientId }, select: { legalName: true } });
+    const value = d.value ?? (p.invoiceValue != null ? Number(p.invoiceValue) : undefined);
+    return this.shipments.create({
+      clientId: Number(p.clientId), ...(d.awb ? { manualAwb: d.awb } : {}), product, serviceMode: surface ? 'ROAD_PTL' : 'AIR_EXPRESS',
+      originZone: '', destZone: '', originPincode: p.pincode ?? undefined, destPincode: String(d.destPincode).trim(),
+      shipperName: p.contactName || client?.legalName || undefined, shipperAddress1: p.pickupAddress, shipperCity: p.city ?? undefined,
+      shipperPincode: p.pincode ?? undefined, shipperMobile: p.contactPhone ?? undefined,
+      consigneeName: d.consigneeName || undefined, consigneePhone: d.consigneePhone || undefined, consigneeAddress: d.consigneeAddress || undefined,
+      vendor: d.vendor || p.vendor || undefined, referenceNo: p.refNo || undefined, ewbNo: p.ewbNo || undefined, invoiceNo: p.invoiceNo || undefined,
+      declaredValue: value, shipmentValue: value,
+      pieces: Array.from({ length: pcs }, () => ({ deadKg: +(kg / pcs).toFixed(3) })),
+    } as any, { skipAutoDispatch: true }) as Promise<any>;
+  }
+
   /**
    * Mark a pickup PICKED with the actuals. When an AWB is given it becomes billable for the customer:
    * an AWB already booked (ours or a carrier no) is linked; otherwise, with a destination pincode, the
@@ -119,29 +140,20 @@ export class PickupsService {
   async complete(id: number, captured: { awb?: string; weight?: number; pieces?: number; value?: number; destPincode?: string; consigneeName?: string; consigneePhone?: string; consigneeAddress?: string } = {}) {
     const p = await this.exists(id);
     let shipment: { awb: string; booked: boolean } | null = null;
-    const awb = String(captured.awb ?? '').trim().toUpperCase();
+    // Default to the shipment already booked at the BlueDart hand-off (request.pickedAwb).
+    const awb = String(captured.awb || p.pickedAwb || '').trim().toUpperCase();
     if (awb) {
-      const existing = await this.prisma.shipment.findFirst({ where: { OR: [{ awb }, { forwardingAwb: { equals: awb, mode: 'insensitive' } }] }, select: { awb: true, clientId: true } });
+      const existing = await this.prisma.shipment.findFirst({ where: { OR: [{ awb }, { forwardingAwb: { equals: awb, mode: 'insensitive' } }, { bdWaybill: awb }] }, select: { awb: true, clientId: true, statusCode: true } });
       if (existing) {
         if (String(existing.clientId) !== String(p.clientId)) throw new BadRequestException(`AWB ${awb} is already booked under another customer — check the number.`);
+        // Physically collected → move a still-Booked shipment to Picked.
+        if (String(existing.statusCode || 'MAN') === 'MAN') {
+          await this.prisma.shipment.update({ where: { awb: existing.awb }, data: { statusCode: 'PKD', status: 'PICKED_UP' as any, statusAt: new Date() } });
+          await this.prisma.scanLog.create({ data: { awb: existing.awb, eventType: 'PKD', remark: `Picked — pickup request #${id}` } });
+        }
         shipment = { awb: existing.awb, booked: false };
       } else if (captured.destPincode && String(captured.destPincode).trim()) {
-        const pcs = Math.max(1, Math.floor(Number(captured.pieces ?? p.estPieces ?? 1)));
-        const kg = Number(captured.weight ?? p.weight ?? 0) || 0.5;
-        const product = String(p.product || 'SFC').toUpperCase();
-        const surface = /SFC|SURFACE|ROAD|RAIL|TOSFC|HUB/.test(product) || /ROAD|SURFACE/i.test(String(p.cargoMode ?? ''));
-        const client = await this.prisma.b2bClient.findUnique({ where: { id: p.clientId }, select: { legalName: true } });
-        const value = captured.value ?? (p.invoiceValue != null ? Number(p.invoiceValue) : undefined);
-        const created: any = await this.shipments.create({
-          clientId: Number(p.clientId), manualAwb: awb, product, serviceMode: surface ? 'ROAD_PTL' : 'AIR_EXPRESS',
-          originZone: '', destZone: '', originPincode: p.pincode ?? undefined, destPincode: String(captured.destPincode).trim(),
-          shipperName: p.contactName || client?.legalName || undefined, shipperAddress1: p.pickupAddress, shipperCity: p.city ?? undefined,
-          shipperPincode: p.pincode ?? undefined, shipperMobile: p.contactPhone ?? undefined,
-          consigneeName: captured.consigneeName || undefined, consigneePhone: captured.consigneePhone || undefined, consigneeAddress: captured.consigneeAddress || undefined,
-          vendor: p.vendor || undefined, referenceNo: p.refNo || undefined, ewbNo: p.ewbNo || undefined, invoiceNo: p.invoiceNo || undefined,
-          declaredValue: value, shipmentValue: value,
-          pieces: Array.from({ length: pcs }, () => ({ deadKg: +(kg / pcs).toFixed(3) })),
-        } as any, { skipAutoDispatch: true });
+        const created: any = await this.bookFromPickup(p, { awb, destPincode: String(captured.destPincode), consigneeName: captured.consigneeName, consigneePhone: captured.consigneePhone, consigneeAddress: captured.consigneeAddress, weight: captured.weight, pieces: captured.pieces, value: captured.value });
         // It's physically collected → Picked, and carry the carrier pickup token so tracking finds the waybill.
         await this.prisma.shipment.update({ where: { awb: created.awb }, data: { statusCode: 'PKD', status: 'PICKED_UP' as any, statusAt: new Date(), ...(p.token ? { bdPickupToken: p.token, bdPickupAt: p.handoffAt ?? new Date() } : {}) } });
         await this.prisma.scanLog.create({ data: { awb: created.awb, eventType: 'PKD', remark: `Picked — pickup request #${id}` } });
@@ -172,7 +184,7 @@ export class PickupsService {
 
   /** CS hands a customer's pickup request off to BlueDart → registers the carrier pickup, stores the
    *  returned token on the request (reflects on the customer's panel), and marks it assigned. */
-  async handoff(id: number, opts: { vendor?: string; toPay?: boolean; date?: string; token?: string } = {}) {
+  async handoff(id: number, opts: { vendor?: string; toPay?: boolean; date?: string; token?: string; destPincode?: string; consigneeName?: string; consigneePhone?: string; consigneeAddress?: string; weight?: number; pieces?: number; value?: number } = {}) {
     const p = await this.exists(id);
     if (p.token) throw new BadRequestException(`This pickup is already handed off (token ${p.token}).`);
     // CS picks the carrier (can override the customer's choice). BlueDart registers via API and returns a
@@ -181,19 +193,27 @@ export class PickupsService {
     // BlueDart = the generic BDR code OR a per-account BlueDart vendor (476954 LOGM, 439154 XLX, …) —
     // those previously failed the /^BLUE|BDR/ test and were only *recorded*, never sent to BlueDart.
     if (await this.bluedart.isBlueDartVendor(vendor || p.vendor)) {
-      const res = await this.bluedart.scheduleAdhocPickup({
-        vendor: vendor || p.vendor || null, bdAccountId: (p as any).bdAccountId ?? null,
-        pincode: String(p.pincode ?? ''), name: p.contactName ?? '', phone: p.contactPhone ?? '',
-        address1: p.pickupAddress, city: p.city ?? undefined,
-        pieces: p.estPieces ?? 1, weight: p.weight != null ? Number(p.weight) : undefined,
-        // To-pay if CS ticked it, or the requested product is a to-pay / reverse product.
-        toPay: opts.toPay || ['FOD', 'TOSFC', 'TAPEX', 'TODP'].includes(String(p.product ?? '').toUpperCase()),
-        date: opts.date, remarks: `Portal pickup #${id}`,
-      });
+      // BlueDart is never given a bare pickup: it books with the DESTINATION. Book the shipment for the
+      // customer (billable), then GenerateWayBill — in-area that returns the AWB + registers the pickup;
+      // out-of-area it's a to-pay waybill billed to the registering account (see BluedartService).
+      let ourAwb = p.pickedAwb ? String(p.pickedAwb) : '';
+      const already = ourAwb ? await this.prisma.shipment.findUnique({ where: { awb: ourAwb }, select: { awb: true } }) : null;
+      if (!already) {
+        if (!opts.destPincode || !/^\d{6}$/.test(String(opts.destPincode).trim())) {
+          throw new BadRequestException('BlueDart books a pickup only with the destination — enter the destination pincode and consignee (name, mobile, address) to generate the AWB.');
+        }
+        const created = await this.bookFromPickup(p, { destPincode: String(opts.destPincode), consigneeName: opts.consigneeName, consigneePhone: opts.consigneePhone, consigneeAddress: opts.consigneeAddress, weight: opts.weight, pieces: opts.pieces, value: opts.value, vendor: vendor || p.vendor || undefined });
+        ourAwb = created.awb;
+        // Link it now, so a retry (e.g. after fixing a field BlueDart rejected) re-uses this booking.
+        await this.prisma.pickupRequest.update({ where: { id: BigInt(id) }, data: { pickedAwb: ourAwb, vendor: vendor || p.vendor || 'BDR' } });
+      }
+      let r: any;
+      try { r = await this.bluedart.generateWaybill(ourAwb); }
+      catch (e: any) { throw new BadRequestException(`Booked ${ourAwb} for the customer, but BlueDart refused it: ${String(e?.message || e)} — fix it on the AWB page (Edit AWB) and click Hand to BlueDart there, or retry here.`); }
       const updated = await this.prisma.pickupRequest.update({
-        where: { id: BigInt(id) }, data: { token: res.token, handoffAt: new Date(), vendor: vendor || 'BDR', status: PickupStatus.ASSIGNED },
+        where: { id: BigInt(id) }, data: { token: r.token ? String(r.token) : null, handoffAt: new Date(), vendor: vendor || p.vendor || 'BDR', status: PickupStatus.ASSIGNED },
       });
-      return { ...updated, token: res.token, toPay: res.toPay, outstation: res.outstation };
+      return { ...updated, token: r.token ?? null, awb: ourAwb, bdWaybill: r.bdWaybill ?? null, outstation: !!r.outstation, reason: r.reason ?? null };
     }
     if (!vendor) throw new BadRequestException('Pick a vendor to hand this pickup off to.');
     const updated = await this.prisma.pickupRequest.update({

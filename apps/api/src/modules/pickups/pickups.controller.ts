@@ -43,6 +43,14 @@ class CompleteDto {
 }
 class HandoffDto {
   @IsOptional() @IsString() vendor?: string;
+  // BlueDart books only with the destination → these book the shipment + generate the AWB at hand-off.
+  @IsOptional() @IsString() destPincode?: string;
+  @IsOptional() @IsString() consigneeName?: string;
+  @IsOptional() @IsString() consigneePhone?: string;
+  @IsOptional() @IsString() consigneeAddress?: string;
+  @IsOptional() @IsNumber() weight?: number;
+  @IsOptional() @IsInt() pieces?: number;
+  @IsOptional() @IsNumber() value?: number;
   @IsOptional() @IsBoolean() toPay?: boolean;
   @IsOptional() @IsString() date?: string;
   @IsOptional() @IsString() token?: string;
