@@ -988,11 +988,11 @@ export function CreateShipment() {
           </p>
           <div className="grid cols-3">
             <div style={{ gridColumn: 'span 2' }}>
-              <label>E-way bill number (if already generated)</label>
+              <label>E-way bill number (from the GST portal)</label>
               <input value={ewbNo} onChange={(e) => setEwbNo(e.target.value)} placeholder="e.g. 1234 5678 9012" />
             </div>
             <div style={{ alignSelf: 'end' }}>
-              <span className="muted" style={{ fontSize: 12 }}>Leave blank to <strong>auto-generate</strong> the e-way bill at booking.</span>
+              <span className="muted" style={{ fontSize: 12 }}>Not generated yet? Leave blank — the AWB books as <strong>EWB pending</strong>; enter the number on Edit AWB before it moves.</span>
             </div>
           </div>
         </div>

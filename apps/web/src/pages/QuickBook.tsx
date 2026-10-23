@@ -225,7 +225,7 @@ export function QuickBook() {
             <div style={{ flex: 1 }}><Field label="Invoice number">{scanRow(invNo, setInvNo, 'invoice no', 'Scan the invoice barcode')}</Field></div>
             <div style={{ flex: 1 }}><Field label="Invoice amount ₹"><input type="number" inputMode="decimal" value={invAmt} onChange={(e) => setInvAmt(e.target.value)} /></Field></div>
           </div>
-          {(needEway || ewb) && <Field label={`E-way bill no${needEway ? ' (₹50,000+ — required, blank = auto-generate)' : ''}`}>{scanRow(ewb, setEwb, '12-digit e-way bill', 'Scan the e-way bill barcode')}</Field>}
+          {(needEway || ewb) && <Field label={`E-way bill no${needEway ? ' (₹50,000+ — required; blank = flagged EWB pending)' : ''}`}>{scanRow(ewb, setEwb, '12-digit e-way bill', 'Scan the e-way bill barcode')}</Field>}
         </div>
       )}
 

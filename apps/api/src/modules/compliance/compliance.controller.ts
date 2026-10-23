@@ -16,7 +16,7 @@ export class ComplianceController {
     return this.compliance.consignmentNote(awb);
   }
 
-  /** Generate (sandbox) e-way bill for the consignment. */
+  /** E-way bill generation — refuses until a GSP is wired (no simulated numbers); record the real EWB via Edit AWB. */
   @Post(':awb/eway-bill')
   @Roles(UserRole.CLIENT_ADMIN, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
   generateEway(@Param('awb') awb: string, @Body() dto: GenerateEwayDto) {

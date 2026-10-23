@@ -239,7 +239,7 @@ export function BulkBooking() {
           shipment (MPS), each carrying its own weight + dimensions (L×W×H cm). Fill <code>awb</code> to import a
           <strong> manually-booked</strong> shipment with its existing AWB; leave it blank to auto-generate (then rows
           sharing the same <code>ref</code> group into one AWB). The <code>product</code> column sets the service /
-          transport mode (same as the booking form). E-way bills auto-generate when invoice value ≥ ₹50,000.
+          transport mode (same as the booking form). Fill <code>ewbNo</code> when invoice value ≥ ₹50,000 — rows without one still book but are flagged <strong>EWB pending</strong> for CS to enter via Edit AWB.
         </p>
         <p className="muted" style={{ marginTop: 6, fontSize: 12.5 }}>
           <strong><code>pcs</code></strong> = number of pieces for that row and <strong><code>deadKg</code> = the row's TOTAL weight</strong> (split evenly across the pieces — so chargeable weight ≈ <code>deadKg</code>, not <code>deadKg</code>×<code>pcs</code>). Leave <code>pcs</code> blank/1 for a single box.

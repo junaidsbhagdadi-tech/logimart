@@ -1,10 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { COMPANY } from '../../config/company';
+import { EWB_THRESHOLD } from '../shipments/ewb';
 import { GenerateEwayDto } from './dto/eway.dto';
-
-const EWB_THRESHOLD = 50000; // ₹ — e-way bill required above this for inter/intra movement
 
 @Injectable()
 export class ComplianceService {
@@ -56,44 +54,21 @@ export class ComplianceService {
   }
 
   /**
-   * Generate an e-way bill. SANDBOX: produces a simulated 12-digit EWB number and
-   * validity. Wire a GST Suvidha Provider (GSP) API here for production.
+   * E-way bill generation is NOT wired to a GST Suvidha Provider (GSP), so we refuse rather than store
+   * a simulated number (it used to write a random 12-digit "EWB" onto the shipment — a GST compliance
+   * risk, since it prints on AWB copies / manifests and goes to carriers). Generate it on the GST portal
+   * and record it via Edit AWB. Wire a GSP (e.g. ClearTax / Masters India) here for live generation.
    */
   async generateEwayBill(awb: string, dto: GenerateEwayDto) {
-    const s = await this.prisma.shipment.findUnique({ where: { awb } });
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true } });
     if (!s) throw new NotFoundException(`AWB ${awb} not found`);
     if (dto.declaredValue < EWB_THRESHOLD) {
       throw new BadRequestException(
         `Declared value ₹${dto.declaredValue} is below the ₹${EWB_THRESHOLD} e-way bill threshold.`,
       );
     }
-
-    const ewbNo = Array.from({ length: 12 }, () => Math.floor(Math.random() * 10)).join('');
-    const distance = dto.distanceKm ?? 100;
-    const validDays = Math.max(1, Math.ceil(distance / 200)); // CGST rule of thumb
-    const ewbValidUpto = new Date(Date.now() + validDays * 86400000);
-
-    await this.prisma.shipment.update({
-      where: { id: s.id },
-      data: {
-        declaredValue: new Prisma.Decimal(dto.declaredValue),
-        vehicleNo: dto.vehicleNo,
-        hsnCode: dto.hsnCode ?? s.hsnCode,
-        consignorGstin: dto.consignorGstin ?? s.consignorGstin,
-        consigneeGstin: dto.consigneeGstin ?? s.consigneeGstin,
-        ewbNo,
-        ewbValidUpto,
-      },
-    });
-
-    return {
-      awb,
-      ewbNo,
-      validUpto: ewbValidUpto,
-      distanceKm: distance,
-      declaredValue: dto.declaredValue,
-      mode: 'SANDBOX',
-      note: 'Simulated EWB. Configure a GSP (e.g. ClearTax/Masters India) for live generation.',
-    };
+    throw new BadRequestException(
+      'Live e-way bill generation is not connected. Generate the e-way bill on the GST portal (ewaybillgst.gov.in) and enter its number on Edit AWB.',
+    );
   }
 }

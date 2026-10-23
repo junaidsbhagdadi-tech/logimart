@@ -109,6 +109,7 @@ export interface Shipment {
   lrNumber?: string | null;
   ewbNo?: string | null;
   ewbValidUpto?: string | null;
+  ewbPending?: boolean; // ₹50k+ invoice value with no e-way bill number on file
   vehicleNo?: string | null;
   ftlVehicleType?: string | null;
   departureAt?: string | null;
@@ -580,11 +581,6 @@ export const api = {
 
   // ---- compliance ----
   consignmentNote: (awb: string) => request<any>(`/api/v1/shipments/${awb}/consignment-note`),
-  generateEway: (awb: string, declaredValue: number, vehicleNo: string, distanceKm?: number) =>
-    request<{ ewbNo: string; validUpto: string; mode: string }>(
-      `/api/v1/shipments/${awb}/eway-bill`,
-      { method: 'POST', body: JSON.stringify({ declaredValue, vehicleNo, distanceKm }) },
-    ),
 
   // ---- master data: serviceability + hubs ----
   listPincodes: (limit = 500) => request<{ pincode: string; city: string; state: string; region: string; tier: number; isOda: boolean }[]>(`/api/v1/pincodes?limit=${limit}`),
@@ -735,7 +731,7 @@ export const api = {
   delAddr: (clientId: string, rowId: string) => request(`/api/v1/clients/${clientId}/addresses/${rowId}`, { method: 'DELETE' }),
 
   // ---- AWB Entry List ----
-  awbList: (limit = 300, search?: string, from?: string, to?: string) => request<any[]>(`/api/v1/shipments/awb-list?limit=${limit}${search ? `&search=${encodeURIComponent(search)}` : ''}${from ? `&from=${from}` : ''}${to ? `&to=${to}` : ''}`),
+  awbList: (limit = 300, search?: string, from?: string, to?: string, ewbPending?: boolean) => request<any[]>(`/api/v1/shipments/awb-list?limit=${limit}${search ? `&search=${encodeURIComponent(search)}` : ''}${from ? `&from=${from}` : ''}${to ? `&to=${to}` : ''}${ewbPending ? '&ewbPending=1' : ''}`),
 
   // ---- fuel price (drives dynamic fuel surcharge) ----
   getFuelPrice: () => request<{ fuelType: string; current: number | null; effectiveFrom: string | null; history: any[] }>('/api/v1/fuel-price'),

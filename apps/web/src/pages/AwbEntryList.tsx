@@ -9,6 +9,7 @@ type Row = {
   consigneeName: string; destination: string; product: string; vendor: string; forwardingAwb: string | null;
   actualWeight: number; chargeWeight: number; pieces: number; deliveryVendor: string; status: string;
   shipmentValue?: number | null; originPincode?: string | null; destPincode?: string | null; dimensions?: string;
+  ewbNo?: string | null; ewbPending?: boolean; // ₹50k+ with no e-way bill number on file
 };
 
 const COLS: { key: keyof Row; label: string; num?: boolean }[] = [
@@ -22,6 +23,7 @@ const COLS: { key: keyof Row; label: string; num?: boolean }[] = [
   { key: 'originPincode', label: 'Origin PIN' },
   { key: 'destPincode', label: 'Dest PIN' },
   { key: 'shipmentValue', label: 'Shipment Value', num: true },
+  { key: 'ewbNo', label: 'E-way Bill' },
   { key: 'product', label: 'Product' },
   { key: 'vendor', label: 'Vendor' },
   { key: 'forwardingAwb', label: 'Fwd AWB' },
@@ -51,12 +53,14 @@ export function AwbEntryList() {
   const [changeOpen, setChangeOpen] = useState(false); // #14 bulk change from the vendor-bill sheet
   const [voidText, setVoidText] = useState('');
   const [range, setRange] = useState<{ from: string; to: string }>({ from: '', to: '' });
+  // CS worklist: only ₹50k+ AWBs still missing their e-way bill (server-side, across all dates).
+  const [ewbOnly, setEwbOnly] = useState(false);
 
   // When a booking-date range is set, pull the whole range (server lifts the 300 cap); otherwise the
   // latest 300. The AWB search box always matches across the whole database regardless of the range.
-  const load = (search?: string) => {
+  const load = (search?: string, ewb = ewbOnly) => {
     const dated = !!(range.from || range.to);
-    api.awbList(dated ? 10000 : 300, search, range.from || undefined, range.to || undefined)
+    api.awbList(dated || ewb ? 10000 : 300, search, range.from || undefined, range.to || undefined, ewb)
       .then(setRows).catch((e) => setError(e.message));
     setSel(new Set());
   };
@@ -191,7 +195,7 @@ export function AwbEntryList() {
   const exportXls = async () => {
     const XLSX = await import('xlsx');
     const head = COLS.map((c) => c.label);
-    const data = filtered.map((r) => COLS.map((c) => (c.key === 'bookDate' ? fmtDate(r.bookDate) : ((r as any)[c.key] ?? ''))));
+    const data = filtered.map((r) => COLS.map((c) => (c.key === 'bookDate' ? fmtDate(r.bookDate) : c.key === 'ewbNo' ? (r.ewbNo || (r.ewbPending ? 'PENDING' : '')) : ((r as any)[c.key] ?? ''))));
     const ws = XLSX.utils.aoa_to_sheet([head, ...data]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Shipments');
@@ -221,6 +225,8 @@ export function AwbEntryList() {
             <input type="date" value={range.to} min={range.from || undefined} onChange={(e) => setRange((r) => ({ ...r, to: e.target.value }))} title="To booking date" style={{ width: 150 }} />
             <button className="secondary" onClick={() => load((filters.awb || '').trim() || undefined)} disabled={!range.from && !range.to} title="Pull all shipments booked in this date range">🔎 Apply dates</button>
             {(range.from || range.to) && <button className="secondary" onClick={() => { setRange({ from: '', to: '' }); setTimeout(() => load((filters.awb || '').trim() || undefined), 0); }} title="Clear the date range (back to latest 300)">✕ Dates</button>}
+            <button className={ewbOnly ? '' : 'secondary'} onClick={() => { const v = !ewbOnly; setEwbOnly(v); setPage(0); load((filters.awb || '').trim() || undefined, v); }}
+              title="Show only ₹50,000+ AWBs with no e-way bill number — open one and use Edit AWB to enter it">⚠ EWB pending{ewbOnly ? ` (${rows.length})` : ''}</button>
             {Object.values(filters).some(Boolean) && <button className="secondary" onClick={() => setFilters({})}>Clear filters</button>}
             <button className="secondary" onClick={exportXls} disabled={!filtered.length} title="Download the filtered list to Excel">⬇ Excel</button>
           </div>
@@ -258,7 +264,7 @@ export function AwbEntryList() {
               {slice.map((r) => (
                 <tr key={r.awb} style={sel.has(r.awb) ? { background: 'var(--bg-soft, #f2f4f7)' } : undefined}>
                   {canChangeDate && <td><input type="checkbox" checked={sel.has(r.awb)} onChange={() => toggleSel(r.awb)} style={{ width: 'auto' }} /></td>}
-                  <td><Link to={`/shipments/${r.awb}`}><strong>{r.awb}</strong></Link>{r.invoiced && <span title="Invoiced — locked for editing" style={{ marginLeft: 6 }}>🔒</span>}</td>
+                  <td><Link to={`/shipments/${r.awb}`}><strong>{r.awb}</strong></Link>{r.invoiced && <span title="Invoiced — locked for editing" style={{ marginLeft: 6 }}>🔒</span>}{r.ewbPending && <span className="badge EXCEPTION" title="Invoice value ₹50,000+ and no e-way bill number — enter it via Edit AWB" style={{ marginLeft: 6 }}>EWB</span>}</td>
                   <td>{fmtDate(r.bookDate)}</td>
                   <td>{r.shipperName}</td>
                   <td>{r.customerCode}</td>
@@ -268,12 +274,14 @@ export function AwbEntryList() {
                   <td>{r.originPincode || '—'}</td>
                   <td>{r.destPincode || '—'}</td>
                   <td>{r.shipmentValue != null ? `₹${Number(r.shipmentValue).toLocaleString('en-IN')}` : '—'}</td>
+                  <td>{r.ewbNo || (r.ewbPending ? <span className="badge EXCEPTION">Pending</span> : '—')}</td>
                   <td>{r.product || '—'}</td>
                   <td>{r.vendor || '—'}</td>
                   <td>{r.forwardingAwb || '—'}</td>
                   <td>{r.actualWeight.toFixed(3)}</td>
                   <td>{r.chargeWeight.toFixed(3)}</td>
                   <td>{r.pieces}</td>
+                  <td>{r.dimensions || '—'}</td>
                   <td>{r.deliveryVendor}</td>
                   <td><Link to={`/shipments/${r.awb}`} className="muted" style={{ fontSize: 12 }}>open →</Link></td>
                 </tr>

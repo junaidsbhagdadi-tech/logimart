@@ -11,6 +11,7 @@ import { DelhiveryService } from '../delhivery/delhivery.service';
 import { BluedartService } from '../bluedart/bluedart.service';
 import { StorageService } from '../storage/storage.service';
 import { CreateShipmentDto } from './dto/create-shipment.dto';
+import { EWB_PENDING_WHERE, isEwbPending, normaliseEwbNo } from './ewb';
 
 @Injectable()
 export class ShipmentsService {
@@ -198,15 +199,11 @@ export class ShipmentsService {
 
     const lrNumber = awb.replace(COMPANY.awbPrefix, 'GC'); // Goods Consignment note no.
 
-    // Auto e-way bill: if invoice value ≥ ₹50k and no EWB number was supplied,
-    // generate one at booking (SANDBOX — wire a GSP for live generation).
-    const EWB_THRESHOLD = 50000;
-    let ewbNo = dto.ewbNo?.trim() || null;
-    let ewbValidUpto: Date | null = null;
-    if (!ewbNo && dto.declaredValue != null && dto.declaredValue >= EWB_THRESHOLD) {
-      ewbNo = Array.from({ length: 12 }, () => Math.floor(Math.random() * 10)).join('');
-      ewbValidUpto = new Date(Date.now() + 86400000); // 1-day default validity
-    }
+    // E-way bill: store only a number the user actually entered. Invoice value ≥ ₹50k with none is
+    // left blank and surfaces as "EWB pending" (see ./ewb.ts) for CS to fill via Edit AWB — never a
+    // made-up number (it prints on AWB copies / manifests and goes to carriers). Flag, not reject, so
+    // bulk uploads keep booking.
+    const ewbNo = normaliseEwbNo(dto.ewbNo);
 
     const created = await this.prisma.shipment.create({
       data: {
@@ -278,7 +275,6 @@ export class ShipmentsService {
         consigneeGstin: dto.consigneeGstin,
         declaredValue: dto.declaredValue != null ? new Prisma.Decimal(dto.declaredValue) : null,
         ewbNo,
-        ewbValidUpto,
         product: dto.product || null,
         docType: dto.docType || null,
         chargeWeight: dto.chargeWeight != null ? new Prisma.Decimal(dto.chargeWeight) : null,
@@ -1033,6 +1029,20 @@ export class ShipmentsService {
     dec('shipmentValue', dto.shipmentValue);
     dec('declaredValue', dto.declaredValue);
     dec('chargeWeight', dto.chargeWeight);
+    // E-way bill from the GST portal (clears "EWB pending"). A real EWB number is 12 digits.
+    if (dto.ewbNo !== undefined) {
+      const ewb = normaliseEwbNo(dto.ewbNo);
+      if (ewb && !/^\d{12}$/.test(ewb)) throw new BadRequestException(`E-way bill number must be 12 digits (got "${dto.ewbNo}").`);
+      data.ewbNo = ewb;
+      if (!ewb) data.ewbValidUpto = null;
+    }
+    if (dto.ewbValidUpto !== undefined) {
+      const d = String(dto.ewbValidUpto || '').trim();
+      // A bare date = valid until the end of that IST day (the server runs in UTC).
+      const at = d ? new Date(/T/.test(d) ? d : `${d}T23:59:59+05:30`) : null;
+      if (at && isNaN(at.getTime())) throw new BadRequestException(`Invalid e-way bill validity date "${d}".`);
+      data.ewbValidUpto = at;
+    }
     // DOD on/off + amount, and the To-Pay freight to collect — both go to BlueDart as CollactableAmount.
     if (dto.isDod !== undefined) data.isDod = !!dto.isDod;
     dec('dodAmount', dto.dodAmount);
@@ -1107,7 +1117,7 @@ export class ShipmentsService {
 
   /** Recent shipments, optionally scoped to a single client, with light rollup. */
   /** Xpresion-style AWB Entry List rows (flat, filter/grid-friendly). */
-  async awbList(clientId: bigint | undefined, limit: number, search?: string, from?: string, to?: string, scope?: bigint[] | null) {
+  async awbList(clientId: bigint | undefined, limit: number, search?: string, from?: string, to?: string, scope?: bigint[] | null, ewbPending?: boolean) {
     const s = (search ?? '').trim();
     // A search matches ACROSS ALL shipments (not just the latest page) so any AWB is findable —
     // by our AWB, the carrier's forwarding/BlueDart waybill, the customer reference, or consignee.
@@ -1128,9 +1138,11 @@ export class ShipmentsService {
     const gte = from ? new Date(/T/.test(from) ? from : `${from}T00:00:00+05:30`) : null;
     const lte: Date | null = to ? new Date(/T/.test(to) ? to : `${to}T23:59:59.999+05:30`) : null;
     if (gte || lte) where.createdAt = { ...(gte ? { gte } : {}), ...(lte ? { lte } : {}) };
-    // When the caller filters (by date or search) we're pulling a bounded, intentional set, so lift the
-    // default 300/500 cap; otherwise keep it small for the default "latest" view.
-    const filtered = !!(s || gte || lte);
+    // CS worklist: ≥ ₹50k consignments still missing their e-way bill number (AND — `where.OR` is the search).
+    if (ewbPending) where.AND = [EWB_PENDING_WHERE];
+    // When the caller filters (by date, search or EWB-pending) we're pulling a bounded, intentional set,
+    // so lift the default 300/500 cap; otherwise keep it small for the default "latest" view.
+    const filtered = !!(s || gte || lte || ewbPending);
     const take = Math.min(limit || (filtered ? 10000 : 300), filtered ? 20000 : 500);
     const shipments = await this.prisma.shipment.findMany({
       where,
@@ -1175,6 +1187,8 @@ export class ShipmentsService {
       status: s.status,
       statusCode: s.statusCode ?? 'MAN', // milestone code (MAN/PKD/…/DLD/UDL/RTO) for hub filters
       bdStatus: (s as any).bdStatus ?? null,
+      ewbNo: s.ewbNo ?? null,
+      ewbPending: isEwbPending(s),
     }));
   }
 
@@ -1291,6 +1305,7 @@ export class ShipmentsService {
       ...shipment,
       invoiced: shipment.invoiceLines.length > 0,
       invoiceNo: shipment.invoiceLines[0]?.invoice?.invoiceNo ?? null,
+      ewbPending: isEwbPending(shipment),
       rollup: {
         pieceCount: shipment.pieceCount,
         delivered,

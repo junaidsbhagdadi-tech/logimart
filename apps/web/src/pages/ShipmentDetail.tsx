@@ -76,6 +76,9 @@ export function ShipmentDetail() {
       shipperPincode: (s as any).shipperPincode ?? '', shipperCity: (s as any).shipperCity ?? '',
       goodsDesc: (s as any).goodsDesc ?? '', referenceNo: (s as any).referenceNo ?? '',
       shipmentValue: (s as any).shipmentValue != null ? String((s as any).shipmentValue) : '',
+      declaredValue: (s as any).declaredValue != null ? String((s as any).declaredValue) : '',
+      ewbNo: (s as any).ewbNo ?? '',
+      ewbValidUpto: (s as any).ewbValidUpto ? String((s as any).ewbValidUpto).slice(0, 10) : '',
       chargeWeight: (s as any).chargeWeight != null ? String((s as any).chargeWeight) : '',
       isDod: (s as any).isDod ? 'Y' : '',
       dodAmount: (s as any).dodAmount != null ? String((s as any).dodAmount) : '',
@@ -105,6 +108,7 @@ export function ShipmentDetail() {
     try {
       const patch: Record<string, any> = { ...ef };
       patch.shipmentValue = ef.shipmentValue === '' ? null : Number(ef.shipmentValue);
+      patch.declaredValue = ef.declaredValue === '' ? null : Number(ef.declaredValue);
       // blank charge weight → null → engine recomputes from the card (divisor/CFT + round-up)
       patch.chargeWeight = ef.chargeWeight === '' ? null : Number(ef.chargeWeight);
       patch.isDod = ef.isDod === 'Y';
@@ -193,21 +197,6 @@ export function ShipmentDetail() {
   const resetOverrides = async () => {
     setError(''); setMsg('');
     try { await api.setChargeOverrides(awb!, null); setMsg('✓ Charges reset to computed tariff.'); await getQuote(); } catch (e: any) { setError(e.message); }
-  };
-
-  const generateEway = async () => {
-    const declaredValue = Number(prompt('Declared goods value (₹, must be ≥ 50000 for EWB):'));
-    if (!declaredValue) return;
-    const vehicleNo = prompt('Vehicle number:') || '';
-    setError('');
-    setMsg('');
-    try {
-      const res = await api.generateEway(awb!, declaredValue, vehicleNo);
-      setMsg(`E-way bill ${res.ewbNo} (${res.mode}) valid to ${new Date(res.validUpto).toLocaleDateString()}`);
-      load();
-    } catch (e: any) {
-      setError(e.message);
-    }
   };
 
   const assignRider = async () => {
@@ -448,7 +437,7 @@ export function ShipmentDetail() {
               { label: 'Courier label', icon: <Barcode aria-hidden />, href: `/shipments/${s.awb}/bd-label` },
               { label: 'Print AWB', icon: <Printer aria-hidden />, href: `/shipments/${s.awb}/awb-print` },
               { label: 'BlueDart AWB print', icon: <Printer aria-hidden />, href: `/shipments/${s.awb}/bd-awb`, show: !!s.bdWaybill },
-              { label: 'E-way bill', icon: <FileText aria-hidden />, onClick: generateEway },
+              { label: 'Enter e-way bill', icon: <FileText aria-hidden />, onClick: openEdit, show: canEditAwb, title: 'Record the e-way bill number from the GST portal (Edit AWB)' },
             ] },
             { title: 'Carrier', items: [
               { label: 'Hand to BlueDart', icon: <Send aria-hidden />, onClick: handoffBd, show: canAssign && !isCan && carrier !== 'BD' && !s.bdWaybill },
@@ -487,8 +476,18 @@ export function ShipmentDetail() {
         <span style={{ fontSize: 13 }}>{s.totalDeadKg}kg dead / {s.totalVolKg}kg vol</span>
         {s.chargeWeight && <span style={{ fontSize: 13 }}>{s.chargeWeight}kg charge</span>}
         {(s as any).declaredValue != null && <span style={{ fontSize: 13 }}>₹{Number((s as any).declaredValue).toLocaleString('en-IN')} value</span>}
+        {(s as any).ewbPending && <span className="badge EXCEPTION" title="Invoice value ₹50,000+ and no e-way bill number on file">EWB pending</span>}
         <span style={{ fontSize: 12, color: 'var(--muted)', fontFamily: 'monospace' }}>{s.awb}</span>
       </div>
+
+      {(s as any).ewbPending && !editOpen && (
+        <div className="card" style={{ borderLeft: '4px solid var(--warn)', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ flex: 1, minWidth: 240, fontSize: 13 }}>
+            <strong>E-way bill pending.</strong> Invoice value is ₹50,000 or more but no e-way bill number is on file. Generate it on the GST portal and record it here before the consignment moves.
+          </span>
+          {canEditAwb && <button onClick={openEdit}><FileText aria-hidden /> Enter e-way bill</button>}
+        </div>
+      )}
 
       {error && <div className="error">{error}</div>}
       {msg && <div className="card" style={{ borderLeft: '4px solid var(--brand)' }}>{msg}</div>}
@@ -547,6 +546,12 @@ export function ShipmentDetail() {
               </select>
             </div>
             <div><label>Shipment value ₹</label><input type="number" value={ef.shipmentValue} onChange={(e) => setEfield('shipmentValue', e.target.value)} /></div>
+            <div><label>Invoice (declared) value ₹ <span className="muted">— ₹50,000+ needs an e-way bill</span></label><input type="number" value={ef.declaredValue ?? ''} onChange={(e) => setEfield('declaredValue', e.target.value)} /></div>
+            <div><label>E-way bill no. <span className="muted">(12 digits, from the GST portal)</span></label>
+              <input value={ef.ewbNo ?? ''} onChange={(e) => setEfield('ewbNo', e.target.value)} placeholder="e.g. 1234 5678 9012"
+                style={Number(ef.declaredValue) >= 50000 && !(ef.ewbNo || '').trim() ? { borderColor: 'var(--warn)' } : undefined} />
+            </div>
+            <div><label>E-way bill valid until</label><input type="date" value={ef.ewbValidUpto ?? ''} onChange={(e) => setEfield('ewbValidUpto', e.target.value)} /></div>
             <div><label>Freight to collect ₹ <span className="muted">(To-Pay — collected from consignee)</span></label><input type="number" value={ef.freightToCollect ?? ''} onChange={(e) => setEfield('freightToCollect', e.target.value)} placeholder="blank = none" /></div>
             <div>
               <label className="row" style={{ gap: 6, alignItems: 'center' }}><input type="checkbox" checked={ef.isDod === 'Y'} onChange={(e) => setEfield('isDod', e.target.checked ? 'Y' : '')} style={{ width: 'auto' }} /> DOD (cheque/DD on delivery)</label>
@@ -710,7 +715,9 @@ export function ShipmentDetail() {
           <div><label>Total dead</label>{s.totalDeadKg} kg</div>
           <div><label>Total volumetric</label>{s.totalVolKg} kg</div>
           <div><label>LR / GC No.</label>{s.lrNumber ?? '—'}</div>
-          <div><label>E-way bill</label>{s.ewbNo ?? '—'}</div>
+          <div><label>E-way bill</label>{s.ewbNo
+            ? <>{s.ewbNo}{(s as any).ewbValidUpto && <span className="muted"> · valid to {new Date((s as any).ewbValidUpto).toLocaleDateString('en-GB')}</span>}</>
+            : (s as any).ewbPending ? <span className="badge EXCEPTION">Pending</span> : '—'}</div>
           {s.product && <div><label>Product</label>{s.product}{s.docType ? ` · ${s.docType}` : ''}</div>}
           {s.bdWaybill && <div><label>BlueDart AWB</label>{s.bdWaybill}{s.bdStatus ? ` · ${s.bdStatus}` : ''}</div>}
           {(s as any).bdPickupToken && <div><label>BlueDart pickup</label>Token {(s as any).bdPickupToken}{(s as any).bdPickupAt ? ` · pickup ${fmtDate((s as any).bdPickupAt)}` : ''}
