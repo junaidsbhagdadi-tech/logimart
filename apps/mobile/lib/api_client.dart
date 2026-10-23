@@ -191,6 +191,29 @@ class ApiClient {
   Future<Map<String, dynamic>> createShipment(Map<String, dynamic> body) async =>
       await post('/api/v1/shipments', body) as Map<String, dynamic>;
 
+  /// Shipments I booked on a day (IST, default today).
+  Future<Map<String, dynamic>> myBookings({String? date}) async =>
+      await get('/api/v1/shipments/my-bookings${date != null ? '?date=$date' : ''}') as Map<String, dynamic>;
+
+  /// Correct a booking (riders: own bookings only, before pickup / carrier hand-off).
+  Future<void> editShipment(String awb, Map<String, dynamic> patch) => post('/api/v1/shipments/$awb/edit', patch);
+
+  /// Carrier hand-off — generates the carrier's AWB (BlueDart waybill / Delhivery LR).
+  Future<Map<String, dynamic>> handoffBlueDart(String awb) async =>
+      await post('/api/v1/bluedart/handoff/$awb') as Map<String, dynamic>;
+  Future<Map<String, dynamic>> handoffDelhivery(String awb) async =>
+      await post('/api/v1/delhivery/handoff/$awb') as Map<String, dynamic>;
+
+  /// Other carriers: record the carrier's AWB against ours.
+  Future<void> setForwarding(String awb, String vendor, String forwardingAwb) =>
+      post('/api/v1/shipments/$awb/forwarding', {'vendor': vendor, 'forwardingAwb': forwardingAwb});
+
+  /// BlueDart account codes — a vendor code matching one of these is a BlueDart booking.
+  Future<List<String>> blueDartCodes() async {
+    final r = (await get('/api/v1/bluedart/account-options') as List).cast<Map<String, dynamic>>();
+    return r.expand((a) => [a['customerCode'], a['accountCode']]).where((x) => x != null && '$x'.isNotEmpty).map((x) => '$x'.toUpperCase()).toList();
+  }
+
   // ---- offline scan sync ----
 
   /// Push a batch of offline scans. The server is idempotent on clientEventId,

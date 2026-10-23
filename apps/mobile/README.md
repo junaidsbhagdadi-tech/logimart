@@ -8,21 +8,30 @@ app (`https://erp.logimart.co.in`, see `lib/config.dart`).
 |---|---|---|
 | **Pickups** | riders | Pickups assigned to me (`GET /rider/tasks`), call / map, **Mark picked** → `POST /pickups/:id/complete` books the shipment (needs destination pincode + consignee unless CS already generated the AWB at hand-off). Today's picked / delivered counts. |
 | **Deliveries** | riders + staff | **Take out for delivery** (scan many AWBs → `OFD`; the rider becomes the delivery rider), my open deliveries, find any AWB. Delivery screen: collect DOD cheque/DD and To-Pay freight, **POD photo (mandatory)** → `DLD`, or **Undelivered** with a reason → `UDL`. |
-| **Book** | riders + staff | Quick booking — same payload as web Quick Book (customer, product, carrier, consignee, boxes + weight, AWB / forwarding / invoice / e-way scannable). |
+| **Book** | riders + staff | **New booking** — same payload as web Quick Book (customer, product, carrier shown by code, consignee, box lines with L×W×H, weight, AWB / forwarding / invoice / e-way scannable) → booking summary. **My bookings** (`GET /shipments/my-bookings`) — tick one carrier's AWBs → print handover manifest. Summary: edit (own, still Booked, not with a carrier), hand to BlueDart / Delhivery (or scan another carrier's AWB), print AWB copy / courier label / BlueDart AWB. |
 | **Scan** | everyone | Offline-first checkpoint scanning: scans queue in SQLite and sync to `POST /scans/bulk-sync` (idempotent on `clientEventId`) when the network returns. |
+
+**Printing** reuses the web print pages (`/shipments/:awb/awb-print`, `/bd-label`, `/bd-awb`,
+`/handover/print?date=&awbs=&vendor=`) in an in-app WebView signed in with the rider's token;
+`window.print()` is routed to Android's print dialog (printer or Save as PDF) — `screens/print_view.dart`.
 
 Login: riders use **Rider ID + PIN** (web → Riders & Drivers); staff can switch to email + password.
 Staff logins don't get the Pickups tab (the rider task list is per rider).
 
 ## Build the APK (Windows)
 One-time toolchain (no admin needed) lives in `C:\dev`: `flutter` (stable), `jdk17`, `android-sdk`
-(platforms 35/36, build-tools, NDK 28.2). Then:
+(platforms 35/36, build-tools, NDK 28.2). Build from a copy OUTSIDE OneDrive — OneDrive locks files in
+`build/` mid-Gradle (`AccessDeniedException … merged_native_libs`):
 
-```bash
-cd apps/mobile
+```powershell
+robocopy "<repo>\apps\mobile" C:\dev\build\mobile /MIR /XD build .dart_tool .idea /XF local.properties
+cd C:\dev\build\mobile
 flutter pub get
-flutter build apk --release      # → build/app/outputs/flutter-apk/app-release.apk
+flutter build apk --release      # → build\app\outputs\flutter-apk\app-release.apk
 ```
+
+`flutter_inappwebview` is on the 6.2 beta on purpose: 6.1.x's Android plugin uses
+`proguard-android.txt`, which current Android Gradle rejects.
 
 **Signing:** release builds are signed with `C:\dev\logimart-keys\logimart-release.jks` via
 `C:\dev\logimart-keys\key.properties` (override with `LOGIMART_KEY_PROPS`). Both are deliberately

@@ -5,6 +5,7 @@ import '../config.dart';
 import '../local_queue.dart';
 import '../models/scan.dart';
 import '../sync_service.dart';
+import '../ui.dart';
 
 /// Hub / checkpoint scanning — offline-first; scans queue on the phone and sync when online.
 class ScanScreen extends StatefulWidget {
@@ -91,6 +92,7 @@ class _ScanScreenState extends State<ScanScreen> {
           Expanded(
             child: MobileScanner(
               controller: _controller,
+              errorBuilder: (ctx, e) => ScannerError(e, onRetry: () => _controller.start()),
               onDetect: (capture) {
                 for (final b in capture.barcodes) {
                   final v = b.rawValue;

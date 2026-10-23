@@ -2,13 +2,40 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../api_client.dart';
 import '../ui.dart';
+import 'booking_summary.dart';
+import 'print_view.dart';
 
-/// Quick booking on the phone — same booking API as the web "Quick Book": customer code, product,
-/// consignee + pincode, boxes + weight, optional AWB / forwarding / invoice / e-way (all scannable).
+/// Book tab: "New booking" (the quick-book form) and "My bookings" (today's, with manifest print).
 class BookScreen extends StatefulWidget {
   const BookScreen({super.key});
   @override
   State<BookScreen> createState() => _BookScreenState();
+}
+
+class _BookScreenState extends State<BookScreen> {
+  int _view = 0;
+  final _mine = GlobalKey<_MyBookingsState>();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+        child: SegmentedButton<int>(
+          segments: const [
+            ButtonSegment(value: 0, label: Text('New booking'), icon: Icon(Icons.add)),
+            ButtonSegment(value: 1, label: Text('My bookings'), icon: Icon(Icons.list_alt)),
+          ],
+          selected: {_view},
+          onSelectionChanged: (s) {
+            setState(() => _view = s.first);
+            if (_view == 1) _mine.currentState?.load();
+          },
+        ),
+      ),
+      Expanded(child: IndexedStack(index: _view, children: [const _NewBooking(), MyBookings(key: _mine)])),
+    ]);
+  }
 }
 
 class _Product {
@@ -17,7 +44,34 @@ class _Product {
   _Product(this.code, this.name, this.surface);
 }
 
-class _BookScreenState extends State<BookScreen> {
+/// One line of box sizes: how many boxes of this size, and L × W × H in cm (sizes optional).
+class _BoxLine {
+  final nos = TextEditingController(text: '1');
+  final l = TextEditingController();
+  final w = TextEditingController();
+  final h = TextEditingController();
+  int get count => (int.tryParse(nos.text.trim()) ?? 1).clamp(1, 999);
+  double? _n(TextEditingController t) {
+    final v = double.tryParse(t.text.trim());
+    return v != null && v > 0 ? v : null;
+  }
+
+  Map<String, dynamic> dims() => {
+        if (_n(l) != null) 'lengthCm': _n(l),
+        if (_n(w) != null) 'widthCm': _n(w),
+        if (_n(h) != null) 'heightCm': _n(h),
+      };
+}
+
+/// Quick booking on the phone — same booking API as the web "Quick Book": customer code, product,
+/// consignee + pincode, boxes (+ sizes) + weight, optional AWB / forwarding / invoice / e-way (scannable).
+class _NewBooking extends StatefulWidget {
+  const _NewBooking();
+  @override
+  State<_NewBooking> createState() => _NewBookingState();
+}
+
+class _NewBookingState extends State<_NewBooking> {
   List<Map<String, dynamic>> _customers = [];
   List<_Product> _products = [];
   List<Map<String, String>> _vendors = [];
@@ -36,7 +90,7 @@ class _BookScreenState extends State<BookScreen> {
   final _conPin = TextEditingController();
   final _conGst = TextEditingController();
   String _destCity = '';
-  final _boxes = TextEditingController(text: '1');
+  List<_BoxLine> _lines = [_BoxLine()];
   final _kg = TextEditingController();
   final _awb = TextEditingController();
   final _fwd = TextEditingController();
@@ -50,7 +104,6 @@ class _BookScreenState extends State<BookScreen> {
   final _pickPhone = TextEditingController();
 
   bool _busy = false;
-  Map<String, dynamic>? _booked;
 
   static const _lastContentKey = 'quickbook_content';
 
@@ -128,7 +181,7 @@ class _BookScreenState extends State<BookScreen> {
     final miss = _missing;
     if (miss.isNotEmpty) return toast(context, 'Missing: ${miss.join(', ')}', error: true);
     final c = _cust!;
-    final boxes = (int.tryParse(_boxes.text.trim()) ?? 1).clamp(1, 999);
+    final boxes = _lines.fold<int>(0, (a, b) => a + b.count);
     final kg = double.parse(_kg.text.trim());
     final perBox = double.parse((kg / boxes).toStringAsFixed(3));
     final sel = _products.firstWhere((p) => p.code == _product);
@@ -165,12 +218,19 @@ class _BookScreenState extends State<BookScreen> {
         'invoiceNo': opt(_invNo),
         'ewbNo': opt(_ewb),
         'paymentTerm': 'PREPAID',
-        'pieces': List.generate(boxes, (_) => {'deadKg': perBox}),
+        // One piece per box, each carrying its line's size (volumetric weight is worked out server-side).
+        'pieces': [
+          for (final line in _lines)
+            for (var i = 0; i < line.count; i++) {'deadKg': perBox, ...line.dims()},
+        ],
       }..removeWhere((k, v) => v == null);
       final res = await ApiClient.instance.createShipment(body);
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_lastContentKey, _content.text.trim());
-      if (mounted) setState(() => _booked = res);
+      if (!mounted) return;
+      // Show what was booked (edit / hand to carrier / print from there), then start the next one.
+      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => BookingSummary(awb: '${res['awb']}', justBooked: true)));
+      _next();
     } catch (e) {
       if (mounted) toast(context, '$e', error: true);
     } finally {
@@ -183,18 +243,38 @@ class _BookScreenState extends State<BookScreen> {
     for (final t in [_conName, _conPhone, _conAddr, _conPin, _conGst, _kg, _awb, _fwd, _ref, _invNo, _invAmt, _ewb]) {
       t.clear();
     }
-    _boxes.text = '1';
     setState(() {
-      _booked = null;
+      _lines = [_BoxLine()];
       _destCity = '';
     });
+  }
+
+  Widget _boxLine(_BoxLine b, int i) {
+    Widget n(TextEditingController c, String label) => Expanded(
+          child: TextField(controller: c, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: label)),
+        );
+    return Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+      SizedBox(
+        width: 64,
+        child: TextField(controller: b.nos, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Boxes'), onChanged: (_) => setState(() {})),
+      ),
+      const SizedBox(width: 8),
+      n(b.l, 'L cm'),
+      const SizedBox(width: 6),
+      n(b.w, 'W cm'),
+      const SizedBox(width: 6),
+      n(b.h, 'H cm'),
+      if (_lines.length > 1)
+        IconButton(tooltip: 'Remove', icon: const Icon(Icons.close, size: 18), onPressed: () => setState(() => _lines.removeAt(i)))
+      else
+        const SizedBox(width: 8),
+    ]);
   }
 
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_loadError != null) return EmptyState(Icons.cloud_off, _loadError!);
-    if (_booked != null) return _bookedView(context);
 
     final needEway = (double.tryParse(_invAmt.text.trim()) ?? 0) >= 50000;
     return ListView(
@@ -225,9 +305,20 @@ class _BookScreenState extends State<BookScreen> {
           initialValue: _vendor,
           isExpanded: true,
           decoration: const InputDecoration(labelText: 'Carrier (optional)'),
+          // The field shows the carrier CODE (what ops know them by); the list shows code + name.
+          selectedItemBuilder: (_) => [
+            const Text('— Own network / decide later —'),
+            ..._vendors.map((v) => Text('${v['code']}', style: const TextStyle(fontWeight: FontWeight.w700))),
+          ],
           items: [
             const DropdownMenuItem<String?>(value: null, child: Text('— Own network / decide later —')),
-            ..._vendors.map((v) => DropdownMenuItem<String?>(value: v['code'], child: Text('${v['name']}', overflow: TextOverflow.ellipsis))),
+            ..._vendors.map((v) => DropdownMenuItem<String?>(
+                  value: v['code'],
+                  child: Text.rich(TextSpan(children: [
+                    TextSpan(text: '${v['code']}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                    TextSpan(text: '  ${v['name']}', style: TextStyle(color: Theme.of(context).colorScheme.outline)),
+                  ]), overflow: TextOverflow.ellipsis),
+                )),
           ],
           onChanged: (v) => setState(() => _vendor = v),
         ),
@@ -272,17 +363,21 @@ class _BookScreenState extends State<BookScreen> {
         ]),
         TextField(controller: _conAddr, maxLines: 2, decoration: const InputDecoration(labelText: 'Address')),
         TextField(controller: _conGst, textCapitalization: TextCapitalization.characters, decoration: const InputDecoration(labelText: 'GSTIN (optional)')),
-        const SectionLabel('Boxes'),
-        Row(children: [
-          Expanded(child: TextField(controller: _boxes, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'No. of boxes'))),
-          const SizedBox(width: 12),
-          Expanded(
-              child: TextField(
-                  controller: _kg,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  onChanged: (_) => setState(() {}),
-                  decoration: const InputDecoration(labelText: 'Total weight (kg)'))),
-        ]),
+        SectionLabel('Boxes (${_lines.fold<int>(0, (a, b) => a + b.count)}) — sizes optional'),
+        for (var i = 0; i < _lines.length; i++) _boxLine(_lines[i], i),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () => setState(() => _lines.add(_BoxLine())),
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Another box size'),
+          ),
+        ),
+        TextField(
+            controller: _kg,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(labelText: 'Total weight (kg)')),
         TextField(controller: _content, decoration: const InputDecoration(labelText: 'Content / description')),
         const SectionLabel('Numbers (scan or type)'),
         ScanField(controller: _awb, label: 'AWB no.', hint: 'Blank = auto-generate'),
@@ -310,21 +405,143 @@ class _BookScreenState extends State<BookScreen> {
     );
   }
 
-  Widget _bookedView(BuildContext context) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.check_circle, size: 64, color: Color(0xFF16A34A)),
-            const SizedBox(height: 12),
-            Text('Booked', style: Theme.of(context).textTheme.titleMedium),
-            SelectableText('${_booked!['awb']}', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: 1)),
-            const SizedBox(height: 6),
-            Text('${_cust?['accountCode']} — ${_cust?['legalName']} · ${_vendor ?? 'own network'}', textAlign: TextAlign.center),
-            const SizedBox(height: 24),
-            FilledButton.icon(onPressed: _next, icon: const Icon(Icons.add), label: const Text('Book next (same customer)')),
+}
+
+/// Today's (or a picked day's) bookings by me — open one, or tick several of a carrier and print the
+/// handover manifest the carrier signs.
+class MyBookings extends StatefulWidget {
+  const MyBookings({super.key});
+  @override
+  State<MyBookings> createState() => _MyBookingsState();
+}
+
+class _MyBookingsState extends State<MyBookings> {
+  DateTime _day = DateTime.now();
+  List<Map<String, dynamic>> _rows = [];
+  final Set<String> _sel = {};
+  String? _vendor; // filter
+  bool _loading = true;
+  String? _error;
+
+  String get _ymd => '${_day.year}-${'${_day.month}'.padLeft(2, '0')}-${'${_day.day}'.padLeft(2, '0')}';
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final r = await ApiClient.instance.myBookings(date: _ymd);
+      _rows = (r['rows'] as List).cast<Map<String, dynamic>>();
+      _sel.removeWhere((a) => !_rows.any((x) => x['awb'] == a));
+    } catch (e) {
+      _error = '$e';
+    }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  String _v(Map<String, dynamic> r) => '${r['vendor'] ?? ''}'.isEmpty ? 'SELF' : '${r['vendor']}'.toUpperCase();
+
+  Future<void> _printManifest() async {
+    final picked = _rows.where((r) => _sel.contains(r['awb'])).toList();
+    final vendors = picked.map(_v).toSet();
+    if (vendors.length > 1) {
+      return toast(context, 'Pick shipments of ONE carrier — a manifest is per carrier (${vendors.join(', ')}).', error: true);
+    }
+    await PrintView.open(context, 'Handover manifest',
+        '/handover/print?date=$_ymd&vendor=${Uri.encodeComponent(vendors.first)}&awbs=${Uri.encodeComponent(picked.map((r) => r['awb']).join(','))}');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final vendors = _rows.map(_v).toSet().toList()..sort();
+    final shown = _rows.where((r) => _vendor == null || _v(r) == _vendor).toList();
+    return Column(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+        child: Row(children: [
+          TextButton.icon(
+            icon: const Icon(Icons.calendar_today, size: 18),
+            label: Text('${'${_day.day}'.padLeft(2, '0')}-${'${_day.month}'.padLeft(2, '0')}-${_day.year}'),
+            onPressed: () async {
+              final d = await showDatePicker(context: context, initialDate: _day, firstDate: DateTime(2025), lastDate: DateTime.now());
+              if (d != null) {
+                setState(() => _day = d);
+                load();
+              }
+            },
+          ),
+          const Spacer(),
+          IconButton(tooltip: 'Refresh', onPressed: load, icon: const Icon(Icons.refresh)),
+        ]),
+      ),
+      if (vendors.length > 1)
+        SizedBox(
+          height: 44,
+          child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 12), children: [
+            Padding(padding: const EdgeInsets.only(right: 6), child: ChoiceChip(label: const Text('All'), selected: _vendor == null, onSelected: (_) => setState(() => _vendor = null))),
+            ...vendors.map((v) => Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: ChoiceChip(label: Text(v), selected: _vendor == v, onSelected: (_) => setState(() => _vendor = v)),
+                )),
           ]),
         ),
-      );
+      Expanded(
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+                ? EmptyState(Icons.cloud_off, _error!)
+                : shown.isEmpty
+                    ? const EmptyState(Icons.inbox_outlined, 'No bookings by you on this day.')
+                    : RefreshIndicator(
+                        onRefresh: load,
+                        child: ListView.builder(
+                          itemCount: shown.length,
+                          itemBuilder: (_, i) {
+                            final r = shown[i];
+                            final awb = '${r['awb']}';
+                            final carrierAwb = r['bdWaybill'] ?? r['forwardingAwb'];
+                            return CheckboxListTile(
+                              value: _sel.contains(awb),
+                              onChanged: (v) => setState(() => v == true ? _sel.add(awb) : _sel.remove(awb)),
+                              controlAffinity: ListTileControlAffinity.leading,
+                              title: Text('$awb · ${_v(r)}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                              subtitle: Text('${r['customerCode']} → ${r['consigneeName'] ?? ''}, ${r['consigneeCity'] ?? r['destPincode'] ?? ''}'
+                                  '\n${r['pieceCount']} box(es)${carrierAwb != null ? ' · carrier AWB $carrierAwb' : ' · not handed to carrier'}'),
+                              isThreeLine: true,
+                              secondary: IconButton(
+                                icon: const Icon(Icons.chevron_right),
+                                onPressed: () async {
+                                  await Navigator.of(context).push(MaterialPageRoute(builder: (_) => BookingSummary(awb: awb)));
+                                  load();
+                                },
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+      ),
+      if (_sel.isNotEmpty)
+        SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
+            child: FilledButton.icon(
+              onPressed: _printManifest,
+              icon: const Icon(Icons.print),
+              label: Text('Print manifest (${_sel.length})'),
+              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+            ),
+          ),
+        ),
+    ]);
+  }
 }
 
 class _CustomerPicker extends StatefulWidget {

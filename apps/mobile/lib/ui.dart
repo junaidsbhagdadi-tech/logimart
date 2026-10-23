@@ -103,6 +103,7 @@ class _CodeScannerState extends State<CodeScanner> {
           Expanded(
             child: MobileScanner(
               controller: _controller,
+              errorBuilder: (ctx, e) => ScannerError(e, onRetry: () => _controller.start()),
               onDetect: (capture) {
                 for (final b in capture.barcodes) {
                   final v = b.rawValue;
@@ -140,6 +141,35 @@ class _CodeScannerState extends State<CodeScanner> {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// Shown in place of the camera when it can't start — says why, instead of a black screen with "!".
+class ScannerError extends StatelessWidget {
+  final MobileScannerException error;
+  final VoidCallback onRetry;
+  const ScannerError(this.error, {super.key, required this.onRetry});
+  @override
+  Widget build(BuildContext context) {
+    final denied = error.errorCode == MobileScannerErrorCode.permissionDenied;
+    final text = denied
+        ? 'Camera permission is off.\nOpen phone Settings → Apps → ExcelEx Rider → Permissions → Camera → Allow, then tap Retry.'
+        : 'The camera could not start (${error.errorCode.name}${error.errorDetails?.message != null ? ': ${error.errorDetails!.message}' : ''}).\nClose other apps using the camera and tap Retry — or type the code with the keyboard button.';
+    return ColoredBox(
+      color: Colors.black,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(denied ? Icons.no_photography_outlined : Icons.error_outline, color: Colors.white, size: 40),
+            const SizedBox(height: 12),
+            Text(text, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white)),
+            const SizedBox(height: 16),
+            FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh), label: const Text('Retry')),
+          ]),
+        ),
       ),
     );
   }
