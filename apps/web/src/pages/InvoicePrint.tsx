@@ -23,6 +23,18 @@ function rupeesInWords(n: number): string {
   return parts.join(' ');
 }
 
+/** Standard terms, worded for the billing company (used when the company has no terms of its own). */
+function defaultTerms(legalName: string, jurisdiction?: string): string[] {
+  return [
+    'Payment should be made within 7 days from the date of Invoice, delay payment will attract interest @ 24% P.A.',
+    `All disputes are subject to ${jurisdiction || 'Delhi'} Jurisdiction only.`,
+    `${legalName} liability is as per the clause specified on the reverse of Airwaybill.`,
+    `Cheque / Draft should be made in favour of "${legalName}".`,
+    'Any discrepancy in this invoice must be communicated in writing within 7 days of date of invoice.',
+    'This is a computer generated invoice, does not require signature.',
+  ];
+}
+
 const inr = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const ddmmyyyy = (s?: string | null) => {
   if (!s) return '';
@@ -49,19 +61,21 @@ export function InvoicePrint() {
   // Seller = the invoice's own billing entity (multi-company), snapshotted at generation. Older invoices
   // without a snapshot fall back to the default company. Bank/terms inherit the default when not set.
   const S: any = (inv as any).seller || COMPANY;
-  const sBank = S.bank || COMPANY.bank;
-  const sTerms: string[] = Array.isArray(S.terms) ? S.terms : COMPANY.terms;
+  // Bank + terms are the BILLING company's — never borrow another entity's bank. Only the default entity
+  // (no snapshot, or the same legal name) falls back to the built-in details.
+  const isDefaultEntity = !(inv as any).seller || String(S.legalName).toUpperCase() === COMPANY.legalName.toUpperCase();
+  const sBank: any = S.bank || (isDefaultEntity ? COMPANY.bank : null);
+  const sTerms: string[] = Array.isArray(S.terms) && S.terms.length ? S.terms : defaultTerms(S.legalName, S.jurisdiction);
 
-  // Per-line freight (the "Amount" column). Fall back to the all-in amount for
-  // legacy invoices generated before the freight/fuel/other split existed.
+  // "Amount" column = freight + other charges (other charges roll into the first sub total); fuel is
+  // shown separately below. Legacy invoices without the split fall back to the all-in line amount.
   const rows = inv.lines.map((l) => {
     const freight = num(l.freight), fuel = num(l.fuel), other = num(l.otherCharges);
     const hasSplit = freight > 0 || fuel > 0 || other > 0;
-    return { l, amount: hasSplit ? freight : num(l.amount), fuel, other };
+    return { l, amount: hasSplit ? freight + other : num(l.amount), fuel };
   });
   const sumFreight = rows.reduce((a, r) => a + r.amount, 0);
   const sumFuel = rows.reduce((a, r) => a + r.fuel, 0);
-  const sumOther = rows.reduce((a, r) => a + r.other, 0);
   const subtotal = num(inv.subtotal);           // taxable value = freight + fuel + other
   const igst = num(inv.igst), cgst = num(inv.cgst), sgst = num(inv.sgst);
   const total = num(inv.total);
@@ -117,6 +131,7 @@ export function InvoicePrint() {
             <div><span className="lbl">Place of Supply:</span> {inv.placeOfSupply ?? c?.state ?? '—'}</div>
           </div>
           <div className="pad" style={{ flex: 1 }}>
+            {S.logo && <img src={S.logo} alt="" style={{ maxHeight: 54, maxWidth: 200, objectFit: 'contain', display: 'block', marginBottom: 4 }} />}
             <div style={{ fontWeight: 800, fontSize: 14 }}>{S.legalName}</div>
             <div className="k">{(S.addressLines || []).join(' ')}</div>
             <div className="k">{S.phones}{S.email ? ` · ${S.email}` : ''}</div>
@@ -157,18 +172,21 @@ export function InvoicePrint() {
         <div style={{ display: 'flex', borderTop: '1px solid #333' }}>
           <div className="pad" style={{ flex: 1, borderRight: '1px solid #333' }}>
             <div className="lbl" style={{ marginBottom: 4 }}>Our Bank Details</div>
-            <div><span className="lbl">Bank Name:</span> {sBank.name}</div>
-            <div><span className="lbl">A/C No.:</span> {sBank.accountNo}</div>
-            <div><span className="lbl">NEFT / RTGS (IFSC):</span> {sBank.ifsc}</div>
-            <div><span className="lbl">Branch:</span> {sBank.branch}</div>
-            {sBank.address && <div className="k">{sBank.address}</div>}
+            {sBank ? (
+              <>
+                <div><span className="lbl">Bank Name:</span> {sBank.name}</div>
+                <div><span className="lbl">A/C No.:</span> {sBank.accountNo}</div>
+                <div><span className="lbl">NEFT / RTGS (IFSC):</span> {sBank.ifsc}</div>
+                <div><span className="lbl">Branch:</span> {sBank.branch}</div>
+                {sBank.address && <div className="k">{sBank.address}</div>}
+              </>
+            ) : <div className="k">Bank details not set for {S.legalName} — add them under Masters → Billing Companies.</div>}
           </div>
           <div style={{ flex: 1 }}>
             <table className="lines" style={{ border: 'none' }}>
               <tbody>
                 <tr><td className="lbl">Sub Total</td><td className="r">{inr(sumFreight)}</td></tr>
                 <tr><td className="lbl">Fuel Surcharge</td><td className="r">{inr(sumFuel)}</td></tr>
-                <tr><td className="lbl">Other Charges</td><td className="r">{inr(sumOther)}</td></tr>
                 <tr><td className="lbl">Sub Total</td><td className="r">{inr(subtotal)}</td></tr>
                 {igst > 0 ? (
                   <tr><td className="lbl">IGST @ 18.00%</td><td className="r">{inr(igst)}</td></tr>
@@ -195,16 +213,19 @@ export function InvoicePrint() {
           </div>
         )}
 
-        {/* terms */}
-        <div className="pad" style={{ borderTop: '1px solid #333' }}>
-          <div className="lbl" style={{ marginBottom: 4 }}>Terms &amp; Conditions</div>
-          <ol style={{ margin: 0, paddingLeft: 18, fontSize: 11, lineHeight: 1.6 }}>
-            {sTerms.map((t, i) => <li key={i}>{t}</li>)}
-          </ol>
-        </div>
-
-        <div className="pad k" style={{ borderTop: '1px solid #333', textAlign: 'center', fontSize: 10 }}>
-          E.&amp;O.E · This is a computer-generated invoice and does not require a signature. — {S.legalName}
+        {/* terms + the billing company's stamp & signature */}
+        <div style={{ display: 'flex', borderTop: '1px solid #333' }}>
+          <div className="pad" style={{ flex: 1 }}>
+            <div className="lbl" style={{ marginBottom: 4 }}>E.&amp;O.E — Terms &amp; Conditions</div>
+            <ol style={{ margin: 0, paddingLeft: 18, fontSize: 11, lineHeight: 1.6 }}>
+              {sTerms.map((t, i) => <li key={i}>{t}</li>)}
+            </ol>
+          </div>
+          <div className="pad" style={{ width: 220, textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div className="lbl" style={{ fontSize: 11 }}>For {S.legalName}</div>
+            {S.signature ? <img src={S.signature} alt="" style={{ maxHeight: 100, maxWidth: 200, objectFit: 'contain', margin: '6px auto' }} /> : <div style={{ height: 60 }} />}
+            <div style={{ fontSize: 11, borderTop: '1px solid #999', paddingTop: 2 }}>Authorised Signatory</div>
+          </div>
         </div>
       </div>
     </div>

@@ -113,7 +113,7 @@ export class ShipmentsService {
     return requested != null && allowed.has(String(requested)) ? Number(requested) : Number(tokenClientId);
   }
 
-  async create(dto: CreateShipmentDto, opts?: { skipAutoDispatch?: boolean }) {
+  async create(dto: CreateShipmentDto, opts?: { skipAutoDispatch?: boolean; createdById?: bigint }) {
     // Resolve the customer by internal id OR account code — bulk imports usually carry the account code.
     const cid = String((dto as any).clientId ?? '').trim();
     const sel = { id: true, isActive: true, isCreditHold: true, legalName: true, outstandingBal: true, creditLimit: true };
@@ -212,6 +212,7 @@ export class ShipmentsService {
       data: {
         awb,
         lrNumber,
+        ...(opts?.createdById ? { createdById: opts.createdById } : {}),
         clientId: BigInt(dto.clientId),
         serviceMode: dto.serviceMode,
         originHubId: dto.originHubId != null && String(dto.originHubId) !== '' ? BigInt(dto.originHubId) : null,
@@ -968,6 +969,32 @@ export class ShipmentsService {
    * the AWB is invoiced (cancel/rebill first). Changing product or a pincode re-derives the zone grid,
    * ODA flag and EDD so rating stays correct. Charges are computed live, so no stored total to patch.
    */
+  /** Rider app "My bookings": shipments this user booked on an IST day (default today). */
+  async myBookings(userId: bigint, date?: string) {
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(String(date || '')) ? String(date) : new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10);
+    const rows = await this.prisma.shipment.findMany({
+      where: { createdById: userId, createdAt: { gte: new Date(`${d}T00:00:00+05:30`), lte: new Date(`${d}T23:59:59.999+05:30`) } },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+      select: {
+        awb: true, createdAt: true, statusCode: true, vendor: true, forwardingAwb: true, bdWaybill: true, product: true,
+        consigneeName: true, consigneeCity: true, destPincode: true, pieceCount: true, chargeWeight: true,
+        client: { select: { accountCode: true, legalName: true } },
+      },
+    });
+    return { date: d, rows: rows.map((r) => ({ ...r, customerCode: r.client?.accountCode, customerName: r.client?.legalName })) };
+  }
+
+  /** A rider may edit only their own booking, still Booked (MAN), not yet handed to a carrier. */
+  async assertRiderCanEdit(awbRaw: string, userId: bigint) {
+    const awb = String(awbRaw || '').trim().toUpperCase();
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { createdById: true, statusCode: true, bdWaybill: true, forwardingAwb: true } });
+    if (!s) throw new NotFoundException(`AWB ${awb} not found`);
+    if (s.createdById !== userId) throw new ForbiddenException('You can only edit shipments you booked. Ask CS to correct this one.');
+    if (String(s.statusCode || 'MAN') !== 'MAN') throw new ConflictException('Already picked up — ask CS to correct it.');
+    if (s.bdWaybill || s.forwardingAwb) throw new ConflictException('Already handed to the carrier — ask CS to cancel the carrier AWB before editing.');
+  }
+
   async editShipment(awbRaw: string, dto: any, opts?: { isSuper?: boolean }) {
     const awb = String(awbRaw || '').trim().toUpperCase();
     const s = await this.prisma.shipment.findUnique({ where: { awb }, include: { _count: { select: { invoiceLines: true } } } });

@@ -14,14 +14,34 @@ type Company = {
     invoicePrefix?: string; invoicePad?: number; invoiceNextNo?: number; isDefault?: boolean;
     bank?: { beneficiary?: string; name?: string; accountNo?: string; ifsc?: string; branch?: string; address?: string };
     terms?: string[];
+    logo?: string;      // data URL — printed on the invoice header
+    signature?: string; // data URL — stamp + authorised signature, printed at the invoice foot
   };
 };
+
+/** Read an image file and downscale it (max 600px, PNG keeps a stamp's transparency) to a small data URL. */
+function imageToDataUrl(file: File, max = 600): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(img.src);
+      resolve(c.toDataURL('image/png'));
+    };
+    img.onerror = () => reject(new Error('Not a readable image (use PNG or JPG).'));
+    img.src = URL.createObjectURL(file);
+  });
+}
 
 const blank = {
   code: '', legalName: '', gstin: '', pan: '', cin: '', stateCode: '', branch: '',
   addressLines: '', phones: '', email: '', sacCode: '996812', jurisdiction: '',
   invoicePrefix: '', invoicePad: '5', invoiceNextNo: '1', isDefault: false, active: true,
   bankBeneficiary: '', bankName: '', bankAccountNo: '', bankIfsc: '', bankBranch: '', bankAddress: '',
+  terms: '', logo: '', signature: '',
 };
 
 export function Companies() {
@@ -48,6 +68,7 @@ export function Companies() {
       isDefault: !!a.isDefault, active: c.active !== false,
       bankBeneficiary: a.bank?.beneficiary ?? '', bankName: a.bank?.name ?? '', bankAccountNo: a.bank?.accountNo ?? '',
       bankIfsc: a.bank?.ifsc ?? '', bankBranch: a.bank?.branch ?? '', bankAddress: a.bank?.address ?? '',
+      terms: (a.terms ?? []).join('\n'), logo: a.logo ?? '', signature: a.signature ?? '',
     });
     setShow(true); setErr(''); setMsg('');
   };
@@ -76,7 +97,11 @@ export function Companies() {
         name: form.bankName.trim(), accountNo: form.bankAccountNo.trim(), ifsc: form.bankIfsc.trim(),
         branch: form.bankBranch.trim(), address: form.bankAddress.trim() || undefined,
       } : undefined,
+      terms: form.terms.split('\n').map((l) => l.trim()).filter(Boolean),
+      logo: form.logo || undefined,
+      signature: form.signature || undefined,
     };
+    if (!attrs.terms?.length) delete attrs.terms;
     try {
       // Only one default entity — clear the flag on the others when this one is set default.
       if (form.isDefault) {
@@ -166,6 +191,28 @@ export function Companies() {
             <div><label>IFSC</label><input value={form.bankIfsc} onChange={(e) => set('bankIfsc', e.target.value)} /></div>
             <div><label>Branch</label><input value={form.bankBranch} onChange={(e) => set('bankBranch', e.target.value)} /></div>
             <div style={{ gridColumn: 'span 2' }}><label>Bank address</label><input value={form.bankAddress} onChange={(e) => set('bankAddress', e.target.value)} /></div>
+          </div>
+
+          <h3 style={{ marginBottom: 6 }}>Invoice look</h3>
+          <div className="grid cols-4" style={{ gap: 12 }}>
+            {([['logo', 'Company logo', 'Printed at the top of the invoice'], ['signature', 'Stamp & signature', 'Printed above "Authorised Signatory"']] as const).map(([k, label, hint]) => (
+              <div key={k}>
+                <label>{label} <span className="muted" style={{ fontSize: 11 }}>({hint})</span></label>
+                {form[k]
+                  ? <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+                      <img src={form[k]} alt="" style={{ maxHeight: 64, maxWidth: 160, objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 6, background: '#fff' }} />
+                      <button className="secondary" style={{ padding: '3px 8px', fontSize: 12 }} onClick={() => set(k, '')}>Remove</button>
+                    </div>
+                  : <input type="file" accept="image/png,image/jpeg" onChange={async (e) => {
+                      const f = e.target.files?.[0]; if (!f) return;
+                      try { set(k, await imageToDataUrl(f)); } catch (er: any) { setErr(er.message); }
+                    }} />}
+              </div>
+            ))}
+            <div style={{ gridColumn: 'span 2' }}>
+              <label>Terms &amp; conditions <span className="muted" style={{ fontSize: 11 }}>(one per line — blank = standard terms with this company's name)</span></label>
+              <textarea value={form.terms} onChange={(e) => set('terms', e.target.value)} rows={4} placeholder={`Cheque / Draft should be made in favour of "${form.legalName || 'COMPANY NAME'}".`} />
+            </div>
           </div>
 
           <div className="row" style={{ gap: 18, marginTop: 14, alignItems: 'center' }}>

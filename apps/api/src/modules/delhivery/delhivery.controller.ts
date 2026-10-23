@@ -35,7 +35,7 @@ export class DelhiveryController {
 
   /** Hand a Logimart shipment off to Delhivery — creates the LR via the async manifest job. */
   @Post('handoff/:awb')
-  @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN, UserRole.DRIVER) // DRIVER: rider app hands its own bookings to the carrier
   handoff(@Param('awb') awb: string, @Body() dto?: { pickupName?: string }) {
     return this.del.createManifest(awb, dto?.pickupName);
   }

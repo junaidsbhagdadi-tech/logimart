@@ -23,6 +23,15 @@ export function Handover() {
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  // Latest booking date that has shipments — offered when the picked day is empty (bulk uploads carry
+  // their own booking date, so "today" is often empty even right after an upload).
+  const [lastDate, setLastDate] = useState('');
+  useEffect(() => {
+    api.awbList(1).then((r: any[]) => {
+      const c = r[0]?.createdAt || r[0]?.bookDate;
+      if (c) setLastDate(new Date(new Date(c).getTime() + 5.5 * 3600e3).toISOString().slice(0, 10));
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => { api.listVendors().then((v: any[]) => setVendors(v.map((x) => ({ code: x.vendorCode, name: x.name })))).catch(() => {}); }, []);
   const load = () => {
@@ -77,7 +86,8 @@ export function Handover() {
                 <td style={{ textAlign: 'right' }}>{r.pieces}</td><td style={{ textAlign: 'right' }}>{Number(r.actualWeight || 0).toFixed(2)} kg</td>
               </tr>
             ))}
-            {shown.length === 0 && <tr><td colSpan={9} className="muted" style={{ textAlign: 'center', padding: 16 }}>No shipments booked on this date{vendor ? ` for ${vendor}` : ''}.</td></tr>}
+            {shown.length === 0 && <tr><td colSpan={9} className="muted" style={{ textAlign: 'center', padding: 16 }}>No shipments booked on this date{vendor ? ` for ${vendor}` : ''}.
+              {!busy && lastDate && lastDate !== date && <> Latest bookings are on <a href="#" onClick={(e) => { e.preventDefault(); setDate(lastDate); }}>{lastDate.split('-').reverse().join('-')}</a>.</>}</td></tr>}
           </tbody>
         </table>
       </div>
@@ -87,9 +97,26 @@ export function Handover() {
 
 /** Print sheet (outside the app layout) — opened from Handover with the selected rows in router state. */
 export function HandoverPrint() {
-  const { state } = useLocation() as { state?: { rows: Row[]; vendor: string; vendorName: string; date: string } };
+  const { state: navState } = useLocation() as { state?: { rows: Row[]; vendor: string; vendorName: string; date: string } };
   const nav = useNavigate();
+  // The rider app opens this page directly: /handover/print?date=YYYY-MM-DD&awbs=A,B&vendor=X — no router state.
+  const [params] = useSearchParams();
+  const [loaded, setLoaded] = useState<typeof navState>(undefined);
+  useEffect(() => {
+    if (navState?.rows?.length) return;
+    const awbs = new Set((params.get('awbs') || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean));
+    const date = params.get('date') || todayIst();
+    if (!awbs.size) return;
+    Promise.all([api.awbList(20000, undefined, date, date), api.listVendors().catch(() => [] as any[])]).then(([r, vs]: [any[], any[]]) => {
+      const rows = r.filter((x) => awbs.has(String(x.awb).toUpperCase()));
+      const vendor = params.get('vendor') || rows[0]?.vendor || '';
+      const vendorName = vs.find((v) => String(v.vendorCode).toUpperCase() === String(vendor).toUpperCase())?.name || vendor || 'SELF';
+      setLoaded({ rows, vendor, vendorName, date });
+    }).catch(() => {});
+  }, [navState, params]);
+  const state = navState?.rows?.length ? navState : loaded;
   useEffect(() => { if (state?.rows?.length) setTimeout(() => window.print(), 400); }, [state]);
+  if (!state && params.get('awbs')) return <div style={{ padding: 24 }}>Loading manifest…</div>;
   if (!state?.rows?.length) return <div style={{ padding: 24 }}>Nothing to print. <button onClick={() => nav('/handover')}>Back</button></div>;
   const { rows, vendor, vendorName, date } = state;
   const pcs = rows.reduce((s, r) => s + Number(r.pieces || 0), 0);

@@ -27,7 +27,14 @@ export class ShipmentsController {
     if (req.user.role === UserRole.CLIENT_ADMIN) {
       dto.clientId = await this.shipments.clientBookingAccount(req.user.clientId, dto.clientId);
     }
-    return this.shipments.create(dto);
+    return this.shipments.create(dto, { createdById: req.user?.sub ? BigInt(req.user.sub) : undefined });
+  }
+
+  /** Rider app — shipments I booked on a day (IST, default today): reopen, edit, hand off, print, manifest. */
+  @Get('my-bookings')
+  @Roles(UserRole.DRIVER, UserRole.HUB_MANAGER, UserRole.WAREHOUSE_HANDLER, UserRole.SYS_ADMIN)
+  myBookings(@Req() req: any, @Query('date') date?: string) {
+    return this.shipments.myBookings(BigInt(req.user.sub), date);
   }
 
   /** Lightweight customer picker for the pickup-boy (DRIVER) mobile booking — id/name/code only. */
@@ -356,15 +363,17 @@ export class ShipmentsController {
   /** Hand-off to a vendor: record vendor + forwarding (carrier) AWB reference. WAREHOUSE_HANDLER
    *  (incl. Customer Service staff) can do it too — an exceptional hand-off from the tracking screen. */
   @Post(':awb/forwarding')
-  @Roles(UserRole.WAREHOUSE_HANDLER, UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  @Roles(UserRole.WAREHOUSE_HANDLER, UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN, UserRole.DRIVER)
   setForwarding(@Param('awb') awb: string, @Body() dto: { vendor?: string; forwardingAwb?: string }) {
     return this.shipments.setForwarding(awb, dto);
   }
 
   /** Edit an AWB after creation (product / consignee / vendor / values …). Blocked once invoiced. */
   @Post(':awb/edit')
-  @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
-  editShipment(@Param('awb') awb: string, @Body() dto: any, @Req() req: any) {
+  @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN, UserRole.DRIVER)
+  async editShipment(@Param('awb') awb: string, @Body() dto: any, @Req() req: any) {
+    // A rider (app) may correct only their OWN booking, before it's picked or handed to a carrier.
+    if (req.user?.role === UserRole.DRIVER) await this.shipments.assertRiderCanEdit(awb, BigInt(req.user.sub));
     return this.shipments.editShipment(awb, dto, { isSuper: req.user?.role === UserRole.SYS_ADMIN });
   }
 

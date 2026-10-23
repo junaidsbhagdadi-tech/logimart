@@ -74,7 +74,7 @@ export class InvoiceService {
       jurisdiction: a.jurisdiction ?? stateName(a.stateCode ?? d.stateCode) ?? 'Delhi',
       ...(a.bank ? { bank: a.bank } : {}),
       ...(Array.isArray(a.terms) && a.terms.length ? { terms: a.terms } : {}),
-      ...(a.logo ? { logo: a.logo } : {}),
+      // logo / stamp-and-sign images are NOT snapshotted (large data URLs) — get() reads them live.
     };
   }
 
@@ -784,6 +784,20 @@ export class InvoiceService {
       },
     });
     if (!inv) throw new NotFoundException('Invoice not found');
+    // The snapshot keeps the seller's identity stable for reprints, but bank / terms saved on the billing
+    // company AFTER generation would otherwise fall back to the default entity's (wrong bank on the bill).
+    // Fill those gaps — and the logo / stamp-and-sign images, which aren't snapshotted — from the live master.
+    if (inv.companyCode) {
+      const co = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'COMPANY', code: inv.companyCode } } }).catch(() => null);
+      const a: any = co?.attrs ?? {};
+      const s: any = { ...((inv.seller as any) ?? {}) };
+      if (!s.bank && a.bank) s.bank = a.bank;
+      if (!(Array.isArray(s.terms) && s.terms.length) && Array.isArray(a.terms) && a.terms.length) s.terms = a.terms;
+      if (a.jurisdiction) s.jurisdiction = a.jurisdiction;
+      if (a.logo) s.logo = a.logo;
+      if (a.signature) s.signature = a.signature;
+      (inv as any).seller = s;
+    }
     return inv;
   }
 

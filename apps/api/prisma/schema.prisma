@@ -568,6 +568,7 @@ model Shipment {
 
   manifestId     BigInt?   // trip/manifest this consignment is attached to
   deliveryRiderId BigInt?  // rider assigned for last-mile delivery
+  createdById     BigInt?  // user who booked it (rider app "My bookings", own-booking edits)
 
   // ---- payment terms: Prepaid vs To-Pay (Freight Collect) ----
   paymentTerm        PaymentTerm @default(PREPAID)

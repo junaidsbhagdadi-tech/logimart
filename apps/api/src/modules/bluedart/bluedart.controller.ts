@@ -38,7 +38,7 @@ export class BluedartController {
 
   /** Hand a Logimart shipment off to BlueDart (generate waybill). */
   @Post('handoff/:awb')
-  @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN, UserRole.DRIVER) // DRIVER: rider app hands its own bookings to the carrier
   handoff(@Param('awb') awb: string) {
     return this.bd.generateWaybill(awb);
   }
@@ -58,7 +58,7 @@ export class BluedartController {
 
   /** BlueDart official AWB print (base64) captured at hand-off. */
   @Get('label/:awb')
-  @Roles(UserRole.CLIENT_ADMIN, UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  @Roles(UserRole.CLIENT_ADMIN, UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN, UserRole.DRIVER)
   label(@Param('awb') awb: string) {
     return this.bd.label(awb);
   }
