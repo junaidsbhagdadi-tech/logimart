@@ -241,6 +241,8 @@ export class ShipmentsController {
     } else {
       await assertClientInScope(this.prisma, req.user, s.clientId);
     }
+    // Never ship the customer's API key with a shipment (riders / CS / customers all read this).
+    if ((s as any).client) delete (s as any).client.apiKey;
     return s;
   }
 

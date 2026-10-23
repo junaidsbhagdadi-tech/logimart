@@ -787,8 +787,16 @@ export class InvoiceService {
     // The snapshot keeps the seller's identity stable for reprints, but bank / terms saved on the billing
     // company AFTER generation would otherwise fall back to the default entity's (wrong bank on the bill).
     // Fill those gaps — and the logo / stamp-and-sign images, which aren't snapshotted — from the live master.
-    if (inv.companyCode) {
-      const co = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'COMPANY', code: inv.companyCode } } }).catch(() => null);
+    {
+      // Company codes get renamed (e.g. "DEL" -> "DEL LOGM"); fall back to the same GSTIN, then legal name.
+      const snap: any = inv.seller ?? {};
+      let co: any = inv.companyCode ? await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'COMPANY', code: inv.companyCode } } }).catch(() => null) : null;
+      if (!co && (snap.gstin || snap.legalName)) {
+        const all = await this.prisma.masterEntry.findMany({ where: { type: 'COMPANY' } }).catch(() => [] as any[]);
+        const up = (v: any) => String(v ?? '').trim().toUpperCase();
+        co = all.find((e: any) => snap.gstin && up((e.attrs as any)?.gstin) === up(snap.gstin))
+          ?? all.find((e: any) => snap.legalName && up((e.attrs as any)?.legalName) === up(snap.legalName)) ?? null;
+      }
       const a: any = co?.attrs ?? {};
       const s: any = { ...((inv.seller as any) ?? {}) };
       if (!s.bank && a.bank) s.bank = a.bank;
