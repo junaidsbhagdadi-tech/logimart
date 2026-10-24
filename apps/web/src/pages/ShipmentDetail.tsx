@@ -335,6 +335,11 @@ export function ShipmentDetail() {
     try { const r = await api.delCancel(awb!); setMsg(`🚫 Delhivery LR cancelled${r.lrn ? ` — ${r.lrn}` : ''}.`); load(); }
     catch (e: any) { setError(e.message); }
   };
+  const trackDs = async () => {
+    setError(''); setMsg('');
+    try { const r = await api.dsSync(awb!); setMsg(`DS Cargo: ${r.status}`); load(); }
+    catch (e: any) { setError(e.message); }
+  };
   const handoffXb = async () => {
     if (!confirm('Hand this shipment to XpressBees (generates the XpressBees AWB)?')) return;
     setError(''); setMsg('');
@@ -403,8 +408,8 @@ export function ShipmentDetail() {
 
   // Which carrier this AWB is on — drives which hand-off / carrier actions show up front.
   const vendorUp = String((s as any).vendor || '').toUpperCase();
-  const carrier: 'BD' | 'DLY' | 'XB' | 'OTHER' = (/^(BLUE|BDR)/.test(vendorUp) || bdCodes.includes(vendorUp) || !!s.bdWaybill) ? 'BD'
-    : /DELHIVERY|^DLY$/.test(vendorUp) ? 'DLY' : /^XPB$|XPRESS\s*BEES|^XB$/.test(vendorUp) ? 'XB' : 'OTHER';
+  const carrier: 'BD' | 'DLY' | 'XB' | 'DSC' | 'OTHER' = (/^(BLUE|BDR)/.test(vendorUp) || bdCodes.includes(vendorUp) || !!s.bdWaybill) ? 'BD'
+    : /DELHIVERY|^DLY$/.test(vendorUp) ? 'DLY' : /^XPB$|XPRESS\s*BEES|^XB$/.test(vendorUp) ? 'XB' : /^DSC$|DS\s*CARGO/.test(vendorUp) ? 'DSC' : 'OTHER';
   const isCan = String((s as any).statusCode).toUpperCase() === 'CAN';
   const isDone = isCan || ['DLD', 'RTD'].includes(String((s as any).statusCode).toUpperCase());
   const canEditAwb = (canEditCharges && !(s as any).invoiced) || (isSysAdmin && !!(s as any).invoiced);
@@ -465,6 +470,7 @@ export function ShipmentDetail() {
               { label: 'Refresh BlueDart tracking', icon: <Search aria-hidden />, onClick: trackBd, show: canAssign && (!!s.bdWaybill || (carrier === 'BD' && !!(s as any).forwardingAwb)) },
               { label: 'Cancel BlueDart waybill', icon: <XCircle aria-hidden />, onClick: cancelBd, danger: true, show: canAssign && !!s.bdWaybill && !isCan },
               { label: 'Cancel Delhivery', icon: <XCircle aria-hidden />, onClick: cancelDel, danger: true, show: canAssign && carrier === 'DLY' && !!(s as any).forwardingAwb },
+              { label: 'Refresh DS Cargo tracking', icon: <Search aria-hidden />, onClick: trackDs, show: carrier === 'DSC' && !!(s as any).forwardingAwb },
               { label: 'Hand to XpressBees', icon: <Send aria-hidden />, onClick: handoffXb, show: canAssign && !isCan && carrier !== 'XB' && !(s as any).forwardingAwb && !s.bdWaybill },
               { label: 'Refresh XpressBees tracking', icon: <Search aria-hidden />, onClick: trackXb, show: canAssign && carrier === 'XB' && !!(s as any).forwardingAwb },
               { label: 'Cancel XpressBees AWB', icon: <XCircle aria-hidden />, onClick: cancelXb, danger: true, show: canAssign && carrier === 'XB' && !!(s as any).forwardingAwb && !isCan },

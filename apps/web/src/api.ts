@@ -681,6 +681,8 @@ export const api = {
   bdSaveAccount: (dto: unknown) => request<{ id: string; ok: boolean }>('/api/v1/bluedart/accounts', { method: 'POST', body: JSON.stringify(dto) }),
   bdDeleteAccount: (id: string) => request<{ ok: boolean }>(`/api/v1/bluedart/accounts/${id}`, { method: 'DELETE' }),
   // ---- Delhivery B2B / LTL carrier integration ----
+  // ---- DS Cargo (tracking only) ----
+  dsSync: (awb: string) => request<{ awb: string; docket: string; status: string }>(`/api/v1/dscargo/sync/${awb}`, { method: 'POST' }),
   // ---- XpressBees B2B cargo ----
   xbStatus: () => request<{ configured: boolean; tracking: boolean; [k: string]: any }>('/api/v1/xpressbees/status'),
   xbHandoff: (awb: string) => request<{ awb: string; xbAwb: string; boxes: string[] }>(`/api/v1/xpressbees/handoff/${awb}`, { method: 'POST' }),
