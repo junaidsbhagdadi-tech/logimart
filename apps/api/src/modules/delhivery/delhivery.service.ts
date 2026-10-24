@@ -3,6 +3,17 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { DELHIVERY, delConfigured } from './delhivery.config';
 import { deriveStatusFromBd } from '../bluedart/bd-status';
 
+/** Delhivery's /manifest form fields are parsed as PYTHON literals (their sample: `"master": False`) —
+ *  JSON's true/false/null makes the field invalid ("value is not a valid list"). Serialise accordingly. */
+function pyLit(v: any): string {
+  if (v === null || v === undefined) return 'None';
+  if (typeof v === 'boolean') return v ? 'True' : 'False';
+  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : '0';
+  if (typeof v === 'string') return JSON.stringify(v);
+  if (Array.isArray(v)) return `[${v.map(pyLit).join(', ')}]`;
+  return `{${Object.entries(v).map(([k, x]) => `${JSON.stringify(k)}: ${pyLit(x)}`).join(', ')}}`;
+}
+
 /**
  * Delhivery B2B / LTL API. Auth: POST /ums/login {username,password} → Bearer token (cached in
  * IntegrationToken, re-login on 401). Consignment = LR (Lorry Receipt); creating one is the async
@@ -178,17 +189,17 @@ export class DelhiveryService implements OnModuleInit {
     fd.append('payment_mode', 'prepaid'); // Logimart bills the customer; goods are not COD
     fd.append('cod_amount', '0');
     fd.append('weight', String(weightG));
-    fd.append('dropoff_location', JSON.stringify({
+    fd.append('dropoff_location', pyLit({
       consignee_name: s.consigneeName ?? '', address: s.consigneeAddress ?? '', city: s.consigneeCity ?? '',
       state: s.consigneeState ?? '', zip: s.destPincode ?? '', phone: s.consigneePhone ?? '', email: '',
     }));
     fd.append('rov_insurance', invAmt > 50000 ? 'True' : 'False');
-    fd.append('invoices', JSON.stringify([{ ewaybill: s.ewbNo ?? '', inv_num: s.referenceNo || String(s.awb), inv_amt: invAmt, inv_qr_code: '' }]));
-    fd.append('shipment_details', JSON.stringify([{ order_id: String(s.awb), box_count: Number(s.pieceCount ?? 1), description: s.goodsDesc ?? 'Goods', weight: weightG, waybills: [], master: false }]));
-    if (dims.length) fd.append('dimensions', JSON.stringify(dims));
+    fd.append('invoices', pyLit([{ ewaybill: s.ewbNo ?? '', inv_num: s.referenceNo || String(s.awb), inv_amt: invAmt, inv_qr_code: '' }]));
+    fd.append('shipment_details', pyLit([{ order_id: String(s.awb), box_count: Number(s.pieceCount ?? 1), description: s.goodsDesc ?? 'Goods', weight: weightG, waybills: [], master: false }]));
+    if (dims.length) fd.append('dimensions', pyLit(dims));
     fd.append('fm_pickup', 'False'); // schedule the pickup separately via createPickup
     fd.append('freight_mode', toPay ? 'fod' : 'fop'); // fod = freight on delivery (To-Pay), fop = freight on payer
-    fd.append('billing_address', JSON.stringify({
+    fd.append('billing_address', pyLit({
       name: s.shipperName ?? s.client?.legalName ?? '', company: s.client?.legalName ?? '', consignor: s.shipperName ?? s.client?.legalName ?? '',
       address: s.shipperAddress1 ?? s.client?.addressLine ?? '', city: s.shipperCity ?? s.client?.city ?? '', state: s.shipperState ?? s.client?.state ?? '',
       pin: s.shipperPincode ?? s.client?.pincode ?? '', phone: s.shipperContact ?? s.client?.contactPhone ?? '',
