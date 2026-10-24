@@ -5,6 +5,9 @@ import { deriveStatusFromBd } from '../bluedart/bd-status';
 
 /** Delhivery's /manifest form fields are parsed as PYTHON literals (their sample: `"master": False`) —
  *  JSON's true/false/null makes the field invalid ("value is not a valid list"). Serialise accordingly. */
+const GST_STATES: Record<string, string> = { '07': 'Delhi', '27': 'Maharashtra', '29': 'Karnataka', '33': 'Tamil Nadu', '36': 'Telangana', '24': 'Gujarat', '09': 'Uttar Pradesh', '06': 'Haryana', '19': 'West Bengal', '32': 'Kerala', '08': 'Rajasthan', '03': 'Punjab', '23': 'Madhya Pradesh', '21': 'Odisha', '10': 'Bihar', '37': 'Andhra Pradesh' };
+const stateFromGst = (g?: string) => (g ? GST_STATES[String(g).slice(0, 2)] : undefined);
+
 function pyLit(v: any): string {
   if (v === null || v === undefined) return 'None';
   if (typeof v === 'boolean') return v ? 'True' : 'False';
@@ -194,16 +197,20 @@ export class DelhiveryService implements OnModuleInit {
       state: s.consigneeState ?? '', zip: s.destPincode ?? '', phone: s.consigneePhone ?? '', email: '',
     }));
     fd.append('rov_insurance', invAmt > 50000 ? 'True' : 'False');
-    fd.append('invoices', pyLit([{ ewaybill: s.ewbNo ?? '', inv_num: s.referenceNo || String(s.awb), inv_amt: invAmt, inv_qr_code: '' }]));
+    // inv_num: letters, digits, "/" and "-" only (Delhivery regex).
+    const invNum = String(s.custInvoiceNo || s.referenceNo || s.awb).replace(/[^A-Za-z0-9/-]+/g, '-').replace(/^-+|-+$/g, '') || String(s.awb);
+    fd.append('invoices', pyLit([{ ewaybill: s.ewbNo ?? '', inv_num: invNum, inv_amt: invAmt, inv_qr_code: '' }]));
     fd.append('shipment_details', pyLit([{ order_id: String(s.awb), box_count: Number(s.pieceCount ?? 1), description: s.goodsDesc ?? 'Goods', weight: weightG, waybills: [], master: false }]));
     if (dims.length) fd.append('dimensions', pyLit(dims));
     fd.append('fm_pickup', 'False'); // schedule the pickup separately via createPickup
     fd.append('freight_mode', toPay ? 'fod' : 'fop'); // fod = freight on delivery (To-Pay), fop = freight on payer
+    // Billing party = the Delhivery account holder (us), with our GST/PAN — Delhivery invoices us, not the
+    // end customer. The goods' owner goes in as the consignor.
+    const bill = await this.billingEntity();
     fd.append('billing_address', pyLit({
-      name: s.shipperName ?? s.client?.legalName ?? '', company: s.client?.legalName ?? '', consignor: s.shipperName ?? s.client?.legalName ?? '',
-      address: s.shipperAddress1 ?? s.client?.addressLine ?? '', city: s.shipperCity ?? s.client?.city ?? '', state: s.shipperState ?? s.client?.state ?? '',
-      pin: s.shipperPincode ?? s.client?.pincode ?? '', phone: s.shipperContact ?? s.client?.contactPhone ?? '',
-      gst_number: s.consignorGstin ?? s.client?.gstin ?? '', pan_number: s.client?.pan ?? '',
+      name: bill.legalName, company: bill.legalName, consignor: s.shipperName || s.client?.legalName || bill.legalName,
+      address: bill.address, city: bill.city, state: bill.state, pin: bill.pin, phone: bill.phone,
+      ...(bill.gstin ? { gst_number: bill.gstin } : {}), ...(bill.pan ? { pan_number: bill.pan } : {}),
     }));
 
     const resp = await this.req('/manifest', { method: 'POST' }, fd);
@@ -222,6 +229,25 @@ export class DelhiveryService implements OnModuleInit {
       await this.prisma.shipment.update({ where: { id: s.id }, data: { forwardingAwb: lrn, vendor: s.vendor || 'DLY', bdStatus: 'Manifested (Delhivery)', bdHandedAt: new Date() } });
     }
     return { awb, lrn, jobId, response: resp };
+  }
+
+  /** Our billing identity for Delhivery: COMPANY master DELHIVERY_BILLING_COMPANY (code), else the first
+   *  Logimart entity, else the default. Address/city/pin parsed from the entity's address lines. */
+  private async billingEntity() {
+    const all = await this.prisma.masterEntry.findMany({ where: { type: 'COMPANY', active: true } }).catch(() => [] as any[]);
+    const want = (process.env.DELHIVERY_BILLING_COMPANY ?? '').trim().toUpperCase();
+    const e: any = (want && all.find((x: any) => x.code.toUpperCase() === want)) || all.find((x: any) => /LOGIMART/i.test((x.attrs as any)?.legalName || '')) || all.find((x: any) => (x.attrs as any)?.isDefault) || all[0];
+    const a: any = e?.attrs ?? {};
+    const lines: string[] = Array.isArray(a.addressLines) ? a.addressLines : [];
+    const joined = lines.join(', ');
+    const pin = (joined.match(/\d{6}/) || [''])[0];
+    const pan = String(a.pan || (a.gstin ? String(a.gstin).slice(2, 12) : '')).toUpperCase();
+    return {
+      legalName: String(a.legalName || e?.name || 'LOGIMART TECHNOLOGIES PRIVATE LIMITED'),
+      address: joined || 'NA', city: String(a.city || (joined.match(/,\s*([A-Za-z ]+)\s*-?\s*\d{6}/)?.[1] ?? '')).trim() || 'NA',
+      state: String(a.state || stateFromGst(a.gstin) || 'NA'), pin, phone: String(a.phones || '').replace(/\D/g, '').slice(-10),
+      gstin: String(a.gstin || '').toUpperCase(), pan: /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan) ? pan : '',
+    };
   }
 
   manifestStatus(jobId: string) {
