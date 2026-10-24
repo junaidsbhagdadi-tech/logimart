@@ -47,9 +47,12 @@ export class DelhiveryService implements OnModuleInit {
       await this.token(); // throws on bad credentials → whole pass skipped
       const rows = await this.prisma.shipment.findMany({
         where: {
-          createdAt: { gte: new Date(Date.now() - 30 * 864e5) }, forwardingAwb: { not: null },
-          OR: [{ vendor: { equals: 'DLY', mode: 'insensitive' } }, { vendor: { contains: 'DELHIVERY', mode: 'insensitive' } }],
-          AND: [{ OR: [{ statusCode: null }, { statusCode: { notIn: ['DLD', 'RTD', 'CAN'] } }] }],
+          createdAt: { gte: new Date(Date.now() - 30 * 864e5) },
+          OR: [{ forwardingAwb: { not: null } }, { bdStatus: { startsWith: 'Delhivery job' } }],
+          AND: [
+            { OR: [{ vendor: { equals: 'DLY', mode: 'insensitive' } }, { vendor: { contains: 'DELHIVERY', mode: 'insensitive' } }] },
+            { OR: [{ statusCode: null }, { statusCode: { notIn: ['DLD', 'RTD', 'CAN'] } }] },
+          ],
         },
         select: { awb: true }, orderBy: { createdAt: 'desc' }, take: 300,
       });
@@ -232,20 +235,39 @@ export class DelhiveryService implements OnModuleInit {
       throw e;
     }
     const jobId = resp?.job_id ?? resp?.jobId ?? resp?.data?.job_id ?? null;
-    // The manifest is async — poll a few times for the LR before giving up (caller can poll later too).
-    let lrn: string | null = resp?.lrn ?? resp?.lr_number ?? null;
-    if (!lrn && jobId) {
-      for (let i = 0; i < 6 && !lrn; i++) {
-        await new Promise((r) => setTimeout(r, 2000));
-        const st = await this.manifestStatus(String(jobId)).catch(() => null);
-        lrn = st?.lrn ?? st?.lr_number ?? st?.data?.lrn ?? (st?.data?.[0]?.lrn) ?? null;
+    // The manifest is async — poll for the LR (data.lrnum); if it isn't ready yet, park the job id and let
+    // tracking sync pick the LR up later.
+    let lrn: string | null = null;
+    if (jobId) {
+      for (let i = 0; i < 10 && !lrn; i++) {
+        await new Promise((r) => setTimeout(r, 2500));
+        lrn = (await this.applyManifestJob(s.id, String(jobId)).catch(() => null))?.lrn ?? null;
       }
-    }
-    if (lrn) {
-      // LR goes on forwardingAwb only — bdWaybill is BlueDart's (it made Delhivery shipments look like BlueDart).
-      await this.prisma.shipment.update({ where: { id: s.id }, data: { forwardingAwb: lrn, vendor: s.vendor || 'DLY', bdStatus: 'Manifested (Delhivery)', bdHandedAt: new Date() } });
+      if (!lrn) await this.prisma.shipment.update({ where: { id: s.id }, data: { vendor: s.vendor || 'DLY', bdStatus: `Delhivery job ${jobId}`, bdHandedAt: new Date() } });
     }
     return { awb, lrn, jobId, response: resp };
+  }
+
+  /** Read a manifest job; once Complete, store the LR (forwardingAwb) and the per-box waybills. */
+  private async applyManifestJob(shipmentId: bigint, jobId: string): Promise<{ lrn: string | null; status: string | null }> {
+    const st: any = await this.manifestStatus(jobId);
+    const d = st?.data ?? st;
+    const lrn: string | null = d?.lrnum ? String(d.lrnum) : (d?.lrn ? String(d.lrn) : null);
+    const status: string | null = d?.status ?? null;
+    if (!lrn) {
+      if (/fail|error|reject/i.test(String(status))) {
+        await this.prisma.shipment.update({ where: { id: shipmentId }, data: { bdStatus: `Delhivery manifest ${status}: ${JSON.stringify(d?.error ?? d?.message ?? '').slice(0, 150)}` } });
+      }
+      return { lrn: null, status };
+    }
+    const waybills: string[] = Array.isArray(d?.waybills) ? d.waybills.map(String) : [];
+    const pieces = await this.prisma.shipmentPiece.findMany({ where: { shipmentId }, orderBy: { sequenceNo: 'asc' }, select: { id: true } });
+    await this.prisma.$transaction([
+      // LR goes on forwardingAwb only — bdWaybill is BlueDart's (it made Delhivery shipments look like BlueDart).
+      this.prisma.shipment.update({ where: { id: shipmentId }, data: { forwardingAwb: lrn, bdStatus: 'Manifested (Delhivery)', bdHandedAt: new Date() } }),
+      ...pieces.slice(0, waybills.length).map((pc, i) => this.prisma.shipmentPiece.update({ where: { id: pc.id }, data: { carrierChildId: waybills[i] } })),
+    ]);
+    return { lrn, status };
   }
 
   /**
@@ -342,7 +364,14 @@ export class DelhiveryService implements OnModuleInit {
 
   /** Pull the latest Delhivery LR status onto the Logimart shipment. */
   async syncTracking(awb: string) {
-    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { forwardingAwb: true, statusCode: true } });
+    let s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, forwardingAwb: true, statusCode: true, bdStatus: true } });
+    // Hand-off still waiting on Delhivery's async manifest job → resolve the LR first.
+    const job = /^Delhivery job (\S+)/.exec(String(s?.bdStatus || ''))?.[1];
+    if (s && !s.forwardingAwb && job) {
+      const r = await this.applyManifestJob(s.id, job);
+      if (!r.lrn) return { awb, lrn: null, status: `Manifest ${r.status ?? 'pending'}`, location: null, tracking: null };
+      s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, forwardingAwb: true, statusCode: true, bdStatus: true } });
+    }
     const lrn = s?.forwardingAwb;
     if (!lrn) throw new BadRequestException(`No Delhivery LR on ${awb} to track.`);
     const r: any = await this.track(lrn);
