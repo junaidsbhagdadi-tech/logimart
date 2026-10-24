@@ -973,6 +973,18 @@ model ScanLog {
 
 // Cached carrier auth token (e.g. BlueDart JWT, valid 24h). Postgres-backed so
 // it is shared across API instances instead of re-authing per request.
+/// Gati (Allcargo) books pickups against a registered customer "vendor" (pickup point) — each pickup
+/// address is registered once (GKEJCustVendDtls) under a numeric code and cached here.
+model GatiVendor {
+  code      String   @id // 15-digit numeric custVendorCode
+  clientId  BigInt?
+  pincode   String
+  address   String
+  createdAt DateTime @default(now())
+
+  @@map("gati_vendors")
+}
+
 /// Delhivery B2B only collects from REGISTERED warehouses — every pickup address gets registered once
 /// (client-warehouse/create) under a stable name and cached here.
 model DelWarehouse {

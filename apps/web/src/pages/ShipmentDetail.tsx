@@ -335,6 +335,27 @@ export function ShipmentDetail() {
     try { const r = await api.delCancel(awb!); setMsg(`🚫 Delhivery LR cancelled${r.lrn ? ` — ${r.lrn}` : ''}.`); load(); }
     catch (e: any) { setError(e.message); }
   };
+  const handoffGati = async () => {
+    if (!confirm('Hand this shipment to Gati (creates the Gati docket and books the pickup)?')) return;
+    setError(''); setMsg('');
+    try { const r = await api.gatiHandoff(awb!); setMsg(`📦 Handed to Gati — docket ${r.docket} (${r.packages.length} package no${r.packages.length === 1 ? '' : 's'}).`); load(); }
+    catch (e: any) { setError(e.message); }
+  };
+  const trackGati = async () => {
+    setError(''); setMsg('');
+    try { const r = await api.gatiSync(awb!); setMsg(`Gati: ${r.status}`); load(); }
+    catch (e: any) { setError(e.message); }
+  };
+  const cancelGati = async () => {
+    if (!confirm('Cancel this Gati docket?')) return;
+    setError(''); setMsg('');
+    try { const r = await api.gatiCancel(awb!); setMsg(`🚫 Gati docket ${r.cancelled} cancelled.`); load(); }
+    catch (e: any) { setError(e.message); }
+  };
+  const printGati = async (what: 'printUrl' | 'stickerUrl') => {
+    try { const r = await api.gatiPrint(String((s as any).forwardingAwb)); window.open(r[what], '_blank', 'noopener'); }
+    catch (e: any) { setError(e.message); }
+  };
   const trackDs = async () => {
     setError(''); setMsg('');
     try { const r = await api.dsSync(awb!); setMsg(`DS Cargo: ${r.status}`); load(); }
@@ -408,8 +429,8 @@ export function ShipmentDetail() {
 
   // Which carrier this AWB is on — drives which hand-off / carrier actions show up front.
   const vendorUp = String((s as any).vendor || '').toUpperCase();
-  const carrier: 'BD' | 'DLY' | 'XB' | 'DSC' | 'OTHER' = (/^(BLUE|BDR)/.test(vendorUp) || bdCodes.includes(vendorUp) || !!s.bdWaybill) ? 'BD'
-    : /DELHIVERY|^DLY$/.test(vendorUp) ? 'DLY' : /^XPB$|XPRESS\s*BEES|^XB$/.test(vendorUp) ? 'XB' : /^DSC$|DS\s*CARGO/.test(vendorUp) ? 'DSC' : 'OTHER';
+  const carrier: 'BD' | 'DLY' | 'XB' | 'DSC' | 'GATI' | 'OTHER' = (/^(BLUE|BDR)/.test(vendorUp) || bdCodes.includes(vendorUp) || !!s.bdWaybill) ? 'BD'
+    : /DELHIVERY|^DLY$/.test(vendorUp) ? 'DLY' : /^XPB$|XPRESS\s*BEES|^XB$/.test(vendorUp) ? 'XB' : /^DSC$|DS\s*CARGO/.test(vendorUp) ? 'DSC' : /^GATI$|ALLCARGO/.test(vendorUp) ? 'GATI' : 'OTHER';
   const isCan = String((s as any).statusCode).toUpperCase() === 'CAN';
   const isDone = isCan || ['DLD', 'RTD'].includes(String((s as any).statusCode).toUpperCase());
   const canEditAwb = (canEditCharges && !(s as any).invoiced) || (isSysAdmin && !!(s as any).invoiced);
@@ -448,6 +469,7 @@ export function ShipmentDetail() {
           {canAssign && !isCan && carrier === 'BD' && !s.bdWaybill && <button onClick={handoffBd}><Send aria-hidden /> Hand to BlueDart</button>}
           {canAssign && !isCan && carrier === 'DLY' && !(s as any).forwardingAwb && <button onClick={handoffDel}><Send aria-hidden /> Hand to Delhivery</button>}
           {canAssign && !isCan && carrier === 'XB' && !(s as any).forwardingAwb && <button onClick={handoffXb}><Send aria-hidden /> Hand to XpressBees</button>}
+          {canAssign && !isCan && carrier === 'GATI' && !(s as any).forwardingAwb && <button onClick={handoffGati}><Send aria-hidden /> Hand to Gati</button>}
           {canPod && !isDone && (
             <label className="secondary btn-like" style={{ padding: '9px 12px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
               <Camera aria-hidden /> {podFile ? `${podFile.name.slice(0, 14)}…` : 'POD photo'}
@@ -470,6 +492,11 @@ export function ShipmentDetail() {
               { label: 'Refresh BlueDart tracking', icon: <Search aria-hidden />, onClick: trackBd, show: canAssign && (!!s.bdWaybill || (carrier === 'BD' && !!(s as any).forwardingAwb)) },
               { label: 'Cancel BlueDart waybill', icon: <XCircle aria-hidden />, onClick: cancelBd, danger: true, show: canAssign && !!s.bdWaybill && !isCan },
               { label: 'Cancel Delhivery', icon: <XCircle aria-hidden />, onClick: cancelDel, danger: true, show: canAssign && carrier === 'DLY' && !!(s as any).forwardingAwb },
+              { label: 'Hand to Gati', icon: <Send aria-hidden />, onClick: handoffGati, show: canAssign && !isCan && carrier !== 'GATI' && !(s as any).forwardingAwb && !s.bdWaybill },
+              { label: 'Refresh Gati tracking', icon: <Search aria-hidden />, onClick: trackGati, show: carrier === 'GATI' && !!(s as any).forwardingAwb },
+              { label: 'Gati docket print', icon: <Printer aria-hidden />, onClick: () => printGati('printUrl'), show: carrier === 'GATI' && !!(s as any).forwardingAwb },
+              { label: 'Gati package stickers', icon: <Barcode aria-hidden />, onClick: () => printGati('stickerUrl'), show: carrier === 'GATI' && !!(s as any).forwardingAwb },
+              { label: 'Cancel Gati docket', icon: <XCircle aria-hidden />, onClick: cancelGati, danger: true, show: canAssign && carrier === 'GATI' && !!(s as any).forwardingAwb && !isCan },
               { label: 'Refresh DS Cargo tracking', icon: <Search aria-hidden />, onClick: trackDs, show: carrier === 'DSC' && !!(s as any).forwardingAwb },
               { label: 'Hand to XpressBees', icon: <Send aria-hidden />, onClick: handoffXb, show: canAssign && !isCan && carrier !== 'XB' && !(s as any).forwardingAwb && !s.bdWaybill },
               { label: 'Refresh XpressBees tracking', icon: <Search aria-hidden />, onClick: trackXb, show: canAssign && carrier === 'XB' && !!(s as any).forwardingAwb },

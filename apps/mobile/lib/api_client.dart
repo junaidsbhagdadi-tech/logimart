@@ -203,6 +203,8 @@ class ApiClient {
       await post('/api/v1/bluedart/handoff/$awb') as Map<String, dynamic>;
   Future<Map<String, dynamic>> handoffDelhivery(String awb) async =>
       await post('/api/v1/delhivery/handoff/$awb') as Map<String, dynamic>;
+  Future<Map<String, dynamic>> handoffGati(String awb) async =>
+      await post('/api/v1/gati/handoff/$awb') as Map<String, dynamic>;
   Future<Map<String, dynamic>> handoffXpressBees(String awb) async =>
       await post('/api/v1/xpressbees/handoff/$awb') as Map<String, dynamic>;
 

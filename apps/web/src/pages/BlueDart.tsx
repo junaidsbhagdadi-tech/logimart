@@ -28,6 +28,7 @@ export function BlueDart() {
 
   // Delhivery
   const [dStatus, setDStatus] = useState<{ configured: boolean; [k: string]: any } | null>(null);
+  const [gStatus, setGStatus] = useState<{ configured: boolean; [k: string]: any } | null>(null);
   const [xStatus, setXStatus] = useState<{ configured: boolean; tracking: boolean; pool?: { kind: string; routeMode: string; free: number; total: number }[]; [k: string]: any } | null>(null);
   const [dPin, setDPin] = useState('');
   const [dSvc, setDSvc] = useState<any>(null);
@@ -39,6 +40,7 @@ export function BlueDart() {
     api.bdStatus().then(setStatus).catch((e) => setErr(e.message));
     api.delStatus().then(setDStatus).catch(() => {});
     api.xbStatus().then(setXStatus).catch(() => {});
+    api.gatiStatus().then(setGStatus).catch(() => {});
     api.bdDispatchStatus().then(setDispatchStat).catch(() => {});
     loadAccounts();
   };
@@ -171,6 +173,24 @@ export function BlueDart() {
           </div>
           {track && <pre style={{ marginTop: 10, maxHeight: 300, overflow: 'auto', background: 'var(--bg-soft, #f1f3f6)', padding: 10, borderRadius: 8, fontSize: 12 }}>{JSON.stringify(track, null, 2)}</pre>}
         </div>
+      </div>
+
+      <h2 style={{ margin: '18px 0 4px' }}>Gati (Allcargo)</h2>
+      <div className="card">
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 style={{ margin: 0 }}>Configuration</h2>
+          <span className={`badge ${gStatus?.configured ? 'DELIVERED' : 'CANCELLED'}`}>{gStatus?.configured ? 'CONFIGURED' : 'NOT CONFIGURED'}</span>
+        </div>
+        {gStatus ? (
+          <div className="row" style={{ gap: 16, flexWrap: 'wrap', marginTop: 8 }}>
+            {['custCode', 'encCustCode', 'trackToken', 'pinReqId', 'defaultGoodsCode', 'env'].map((v) => (
+              <span key={v} style={{ fontSize: 13 }}><span className="muted">{v}:</span> {(gStatus[v] && !['missing', 'not set'].includes(gStatus[v])) ? <b style={{ color: 'var(--ok)' }}>{gStatus[v]}</b> : <b style={{ color: 'var(--bad, #c0392b)' }}>{gStatus[v] || 'missing'}</b>}</span>
+            ))}
+          </div>
+        ) : <p className="muted">Loading…</p>}
+        {gStatus && !gStatus.configured && (
+          <p className="muted" style={{ fontSize: 12.5, marginTop: 10 }}>Set on the droplet <code>.env</code> and restart (Allcargo must whitelist IP <b>168.144.77.53</b>): <code>GATI_CUST_CODE</code>, <code>GATI_ENC_CUST_CODE</code>, <code>GATI_TRACK_TOKEN</code>, <code>GATI_PIN_REQID</code>, optional <code>GATI_DEFAULT_GOODS_CODE</code>, <code>GATI_ENV=uat</code> to test.</p>
+        )}
       </div>
 
       <h2 style={{ margin: '18px 0 4px' }}>XpressBees</h2>
