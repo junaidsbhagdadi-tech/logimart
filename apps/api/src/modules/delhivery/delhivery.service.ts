@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DELHIVERY, delConfigured } from './delhivery.config';
 import { deriveStatusFromBd } from '../bluedart/bd-status';
@@ -10,8 +10,43 @@ import { deriveStatusFromBd } from '../bluedart/bd-status';
  * status, LR track, shipping label, create/cancel pickup, LR cancel.
  */
 @Injectable()
-export class DelhiveryService {
+export class DelhiveryService implements OnModuleInit {
+  private readonly log = new Logger('Delhivery');
+  private syncing = false;
   constructor(private readonly prisma: PrismaService) {}
+
+  /** Keep Delhivery LR tracking live (DELHIVERY_SYNC_INTERVAL_MIN, default 15; 0 = off). */
+  onModuleInit() {
+    const mins = Number(process.env.DELHIVERY_SYNC_INTERVAL_MIN ?? 15);
+    if (!delConfigured() || !(mins > 0)) return;
+    const t = setInterval(() => this.autoSync().catch((e) => this.log.warn(`auto-sync: ${e?.message || e}`)), mins * 60_000);
+    (t as any).unref?.();
+    this.log.log(`Delhivery tracking auto-sync every ${mins} min.`);
+  }
+
+  /** Sync open Delhivery shipments (LR on forwardingAwb) booked in the last 30 days. Stops at the
+   *  first login failure so a bad password doesn't hammer Delhivery 600 times a pass. */
+  async autoSync() {
+    if (this.syncing) return;
+    this.syncing = true;
+    try {
+      await this.token(); // throws on bad credentials → whole pass skipped
+      const rows = await this.prisma.shipment.findMany({
+        where: {
+          createdAt: { gte: new Date(Date.now() - 30 * 864e5) }, forwardingAwb: { not: null },
+          OR: [{ vendor: { equals: 'DLY', mode: 'insensitive' } }, { vendor: { contains: 'DELHIVERY', mode: 'insensitive' } }],
+          AND: [{ OR: [{ statusCode: null }, { statusCode: { notIn: ['DLD', 'RTD', 'CAN'] } }] }],
+        },
+        select: { awb: true }, orderBy: { createdAt: 'desc' }, take: 300,
+      });
+      for (const r of rows) {
+        try { await this.syncTracking(r.awb); } catch { /* not an LR / not found — keep going */ }
+        await new Promise((res) => setTimeout(res, 400));
+      }
+    } finally {
+      this.syncing = false;
+    }
+  }
 
   private ensure() {
     if (!delConfigured()) {
@@ -160,7 +195,8 @@ export class DelhiveryService {
       }
     }
     if (lrn) {
-      await this.prisma.shipment.update({ where: { id: s.id }, data: { forwardingAwb: lrn, vendor: s.vendor ?? 'DELHIVERY', bdWaybill: lrn, bdHandedAt: new Date() } });
+      // LR goes on forwardingAwb only — bdWaybill is BlueDart's (it made Delhivery shipments look like BlueDart).
+      await this.prisma.shipment.update({ where: { id: s.id }, data: { forwardingAwb: lrn, vendor: s.vendor || 'DLY', bdStatus: 'Manifested (Delhivery)', bdHandedAt: new Date() } });
     }
     return { awb, lrn, jobId, response: resp };
   }
