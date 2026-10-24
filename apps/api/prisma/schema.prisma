@@ -973,6 +973,18 @@ model ScanLog {
 
 // Cached carrier auth token (e.g. BlueDart JWT, valid 24h). Postgres-backed so
 // it is shared across API instances instead of re-authing per request.
+/// Delhivery B2B only collects from REGISTERED warehouses — every pickup address gets registered once
+/// (client-warehouse/create) under a stable name and cached here.
+model DelWarehouse {
+  name      String   @id // LGM<acct><pin><hash> — what goes in the manifest's pickup_location_name
+  clientId  BigInt?
+  pincode   String
+  address   String
+  createdAt DateTime @default(now())
+
+  @@map("delhivery_warehouses")
+}
+
 /// XpressBees issues AWB numbers only in bulk (min 1,000) — kept here and handed out one per hand-off.
 /// kind: AWB = parent AWB, MPS = child box id (MPS… surface / MPA… air). routeMode: Surface | Air.
 model XbAwbPool {

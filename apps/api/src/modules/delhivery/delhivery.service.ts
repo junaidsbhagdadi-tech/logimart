@@ -176,8 +176,8 @@ export class DelhiveryService implements OnModuleInit {
     this.ensure();
     const s = await this.prisma.shipment.findUnique({ where: { awb }, include: { client: true, pieces: true } }) as any;
     if (!s) throw new BadRequestException(`AWB ${awb} not found`);
-    const pickup = (pickupName || DELHIVERY.pickupName || '').trim();
-    if (!pickup) throw new BadRequestException('No pickup warehouse — set DELHIVERY_PICKUP_NAME or pass one.');
+    // Pickups can be from anywhere: the shipper's address is registered as a Delhivery warehouse (once).
+    const pickup = (pickupName || '').trim() || await this.ensureWarehouse(s);
 
     const toPay = String(s.paymentTerm).toUpperCase() === 'TO_PAY';
     const weightG = Math.max(1, Math.round(Number(s.chargeWeight ?? s.totalDeadKg ?? 0.5) * 1000));
@@ -229,6 +229,48 @@ export class DelhiveryService implements OnModuleInit {
       await this.prisma.shipment.update({ where: { id: s.id }, data: { forwardingAwb: lrn, vendor: s.vendor || 'DLY', bdStatus: 'Manifested (Delhivery)', bdHandedAt: new Date() } });
     }
     return { awb, lrn, jobId, response: resp };
+  }
+
+  /**
+   * Delhivery B2B only collects from registered warehouses. Register this shipment's pickup (shipper)
+   * address under a stable name — LGM + account code + pincode + short address hash — once, cache it in
+   * delhivery_warehouses, and reuse it for every later hand-off from the same address.
+   */
+  async ensureWarehouse(s: any): Promise<string> {
+    const c = s.client ?? {};
+    const address = String([s.shipperAddress1, s.shipperAddress2].filter(Boolean).join(', ') || c.addressLine || '').trim();
+    const pin = String(s.shipperPincode || c.pincode || '').trim();
+    // First candidate with a real 10-digit mobile (shipperContact is often a person's name).
+    const phone = [s.shipperMobile, s.shipperPhone, s.shipperContact, c.contactPhone, c.tel1]
+      .map((v: any) => String(v ?? '').replace(/\D/g, '').slice(-10)).find((v: string) => v.length === 10) ?? '';
+    const missing = [!address && 'pickup address', !/^\d{6}$/.test(pin) && 'pickup pincode', phone.length !== 10 && 'pickup 10-digit mobile'].filter(Boolean);
+    if (missing.length) throw new BadRequestException(`Delhivery needs the ${missing.join(', ')} to register the pickup point — fix it on the AWB (Edit AWB).`);
+    const norm = address.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    let h = 0; for (const ch of norm) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    const name = `LGM${String(c.accountCode || 'X').toUpperCase().replace(/[^A-Z0-9]/g, '')}${pin}${h.toString(36).toUpperCase().slice(-4)}`;
+    if (await this.prisma.delWarehouse.findUnique({ where: { name } })) return name;
+
+    const pc = await this.prisma.pincode.findUnique({ where: { pincode: pin }, select: { city: true, state: true } }).catch(() => null);
+    const city = String(s.shipperCity || c.city || pc?.city || '').trim();
+    const state = String(s.shipperState || c.state || pc?.state || '').trim();
+    const days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+    const hours = (start: string, close: string) => Object.fromEntries(days.map((d) => [d, { start_time: start, close_time: close }]));
+    try {
+      await this.req('/client-warehouse/create/', {
+        method: 'POST',
+        body: JSON.stringify({
+          name, pin_code: pin, city: city || 'NA', state: state || 'NA', country: 'India',
+          address_details: { address: address.slice(0, 250), contact_person: String(s.shipperName || c.contactName || c.legalName || 'Shipper').slice(0, 80), phone_number: phone },
+          business_hours: hours('09:00', '19:00'), pick_up_hours: hours('10:00', '18:00'), business_days: days, pick_up_days: days,
+          ret_address: { pin, address: address.slice(0, 250) },
+        }),
+      });
+    } catch (e: any) {
+      // Already registered at Delhivery (e.g. cache lost) — fine, use it.
+      if (!/already|exist|duplicate/i.test(String(e?.message))) throw new BadRequestException(`Delhivery could not register the pickup point: ${String(e?.message || e)}`);
+    }
+    await this.prisma.delWarehouse.upsert({ where: { name }, update: {}, create: { name, clientId: s.clientId ?? null, pincode: pin, address } });
+    return name;
   }
 
   /** Our billing identity for Delhivery: COMPANY master DELHIVERY_BILLING_COMPANY (code), else the first
