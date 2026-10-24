@@ -200,6 +200,11 @@ export class DelhiveryService implements OnModuleInit {
     // inv_num: letters, digits, "/" and "-" only (Delhivery regex).
     const invNum = String(s.custInvoiceNo || s.referenceNo || s.awb).replace(/[^A-Za-z0-9/-]+/g, '-').replace(/^-+|-+$/g, '') || String(s.awb);
     fd.append('invoices', pyLit([{ ewaybill: s.ewbNo ?? '', inv_num: invNum, inv_amt: invAmt, inv_qr_code: '' }]));
+    // Delhivery requires the goods' invoice copy: send the invoice attached to the AWB (Documents).
+    const inv = await this.invoiceCopy(s.id);
+    if (!inv) throw new BadRequestException(`Delhivery needs the customer's invoice copy — attach it on AWB ${awb} (Attachments: PDF / photo) and hand off again.`);
+    fd.append('doc_data', pyLit([{ doc_type: 'INVOICE_COPY', doc_meta: { invoice_num: [invNum] } }]));
+    fd.append('doc_file', new Blob([new Uint8Array(inv.data)], { type: inv.mimeType }), inv.filename);
     fd.append('shipment_details', pyLit([{ order_id: String(s.awb), box_count: Number(s.pieceCount ?? 1), description: s.goodsDesc ?? 'Goods', weight: weightG, waybills: [], master: false }]));
     if (dims.length) fd.append('dimensions', pyLit(dims));
     fd.append('fm_pickup', 'False'); // schedule the pickup separately via createPickup
@@ -213,7 +218,19 @@ export class DelhiveryService implements OnModuleInit {
       ...(bill.gstin ? { gst_number: bill.gstin } : {}), ...(bill.pan ? { pan_number: bill.pan } : {}),
     }));
 
-    const resp = await this.req('/manifest', { method: 'POST' }, fd);
+    let resp: any;
+    try {
+      resp = await this.req('/manifest', { method: 'POST' }, fd);
+    } catch (e: any) {
+      // A pickup point registered moments ago takes a few minutes to activate at Delhivery.
+      if (/has not been configured/i.test(String(e?.message))) {
+        const wh = await this.prisma.delWarehouse.findUnique({ where: { name: pickup } }).catch(() => null);
+        if (wh && Date.now() - wh.createdAt.getTime() < 30 * 60_000) {
+          throw new BadRequestException(`Delhivery is still activating the new pickup point ${pickup} (registered ${Math.round((Date.now() - wh.createdAt.getTime()) / 60000)} min ago) — hand off again in a few minutes.`);
+        }
+      }
+      throw e;
+    }
     const jobId = resp?.job_id ?? resp?.jobId ?? resp?.data?.job_id ?? null;
     // The manifest is async — poll a few times for the LR before giving up (caller can poll later too).
     let lrn: string | null = resp?.lrn ?? resp?.lr_number ?? null;
@@ -271,6 +288,17 @@ export class DelhiveryService implements OnModuleInit {
     }
     await this.prisma.delWarehouse.upsert({ where: { name }, update: {}, create: { name, clientId: s.clientId ?? null, pincode: pin, address } });
     return name;
+  }
+
+  /** The shipment's invoice copy from its attachments — prefer one that looks like an invoice, else the latest. */
+  private async invoiceCopy(shipmentId: bigint): Promise<{ data: Buffer; mimeType: string; filename: string } | null> {
+    const docs = await this.prisma.document.findMany({ where: { entityType: 'shipment', entityId: shipmentId, status: { not: 'archived' } }, orderBy: { createdAt: 'desc' } });
+    const d = docs.find((x) => /invoice/i.test(x.docType) || /inv/i.test(x.label || '')) ?? docs[0];
+    if (!d) return null;
+    const up = await this.prisma.upload.findUnique({ where: { id: d.uploadId } });
+    if (!up) return null;
+    const ext = up.mimeType === 'application/pdf' ? 'pdf' : (up.mimeType.split('/')[1] || 'jpg');
+    return { data: Buffer.from(up.data), mimeType: up.mimeType, filename: (d.label && /\.[a-z0-9]+$/i.test(d.label)) ? d.label : `invoice.${ext}` };
   }
 
   /** Our billing identity for Delhivery: COMPANY master DELHIVERY_BILLING_COMPANY (code), else the first
