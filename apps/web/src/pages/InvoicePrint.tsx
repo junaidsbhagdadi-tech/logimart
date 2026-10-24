@@ -160,7 +160,7 @@ export function InvoicePrint() {
                 <td>{i + 1}</td>
                 <td>{r.l.shipment?.awb ?? `#${r.l.shipmentId}`}{r.l.isDisputed && <span className="badge DISPUTED" style={{ marginLeft: 6 }}>DISPUTED</span>}</td>
                 <td>{ddmmyyyy(r.l.shipment?.createdAt)}</td>
-                <td>{r.l.shipment?.consigneeCity ?? r.l.shipment?.destZone ?? '—'}</td>
+                <td>{(r.l.shipment as any)?.destName || r.l.shipment?.consigneeCity || r.l.shipment?.destZone || '—'}</td>
                 <td className="r">{num(r.l.chargeableKg).toFixed(3)}</td>
                 <td className="r">{inr(r.amount)}</td>
               </tr>

@@ -1,13 +1,31 @@
-import { Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles } from '../../common/rbac/roles.decorator';
 import { ReportsService } from './reports.service';
+import { CustomerMisService } from './customer-mis.service';
 
 @Controller('api/v1/reports')
 @UseGuards(RolesGuard)
 export class ReportsController {
-  constructor(private readonly svc: ReportsService) {}
+  constructor(private readonly svc: ReportsService, private readonly mis: CustomerMisService) {}
+
+  /** Customer MIS (CSV) for one customer — what tomorrow's 9 AM email will carry. */
+  @Get('customer-mis/:clientId.csv')
+  @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN, UserRole.WAREHOUSE_HANDLER)
+  async misCsv(@Param('clientId') clientId: string, @Res() res: any) {
+    const rows = await this.mis.rows(BigInt(clientId));
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="MIS_${clientId}.csv"`);
+    res.send(this.mis.csv(rows));
+  }
+
+  /** Send one customer's MIS now — to `to` (preview, internal) or, without it, to the customer + CC. */
+  @Post('customer-mis/:clientId/send')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  sendMis(@Param('clientId') clientId: string, @Query('to') to?: string) {
+    return this.mis.sendFor(BigInt(clientId), to);
+  }
 
   /** Preview the daily NDR + MIS digest numbers. */
   @Get('daily-digest/preview')

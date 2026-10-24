@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RateService } from './rate.service';
 import { COMPANY } from '../../config/company';
+import { pinRows, placeName } from '../../common/place-name';
 
 const GST_RATE = 0.18; // India GST
 
@@ -774,7 +775,7 @@ export class InvoiceService {
     const inv = await this.prisma.invoice.findUnique({
       where: { id: BigInt(id) },
       include: {
-        lines: { include: { shipment: { select: { awb: true, originZone: true, destZone: true, createdAt: true, consigneeCity: true } } } },
+        lines: { include: { shipment: { select: { awb: true, originZone: true, destZone: true, createdAt: true, consigneeCity: true, destPincode: true } } } },
         client: {
           select: {
             legalName: true, accountCode: true, gstin: true,
@@ -784,6 +785,11 @@ export class InvoiceService {
       },
     });
     if (!inv) throw new NotFoundException('Invoice not found');
+    // Destination NAME per line (not the zone) — consignee city, else the pincode's city / area name.
+    const pins = await pinRows(this.prisma, inv.lines.map((l: any) => l.shipment?.destPincode));
+    for (const l of inv.lines as any[]) {
+      if (l.shipment) l.shipment.destName = placeName(l.shipment.consigneeCity, pins.get(String(l.shipment.destPincode || '')), l.shipment.destZone);
+    }
     // The snapshot keeps the seller's identity stable for reprints, but bank / terms saved on the billing
     // company AFTER generation would otherwise fall back to the default entity's (wrong bank on the bill).
     // Fill those gaps — and the logo / stamp-and-sign images, which aren't snapshotted — from the live master.

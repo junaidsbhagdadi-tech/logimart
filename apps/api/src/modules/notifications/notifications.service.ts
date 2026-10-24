@@ -119,6 +119,45 @@ export class NotificationsService {
   }
 
   /**
+   * A full email (several To / CC, optional HTML and attachments) — for reports such as the customer MIS.
+   * Same providers as notify(): Brevo API if BREVO_API_KEY, else SMTP. Logged as one notification per To.
+   */
+  async sendMail(m: { to: string[]; cc?: string[]; subject: string; text: string; html?: string; attachments?: { filename: string; content: Buffer; contentType?: string }[] }): Promise<boolean> {
+    const to = [...new Set(m.to.map((x) => x.trim()).filter(Boolean))];
+    const cc = [...new Set((m.cc ?? []).map((x) => x.trim()).filter((x) => x && !to.includes(x)))];
+    if (!to.length) return false;
+    let ok = false;
+    try {
+      if (process.env.BREVO_API_KEY) {
+        const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+          method: 'POST',
+          headers: { 'api-key': process.env.BREVO_API_KEY as string, 'content-type': 'application/json', accept: 'application/json' },
+          body: JSON.stringify({
+            sender: this.emailSender(), to: to.map((email) => ({ email })), ...(cc.length ? { cc: cc.map((email) => ({ email })) } : {}),
+            subject: m.subject, textContent: m.text, ...(m.html ? { htmlContent: m.html } : {}),
+            ...(m.attachments?.length ? { attachment: m.attachments.map((a) => ({ name: a.filename, content: a.content.toString('base64') })) } : {}),
+          }),
+        });
+        ok = res.ok;
+        if (!ok) this.logger.warn(`Brevo send failed: ${res.status} ${await res.text()}`);
+      } else {
+        const t = this.getMailer();
+        if (t) {
+          const from = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@logimart.co.in';
+          await t.sendMail({ from, to, cc: cc.length ? cc : undefined, subject: m.subject, text: m.text, html: m.html, attachments: m.attachments });
+          ok = true;
+        }
+      }
+    } catch (err) {
+      this.logger.error(`sendMail failed (${m.subject})`, err as Error);
+    }
+    for (const r of to) {
+      await this.prisma.notification.create({ data: { channel: 'email', recipient: r, kind: 'account', message: `${m.subject}${cc.length ? ` (cc ${cc.join(', ')})` : ''}`, status: ok ? 'sent' : 'queued' } }).catch(() => {});
+    }
+    return ok;
+  }
+
+  /**
    * WhatsApp via Meta Cloud API. Set WHATSAPP_TOKEN + WHATSAPP_PHONE_ID in env.
    * Sends a session text message (works within the 24h window; outside it Meta
    * requires a pre-approved template — swap to a template payload then).
