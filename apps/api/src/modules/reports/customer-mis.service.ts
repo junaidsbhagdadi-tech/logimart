@@ -5,8 +5,8 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { pinRows, placeName } from '../../common/place-name';
 
 /**
- * Daily customer MIS — each customer gets their shipments that are still open (not delivered / returned /
- * cancelled) plus the ones delivered yesterday, as a CSV (opens in Excel), at 09:00 IST Mon–Sat.
+ * Daily customer MIS — each customer gets their shipments booked in the last 7 days that are still open (not
+ * delivered / returned / cancelled) plus the ones delivered yesterday, as a CSV (opens in Excel), at 09:00 IST Mon–Sat.
  * To: the customer's email + second email · CC: the salesperson and CS person on the customer.
  * Env: CUSTOMER_MIS_AUTOSEND ('false' to stop) · CUSTOMER_MIS_START (first day, default 2026-10-26).
  */
@@ -43,7 +43,9 @@ export class CustomerMisService {
       where: {
         clientId,
         OR: [
-          { OR: [{ statusCode: null }, { statusCode: { notIn: ['DLD', 'RTD', 'CAN'] } }] },
+          // Open shipments booked in the last 7 days only — older bulk-uploaded ones carry stale statuses
+          // (thousands still "Booked" weeks later), which must not reach customers until they're refreshed.
+          { createdAt: { gte: new Date(y.to.getTime() - 7 * 864e5) }, OR: [{ statusCode: null }, { statusCode: { notIn: ['DLD', 'RTD', 'CAN'] } }] },
           { statusCode: 'DLD', statusAt: { gte: y.from, lt: y.to } },
         ],
       },
@@ -63,7 +65,7 @@ export class CustomerMisService {
         'Origin': placeName(s.shipperCity, pins.get(String(s.shipperPincode || ''))), 'Destination': placeName(s.consigneeCity, pins.get(String(s.destPincode || '')), s.destZone),
         'Dest Pincode': s.destPincode || '', 'Consignee': s.consigneeName || '', 'Pcs': s.pieceCount,
         'Weight (kg)': Number(s.chargeWeight ?? s.totalDeadKg ?? 0).toFixed(2), 'Carrier': s.vendor || 'SELF', 'Carrier AWB': s.forwardingAwb || s.bdWaybill || '',
-        'Status': STATUS[code] ?? code, 'Status Date': ist(s.statusAt, true), 'Expected Delivery': ist(s.expectedDelivery),
+        'Status': STATUS[code] ?? code, 'Status Date': ist(s.statusAt, true), 'Expected Delivery': s.expectedDelivery && s.expectedDelivery >= s.createdAt ? ist(s.expectedDelivery) : '', // upload data has EDDs before booking
         'Delivered On': code === 'DLD' ? ist(s.statusAt, true) : '', 'Remarks': s.exceptionFlag || (s.bdStatus && !/^(Booked|Manifested|Docket created)/i.test(s.bdStatus) ? s.bdStatus : '') || '',
       };
     });
