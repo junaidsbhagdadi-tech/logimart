@@ -335,6 +335,17 @@ export function ShipmentDetail() {
     try { const r = await api.delCancel(awb!); setMsg(`🚫 Delhivery LR cancelled${r.lrn ? ` — ${r.lrn}` : ''}.`); load(); }
     catch (e: any) { setError(e.message); }
   };
+  const handoffArl = async () => {
+    if (!confirm('Book this shipment with AR Logistics?')) return;
+    setError(''); setMsg('');
+    try { const r = await api.arlHandoff(awb!); setMsg(`📦 Booked with AR Logistics — consignment ${r.cn}.`); load(); }
+    catch (e: any) { setError(e.message); }
+  };
+  const trackArl = async () => {
+    setError(''); setMsg('');
+    try { const r = await api.arlSync(awb!); setMsg(`AR Logistics: ${r.status || 'no update'}`); load(); }
+    catch (e: any) { setError(e.message); }
+  };
   const handoffVx = async () => {
     if (!confirm('Book this shipment with V Express (creates their LR)?')) return;
     setError(''); setMsg('');
@@ -440,8 +451,8 @@ export function ShipmentDetail() {
 
   // Which carrier this AWB is on — drives which hand-off / carrier actions show up front.
   const vendorUp = String((s as any).vendor || '').toUpperCase();
-  const carrier: 'BD' | 'DLY' | 'XB' | 'DSC' | 'GATI' | 'VXP' | 'OTHER' = (/^(BLUE|BDR)/.test(vendorUp) || bdCodes.includes(vendorUp) || !!s.bdWaybill) ? 'BD'
-    : /DELHIVERY|^DLY/.test(vendorUp) ? 'DLY' : /^XPB$|XPRESS\s*BEES|^XB$/.test(vendorUp) ? 'XB' : /^DSC$|DS\s*CARGO/.test(vendorUp) ? 'DSC' : /^GATI$|ALLCARGO/.test(vendorUp) ? 'GATI' : /^VXP$|^VX$|V\s*EXPRESS/.test(vendorUp) ? 'VXP' : 'OTHER';
+  const carrier: 'BD' | 'DLY' | 'XB' | 'DSC' | 'GATI' | 'VXP' | 'ARL' | 'OTHER' = (/^(BLUE|BDR)/.test(vendorUp) || bdCodes.includes(vendorUp) || !!s.bdWaybill) ? 'BD'
+    : /DELHIVERY|^DLY/.test(vendorUp) ? 'DLY' : /^XPB$|XPRESS\s*BEES|^XB$/.test(vendorUp) ? 'XB' : /^DSC$|DS\s*CARGO/.test(vendorUp) ? 'DSC' : /^GATI$|ALLCARGO/.test(vendorUp) ? 'GATI' : /^VXP$|^VX$|V\s*EXPRESS/.test(vendorUp) ? 'VXP' : /^ARL$|AR\s*LOG/.test(vendorUp) ? 'ARL' : 'OTHER';
   const isCan = String((s as any).statusCode).toUpperCase() === 'CAN';
   const isDone = isCan || ['DLD', 'RTD'].includes(String((s as any).statusCode).toUpperCase());
   const canEditAwb = (canEditCharges && !(s as any).invoiced) || (isSysAdmin && !!(s as any).invoiced);
@@ -482,6 +493,7 @@ export function ShipmentDetail() {
           {canAssign && !isCan && carrier === 'XB' && !(s as any).forwardingAwb && <button onClick={handoffXb}><Send aria-hidden /> Hand to XpressBees</button>}
           {canAssign && !isCan && carrier === 'GATI' && !(s as any).forwardingAwb && <button onClick={handoffGati}><Send aria-hidden /> Hand to Gati</button>}
           {canAssign && !isCan && carrier === 'VXP' && !(s as any).forwardingAwb && <button onClick={handoffVx}><Send aria-hidden /> Book with V Express</button>}
+          {canAssign && !isCan && carrier === 'ARL' && !(s as any).forwardingAwb && <button onClick={handoffArl}><Send aria-hidden /> Book with AR Logistics</button>}
           {canPod && !isDone && (
             <label className="secondary btn-like" style={{ padding: '9px 12px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
               <Camera aria-hidden /> {podFile ? `${podFile.name.slice(0, 14)}…` : 'POD photo'}
@@ -504,6 +516,8 @@ export function ShipmentDetail() {
               { label: 'Refresh BlueDart tracking', icon: <Search aria-hidden />, onClick: trackBd, show: canAssign && (!!s.bdWaybill || (carrier === 'BD' && !!(s as any).forwardingAwb)) },
               { label: 'Cancel BlueDart waybill', icon: <XCircle aria-hidden />, onClick: cancelBd, danger: true, show: canAssign && !!s.bdWaybill && !isCan },
               { label: 'Cancel Delhivery', icon: <XCircle aria-hidden />, onClick: cancelDel, danger: true, show: canAssign && carrier === 'DLY' && !!(s as any).forwardingAwb },
+              { label: 'Book with AR Logistics', icon: <Send aria-hidden />, onClick: handoffArl, show: canAssign && !isCan && carrier !== 'ARL' && !(s as any).forwardingAwb && !s.bdWaybill },
+              { label: 'Refresh AR Logistics tracking', icon: <Search aria-hidden />, onClick: trackArl, show: carrier === 'ARL' && !!(s as any).forwardingAwb },
               { label: 'Book with V Express', icon: <Send aria-hidden />, onClick: handoffVx, show: canAssign && !isCan && carrier !== 'VXP' && !(s as any).forwardingAwb && !s.bdWaybill },
               { label: 'Refresh V Express tracking', icon: <Search aria-hidden />, onClick: trackVx, show: carrier === 'VXP' && !!(s as any).forwardingAwb },
               { label: 'Hand to Gati', icon: <Send aria-hidden />, onClick: handoffGati, show: canAssign && !isCan && carrier !== 'GATI' && !(s as any).forwardingAwb && !s.bdWaybill },

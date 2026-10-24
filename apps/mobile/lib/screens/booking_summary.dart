@@ -42,6 +42,7 @@ class _BookingSummaryState extends State<BookingSummary> {
     if (RegExp(r'^XPB$|XPRESS\s*BEES|^XB$').hasMatch(_vendor)) return 'XB';
     if (RegExp(r'^GATI$|ALLCARGO').hasMatch(_vendor)) return 'GATI';
     if (RegExp(r'^VXP$|^VX$|V\s*EXPRESS').hasMatch(_vendor)) return 'VXP';
+    if (RegExp(r'^ARL$|AR\s*LOG').hasMatch(_vendor)) return 'ARL';
     return _vendor.isEmpty || _vendor == 'SELF' ? 'SELF' : 'OTHER';
   }
 
@@ -78,12 +79,14 @@ class _BookingSummaryState extends State<BookingSummary> {
                   ? await ApiClient.instance.handoffGati(widget.awb)
                   : _carrier == 'VXP'
                       ? await ApiClient.instance.handoffVExpress(widget.awb)
-                      : await ApiClient.instance.handoffDelhivery(widget.awb);
+                      : _carrier == 'ARL'
+                          ? await ApiClient.instance.handoffArl(widget.awb)
+                          : await ApiClient.instance.handoffDelhivery(widget.awb);
       await _load();
       final got = _carrierAwb;
       if (!mounted) return;
       if (got != null) {
-        toast(context, '${{'BD': 'BlueDart', 'XB': 'XpressBees', 'GATI': 'Gati', 'VXP': 'V Express'}[_carrier] ?? 'Delhivery'} AWB $got generated.');
+        toast(context, '${{'BD': 'BlueDart', 'XB': 'XpressBees', 'GATI': 'Gati', 'VXP': 'V Express', 'ARL': 'AR Logistics'}[_carrier] ?? 'Delhivery'} AWB $got generated.');
       } else {
         toast(context, '${r['reason'] ?? r['message'] ?? 'Carrier did not return an AWB.'}', error: true);
       }
@@ -122,7 +125,7 @@ class _BookingSummaryState extends State<BookingSummary> {
     final x = s!;
     final client = (x['client'] as Map?) ?? {};
     final pieces = (x['rollup'] as Map?)?['pieceCount'] ?? x['pieceCount'];
-    final carrierName = {'BD': 'BlueDart', 'DLY': 'Delhivery', 'XB': 'XpressBees', 'GATI': 'Gati', 'VXP': 'V Express', 'SELF': 'own network'}[_carrier] ?? _vendor;
+    final carrierName = {'BD': 'BlueDart', 'DLY': 'Delhivery', 'XB': 'XpressBees', 'GATI': 'Gati', 'VXP': 'V Express', 'ARL': 'AR Logistics', 'SELF': 'own network'}[_carrier] ?? _vendor;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
