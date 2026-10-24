@@ -68,6 +68,12 @@ export class DelhiveryService implements OnModuleInit {
   /** UMS login → Bearer token, cached in Postgres (re-login early or on force/401). */
   private async token(force = false): Promise<string> {
     this.ensure();
+    // A wrong password LOCKS the Delhivery user for 10 minutes — after a failed login, don't try again
+    // for 30 minutes (shared across instances via Postgres), so auto-sync can't keep it locked.
+    const pause = await this.prisma.integrationToken.findUnique({ where: { provider: 'DELHIVERY_LOGIN_FAIL' } });
+    if (pause && pause.expiresAt.getTime() > Date.now()) {
+      throw new BadRequestException(`Delhivery login paused until ${new Date(pause.expiresAt.getTime() + 330 * 60000).toISOString().slice(11, 16)} IST after a failed login (${pause.token}). Fix DELHIVERY_USERNAME / DELHIVERY_PASSWORD meanwhile.`);
+    }
     if (!force) {
       const cached = await this.prisma.integrationToken.findUnique({ where: { provider: 'DELHIVERY' } });
       if (cached && cached.expiresAt.getTime() > Date.now() + 60_000) return cached.token;
@@ -78,11 +84,17 @@ export class DelhiveryService implements OnModuleInit {
       body: JSON.stringify({ username: DELHIVERY.username, password: DELHIVERY.password }),
     });
     const text = await res.text();
-    if (!res.ok) throw new BadRequestException(`Delhivery login failed (${res.status}): ${text.slice(0, 200)}`);
+    if (!res.ok) {
+      const until = new Date(Date.now() + 30 * 60_000);
+      const why = text.slice(0, 120);
+      await this.prisma.integrationToken.upsert({ where: { provider: 'DELHIVERY_LOGIN_FAIL' }, update: { token: why, expiresAt: until }, create: { provider: 'DELHIVERY_LOGIN_FAIL', token: why, expiresAt: until } });
+      throw new BadRequestException(`Delhivery login failed (${res.status}): ${text.slice(0, 200)}`);
+    }
+    await this.prisma.integrationToken.deleteMany({ where: { provider: 'DELHIVERY_LOGIN_FAIL' } });
     let token = '';
     try { const j = JSON.parse(text); token = j.token || j.jwt || j.access_token || j.data?.token || j.data?.jwt || j.data?.access_token || ''; } catch { /* non-JSON */ }
     if (!token) throw new BadRequestException('Delhivery login returned no token.');
-    const expiresAt = new Date(Date.now() + 6 * 3600 * 1000); // assume ~6h; a 401 forces re-login anyway
+    const expiresAt = new Date(Date.now() + 23 * 3600 * 1000); // Delhivery tokens live 24h; a 401 forces re-login anyway
     await this.prisma.integrationToken.upsert({
       where: { provider: 'DELHIVERY' },
       update: { token, expiresAt },
