@@ -34,6 +34,7 @@ import { ArchiveModule } from './modules/archive/archive.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { BluedartModule } from './modules/bluedart/bluedart.module';
 import { DelhiveryModule } from './modules/delhivery/delhivery.module';
+import { XpressBeesModule } from './modules/xpressbees/xpressbees.module';
 import { RateMatrixModule } from './modules/ratematrix/ratematrix.module';
 import { FuelModule } from './modules/fuel/fuel.module';
 import { AdminModule } from './modules/admin/admin.module';
@@ -98,6 +99,7 @@ const webDist = join(__dirname, '..', '..', 'web', 'dist');
     ReportsModule,
     BluedartModule,
     DelhiveryModule,
+    XpressBeesModule,
     RateMatrixModule,
     FuelModule,
     AdminModule,

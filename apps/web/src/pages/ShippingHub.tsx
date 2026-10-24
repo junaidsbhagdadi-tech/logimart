@@ -33,6 +33,7 @@ export function ShippingHub() {
   const [hub, setHub] = useState<any>(null);
   const [bd, setBd] = useState<any>(null);
   const [del, setDel] = useState<any>(null);
+  const [xb, setXb] = useState<any>(null);
   const [pickups, setPickups] = useState<any[]>([]);
   const [rows, setRows] = useState<any[]>([]);
   const [overview, setOverview] = useState<any>(null);
@@ -44,6 +45,7 @@ export function ShippingHub() {
     api.statsHub(win).then(setHub).catch(() => {});
     api.bdStatus().then(setBd).catch(() => {});
     api.delStatus().then(setDel).catch(() => {});
+    api.xbStatus().then(setXb).catch(() => {});
     api.pickupsUnified({ window: 'all' }).then(setPickups).catch(() => {});
   };
   useEffect(loadHome, [win]);
@@ -117,7 +119,7 @@ export function ShippingHub() {
           <div className="card">
             <h2 style={{ marginTop: 0, fontSize: 16 }}>🔌 Carriers</h2>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
-              {[{ name: 'BlueDart', ok: bd?.configured, to: '/bluedart', icon: '🔵' }, { name: 'Delhivery', ok: del?.configured, to: '/bluedart', icon: '🟠' }, { name: 'Self / Riders', ok: true, to: '/riders', icon: '🏍' }].map((c) => {
+              {[{ name: 'BlueDart', ok: bd?.configured, to: '/bluedart', icon: '🔵' }, { name: 'Delhivery', ok: del?.configured, to: '/bluedart', icon: '🟠' }, { name: 'XpressBees', ok: xb?.configured, to: '/bluedart', icon: '🐝' }, { name: 'Self / Riders', ok: true, to: '/riders', icon: '🏍' }].map((c) => {
                 const cnt = hub?.carriers?.find((x: any) => new RegExp(c.name.split(' ')[0], 'i').test(x.vendor) || (c.name.startsWith('Self') && /SELF|BDR/i.test(x.vendor)))?.count;
                 return (
                   <Link key={c.name} to={c.to} style={{ textDecoration: 'none', color: 'inherit' }}>

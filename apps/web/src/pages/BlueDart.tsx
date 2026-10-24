@@ -28,6 +28,7 @@ export function BlueDart() {
 
   // Delhivery
   const [dStatus, setDStatus] = useState<{ configured: boolean; [k: string]: any } | null>(null);
+  const [xStatus, setXStatus] = useState<{ configured: boolean; tracking: boolean; pool?: { kind: string; routeMode: string; free: number; total: number }[]; [k: string]: any } | null>(null);
   const [dPin, setDPin] = useState('');
   const [dSvc, setDSvc] = useState<any>(null);
   const [dOrigin, setDOrigin] = useState('');
@@ -37,6 +38,7 @@ export function BlueDart() {
   const load = () => {
     api.bdStatus().then(setStatus).catch((e) => setErr(e.message));
     api.delStatus().then(setDStatus).catch(() => {});
+    api.xbStatus().then(setXStatus).catch(() => {});
     api.bdDispatchStatus().then(setDispatchStat).catch(() => {});
     loadAccounts();
   };
@@ -169,6 +171,39 @@ export function BlueDart() {
           </div>
           {track && <pre style={{ marginTop: 10, maxHeight: 300, overflow: 'auto', background: 'var(--bg-soft, #f1f3f6)', padding: 10, borderRadius: 8, fontSize: 12 }}>{JSON.stringify(track, null, 2)}</pre>}
         </div>
+      </div>
+
+      <h2 style={{ margin: '18px 0 4px' }}>XpressBees</h2>
+      <div className="card">
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 style={{ margin: 0 }}>Configuration</h2>
+          <span className={`badge ${xStatus?.configured ? 'DELIVERED' : 'CANCELLED'}`}>{xStatus?.configured ? 'CONFIGURED' : 'NOT CONFIGURED'}</span>
+        </div>
+        {xStatus ? (
+          <>
+            <div className="row" style={{ gap: 16, flexWrap: 'wrap', marginTop: 8 }}>
+              {['key', 'awbToken', 'pickupLocation', 'defaultCategory', 'env'].map((v) => (
+                <span key={v} style={{ fontSize: 13 }}><span className="muted">{v}:</span> {(xStatus[v] && !['missing', 'not set'].includes(xStatus[v])) ? <b style={{ color: 'var(--ok)' }}>{xStatus[v]}</b> : <b style={{ color: 'var(--bad, #c0392b)' }}>{xStatus[v] || 'missing'}</b>}</span>
+              ))}
+              <span style={{ fontSize: 13 }}><span className="muted">tracking:</span> <b style={{ color: xStatus.tracking ? 'var(--ok)' : 'var(--bad, #c0392b)' }}>{xStatus.tracking ? 'set' : 'missing'}</b></span>
+            </div>
+            <p className="muted" style={{ fontSize: 12.5, margin: '8px 0 0' }}>
+              AWB number pool (XpressBees issues 1,000 at a time): {xStatus.pool?.length
+                ? xStatus.pool.map((p) => `${p.kind === 'AWB' ? 'parent AWB' : 'box id'} ${p.routeMode}: ${p.free} free / ${p.total}`).join(' · ')
+                : 'empty — fills automatically on the first hand-off.'}
+            </p>
+          </>
+        ) : <p className="muted">Loading…</p>}
+        {xStatus && !xStatus.configured && (
+          <p className="muted" style={{ fontSize: 12.5, marginTop: 10 }}>B2B cargo API. Set on the droplet <code>.env</code> and restart (and ask XpressBees to whitelist IP <b>168.144.77.53</b>):
+            <code style={{ display: 'block', marginTop: 6, whiteSpace: 'pre', fontSize: 12 }}>{`XB_KEY=…                 # XBKey (manifest / pickup / cancel)
+XB_AWB_TOKEN=…           # token for bulk AWB generation
+XB_TRACK_USERNAME=…  XB_TRACK_PASSWORD=…  XB_TRACK_SECRET=…
+XB_PICKUP_LOCATION=…     # registered pickup location id
+XB_DEFAULT_CATEGORY=…    # e.g. Garments / Auto Parts (used when content doesn't say)
+# production URLs (defaults are XpressBees' staging): XB_MANIFEST_URL, XB_AWB_URL, XB_PICKUP_URL`}</code>
+          </p>
+        )}
       </div>
 
       <h2 style={{ margin: '18px 0 4px' }}>Delhivery</h2>

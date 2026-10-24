@@ -681,6 +681,11 @@ export const api = {
   bdSaveAccount: (dto: unknown) => request<{ id: string; ok: boolean }>('/api/v1/bluedart/accounts', { method: 'POST', body: JSON.stringify(dto) }),
   bdDeleteAccount: (id: string) => request<{ ok: boolean }>(`/api/v1/bluedart/accounts/${id}`, { method: 'DELETE' }),
   // ---- Delhivery B2B / LTL carrier integration ----
+  // ---- XpressBees B2B cargo ----
+  xbStatus: () => request<{ configured: boolean; tracking: boolean; [k: string]: any }>('/api/v1/xpressbees/status'),
+  xbHandoff: (awb: string) => request<{ awb: string; xbAwb: string; boxes: string[] }>(`/api/v1/xpressbees/handoff/${awb}`, { method: 'POST' }),
+  xbSync: (awb: string) => request<{ awb: string; xbAwb: string; status: string | null }>(`/api/v1/xpressbees/sync/${awb}`, { method: 'POST' }),
+  xbCancel: (awb: string) => request<{ awb: string; cancelled: string }>(`/api/v1/xpressbees/cancel/${awb}`, { method: 'POST' }),
   delStatus: () => request<{ configured: boolean; [k: string]: any }>('/api/v1/delhivery/status'),
   delServiceable: (pincode: string, weight?: number) => request<any>(`/api/v1/delhivery/serviceable/${pincode}${weight ? `?weight=${weight}` : ''}`),
   delTat: (origin: string, dest: string, mot: 'S' | 'A' = 'S') => request<any>(`/api/v1/delhivery/tat?origin=${encodeURIComponent(origin)}&dest=${encodeURIComponent(dest)}&mot=${mot}`),

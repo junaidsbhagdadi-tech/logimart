@@ -3,6 +3,8 @@ import { PickupStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BluedartService } from '../bluedart/bluedart.service';
 import { ShipmentsService } from '../shipments/shipments.service';
+import { XpressBeesService } from '../xpressbees/xpressbees.service';
+import { isXpressBeesVendor } from '../xpressbees/xpressbees.config';
 
 interface CreatePickup {
   clientId: number;
@@ -27,7 +29,7 @@ interface CreatePickup {
 
 @Injectable()
 export class PickupsService {
-  constructor(private readonly prisma: PrismaService, private readonly bluedart: BluedartService, private readonly shipments: ShipmentsService) {}
+  constructor(private readonly prisma: PrismaService, private readonly bluedart: BluedartService, private readonly shipments: ShipmentsService, private readonly xb: XpressBeesService) {}
 
   create(dto: CreatePickup) {
     return this.prisma.pickupRequest.create({
@@ -214,6 +216,35 @@ export class PickupsService {
         where: { id: BigInt(id) }, data: { token: r.token ? String(r.token) : null, handoffAt: new Date(), vendor: vendor || p.vendor || 'BDR', status: PickupStatus.ASSIGNED },
       });
       return { ...updated, token: r.token ?? null, awb: ourAwb, bdWaybill: r.bdWaybill ?? null, outstation: !!r.outstation, reason: r.reason ?? null };
+    }
+    // XpressBees: book the shipment, manifest it (XpressBees AWB), then raise their pickup request.
+    if (isXpressBeesVendor(vendor || p.vendor)) {
+      let ourAwb = p.pickedAwb ? String(p.pickedAwb) : '';
+      const already = ourAwb ? await this.prisma.shipment.findUnique({ where: { awb: ourAwb }, select: { awb: true, forwardingAwb: true } }) : null;
+      if (!already) {
+        if (!opts.destPincode || !/^\d{6}$/.test(String(opts.destPincode).trim())) {
+          throw new BadRequestException('XpressBees books with the destination — enter the destination pincode and consignee (name, mobile, address).');
+        }
+        const created = await this.bookFromPickup(p, { destPincode: String(opts.destPincode), consigneeName: opts.consigneeName, consigneePhone: opts.consigneePhone, consigneeAddress: opts.consigneeAddress, weight: opts.weight, pieces: opts.pieces, value: opts.value, vendor: 'XPB' });
+        ourAwb = created.awb;
+        await this.prisma.pickupRequest.update({ where: { id: BigInt(id) }, data: { pickedAwb: ourAwb, vendor: 'XPB' } });
+      }
+      let xbAwb = already?.forwardingAwb ?? null;
+      if (!xbAwb) {
+        try { xbAwb = (await this.xb.handoff(ourAwb)).xbAwb; }
+        catch (e: any) { throw new BadRequestException(`Booked ${ourAwb} for the customer, but XpressBees refused it: ${String(e?.message || e)} — fix it on the AWB page (Edit AWB) and retry.`); }
+      }
+      const client = await this.prisma.b2bClient.findUnique({ where: { id: p.clientId }, select: { contactEmail: true, gstin: true } });
+      const s = await this.prisma.shipment.findUnique({ where: { awb: ourAwb }, select: { destPincode: true, totalDeadKg: true, pieceCount: true, paymentTerm: true, serviceMode: true } });
+      const pk = await this.xb.bookPickup({
+        pincode: String(p.pincode || ''), destPincode: String(s?.destPincode || opts.destPincode || ''), address: p.pickupAddress,
+        contactName: p.contactName || '', phone: p.contactPhone || '', email: client?.contactEmail, weightKg: Number(s?.totalDeadKg || opts.weight || 1),
+        boxes: s?.pieceCount || opts.pieces || p.estPieces, toPay: String(s?.paymentTerm) === 'TO_PAY', air: /AIR/.test(String(s?.serviceMode)), gstin: client?.gstin, instructions: p.notes,
+      });
+      const updated = await this.prisma.pickupRequest.update({
+        where: { id: BigInt(id) }, data: { token: pk.pickupRequestId, handoffAt: new Date(), vendor: 'XPB', status: PickupStatus.ASSIGNED },
+      });
+      return { ...updated, token: pk.pickupRequestId, awb: ourAwb, xbAwb };
     }
     if (!vendor) throw new BadRequestException('Pick a vendor to hand this pickup off to.');
     const updated = await this.prisma.pickupRequest.update({

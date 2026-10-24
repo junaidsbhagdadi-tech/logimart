@@ -154,6 +154,9 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
   // BlueDart books only WITH the destination — the hand-off books the shipment + generates the AWB.
   const [hd, setHd] = useState({ destPincode: '', consigneeName: '', consigneePhone: '', consigneeAddress: '', weight: '', pieces: '', value: '' });
   const isBdVendor = (code: string) => /^(BLUE|BDR)/i.test(code) || /^(BDR|BLUE|BD )/i.test(vendors.find((v) => v.vendorCode === code)?.name || '');
+  // XpressBees also books with the destination (manifest → XpressBees AWB, then their pickup request).
+  const isXbVendor = (code: string) => /^XPB$|XPRESS\s*BEES/i.test(code) || /XPRESS\s*BEES/i.test(vendors.find((v) => v.vendorCode === code)?.name || '');
+  const needsDest = (code: string) => isBdVendor(code) || isXbVendor(code);
   const openHandoff = (p: any) => {
     setHandoffFor(p); setHVendor(p.vendor || ''); setHToken(''); setHToPay(false); setError(''); setMsg('');
     setHd({ destPincode: '', consigneeName: '', consigneePhone: '', consigneeAddress: '', weight: p.weight != null ? String(p.weight) : '', pieces: String(p.estPieces || 1), value: p.invoiceValue != null ? String(p.invoiceValue) : '' });
@@ -162,13 +165,15 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
     if (!handoffFor) return;
     setError(''); setMsg(''); setHandingOff(String(handoffFor.id));
     try {
-      const bd = isBdVendor(hVendor);
+      const bd = needsDest(hVendor);
       const r: any = await api.pickupHandoff(String(handoffFor.id), {
         vendor: hVendor || undefined, toPay: hToPay, token: hToken || undefined,
         ...(bd ? { destPincode: hd.destPincode || undefined, consigneeName: hd.consigneeName || undefined, consigneePhone: hd.consigneePhone || undefined, consigneeAddress: hd.consigneeAddress || undefined,
           weight: hd.weight ? +hd.weight : undefined, pieces: hd.pieces ? +hd.pieces : undefined, value: hd.value ? +hd.value : undefined } : {}),
       });
-      setMsg(bd
+      setMsg(isXbVendor(hVendor)
+        ? `✓ Booked ${r.awb} — XpressBees AWB ${r.xbAwb ?? '—'}, pickup request ${r.token ?? '(pending)'}.`
+        : bd
         ? (r.bdWaybill ? `✓ Booked ${r.awb} — BlueDart AWB ${r.bdWaybill}${r.token ? `, pickup token ${r.token}` : ''}${r.outstation ? ' (to-pay, billed to the account)' : ''}.` : `⚠ Booked ${r.awb} but no BlueDart AWB yet. ${r.reason ?? ''}`)
         : `✓ Handed to ${hVendor || 'carrier'} — pickup token ${r.token ?? '(pending)'}. The customer can see it on their panel.`);
       setHandoffFor(null); setDetail(null); load();
@@ -415,9 +420,10 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
               {vendors.map((v) => <option key={v.vendorCode} value={v.vendorCode}>{v.vendorCode} — {v.name}</option>)}
             </select>
           </div>
-          {isBdVendor(hVendor) ? (
+          {needsDest(hVendor) ? (
             <div style={{ marginTop: 10 }}>
-              <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>BlueDart books with the destination: this books the shipment for the customer and generates the <strong>BlueDart AWB</strong> (pickup registered with it). A pickup outside the account's home area goes as <strong>to-pay</strong> — billed to that account.</p>
+              {isXbVendor(hVendor) && <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>XpressBees books with the destination: this books the shipment, generates the <strong>XpressBees AWB</strong> and raises their pickup request (same-day only before 2 PM).</p>}
+              <p className="muted" style={{ fontSize: 12, margin: '0 0 8px', display: isXbVendor(hVendor) ? 'none' : undefined }}>BlueDart books with the destination: this books the shipment for the customer and generates the <strong>BlueDart AWB</strong> (pickup registered with it). A pickup outside the account's home area goes as <strong>to-pay</strong> — billed to that account.</p>
               <div className="grid cols-2" style={{ gap: 8 }}>
                 <div><label>Destination pincode *</label><input value={hd.destPincode} maxLength={6} onChange={(e) => setHd((x) => ({ ...x, destPincode: e.target.value }))} /></div>
                 <div><label>Consignee mobile *</label><input value={hd.consigneePhone} onChange={(e) => setHd((x) => ({ ...x, consigneePhone: e.target.value }))} /></div>
@@ -433,7 +439,7 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
           )}
           <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
             <button className="secondary" onClick={() => setHandoffFor(null)}>Cancel</button>
-            <button disabled={!hVendor || handingOff === String(handoffFor.id) || (isBdVendor(hVendor) && !handoffFor.pickedAwb && !(/^\d{6}$/.test(hd.destPincode) && hd.consigneeName && hd.consigneePhone && hd.consigneeAddress && Number(hd.value) > 0))} onClick={doHandoff}>{handingOff === String(handoffFor.id) ? 'Handing off…' : 'Hand off'}</button>
+            <button disabled={!hVendor || handingOff === String(handoffFor.id) || (needsDest(hVendor) && !handoffFor.pickedAwb && !(/^\d{6}$/.test(hd.destPincode) && hd.consigneeName && hd.consigneePhone && hd.consigneeAddress && Number(hd.value) > 0))} onClick={doHandoff}>{handingOff === String(handoffFor.id) ? 'Handing off…' : 'Hand off'}</button>
           </div>
         </Modal>
       )}

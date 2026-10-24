@@ -39,6 +39,7 @@ class _BookingSummaryState extends State<BookingSummary> {
   String get _carrier {
     if (s?['bdWaybill'] != null || RegExp(r'^(BLUE|BDR)').hasMatch(_vendor) || _bdCodes.contains(_vendor)) return 'BD';
     if (RegExp(r'DELHIVERY|^DLY$').hasMatch(_vendor)) return 'DLY';
+    if (RegExp(r'^XPB$|XPRESS\s*BEES|^XB$').hasMatch(_vendor)) return 'XB';
     return _vendor.isEmpty || _vendor == 'SELF' ? 'SELF' : 'OTHER';
   }
 
@@ -69,12 +70,14 @@ class _BookingSummaryState extends State<BookingSummary> {
     await _run(() async {
       final r = _carrier == 'BD'
           ? await ApiClient.instance.handoffBlueDart(widget.awb)
-          : await ApiClient.instance.handoffDelhivery(widget.awb);
+          : _carrier == 'XB'
+              ? await ApiClient.instance.handoffXpressBees(widget.awb)
+              : await ApiClient.instance.handoffDelhivery(widget.awb);
       await _load();
       final got = _carrierAwb;
       if (!mounted) return;
       if (got != null) {
-        toast(context, '${_carrier == 'BD' ? 'BlueDart' : 'Delhivery'} AWB $got generated.');
+        toast(context, '${{'BD': 'BlueDart', 'XB': 'XpressBees'}[_carrier] ?? 'Delhivery'} AWB $got generated.');
       } else {
         toast(context, '${r['reason'] ?? r['message'] ?? 'Carrier did not return an AWB.'}', error: true);
       }
@@ -113,7 +116,7 @@ class _BookingSummaryState extends State<BookingSummary> {
     final x = s!;
     final client = (x['client'] as Map?) ?? {};
     final pieces = (x['rollup'] as Map?)?['pieceCount'] ?? x['pieceCount'];
-    final carrierName = {'BD': 'BlueDart', 'DLY': 'Delhivery', 'SELF': 'own network'}[_carrier] ?? _vendor;
+    final carrierName = {'BD': 'BlueDart', 'DLY': 'Delhivery', 'XB': 'XpressBees', 'SELF': 'own network'}[_carrier] ?? _vendor;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [

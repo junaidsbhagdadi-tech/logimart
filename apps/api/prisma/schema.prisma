@@ -627,6 +627,7 @@ model ShipmentPiece {
   widthCm      Decimal?    @db.Decimal(8, 2)
   heightCm     Decimal?    @db.Decimal(8, 2)
   volKg        Decimal     @default(0) @db.Decimal(10, 3) // L*W*H/5000, set in app code
+  carrierChildId String?  // the carrier's id for this box (XpressBees MPS/MPA ShippingId)
   status       PieceStatus @default(CREATED)
   // ---- re-weigh / weight audit (revenue-leakage control) ----
   reweighKg     Decimal?   @db.Decimal(10, 3) // actual dead weight caught at hub
@@ -972,6 +973,21 @@ model ScanLog {
 
 // Cached carrier auth token (e.g. BlueDart JWT, valid 24h). Postgres-backed so
 // it is shared across API instances instead of re-authing per request.
+/// XpressBees issues AWB numbers only in bulk (min 1,000) — kept here and handed out one per hand-off.
+/// kind: AWB = parent AWB, MPS = child box id (MPS… surface / MPA… air). routeMode: Surface | Air.
+model XbAwbPool {
+  id        BigInt    @id @default(autoincrement())
+  number    String    @unique
+  kind      String
+  routeMode String
+  usedFor   String?   // our AWB it was allocated to
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([kind, routeMode, usedAt])
+  @@map("xb_awb_pool")
+}
+
 model IntegrationToken {
   provider  String   @id // 'BLUEDART'
   token     String   @db.Text

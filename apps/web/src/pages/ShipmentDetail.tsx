@@ -335,6 +335,23 @@ export function ShipmentDetail() {
     try { const r = await api.delCancel(awb!); setMsg(`🚫 Delhivery LR cancelled${r.lrn ? ` — ${r.lrn}` : ''}.`); load(); }
     catch (e: any) { setError(e.message); }
   };
+  const handoffXb = async () => {
+    if (!confirm('Hand this shipment to XpressBees (generates the XpressBees AWB)?')) return;
+    setError(''); setMsg('');
+    try { const r = await api.xbHandoff(awb!); setMsg(`📦 Handed to XpressBees — AWB ${r.xbAwb} (${r.boxes.length} box id${r.boxes.length === 1 ? '' : 's'}).`); load(); }
+    catch (e: any) { setError(e.message); }
+  };
+  const trackXb = async () => {
+    setError(''); setMsg('');
+    try { const r = await api.xbSync(awb!); setMsg(`XpressBees: ${r.status || 'no scans yet'}`); load(); }
+    catch (e: any) { setError(e.message); }
+  };
+  const cancelXb = async () => {
+    if (!confirm('Cancel this XpressBees AWB? (Only possible before pickup.)')) return;
+    setError(''); setMsg('');
+    try { const r = await api.xbCancel(awb!); setMsg(`🚫 XpressBees AWB ${r.cancelled} cancelled.`); load(); }
+    catch (e: any) { setError(e.message); }
+  };
   const voidAwb = async () => {
     const reason = window.prompt('Void this AWB (wrong entry)? It will be EXCLUDED from billing and cancelled with the carrier if already handed off.\n\nReason:');
     if (reason === null) return;
@@ -386,7 +403,8 @@ export function ShipmentDetail() {
 
   // Which carrier this AWB is on — drives which hand-off / carrier actions show up front.
   const vendorUp = String((s as any).vendor || '').toUpperCase();
-  const carrier: 'BD' | 'DLY' | 'OTHER' = (/^(BLUE|BDR)/.test(vendorUp) || bdCodes.includes(vendorUp) || !!s.bdWaybill) ? 'BD' : (/DELHIVERY|^DLY$/.test(vendorUp) ? 'DLY' : 'OTHER');
+  const carrier: 'BD' | 'DLY' | 'XB' | 'OTHER' = (/^(BLUE|BDR)/.test(vendorUp) || bdCodes.includes(vendorUp) || !!s.bdWaybill) ? 'BD'
+    : /DELHIVERY|^DLY$/.test(vendorUp) ? 'DLY' : /^XPB$|XPRESS\s*BEES|^XB$/.test(vendorUp) ? 'XB' : 'OTHER';
   const isCan = String((s as any).statusCode).toUpperCase() === 'CAN';
   const isDone = isCan || ['DLD', 'RTD'].includes(String((s as any).statusCode).toUpperCase());
   const canEditAwb = (canEditCharges && !(s as any).invoiced) || (isSysAdmin && !!(s as any).invoiced);
@@ -424,6 +442,7 @@ export function ShipmentDetail() {
           <Link to={`/shipments/${s.awb}/labels`}><button className="secondary"><Tag aria-hidden /> Print labels</button></Link>
           {canAssign && !isCan && carrier === 'BD' && !s.bdWaybill && <button onClick={handoffBd}><Send aria-hidden /> Hand to BlueDart</button>}
           {canAssign && !isCan && carrier === 'DLY' && !(s as any).forwardingAwb && <button onClick={handoffDel}><Send aria-hidden /> Hand to Delhivery</button>}
+          {canAssign && !isCan && carrier === 'XB' && !(s as any).forwardingAwb && <button onClick={handoffXb}><Send aria-hidden /> Hand to XpressBees</button>}
           {canPod && !isDone && (
             <label className="secondary btn-like" style={{ padding: '9px 12px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
               <Camera aria-hidden /> {podFile ? `${podFile.name.slice(0, 14)}…` : 'POD photo'}
@@ -446,6 +465,9 @@ export function ShipmentDetail() {
               { label: 'Refresh BlueDart tracking', icon: <Search aria-hidden />, onClick: trackBd, show: canAssign && (!!s.bdWaybill || (carrier === 'BD' && !!(s as any).forwardingAwb)) },
               { label: 'Cancel BlueDart waybill', icon: <XCircle aria-hidden />, onClick: cancelBd, danger: true, show: canAssign && !!s.bdWaybill && !isCan },
               { label: 'Cancel Delhivery', icon: <XCircle aria-hidden />, onClick: cancelDel, danger: true, show: canAssign && carrier === 'DLY' && !!(s as any).forwardingAwb },
+              { label: 'Hand to XpressBees', icon: <Send aria-hidden />, onClick: handoffXb, show: canAssign && !isCan && carrier !== 'XB' && !(s as any).forwardingAwb && !s.bdWaybill },
+              { label: 'Refresh XpressBees tracking', icon: <Search aria-hidden />, onClick: trackXb, show: canAssign && carrier === 'XB' && !!(s as any).forwardingAwb },
+              { label: 'Cancel XpressBees AWB', icon: <XCircle aria-hidden />, onClick: cancelXb, danger: true, show: canAssign && carrier === 'XB' && !!(s as any).forwardingAwb && !isCan },
             ] },
             { title: 'Operations', items: [
               { label: 'Assign rider', icon: <UserPlus aria-hidden />, onClick: assignRider, show: canAssign },
