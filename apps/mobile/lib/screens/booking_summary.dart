@@ -38,7 +38,7 @@ class _BookingSummaryState extends State<BookingSummary> {
   String get _vendor => '${s?['vendor'] ?? ''}'.toUpperCase();
   String get _carrier {
     if (s?['bdWaybill'] != null || RegExp(r'^(BLUE|BDR)').hasMatch(_vendor) || _bdCodes.contains(_vendor)) return 'BD';
-    if (RegExp(r'DELHIVERY|^DLY$').hasMatch(_vendor)) return 'DLY';
+    if (RegExp(r'DELHIVERY|^DLY').hasMatch(_vendor)) return 'DLY';
     if (RegExp(r'^XPB$|XPRESS\s*BEES|^XB$').hasMatch(_vendor)) return 'XB';
     if (RegExp(r'^GATI$|ALLCARGO').hasMatch(_vendor)) return 'GATI';
     return _vendor.isEmpty || _vendor == 'SELF' ? 'SELF' : 'OTHER';

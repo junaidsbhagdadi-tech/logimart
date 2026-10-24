@@ -430,7 +430,7 @@ export function ShipmentDetail() {
   // Which carrier this AWB is on — drives which hand-off / carrier actions show up front.
   const vendorUp = String((s as any).vendor || '').toUpperCase();
   const carrier: 'BD' | 'DLY' | 'XB' | 'DSC' | 'GATI' | 'OTHER' = (/^(BLUE|BDR)/.test(vendorUp) || bdCodes.includes(vendorUp) || !!s.bdWaybill) ? 'BD'
-    : /DELHIVERY|^DLY$/.test(vendorUp) ? 'DLY' : /^XPB$|XPRESS\s*BEES|^XB$/.test(vendorUp) ? 'XB' : /^DSC$|DS\s*CARGO/.test(vendorUp) ? 'DSC' : /^GATI$|ALLCARGO/.test(vendorUp) ? 'GATI' : 'OTHER';
+    : /DELHIVERY|^DLY/.test(vendorUp) ? 'DLY' : /^XPB$|XPRESS\s*BEES|^XB$/.test(vendorUp) ? 'XB' : /^DSC$|DS\s*CARGO/.test(vendorUp) ? 'DSC' : /^GATI$|ALLCARGO/.test(vendorUp) ? 'GATI' : 'OTHER';
   const isCan = String((s as any).statusCode).toUpperCase() === 'CAN';
   const isDone = isCan || ['DLD', 'RTD'].includes(String((s as any).statusCode).toUpperCase());
   const canEditAwb = (canEditCharges && !(s as any).invoiced) || (isSysAdmin && !!(s as any).invoiced);

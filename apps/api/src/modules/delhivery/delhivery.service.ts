@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { DELHIVERY, delConfigured } from './delhivery.config';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { DELHIVERY, DelAccount, delAccountFor, delAccounts, delConfigured } from './delhivery.config';
 import { deriveStatusFromBd } from '../bluedart/bd-status';
 
 /** Delhivery's /manifest form fields are parsed as PYTHON literals (their sample: `"master": False`) —
@@ -27,7 +28,16 @@ function pyLit(v: any): string {
 export class DelhiveryService implements OnModuleInit {
   private readonly log = new Logger('Delhivery');
   private syncing = false;
+  /** The Delhivery account (vendor code) the current operation runs under — set by withAccount(). */
+  private readonly acctCtx = new AsyncLocalStorage<DelAccount>();
   constructor(private readonly prisma: PrismaService) {}
+
+  private acct(): DelAccount { return this.acctCtx.getStore() ?? delAccounts()[0]; }
+  /** Run fn under the account that matches this shipment's vendor code. */
+  private withAccount<T>(vendor: string | null | undefined, fn: () => Promise<T>): Promise<T> {
+    return this.acctCtx.run(delAccountFor(vendor), fn);
+  }
+  private tokKey(kind: '' | '_LOGIN_FAIL') { const c = this.acct().code; return `DELHIVERY${kind}${c === 'DLY' ? '' : ':' + c}`; }
 
   /** Keep Delhivery LR tracking live (DELHIVERY_SYNC_INTERVAL_MIN, default 15; 0 = off). */
   onModuleInit() {
@@ -44,13 +54,12 @@ export class DelhiveryService implements OnModuleInit {
     if (this.syncing) return;
     this.syncing = true;
     try {
-      await this.token(); // throws on bad credentials → whole pass skipped
       const rows = await this.prisma.shipment.findMany({
         where: {
           createdAt: { gte: new Date(Date.now() - 30 * 864e5) },
           OR: [{ forwardingAwb: { not: null } }, { bdStatus: { startsWith: 'Delhivery job' } }],
           AND: [
-            { OR: [{ vendor: { equals: 'DLY', mode: 'insensitive' } }, { vendor: { contains: 'DELHIVERY', mode: 'insensitive' } }] },
+            { OR: [{ vendor: { startsWith: 'DLY', mode: 'insensitive' } }, { vendor: { contains: 'DELHIVERY', mode: 'insensitive' } }] },
             { OR: [{ statusCode: null }, { statusCode: { notIn: ['DLD', 'RTD', 'CAN'] } }] },
           ],
         },
@@ -78,6 +87,7 @@ export class DelhiveryService implements OnModuleInit {
       username: DELHIVERY.username ? 'set' : 'missing',
       password: DELHIVERY.password ? 'set' : 'missing',
       pickupName: DELHIVERY.pickupName || 'missing',
+      accounts: delAccounts().map((a) => `${a.code}=${a.username || 'missing'}`).join(', '),
       env: /-dev\./.test(DELHIVERY.baseUrl) ? 'STAGING' : 'PRODUCTION',
     };
   }
@@ -87,35 +97,36 @@ export class DelhiveryService implements OnModuleInit {
     this.ensure();
     // A wrong password LOCKS the Delhivery user for 10 minutes — after a failed login, don't try again
     // for 30 minutes (shared across instances via Postgres), so auto-sync can't keep it locked.
-    const pause = await this.prisma.integrationToken.findUnique({ where: { provider: 'DELHIVERY_LOGIN_FAIL' } });
+    const A = this.acct();
+    const pause = await this.prisma.integrationToken.findUnique({ where: { provider: this.tokKey('_LOGIN_FAIL') } });
     if (pause && pause.expiresAt.getTime() > Date.now()) {
-      throw new BadRequestException(`Delhivery login paused until ${new Date(pause.expiresAt.getTime() + 330 * 60000).toISOString().slice(11, 16)} IST after a failed login (${pause.token}). Fix DELHIVERY_USERNAME / DELHIVERY_PASSWORD meanwhile.`);
+      throw new BadRequestException(`Delhivery login paused until ${new Date(pause.expiresAt.getTime() + 330 * 60000).toISOString().slice(11, 16)} IST after a failed login on ${A.code} (${pause.token}). Fix that account's username / password meanwhile.`);
     }
     if (!force) {
-      const cached = await this.prisma.integrationToken.findUnique({ where: { provider: 'DELHIVERY' } });
+      const cached = await this.prisma.integrationToken.findUnique({ where: { provider: this.tokKey('') } });
       if (cached && cached.expiresAt.getTime() > Date.now() + 60_000) return cached.token;
     }
     const res = await fetch(`${DELHIVERY.baseUrl}/ums/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: DELHIVERY.username, password: DELHIVERY.password }),
+      body: JSON.stringify({ username: A.username, password: A.password }),
     });
     const text = await res.text();
     if (!res.ok) {
       const until = new Date(Date.now() + 30 * 60_000);
       const why = text.slice(0, 120);
-      await this.prisma.integrationToken.upsert({ where: { provider: 'DELHIVERY_LOGIN_FAIL' }, update: { token: why, expiresAt: until }, create: { provider: 'DELHIVERY_LOGIN_FAIL', token: why, expiresAt: until } });
-      throw new BadRequestException(`Delhivery login failed (${res.status}): ${text.slice(0, 200)}`);
+      await this.prisma.integrationToken.upsert({ where: { provider: this.tokKey('_LOGIN_FAIL') }, update: { token: why, expiresAt: until }, create: { provider: this.tokKey('_LOGIN_FAIL'), token: why, expiresAt: until } });
+      throw new BadRequestException(`Delhivery login failed for ${A.code} (${res.status}): ${text.slice(0, 200)}`);
     }
-    await this.prisma.integrationToken.deleteMany({ where: { provider: 'DELHIVERY_LOGIN_FAIL' } });
+    await this.prisma.integrationToken.deleteMany({ where: { provider: this.tokKey('_LOGIN_FAIL') } });
     let token = '';
     try { const j = JSON.parse(text); token = j.token || j.jwt || j.access_token || j.data?.token || j.data?.jwt || j.data?.access_token || ''; } catch { /* non-JSON */ }
     if (!token) throw new BadRequestException('Delhivery login returned no token.');
     const expiresAt = new Date(Date.now() + 23 * 3600 * 1000); // Delhivery tokens live 24h; a 401 forces re-login anyway
     await this.prisma.integrationToken.upsert({
-      where: { provider: 'DELHIVERY' },
+      where: { provider: this.tokKey('') },
       update: { token, expiresAt },
-      create: { provider: 'DELHIVERY', token, expiresAt },
+      create: { provider: this.tokKey(''), token, expiresAt },
     });
     return token;
   }
@@ -176,6 +187,11 @@ export class DelhiveryService implements OnModuleInit {
    * store it as the forwarding AWB. `pickupName` overrides the default registered warehouse.
    */
   async createManifest(awb: string, pickupName?: string) {
+    const v = await this.prisma.shipment.findUnique({ where: { awb }, select: { vendor: true } });
+    return this.withAccount(v?.vendor, () => this.createManifestAs(awb, pickupName));
+  }
+
+  private async createManifestAs(awb: string, pickupName?: string) {
     this.ensure();
     const s = await this.prisma.shipment.findUnique({ where: { awb }, include: { client: true, pieces: true } }) as any;
     if (!s) throw new BadRequestException(`AWB ${awb} not found`);
@@ -286,7 +302,9 @@ export class DelhiveryService implements OnModuleInit {
     if (missing.length) throw new BadRequestException(`Delhivery needs the ${missing.join(', ')} to register the pickup point — fix it on the AWB (Edit AWB).`);
     const norm = address.toUpperCase().replace(/[^A-Z0-9]/g, '');
     let h = 0; for (const ch of norm) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-    const name = `LGM${String(c.accountCode || 'X').toUpperCase().replace(/[^A-Z0-9]/g, '')}${pin}${h.toString(36).toUpperCase().slice(-4)}`;
+    // Warehouses belong to ONE Delhivery account — the default (DLY) keeps "LGM…", others get their code in the name.
+    const pre = this.acct().code === 'DLY' ? 'LGM' : `LGM${this.acct().code}`;
+    const name = `${pre}${String(c.accountCode || 'X').toUpperCase().replace(/[^A-Z0-9]/g, '')}${pin}${h.toString(36).toUpperCase().slice(-4)}`;
     if (await this.prisma.delWarehouse.findUnique({ where: { name } })) return name;
 
     const pc = await this.prisma.pincode.findUnique({ where: { pincode: pin }, select: { city: true, state: true } }).catch(() => null);
@@ -348,6 +366,11 @@ export class DelhiveryService implements OnModuleInit {
 
   /** Cancel an LR (before pickup). */
   async cancelLr(awb: string) {
+    const v = await this.prisma.shipment.findUnique({ where: { awb }, select: { vendor: true } });
+    return this.withAccount(v?.vendor, () => this.cancelLrAs(awb));
+  }
+
+  private async cancelLrAs(awb: string) {
     const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, forwardingAwb: true } });
     const lrn = s?.forwardingAwb;
     if (!lrn) throw new BadRequestException(`No Delhivery LR on ${awb} to cancel.`);
@@ -364,6 +387,11 @@ export class DelhiveryService implements OnModuleInit {
 
   /** Pull the latest Delhivery LR status onto the Logimart shipment. */
   async syncTracking(awb: string) {
+    const v = await this.prisma.shipment.findUnique({ where: { awb }, select: { vendor: true } });
+    return this.withAccount(v?.vendor, () => this.syncTrackingAs(awb));
+  }
+
+  private async syncTrackingAs(awb: string) {
     let s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, forwardingAwb: true, statusCode: true, bdStatus: true } });
     // Hand-off still waiting on Delhivery's async manifest job → resolve the LR first.
     const job = /^Delhivery job (\S+)/.exec(String(s?.bdStatus || ''))?.[1];
@@ -391,7 +419,8 @@ export class DelhiveryService implements OnModuleInit {
 
   /** Shipping label for a Logimart AWB (resolves its Delhivery LR). */
   async labelForAwb(awb: string) {
-    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { forwardingAwb: true } });
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { forwardingAwb: true, vendor: true } });
+    if (s?.forwardingAwb) return this.withAccount(s.vendor, () => this.shippingLabel(s.forwardingAwb!));
     if (!s?.forwardingAwb) throw new BadRequestException(`No Delhivery LR on ${awb} — hand it off first.`);
     return this.shippingLabel(s.forwardingAwb);
   }
