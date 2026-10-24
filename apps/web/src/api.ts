@@ -681,6 +681,10 @@ export const api = {
   bdSaveAccount: (dto: unknown) => request<{ id: string; ok: boolean }>('/api/v1/bluedart/accounts', { method: 'POST', body: JSON.stringify(dto) }),
   bdDeleteAccount: (id: string) => request<{ ok: boolean }>(`/api/v1/bluedart/accounts/${id}`, { method: 'DELETE' }),
   // ---- Delhivery B2B / LTL carrier integration ----
+  // ---- V Express (ShipX) ----
+  vxStatus: () => request<{ configured: boolean; [k: string]: any }>('/api/v1/vexpress/status'),
+  vxHandoff: (awb: string) => request<{ awb: string; lr: string }>(`/api/v1/vexpress/handoff/${awb}`, { method: 'POST' }),
+  vxSync: (awb: string) => request<{ awb: string; lr: string; status: string; charge: number | null; billedKg: number | null }>(`/api/v1/vexpress/sync/${awb}`, { method: 'POST' }),
   // ---- Gati / Allcargo ----
   gatiStatus: () => request<{ configured: boolean; [k: string]: any }>('/api/v1/gati/status'),
   gatiHandoff: (awb: string) => request<{ awb: string; docket: string; packages: string[]; printUrl: string; stickerUrl: string }>(`/api/v1/gati/handoff/${awb}`, { method: 'POST' }),
