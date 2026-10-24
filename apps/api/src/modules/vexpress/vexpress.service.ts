@@ -76,6 +76,11 @@ export class VExpressService implements OnModuleInit {
     const kg = Number(s.totalDeadKg || s.chargeWeight || 0.5);
     const first = s.pieces[0] ?? {};
     const toPay = String(s.paymentTerm).toUpperCase() === 'TO_PAY';
+    // Live test (25-10-2026): "To Pay" / OUTBOUND-TOPAY was accepted but recorded as to_bill — i.e. billed to
+    // our account. Until V Express confirms the to-pay values, don't book to-pay through the API.
+    if (toPay && !/^1|true|yes$/i.test(process.env.VXP_TOPAY_ENABLED ?? '')) {
+      throw new BadRequestException('V Express to-pay bookings are not enabled via the API yet (V Express records them as To Bill). Book it on the V Express portal, or as prepaid.');
+    }
     const created = new Date(new Date(s.createdAt).getTime() + 330 * 60000).toISOString().slice(0, 10);
 
     const body = {
