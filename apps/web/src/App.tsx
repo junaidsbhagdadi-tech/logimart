@@ -30,6 +30,7 @@ import { BillWorksheet } from './pages/BillWorksheet';
 import { Pickups } from './pages/Pickups';
 import { QuickBook } from './pages/QuickBook';
 import { Handover, HandoverPrint } from './pages/Handover';
+import { Exceptions } from './pages/Exceptions';
 import { ShippingHub } from './pages/ShippingHub';
 import { Companies } from './pages/Companies';
 import { IntlShipments } from './pages/IntlShipments';
@@ -114,6 +115,7 @@ export function App() {
         <Route path="/pickup-book" element={<Pickups mode="book" />} />
         <Route path="/quick-book" element={<QuickBook />} />
         <Route path="/handover" element={<Handover />} />
+        <Route path="/exceptions" element={<Exceptions />} />
         <Route path="/pickup-book/awb" element={<PickupBook />} />
         <Route path="/awb-list" element={<AwbEntryList />} />
         <Route path="/bulk" element={<BulkBooking />} />

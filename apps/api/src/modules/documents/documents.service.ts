@@ -25,6 +25,10 @@ export class DocumentsService {
     if (!ENTITIES.includes(meta.entityType)) throw new BadRequestException('entityType must be client | vendor | shipment');
     if (!meta.entityId) throw new BadRequestException('entityId is required');
 
+    // A shipment attachment (e.g. the invoice copy Delhivery requires) can unblock a refused hand-off → retry soon.
+    if (meta.entityType === 'shipment') {
+      await this.prisma.shipment.updateMany({ where: { id: BigInt(meta.entityId), bdError: { not: null }, forwardingAwb: null, bdWaybill: null }, data: { bdDispatchAt: null } }).catch(() => {});
+    }
     const up = await this.prisma.upload.create({
       data: { kind: 'document', mimeType: file.mimetype, sizeBytes: file.size, data: file.buffer },
       select: { id: true },

@@ -13,6 +13,8 @@ export function ShipmentDetail() {
   const { user } = useAuth();
   const canPod = ['DRIVER', 'HUB_MANAGER', 'SYS_ADMIN'].includes(user?.role || '');
   const canAssign = ['HUB_MANAGER', 'SYS_ADMIN'].includes(user?.role || '');
+  // Carrier hand-off / tracking refresh — ops + CS (warehouse handlers).
+  const canHandoff = ['HUB_MANAGER', 'SYS_ADMIN', 'WAREHOUSE_HANDLER'].includes(user?.role || '');
   // Confidential billing actions (rate quote, re-weigh, transfer) — finance team only. Ops must not
   // see pricing or anything that changes chargeable weight / the billed customer.
   const isFinance = ['FINANCE_EXEC', 'ADMIN', 'SYS_ADMIN'].includes(user?.role || '');
@@ -280,28 +282,10 @@ export function ShipmentDetail() {
     catch (e: any) { setError(e.message); }
   };
 
-  const handoffBd = async () => {
-    if (!confirm('Hand this shipment off to BlueDart (generate waybill)?')) return;
-    setError(''); setMsg('');
-    try {
-      const r = await api.bdHandoff(awb!);
-      if (r.bdWaybill) setMsg(`📦 Handed to BlueDart — waybill ${r.bdWaybill}`);
-      // Out-of-area origin → BlueDart registers an outstation PICKUP (no waybill). Say so, and why.
-      else if (r.outstation) setError(`⚠ No waybill — outstation pickup booked instead${r.token ? ` (token ${r.token})` : ''}. ${r.reason ?? ''}`);
-      else setError('BlueDart returned no waybill — see the hand-off error below.');
-      load();
-    }
-    catch (e: any) { setError(e.message); load(); }
-  };
   const cancelBdPickup = async () => {
     if (!confirm('Cancel the BlueDart pickup registered on this AWB? Use this when the pickup was booked with wrong details (e.g. wrong pincode) — fix them on Edit AWB, then Hand to BlueDart again.')) return;
     setError(''); setMsg('');
     try { const r = await api.bdCancelShipmentPickup(awb!); setMsg(`Pickup token ${r.tokenNo} cancelled with BlueDart.`); load(); }
-    catch (e: any) { setError(e.message); }
-  };
-  const trackBd = async () => {
-    setError(''); setMsg('');
-    try { const r = await api.bdSync(awb!); setMsg(r.bdStatus ? `🔎 BlueDart status: ${r.bdStatus}` : 'BlueDart tracking pulled.'); load(); }
     catch (e: any) { setError(e.message); }
   };
   const cancelBd = async () => {
@@ -323,49 +307,22 @@ export function ShipmentDetail() {
     }
     catch (e: any) { setError(e.message); }
   };
-  const handoffDel = async () => {
-    if (!confirm('Hand this shipment off to Delhivery (creates the LR)?')) return;
+  /** Hand the AWB to ITS carrier (picked from the vendor) — one button for every carrier. */
+  const handoffCarrier = async () => {
+    if (!confirm(`Hand ${awb} to ${carrierName}?`)) return;
     setError(''); setMsg('');
-    try { const r = await api.delHandoff(awb!); setMsg(r.lrn ? `📦 Handed to Delhivery — LR ${r.lrn}` : `Hand-off submitted${r.jobId ? ` (job ${r.jobId}) — LR pending, click sync shortly` : ''}.`); load(); }
+    try { const r = await api.carrierHandoff(awb!); setMsg(`📦 ${r.message}`); load(); }
+    catch (e: any) { setError(e.message); load(); }
+  };
+  const trackCarrier = async () => {
+    setError(''); setMsg('');
+    try { const r = await api.carrierTrack(awb!); setMsg(`${r.carrierName}: ${r.status || 'no update yet'}`); load(); }
     catch (e: any) { setError(e.message); }
   };
   const cancelDel = async () => {
     if (!confirm('Cancel this Delhivery shipment (before pickup)?')) return;
     setError(''); setMsg('');
     try { const r = await api.delCancel(awb!); setMsg(`🚫 Delhivery LR cancelled${r.lrn ? ` — ${r.lrn}` : ''}.`); load(); }
-    catch (e: any) { setError(e.message); }
-  };
-  const handoffArl = async () => {
-    if (!confirm('Book this shipment with AR Logistics?')) return;
-    setError(''); setMsg('');
-    try { const r = await api.arlHandoff(awb!); setMsg(`📦 Booked with AR Logistics — consignment ${r.cn}.`); load(); }
-    catch (e: any) { setError(e.message); }
-  };
-  const trackArl = async () => {
-    setError(''); setMsg('');
-    try { const r = await api.arlSync(awb!); setMsg(`AR Logistics: ${r.status || 'no update'}`); load(); }
-    catch (e: any) { setError(e.message); }
-  };
-  const handoffVx = async () => {
-    if (!confirm('Book this shipment with V Express (creates their LR)?')) return;
-    setError(''); setMsg('');
-    try { const r = await api.vxHandoff(awb!); setMsg(`📦 Booked with V Express — LR ${r.lr}.`); load(); }
-    catch (e: any) { setError(e.message); }
-  };
-  const trackVx = async () => {
-    setError(''); setMsg('');
-    try { const r = await api.vxSync(awb!); setMsg(`V Express: ${r.status}${r.charge != null ? ` · their charge ₹${r.charge}` : ''}${r.billedKg != null ? ` · billed ${r.billedKg} kg` : ''}`); load(); }
-    catch (e: any) { setError(e.message); }
-  };
-  const handoffGati = async () => {
-    if (!confirm('Hand this shipment to Gati (creates the Gati docket and books the pickup)?')) return;
-    setError(''); setMsg('');
-    try { const r = await api.gatiHandoff(awb!); setMsg(`📦 Handed to Gati — docket ${r.docket} (${r.packages.length} package no${r.packages.length === 1 ? '' : 's'}).`); load(); }
-    catch (e: any) { setError(e.message); }
-  };
-  const trackGati = async () => {
-    setError(''); setMsg('');
-    try { const r = await api.gatiSync(awb!); setMsg(`Gati: ${r.status}`); load(); }
     catch (e: any) { setError(e.message); }
   };
   const cancelGati = async () => {
@@ -376,22 +333,6 @@ export function ShipmentDetail() {
   };
   const printGati = async (what: 'printUrl' | 'stickerUrl') => {
     try { const r = await api.gatiPrint(String((s as any).forwardingAwb)); window.open(r[what], '_blank', 'noopener'); }
-    catch (e: any) { setError(e.message); }
-  };
-  const trackDs = async () => {
-    setError(''); setMsg('');
-    try { const r = await api.dsSync(awb!); setMsg(`DS Cargo: ${r.status}`); load(); }
-    catch (e: any) { setError(e.message); }
-  };
-  const handoffXb = async () => {
-    if (!confirm('Hand this shipment to XpressBees (generates the XpressBees AWB)?')) return;
-    setError(''); setMsg('');
-    try { const r = await api.xbHandoff(awb!); setMsg(`📦 Handed to XpressBees — AWB ${r.xbAwb} (${r.boxes.length} box id${r.boxes.length === 1 ? '' : 's'}).`); load(); }
-    catch (e: any) { setError(e.message); }
-  };
-  const trackXb = async () => {
-    setError(''); setMsg('');
-    try { const r = await api.xbSync(awb!); setMsg(`XpressBees: ${r.status || 'no scans yet'}`); load(); }
     catch (e: any) { setError(e.message); }
   };
   const cancelXb = async () => {
@@ -453,6 +394,9 @@ export function ShipmentDetail() {
   const vendorUp = String((s as any).vendor || '').toUpperCase();
   const carrier: 'BD' | 'DLY' | 'XB' | 'DSC' | 'GATI' | 'VXP' | 'ARL' | 'OTHER' = (/^(BLUE|BDR)/.test(vendorUp) || bdCodes.includes(vendorUp) || !!s.bdWaybill) ? 'BD'
     : /DELHIVERY|^DLY/.test(vendorUp) ? 'DLY' : /^XPB$|XPRESS\s*BEES|^XB$/.test(vendorUp) ? 'XB' : /^DSC$|DS\s*CARGO/.test(vendorUp) ? 'DSC' : /^GATI$|ALLCARGO/.test(vendorUp) ? 'GATI' : /^VXP$|^VX$|V\s*EXPRESS/.test(vendorUp) ? 'VXP' : /^ARL$|AR\s*LOG/.test(vendorUp) ? 'ARL' : 'OTHER';
+  const carrierName = ({ BD: 'BlueDart', DLY: 'Delhivery', XB: 'XpressBees', GATI: 'Gati', VXP: 'V Express', ARL: 'AR Logistics', DSC: 'DS Cargo' } as Record<string, string>)[carrier] ?? '';
+  const apiCarrier = ['BD', 'DLY', 'XB', 'GATI', 'VXP', 'ARL'].includes(carrier);
+  const withCarrier = !!(s.bdWaybill || (s as any).forwardingAwb);
   const isCan = String((s as any).statusCode).toUpperCase() === 'CAN';
   const isDone = isCan || ['DLD', 'RTD'].includes(String((s as any).statusCode).toUpperCase());
   const canEditAwb = (canEditCharges && !(s as any).invoiced) || (isSysAdmin && !!(s as any).invoiced);
@@ -484,16 +428,14 @@ export function ShipmentDetail() {
         </div>
         {/* Action bar: the few everyday actions up front; everything else under "More", grouped. Carrier
             buttons only for this shipment's own carrier (BlueDart / Delhivery), others stay reachable in More. */}
+        {(s as any).bdError && !withCarrier && !isCan && (
+          <div className="error" style={{ marginBottom: 10 }}>⚠ Last carrier hand-off failed — {(s as any).bdError}. Fix it (Edit AWB / attach the invoice copy) and hand off again; it also retries automatically.</div>
+        )}
         <div className="actions">
           <button className="secondary" onClick={() => window.history.back()}><ArrowLeft aria-hidden /> Back</button>
           <Link to={`/tracker/${s.awb}`}><button className="secondary" title="Track this shipment — status, pieces & weight"><Compass aria-hidden /> Track</button></Link>
           <Link to={`/shipments/${s.awb}/labels`}><button className="secondary"><Tag aria-hidden /> Print labels</button></Link>
-          {canAssign && !isCan && carrier === 'BD' && !s.bdWaybill && <button onClick={handoffBd}><Send aria-hidden /> Hand to BlueDart</button>}
-          {canAssign && !isCan && carrier === 'DLY' && !(s as any).forwardingAwb && <button onClick={handoffDel}><Send aria-hidden /> Hand to Delhivery</button>}
-          {canAssign && !isCan && carrier === 'XB' && !(s as any).forwardingAwb && <button onClick={handoffXb}><Send aria-hidden /> Hand to XpressBees</button>}
-          {canAssign && !isCan && carrier === 'GATI' && !(s as any).forwardingAwb && <button onClick={handoffGati}><Send aria-hidden /> Hand to Gati</button>}
-          {canAssign && !isCan && carrier === 'VXP' && !(s as any).forwardingAwb && <button onClick={handoffVx}><Send aria-hidden /> Book with V Express</button>}
-          {canAssign && !isCan && carrier === 'ARL' && !(s as any).forwardingAwb && <button onClick={handoffArl}><Send aria-hidden /> Book with AR Logistics</button>}
+          {canHandoff && !isCan && apiCarrier && !withCarrier && <button onClick={handoffCarrier}><Send aria-hidden /> Hand to {carrierName}</button>}
           {canPod && !isDone && (
             <label className="secondary btn-like" style={{ padding: '9px 12px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
               <Camera aria-hidden /> {podFile ? `${podFile.name.slice(0, 14)}…` : 'POD photo'}
@@ -510,25 +452,14 @@ export function ShipmentDetail() {
               { label: 'Enter e-way bill', icon: <FileText aria-hidden />, onClick: openEdit, show: canEditAwb, title: 'Record the e-way bill number from the GST portal (Edit AWB)' },
             ] },
             { title: 'Carrier', items: [
-              { label: 'Hand to BlueDart', icon: <Send aria-hidden />, onClick: handoffBd, show: canAssign && !isCan && carrier !== 'BD' && !s.bdWaybill },
-              { label: 'Hand to Delhivery', icon: <Send aria-hidden />, onClick: handoffDel, show: canAssign && !isCan && carrier !== 'DLY' },
+              { label: `Refresh ${carrierName || 'carrier'} tracking`, icon: <Search aria-hidden />, onClick: trackCarrier, show: (apiCarrier || carrier === 'DSC') && withCarrier },
               { label: 'BlueDart pickup', icon: <CalendarClock aria-hidden />, onClick: pickupBd, show: canAssign && !isCan && carrier === 'BD', title: 'Register a BlueDart pickup for this shipment' },
-              { label: 'Refresh BlueDart tracking', icon: <Search aria-hidden />, onClick: trackBd, show: canAssign && (!!s.bdWaybill || (carrier === 'BD' && !!(s as any).forwardingAwb)) },
+              { label: 'Gati docket print', icon: <Printer aria-hidden />, onClick: () => printGati('printUrl'), show: carrier === 'GATI' && withCarrier },
+              { label: 'Gati package stickers', icon: <Barcode aria-hidden />, onClick: () => printGati('stickerUrl'), show: carrier === 'GATI' && withCarrier },
               { label: 'Cancel BlueDart waybill', icon: <XCircle aria-hidden />, onClick: cancelBd, danger: true, show: canAssign && !!s.bdWaybill && !isCan },
-              { label: 'Cancel Delhivery', icon: <XCircle aria-hidden />, onClick: cancelDel, danger: true, show: canAssign && carrier === 'DLY' && !!(s as any).forwardingAwb },
-              { label: 'Book with AR Logistics', icon: <Send aria-hidden />, onClick: handoffArl, show: canAssign && !isCan && carrier !== 'ARL' && !(s as any).forwardingAwb && !s.bdWaybill },
-              { label: 'Refresh AR Logistics tracking', icon: <Search aria-hidden />, onClick: trackArl, show: carrier === 'ARL' && !!(s as any).forwardingAwb },
-              { label: 'Book with V Express', icon: <Send aria-hidden />, onClick: handoffVx, show: canAssign && !isCan && carrier !== 'VXP' && !(s as any).forwardingAwb && !s.bdWaybill },
-              { label: 'Refresh V Express tracking', icon: <Search aria-hidden />, onClick: trackVx, show: carrier === 'VXP' && !!(s as any).forwardingAwb },
-              { label: 'Hand to Gati', icon: <Send aria-hidden />, onClick: handoffGati, show: canAssign && !isCan && carrier !== 'GATI' && !(s as any).forwardingAwb && !s.bdWaybill },
-              { label: 'Refresh Gati tracking', icon: <Search aria-hidden />, onClick: trackGati, show: carrier === 'GATI' && !!(s as any).forwardingAwb },
-              { label: 'Gati docket print', icon: <Printer aria-hidden />, onClick: () => printGati('printUrl'), show: carrier === 'GATI' && !!(s as any).forwardingAwb },
-              { label: 'Gati package stickers', icon: <Barcode aria-hidden />, onClick: () => printGati('stickerUrl'), show: carrier === 'GATI' && !!(s as any).forwardingAwb },
-              { label: 'Cancel Gati docket', icon: <XCircle aria-hidden />, onClick: cancelGati, danger: true, show: canAssign && carrier === 'GATI' && !!(s as any).forwardingAwb && !isCan },
-              { label: 'Refresh DS Cargo tracking', icon: <Search aria-hidden />, onClick: trackDs, show: carrier === 'DSC' && !!(s as any).forwardingAwb },
-              { label: 'Hand to XpressBees', icon: <Send aria-hidden />, onClick: handoffXb, show: canAssign && !isCan && carrier !== 'XB' && !(s as any).forwardingAwb && !s.bdWaybill },
-              { label: 'Refresh XpressBees tracking', icon: <Search aria-hidden />, onClick: trackXb, show: canAssign && carrier === 'XB' && !!(s as any).forwardingAwb },
-              { label: 'Cancel XpressBees AWB', icon: <XCircle aria-hidden />, onClick: cancelXb, danger: true, show: canAssign && carrier === 'XB' && !!(s as any).forwardingAwb && !isCan },
+              { label: 'Cancel Delhivery LR', icon: <XCircle aria-hidden />, onClick: cancelDel, danger: true, show: canAssign && carrier === 'DLY' && withCarrier },
+              { label: 'Cancel Gati docket', icon: <XCircle aria-hidden />, onClick: cancelGati, danger: true, show: canAssign && carrier === 'GATI' && withCarrier && !isCan },
+              { label: 'Cancel XpressBees AWB', icon: <XCircle aria-hidden />, onClick: cancelXb, danger: true, show: canAssign && carrier === 'XB' && withCarrier && !isCan },
             ] },
             { title: 'Operations', items: [
               { label: 'Assign rider', icon: <UserPlus aria-hidden />, onClick: assignRider, show: canAssign },

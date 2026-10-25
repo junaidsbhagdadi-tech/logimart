@@ -71,25 +71,12 @@ class _BookingSummaryState extends State<BookingSummary> {
       });
     }
     await _run(() async {
-      final r = _carrier == 'BD'
-          ? await ApiClient.instance.handoffBlueDart(widget.awb)
-          : _carrier == 'XB'
-              ? await ApiClient.instance.handoffXpressBees(widget.awb)
-              : _carrier == 'GATI'
-                  ? await ApiClient.instance.handoffGati(widget.awb)
-                  : _carrier == 'VXP'
-                      ? await ApiClient.instance.handoffVExpress(widget.awb)
-                      : _carrier == 'ARL'
-                          ? await ApiClient.instance.handoffArl(widget.awb)
-                          : await ApiClient.instance.handoffDelhivery(widget.awb);
+      // One endpoint for every carrier — the server picks the integration from the vendor code.
+      final r = await ApiClient.instance.handoffCarrier(widget.awb);
       await _load();
       final got = _carrierAwb;
       if (!mounted) return;
-      if (got != null) {
-        toast(context, '${{'BD': 'BlueDart', 'XB': 'XpressBees', 'GATI': 'Gati', 'VXP': 'V Express', 'ARL': 'AR Logistics'}[_carrier] ?? 'Delhivery'} AWB $got generated.');
-      } else {
-        toast(context, '${r['reason'] ?? r['message'] ?? 'Carrier did not return an AWB.'}', error: true);
-      }
+      toast(context, '${r['message'] ?? (got != null ? 'Carrier AWB $got generated.' : 'Sent to the carrier.')}');
     });
   }
 

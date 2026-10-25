@@ -168,16 +168,33 @@ export function CreateShipment() {
   // Carrier rate comparison (staff): price every carrier for this booking, cheapest first.
   const [rateCompare, setRateCompare] = useState<{ vendor: string; total: number; freight: number }[] | null>(null);
   const [rcBusy, setRcBusy] = useState(false);
+  // Live carrier checks (serviceable? transit days?) from the carriers' own APIs, merged into the comparison.
+  const [svcInfo, setSvcInfo] = useState<Record<string, { serviceable: boolean | null; tatDays: number | null; tatSource: string | null }>>({});
   const compareRates = async () => {
     if (!clientId || !product || !destPin) return;
     setRcBusy(true); setRateCompare(null);
     try {
       const totalDead = pieces.reduce((s, p) => s + (Number(p.deadKg) || 0) * pcOf(p), 0) || 0.5;
-      const r = await api.carrierRates({ clientId, product, originPincode: originPin || undefined, destPincode: destPin, deadKg: totalDead, pcs: pieces.reduce((s, p) => s + pcOf(p), 0), declaredValue: Number(svc.shipmentValue) || undefined });
-      setRateCompare(r.options.map((o) => ({ vendor: o.vendor, total: o.total, freight: o.freight })));
+      const body = { clientId, product, originPincode: originPin || undefined, destPincode: destPin, deadKg: totalDead, pcs: pieces.reduce((s, p) => s + pcOf(p), 0), declaredValue: Number(svc.shipmentValue) || undefined };
+      const [r, sg] = await Promise.all([api.carrierRates(body), api.carrierSuggest({ ...body, air: /AIR/i.test(String(serviceMode)) }).catch(() => null)]);
+      const info: Record<string, { serviceable: boolean | null; tatDays: number | null; tatSource: string | null }> = {};
+      for (const c of sg?.carriers ?? []) info[c.vendor.toUpperCase()] = { serviceable: c.serviceable, tatDays: c.tatDays, tatSource: c.tatSource };
+      setSvcInfo(info);
+      // Serviceable first (a carrier that can't deliver there is useless however cheap), then cheapest.
+      const opts = r.options.map((o) => ({ vendor: o.vendor, total: o.total, freight: o.freight }));
+      opts.sort((a, b) => (info[a.vendor.toUpperCase()]?.serviceable === false ? 1 : 0) - (info[b.vendor.toUpperCase()]?.serviceable === false ? 1 : 0) || a.total - b.total);
+      setRateCompare(opts);
     } catch { setRateCompare([]); }
     finally { setRcBusy(false); }
   };
+  // Suggest automatically once customer, product and a destination pincode are in (staff only).
+  const pcsKey = pieces.map((p) => `${p.deadKg}x${pcOf(p)}`).join('|');
+  useEffect(() => {
+    if (isClient || !clientId || !product || !/^\d{6}$/.test(String(destPin || ''))) return;
+    const t = setTimeout(() => { compareRates(); }, 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId, product, destPin, originPin, pcsKey]);
 
   // ---- Draft autosave: keep the whole form in localStorage so navigating away
   // (e.g. to add a vendor / fix a pincode) and coming back never wipes the data. ----
@@ -749,7 +766,8 @@ export function CreateShipment() {
               })}
             </div>
             {rateCompare && (() => {
-              const tatOf = (v: string) => carrierOptions.find((c) => String(c.network).toUpperCase() === String(v).toUpperCase())?.tatDays ?? null;
+              const tatOf = (v: string) => svcInfo[String(v).toUpperCase()]?.tatSource === 'carrier' ? svcInfo[String(v).toUpperCase()]!.tatDays : (carrierOptions.find((c) => String(c.network).toUpperCase() === String(v).toUpperCase())?.tatDays ?? svcInfo[String(v).toUpperCase()]?.tatDays ?? null);
+              const noSvc = (v: string) => svcInfo[String(v).toUpperCase()]?.serviceable === false;
               const tats = rateCompare.map((o) => tatOf(o.vendor)).filter((t): t is number => t != null);
               const minTat = tats.length ? Math.min(...tats) : null;
               const cheapest = rateCompare[0];
@@ -762,7 +780,7 @@ export function CreateShipment() {
                     {rateCompare.filter((o) => vendorAllowed(o.vendor)).map((o, i) => {
                       const picked = o.vendor === svc.vendor;
                       const tat = tatOf(o.vendor);
-                      const isCheap = i === 0;
+                      const isCheap = i === 0 && !noSvc(o.vendor);
                       const isFast = minTat != null && tat === minTat;
                       return (
                         <button key={o.vendor} type="button"
@@ -777,7 +795,9 @@ export function CreateShipment() {
                           <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }}>
                             {vendorLabel(o.vendor)}
                             {isCheap && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--green-2)', background: 'var(--green-soft)', padding: '2px 6px', borderRadius: 5 }}>CHEAPEST</span>}
-                            {isFast && !isCheap && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--brand-2)', background: 'var(--sky-soft)', padding: '2px 6px', borderRadius: 5 }}>FASTEST</span>}
+                            {isFast && !isCheap && !noSvc(o.vendor) && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--brand-2)', background: 'var(--sky-soft)', padding: '2px 6px', borderRadius: 5 }}>FASTEST</span>}
+                            {noSvc(o.vendor) && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--danger, #c0392b)', background: 'var(--st-problem-bg)', padding: '2px 6px', borderRadius: 5 }}>NOT SERVICEABLE</span>}
+                            {svcInfo[String(o.vendor).toUpperCase()]?.serviceable === true && <span title="Confirmed by the carrier's API" style={{ fontSize: 10, fontWeight: 700, color: 'var(--green-2)' }}>✓ serves pin</span>}
                             {picked && ' ✓'}
                           </span>
                           <span style={{ fontFamily: "'Sora', sans-serif", fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>₹{o.total.toLocaleString('en-IN')}</span>

@@ -198,19 +198,10 @@ class ApiClient {
   /// Correct a booking (riders: own bookings only, before pickup / carrier hand-off).
   Future<void> editShipment(String awb, Map<String, dynamic> patch) => post('/api/v1/shipments/$awb/edit', patch);
 
-  /// Carrier hand-off — generates the carrier's AWB (BlueDart waybill / Delhivery LR).
-  Future<Map<String, dynamic>> handoffBlueDart(String awb) async =>
-      await post('/api/v1/bluedart/handoff/$awb') as Map<String, dynamic>;
-  Future<Map<String, dynamic>> handoffDelhivery(String awb) async =>
-      await post('/api/v1/delhivery/handoff/$awb') as Map<String, dynamic>;
-  Future<Map<String, dynamic>> handoffArl(String awb) async =>
-      await post('/api/v1/arl/handoff/$awb') as Map<String, dynamic>;
-  Future<Map<String, dynamic>> handoffVExpress(String awb) async =>
-      await post('/api/v1/vexpress/handoff/$awb') as Map<String, dynamic>;
-  Future<Map<String, dynamic>> handoffGati(String awb) async =>
-      await post('/api/v1/gati/handoff/$awb') as Map<String, dynamic>;
-  Future<Map<String, dynamic>> handoffXpressBees(String awb) async =>
-      await post('/api/v1/xpressbees/handoff/$awb') as Map<String, dynamic>;
+  /// Carrier hand-off — the server picks the integration (BlueDart / Delhivery / XpressBees / Gati /
+  /// V Express / AR Logistics) from the shipment's vendor code and returns the carrier AWB.
+  Future<Map<String, dynamic>> handoffCarrier(String awb) async =>
+      await post('/api/v1/carriers/handoff/$awb') as Map<String, dynamic>;
 
   /// Other carriers: record the carrier's AWB against ours.
   Future<void> setForwarding(String awb, String vendor, String forwardingAwb) =>

@@ -16,6 +16,7 @@ export const FEATURE_CATALOG: FeatureSection[] = [
     { to: '/quick-book', label: 'Quick Booking (mobile)' },
     { to: '/pickup-book', label: 'Pickup Booking' },
     { to: '/handover', label: 'Handover Manifest' },
+    { to: '/exceptions', label: 'Exceptions' },
     { to: '/awb-list', label: 'Shipment List' },
     { to: '/bulk', label: 'Bulk Booking' },
     { to: '/walk-in', label: 'Walk-in Counter' },

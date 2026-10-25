@@ -681,6 +681,12 @@ export const api = {
   bdSaveAccount: (dto: unknown) => request<{ id: string; ok: boolean }>('/api/v1/bluedart/accounts', { method: 'POST', body: JSON.stringify(dto) }),
   bdDeleteAccount: (id: string) => request<{ ok: boolean }>(`/api/v1/bluedart/accounts/${id}`, { method: 'DELETE' }),
   // ---- Delhivery B2B / LTL carrier integration ----
+  // ---- one front door for every carrier ----
+  carrierHandoff: (awb: string) => request<{ awb: string; carrier: string; carrierName: string; carrierAwb: string | null; message: string }>(`/api/v1/carriers/handoff/${awb}`, { method: 'POST' }),
+  carrierTrack: (awb: string) => request<{ awb: string; carrierName: string; status: string | null }>(`/api/v1/carriers/track/${awb}`, { method: 'POST' }),
+  carrierSuggest: (body: { clientId: number | string; product: string; originPincode?: string; destPincode: string; deadKg?: number; pcs?: number; declaredValue?: number; air?: boolean }) =>
+    request<{ destPincode: string; oda: boolean; carriers: { vendor: string; name: string; carrier: string; price: number | null; serviceable: boolean | null; tatDays: number | null; tatSource: string | null; api: boolean; note: string }[] }>('/api/v1/carriers/suggest', { method: 'POST', body: JSON.stringify(body) }),
+  exceptionsInbox: () => request<{ generatedAt: string; total: number; buckets: { key: string; title: string; hint: string; items: any[] }[] }>('/api/v1/exceptions'),
   // ---- AR Logistics ----
   arlStatus: () => request<{ configured: boolean; [k: string]: any }>('/api/v1/arl/status'),
   arlHandoff: (awb: string) => request<{ awb: string; cn: string }>(`/api/v1/arl/handoff/${awb}`, { method: 'POST' }),

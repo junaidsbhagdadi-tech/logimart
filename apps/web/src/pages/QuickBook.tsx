@@ -73,6 +73,18 @@ export function QuickBook() {
     setCust(m ?? null);
     if (m?.defaultVendor && !vendor) setVendor(String(m.defaultVendor).toUpperCase());
   };
+  // Carrier suggestion for this customer × product × destination: serviceable first, then cheapest.
+  const [sugg, setSugg] = useState<{ vendor: string; name: string; price: number | null; serviceable: boolean | null; tatDays: number | null }[]>([]);
+  useEffect(() => {
+    setSugg([]);
+    if (!cust || !product || !/^\d{6}$/.test(con.pincode)) return;
+    const t = setTimeout(() => {
+      api.carrierSuggest({ clientId: Number(cust.id), product, originPincode: (pickupElsewhere ? pick.pincode : cust.pincode) || undefined, destPincode: con.pincode, deadKg: Number(totalKg) || undefined })
+        .then((r) => setSugg(r.carriers.slice(0, 6))).catch(() => {});
+    }, 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cust?.id, product, con.pincode]);
   const lookDest = (p: string) => {
     setCon((c) => ({ ...c, pincode: p }));
     setDestCity('');
@@ -211,6 +223,20 @@ export function QuickBook() {
             </select>
           </Field></div>
         </div>
+        {sugg.length > 0 && (
+          <div style={{ margin: '-4px 0 10px' }}>
+            <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>Suggested carriers for {con.pincode} — tap to pick</div>
+            <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+              {sugg.map((c) => (
+                <button key={c.vendor} type="button" className={vendor === c.vendor ? '' : 'secondary'} disabled={c.serviceable === false}
+                  title={c.serviceable === false ? 'Not serviceable for this pincode' : c.name}
+                  style={{ padding: '4px 10px', fontSize: 12, opacity: c.serviceable === false ? 0.5 : 1 }} onClick={() => setVendor(c.vendor)}>
+                  <strong>{c.vendor}</strong>{c.price != null ? ` · ₹${Math.round(c.price).toLocaleString('en-IN')}` : ''}{c.tatDays != null ? ` · ${c.tatDays}d` : ''}{c.serviceable === false ? ' · ✗' : c.serviceable ? ' · ✓' : ''}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="row" style={{ gap: 8 }}>
           <div style={{ flex: 1 }}><Field label="Reference">{scanRow(ref, setRef, 'customer ref', 'Scan the reference')}</Field></div>
           <div style={{ flex: 1 }}><Field label={docType === 'DOX' ? 'Content' : 'Parcel content'}><input value={content} onChange={(e) => setContent(e.target.value)} placeholder="e.g. Cosmetics" /></Field></div>

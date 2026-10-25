@@ -1002,6 +1002,8 @@ export class ShipmentsService {
     }
 
     const data: any = {};
+    // Not yet with a carrier → an edit is usually the fix for a refused hand-off: clear it so auto hand-off retries.
+    if (!s.forwardingAwb && !s.bdWaybill) { data.bdError = null; data.bdDispatchAt = null; }
     const str = (k: string, v: any) => { if (v !== undefined) data[k] = v === null || String(v).trim() === '' ? null : String(v).trim(); };
     const upper = (k: string, v: any) => { if (v !== undefined) data[k] = v ? String(v).trim().toUpperCase() : null; };
     const dec = (k: string, v: any) => { if (v !== undefined) data[k] = v != null && v !== '' && !isNaN(Number(v)) ? new Prisma.Decimal(Number(v)) : null; };

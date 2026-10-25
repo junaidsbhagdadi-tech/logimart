@@ -6,7 +6,7 @@ import { api } from '../api';
 import { Logo } from './Logo';
 import { FeedbackWidget } from './FeedbackWidget';
 import {
-  LayoutDashboard, Gauge, Activity, Compass, MapPin, PlusCircle, Zap, Package, ClipboardList, List, Upload, Store, Bike, Inbox,
+  LayoutDashboard, Gauge, Activity, Compass, MapPin, PlusCircle, Zap, Package, ClipboardList, List, Upload, Store, Bike, Inbox, AlertTriangle,
   Globe, PlaneTakeoff, Coins, ScanLine, PackageCheck, Boxes, Route, Truck, Send, Receipt, FileSpreadsheet, TrendingUp, BookOpen,
   Scale, ShieldCheck, Users, Building2, Handshake, Car, Wallet, Banknote, FolderOpen, Contact, LineChart, Container, Shuffle, Map as MapIcon,
   Database, Calculator, PieChart, Stethoscope, UserCog, Plug, History, MessageSquare, Archive, type LucideIcon,
@@ -17,7 +17,7 @@ import { fmtDateTime } from '../format';
 // device and repeated (two 🚚, two 📦). Unknown routes fall back to the item's emoji.
 const NAV_ICON: Record<string, LucideIcon> = {
   '/': LayoutDashboard, '/hub': Gauge, '/team-dashboards': Activity, '/tracker': Compass, '/pincode-search': MapPin,
-  '/create': PlusCircle, '/quick-book': Zap, '/pickup-book': Package, '/handover': ClipboardList, '/awb-list': List,
+  '/create': PlusCircle, '/quick-book': Zap, '/pickup-book': Package, '/handover': ClipboardList, '/exceptions': AlertTriangle, '/awb-list': List,
   '/bulk': Upload, '/walk-in': Store, '/deliver': Bike, '/pickups': Inbox,
   '/intl': Globe, '/intl/book': PlaneTakeoff, '/intl/rate-cards': Coins,
   '/fm': LayoutDashboard, '/fm/pickup-outscan': ScanLine, '/fm/bulk-pickup-outscan': Upload, '/fm/update-pickup': PackageCheck,
@@ -154,6 +154,7 @@ export function Layout() {
       { to: '/pincode-search', icon: '📍', label: 'Pincode Search' },
     ] },
     { title: 'Operations', items: [
+      { to: '/exceptions', icon: '⚠️', label: 'Exceptions' },
       { to: '/create', icon: '➕', label: 'New Shipment' },
       { to: '/quick-book', icon: '⚡', label: 'Quick Booking' },
       { to: '/pickup-book', icon: '📦', label: 'Pickup Booking' },

@@ -39,6 +39,7 @@ import { DsCargoModule } from './modules/dscargo/dscargo.module';
 import { GatiModule } from './modules/gati/gati.module';
 import { VExpressModule } from './modules/vexpress/vexpress.module';
 import { ArlModule } from './modules/arlogistics/arl.module';
+import { CarriersModule } from './modules/carriers/carriers.module';
 import { RateMatrixModule } from './modules/ratematrix/ratematrix.module';
 import { FuelModule } from './modules/fuel/fuel.module';
 import { AdminModule } from './modules/admin/admin.module';
@@ -108,6 +109,7 @@ const webDist = join(__dirname, '..', '..', 'web', 'dist');
     GatiModule,
     VExpressModule,
     ArlModule,
+    CarriersModule,
     RateMatrixModule,
     FuelModule,
     AdminModule,
