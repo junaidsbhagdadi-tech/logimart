@@ -13,6 +13,12 @@ import {
 } from 'lucide-react';
 import { fmtDateTime } from '../format';
 
+/** Modules hidden from the menu for everyone (25-10-2026) — unused: First / Mid / Last Mile scan screens
+ *  (2 test scans in 60 days; statuses come from carrier tracking), International (0 shipments), FTL rates
+ *  and Service Mapping (0 records). Pages still open by direct link; remove a prefix here to bring one back. */
+const RETIRED = ['/fm', '/mm', '/lm', '/intl', '/ftl-rates', '/service-mapping'];
+const isRetired = (to: string) => RETIRED.some((r) => to === r || to.startsWith(r + '/'));
+
 // One line icon per menu entry (route → icon). Replaces the emoji, which render differently on every
 // device and repeated (two 🚚, two 📦). Unknown routes fall back to the item's emoji.
 const NAV_ICON: Record<string, LucideIcon> = {
@@ -266,7 +272,7 @@ export function Layout() {
             // DEPARTMENT default feature map → role defaults. Super/client admins are role-driven
             // (effectiveGrants returns null for them). Server-side RBAC remains the real boundary.
             const grants = effectiveGrants(user as any);
-            const items = g.items.filter((it) => (grants ? hasFeature(grants, it.to) : it.show !== false));
+            const items = g.items.filter((it) => !isRetired(it.to) && (grants ? hasFeature(grants, it.to) : it.show !== false));
             if (items.length === 0) return null;
             const isClosed = !!closed[g.title];
             return (
