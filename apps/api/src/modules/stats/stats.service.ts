@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { BluedartService } from '../bluedart/bluedart.service';
 
 @Injectable()
 export class StatsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly bd: BluedartService) {}
 
   /** Revenue by month for the last N months (for the dashboard trend chart). */
   private async revenueTrend(months = 6, scope?: bigint[] | null) {
@@ -78,14 +79,34 @@ export class StatsService {
       this.prisma.shipment.count({ where: inSet(['UDL', 'RTO']) }),
       this.prisma.shipment.count({ where: inSet(['RTO', 'RTD']) }),
       this.prisma.shipment.count({ where: { ...base, statusCode: 'MAN', bdStatus: null, bdWaybill: null, forwardingAwb: null } }),
-      this.prisma.shipment.groupBy({ by: ['vendor'], where: base, _count: { _all: true } }),
+      this.prisma.shipment.groupBy({ by: ['vendor'], where: { ...base, OR: [{ statusCode: null }, { statusCode: { not: 'CAN' } }] }, _count: { _all: true } }),
       this.prisma.pickupRequest.count({ where: { status: { in: ['REQUESTED', 'ASSIGNED'] as any }, ...cw } }),
       this.prisma.shipment.count({ where: { bdPickupToken: { not: null }, bdWaybill: null, statusCode: { not: 'CAN' }, ...cw } }),
     ]);
     const carriers = byCarrier.map((c) => ({ vendor: c.vendor || 'SELF', count: c._count._all })).sort((a, b) => b.count - a.count);
+    // Group vendor codes into the carrier integrations the hub shows (BlueDart has several account codes).
+    const kindOf = async (v: string) => {
+      const u = v.toUpperCase();
+      if (!u || u === 'SELF') return 'SELF';
+      if (await this.bd.isBlueDartVendor(u)) return 'BD';
+      if (/^DLY|DELHIVERY/.test(u)) return 'DLY';
+      if (/^XPB$|XPRESS\s*BEES|^XB$/.test(u)) return 'XB';
+      if (/^GATI$|ALLCARGO/.test(u)) return 'GATI';
+      if (/^VXP$|^VX$|V\s*EXPRESS/.test(u)) return 'VXP';
+      if (/^ARL$|AR\s*LOG/.test(u)) return 'ARL';
+      if (/^DSC$|DS\s*CARGO/.test(u)) return 'DSC';
+      return 'OTHER';
+    };
+    const carrierGroups: Record<string, { count: number; vendors: string[] }> = {};
+    for (const c of carriers) {
+      const k = await kindOf(c.vendor);
+      carrierGroups[k] ??= { count: 0, vendors: [] };
+      carrierGroups[k].count += c.count;
+      carrierGroups[k].vendors.push(c.vendor);
+    }
     return {
       window, total, delivered, inTransit, outForDelivery, exceptions, returns, pendingBooking,
-      pendingPickups: pendingReqPickups + bdPendingPickups, carriers,
+      pendingPickups: pendingReqPickups + bdPendingPickups, carriers, carrierGroups,
     };
   }
 }

@@ -758,7 +758,7 @@ export const api = {
   delAddr: (clientId: string, rowId: string) => request(`/api/v1/clients/${clientId}/addresses/${rowId}`, { method: 'DELETE' }),
 
   // ---- AWB Entry List ----
-  awbList: (limit = 300, search?: string, from?: string, to?: string, ewbPending?: boolean) => request<any[]>(`/api/v1/shipments/awb-list?limit=${limit}${search ? `&search=${encodeURIComponent(search)}` : ''}${from ? `&from=${from}` : ''}${to ? `&to=${to}` : ''}${ewbPending ? '&ewbPending=1' : ''}`),
+  awbList: (limit = 300, search?: string, from?: string, to?: string, ewbPending?: boolean, vendors?: string[]) => request<any[]>(`/api/v1/shipments/awb-list?limit=${limit}${search ? `&search=${encodeURIComponent(search)}` : ''}${from ? `&from=${from}` : ''}${to ? `&to=${to}` : ''}${ewbPending ? '&ewbPending=1' : ''}${vendors?.length ? `&vendors=${encodeURIComponent(vendors.join(','))}` : ''}`),
 
   // ---- fuel price (drives dynamic fuel surcharge) ----
   getFuelPrice: () => request<{ fuelType: string; current: number | null; effectiveFrom: string | null; history: any[] }>('/api/v1/fuel-price'),

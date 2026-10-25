@@ -41,6 +41,8 @@ export function ShippingHub() {
   const [rows, setRows] = useState<any[]>([]);
   const [overview, setOverview] = useState<any>(null);
   const [search, setSearch] = useState('');
+  // Carrier tile clicked → Shipments tab filtered to that carrier's vendor codes.
+  const [carrierFilter, setCarrierFilter] = useState<{ name: string; vendors: string[] } | null>(null);
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -57,12 +59,12 @@ export function ShippingHub() {
   useEffect(loadHome, [win]);
   useEffect(() => {
     const t = setTimeout(() => {
-      if (['Shipments', 'Exceptions', 'Returns'].includes(tab)) api.awbList(300, search.trim() || undefined).then(setRows).catch(() => {});
+      if (['Shipments', 'Exceptions', 'Returns'].includes(tab)) api.awbList(carrierFilter ? 2000 : 300, search.trim() || undefined, undefined, undefined, false, carrierFilter?.vendors).then(setRows).catch(() => {});
       if (tab === 'Analytics' && isOps) api.statsOverview().then(setOverview).catch(() => {});
     }, 200);
     return () => clearTimeout(t);
     /* eslint-disable-next-line */
-  }, [tab, search]);
+  }, [tab, search, carrierFilter]);
 
   // statusCode is authoritative — the carrier syncs write BlueDart/Delhivery status through to it.
   const effCode = (r: any) => String(r.statusCode || 'MAN').toUpperCase();
@@ -125,15 +127,32 @@ export function ShippingHub() {
           <div className="card">
             <h2 style={{ marginTop: 0, fontSize: 16 }}>🔌 Carriers</h2>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
-              {[{ name: 'BlueDart', ok: bd?.configured, to: '/bluedart', icon: '🔵' }, { name: 'Delhivery', ok: del?.configured, to: '/bluedart', icon: '🟠' }, { name: 'XpressBees', ok: xb?.configured, to: '/bluedart', icon: '🐝' }, { name: 'Gati', ok: gati?.configured, to: '/bluedart', icon: '🟦' }, { name: 'V Express', ok: vx?.configured, to: '/bluedart', icon: '🟩' }, { name: 'AR Logistics', ok: arl?.configured, to: '/bluedart', icon: '🟥' }, { name: 'Self / Riders', ok: true, to: '/riders', icon: '🏍' }].map((c) => {
-                const cnt = hub?.carriers?.find((x: any) => new RegExp(c.name.split(' ')[0], 'i').test(x.vendor) || (c.name.startsWith('Self') && /SELF|BDR/i.test(x.vendor)))?.count;
+              {[
+                { key: 'BD', name: 'BlueDart', ok: bd?.configured, icon: '🔵', anchor: 'bluedart' },
+                { key: 'DLY', name: 'Delhivery', ok: del?.configured, icon: '🟠', anchor: 'delhivery' },
+                { key: 'XB', name: 'XpressBees', ok: xb?.configured, icon: '🐝', anchor: 'xpressbees' },
+                { key: 'GATI', name: 'Gati', ok: gati?.configured, icon: '🟦', anchor: 'gati' },
+                { key: 'VXP', name: 'V Express', ok: vx?.configured, icon: '🟩', anchor: '' },
+                { key: 'ARL', name: 'AR Logistics', ok: arl?.configured, icon: '🟥', anchor: '' },
+                { key: 'SELF', name: 'Self / Riders', ok: true, icon: '🏍', anchor: '' },
+              ].map((c) => {
+                // Bookings on this carrier in the selected window (cancelled excluded); click → those shipments.
+                const g = hub?.carrierGroups?.[c.key] as { count: number; vendors: string[] } | undefined;
+                const winLabel = win === 'today' ? 'today' : win === '30d' ? 'last 30 days' : 'last 7 days';
+                const open = () => { if (g?.vendors.length) { setCarrierFilter({ name: c.name, vendors: g.vendors }); setSearch(''); setTab('Shipments'); } };
                 return (
-                  <Link key={c.name} to={c.to} style={{ textDecoration: 'none', color: 'inherit' }}>
-                    <div className="card" style={{ margin: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div><div style={{ fontWeight: 700 }}>{c.icon} {c.name}</div><div className="muted" style={{ fontSize: 12 }}>{cnt != null ? `${cnt} in window` : 'carrier'}</div></div>
-                      <span className={`badge ${c.ok ? 'DELIVERED' : 'CANCELLED'}`}>{c.ok ? 'Connected' : 'Set up'}</span>
+                  <div key={c.key} className="card" role={g ? 'button' : undefined} tabIndex={g ? 0 : undefined} title={g ? `Show ${c.name} shipments` : undefined}
+                    onClick={open} onKeyDown={(e) => { if (e.key === 'Enter') open(); }}
+                    style={{ margin: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: g ? 'pointer' : 'default' }}>
+                    <div>
+                      <div style={{ fontWeight: 700 }}>{c.icon} {c.name}</div>
+                      <div className="muted" style={{ fontSize: 12 }}>{g ? `${g.count} shipment${g.count === 1 ? '' : 's'} · ${winLabel}` : `No shipments · ${winLabel}`}</div>
                     </div>
-                  </Link>
+                    <div style={{ display: 'grid', justifyItems: 'end', gap: 4 }}>
+                      <span className={`badge ${c.ok ? 'DELIVERED' : 'CANCELLED'}`}>{c.ok ? 'Connected' : 'Set up'}</span>
+                      {c.anchor && isOps && <Link to={`/bluedart#${c.anchor}`} onClick={(e) => e.stopPropagation()} style={{ fontSize: 11 }}>API settings</Link>}
+                    </div>
+                  </div>
                 );
               })}
             </div>
@@ -172,6 +191,12 @@ export function ShippingHub() {
         <div className="card">
           <div className="row" style={{ gap: 8, marginBottom: 10, alignItems: 'center' }}>
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search AWB / consignee / waybill…" style={{ flex: 1, minWidth: 200 }} />
+            {carrierFilter && (
+              <span className="badge" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                {carrierFilter.name}
+                <button className="secondary" onClick={() => setCarrierFilter(null)} title="Clear carrier filter" style={{ padding: '0 6px', minHeight: 0, lineHeight: '16px' }}>×</button>
+              </span>
+            )}
             <span className="muted" style={{ fontSize: 12 }}>{filtered().length}</span>
           </div>
           <div style={{ display: 'grid', gap: 8 }}>

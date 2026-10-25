@@ -1,9 +1,16 @@
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { api } from '../api';
 
 /** BlueDart integration — connectivity check + read-only probes (serviceability, tracking).
  *  Credentials live in the droplet .env (BLUEDART_*); this page only verifies they work. */
 export function BlueDart() {
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (!hash) return;
+    const t = setTimeout(() => document.getElementById(hash.slice(1))?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
+    return () => clearTimeout(t);
+  }, [hash]);
   const [status, setStatus] = useState<{ configured: boolean; [k: string]: any } | null>(null);
   const [err, setErr] = useState('');
   const [tokenMsg, setTokenMsg] = useState('');
@@ -79,7 +86,7 @@ export function BlueDart() {
       <h1>🚚 Carrier integrations</h1>
       <p className="muted" style={{ marginTop: -14 }}>Connectivity checks for the carrier APIs. Credentials are set on the server (<code>.env</code>), never here.</p>
       {err && <div className="error">{err}</div>}
-      <h2 style={{ margin: '4px 0' }}>BlueDart</h2>
+      <h2 id="bluedart" style={{ margin: '4px 0' }}>BlueDart</h2>
 
       <div className="card">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
@@ -175,7 +182,7 @@ export function BlueDart() {
         </div>
       </div>
 
-      <h2 style={{ margin: '18px 0 4px' }}>Gati (Allcargo)</h2>
+      <h2 id="gati" style={{ margin: '18px 0 4px' }}>Gati (Allcargo)</h2>
       <div className="card">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ margin: 0 }}>Configuration</h2>
@@ -193,7 +200,7 @@ export function BlueDart() {
         )}
       </div>
 
-      <h2 style={{ margin: '18px 0 4px' }}>XpressBees</h2>
+      <h2 id="xpressbees" style={{ margin: '18px 0 4px' }}>XpressBees</h2>
       <div className="card">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ margin: 0 }}>Configuration</h2>
@@ -226,7 +233,7 @@ XB_DEFAULT_CATEGORY=…    # e.g. Garments / Auto Parts (used when content doesn
         )}
       </div>
 
-      <h2 style={{ margin: '18px 0 4px' }}>Delhivery</h2>
+      <h2 id="delhivery" style={{ margin: '18px 0 4px' }}>Delhivery</h2>
       {err && <div className="error">{err}</div>}
       <div className="card">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>

@@ -1119,7 +1119,7 @@ export class ShipmentsService {
 
   /** Recent shipments, optionally scoped to a single client, with light rollup. */
   /** Xpresion-style AWB Entry List rows (flat, filter/grid-friendly). */
-  async awbList(clientId: bigint | undefined, limit: number, search?: string, from?: string, to?: string, scope?: bigint[] | null, ewbPending?: boolean) {
+  async awbList(clientId: bigint | undefined, limit: number, search?: string, from?: string, to?: string, scope?: bigint[] | null, ewbPending?: boolean, vendors?: string[]) {
     const s = (search ?? '').trim();
     // A search matches ACROSS ALL shipments (not just the latest page) so any AWB is findable —
     // by our AWB, the carrier's forwarding/BlueDart waybill, the customer reference, or consignee.
@@ -1142,9 +1142,16 @@ export class ShipmentsService {
     if (gte || lte) where.createdAt = { ...(gte ? { gte } : {}), ...(lte ? { lte } : {}) };
     // CS worklist: ≥ ₹50k consignments still missing their e-way bill number (AND — `where.OR` is the search).
     if (ewbPending) where.AND = [EWB_PENDING_WHERE];
+    // Carrier filter (Shipping Hub tile → that carrier's shipments). vendor codes, case-insensitive; SELF = none.
+    if (vendors?.length) {
+      const v = vendors.map((x) => x.trim()).filter(Boolean);
+      const or: any[] = v.filter((x) => x.toUpperCase() !== 'SELF').map((x) => ({ vendor: { equals: x, mode: 'insensitive' } }));
+      if (v.some((x) => x.toUpperCase() === 'SELF')) or.push({ vendor: null }, { vendor: { equals: 'SELF', mode: 'insensitive' } });
+      where.AND = [...(where.AND ?? []), { OR: or }];
+    }
     // When the caller filters (by date, search or EWB-pending) we're pulling a bounded, intentional set,
     // so lift the default 300/500 cap; otherwise keep it small for the default "latest" view.
-    const filtered = !!(s || gte || lte || ewbPending);
+    const filtered = !!(s || gte || lte || ewbPending || vendors?.length);
     const take = Math.min(limit || (filtered ? 10000 : 300), filtered ? 20000 : 500);
     const shipments = await this.prisma.shipment.findMany({
       where,
