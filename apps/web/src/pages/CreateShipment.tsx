@@ -174,7 +174,7 @@ export function CreateShipment() {
     if (!clientId || !product || !destPin) return;
     setRcBusy(true); setRateCompare(null);
     try {
-      const totalDead = pieces.reduce((s, p) => s + (Number(p.deadKg) || 0) * pcOf(p), 0) || 0.5;
+      const totalDead = pieces.reduce((s, p) => s + (Number(p.deadKg) || 0), 0) || 0.5; // row kg = that row's TOTAL
       const body = { clientId, product, originPincode: originPin || undefined, destPincode: destPin, deadKg: totalDead, pcs: pieces.reduce((s, p) => s + pcOf(p), 0), declaredValue: Number(svc.shipmentValue) || undefined };
       const [r, sg] = await Promise.all([api.carrierRates(body), api.carrierSuggest({ ...body, air: /AIR/i.test(String(serviceMode)) }).catch(() => null)]);
       const info: Record<string, { serviceable: boolean | null; tatDays: number | null; tatSource: string | null }> = {};
@@ -473,10 +473,11 @@ export function CreateShipment() {
         isDod,
         dodInstrument: isDod ? dodInstrument : undefined,
         dodAmount: isDod && dodAmount ? +dodAmount : undefined,
-        // Expand each row into its Pcs identical boxes (same weight + dims).
+        // Expand each row into its Pcs identical boxes; the row's kg is the TOTAL for those boxes, split evenly
+        // (it used to be taken as per-box and multiplied by Pcs — 2 boxes × "25 kg" went to BlueDart as 50 kg).
         pieces: pieces.flatMap((p) => {
           const box = {
-            deadKg: +p.deadKg,
+            deadKg: +((+p.deadKg || 0) / pcOf(p)).toFixed(3),
             lengthCm: p.lengthCm ? +p.lengthCm : undefined,
             widthCm: p.widthCm ? +p.widthCm : undefined,
             heightCm: p.heightCm ? +p.heightCm : undefined,
@@ -522,7 +523,7 @@ export function CreateShipment() {
   const volLabel = volCfg.cft > 0 ? `÷${volCfg.divisor}×${volCfg.cft} CFT` : `÷${volCfg.divisor}`;
 
   const totalPcs = pieces.reduce((s, p) => s + pcOf(p), 0); // a row can stand for several identical boxes
-  const totalDead = pieces.reduce((s, p) => s + (+p.deadKg || 0) * pcOf(p), 0);
+  const totalDead = pieces.reduce((s, p) => s + (+p.deadKg || 0), 0); // row kg = that row's TOTAL
   const totalVol = pieces.reduce((s, p) => s + boxVol(p) * pcOf(p), 0);
   // Charge weight auto-calculates from the boxes (max of actual dead vs volumetric); editable to override.
   useEffect(() => {
@@ -1069,10 +1070,10 @@ export function CreateShipment() {
 
       <div className="card">
         <h2>Boxes ({totalPcs}) — each becomes a child label</h2>
-        <p className="muted" style={{ marginTop: -8, fontSize: 12.5 }}>One row per box size. If several boxes are the <strong>same size and weight</strong>, set <strong>Pcs</strong> and one row books them all.</p>
+        <p className="muted" style={{ marginTop: -8, fontSize: 12.5 }}>One row per box size. If several boxes are the <strong>same size</strong>, set <strong>Pcs</strong> and one row books them all — enter the <strong>total weight of those boxes</strong>; it's split evenly across them.</p>
         <table>
           <thead>
-            <tr><th>#</th><th>Pcs</th><th>Actual (dead) kg</th><th>L (cm)</th><th>W (cm)</th><th>H (cm)</th><th>Vol kg ({volLabel})</th><th></th></tr>
+            <tr><th>#</th><th>Pcs</th><th>Total actual kg (all Pcs)</th><th>L (cm)</th><th>W (cm)</th><th>H (cm)</th><th>Vol kg ({volLabel})</th><th></th></tr>
           </thead>
           <tbody>
             {pieces.map((p, i) => (
