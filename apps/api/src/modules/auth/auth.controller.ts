@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
 import { IsEmail, IsString, MinLength } from 'class-validator';
 import { AuthService } from './auth.service';
+import { clientIp } from './login-guard';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 
 class LoginDto {
@@ -26,14 +27,14 @@ export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Post('login')
-  login(@Body() dto: LoginDto) {
-    return this.auth.login(dto.email, dto.password);
+  login(@Body() dto: LoginDto, @Req() req: any) {
+    return this.auth.login(dto.email, dto.password, clientIp(req));
   }
 
   /** Field-rider login for the mobile app: Rider ID + PIN. */
   @Post('rider-login')
-  riderLogin(@Body() dto: RiderLoginDto) {
-    return this.auth.riderLogin(dto.riderCode, dto.pin);
+  riderLogin(@Body() dto: RiderLoginDto, @Req() req: any) {
+    return this.auth.riderLogin(dto.riderCode, dto.pin, clientIp(req));
   }
 
   /** Live profile of the logged-in user — the client refreshes access on load, no re-login needed. */

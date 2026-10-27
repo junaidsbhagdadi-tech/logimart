@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { UserRole } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
+import { LoginGuard } from './login-guard';
 
 @Injectable()
 export class AuthService {
@@ -11,24 +12,31 @@ export class AuthService {
     private readonly jwt: JwtService,
   ) {}
 
-  async login(email: string, password: string) {
+  async login(email: string, password: string, ip = 'unknown') {
+    const key = `email:${String(email || '').trim().toLowerCase()}`;
+    LoginGuard.assertAllowed(key, ip);
     const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user || !user.isActive) throw new UnauthorizedException('Invalid credentials');
-
-    const ok = await bcrypt.compare(password, user.passwordHash);
-    if (!ok) throw new UnauthorizedException('Invalid credentials');
+    const ok = !!user && user.isActive && (await bcrypt.compare(password, user.passwordHash));
+    if (!ok || !user) {
+      LoginGuard.failed(key, ip);
+      throw new UnauthorizedException('Invalid credentials');
+    }
+    LoginGuard.succeeded(key);
     return this.issue(user);
   }
 
   /** Mobile-app login for field riders: Rider ID (e.g. RID001) + numeric PIN. */
-  async riderLogin(riderCode: string, pin: string) {
+  async riderLogin(riderCode: string, pin: string, ip = 'unknown') {
     const code = (riderCode || '').trim().toUpperCase();
+    const key = `rider:${code}`;
+    LoginGuard.assertAllowed(key, ip);
     const user = await this.prisma.user.findUnique({ where: { riderCode: code } });
-    if (!user || !user.isActive || user.role !== 'DRIVER' || !user.pinHash) {
+    const ok = !!user && user.isActive && user.role === 'DRIVER' && !!user.pinHash && (await bcrypt.compare(pin, user.pinHash));
+    if (!ok || !user) {
+      LoginGuard.failed(key, ip);
       throw new UnauthorizedException('Invalid Rider ID or PIN');
     }
-    const ok = await bcrypt.compare(pin, user.pinHash);
-    if (!ok) throw new UnauthorizedException('Invalid Rider ID or PIN');
+    LoginGuard.succeeded(key);
     return this.issue(user);
   }
 
