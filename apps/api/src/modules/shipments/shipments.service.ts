@@ -984,9 +984,37 @@ export class ShipmentsService {
     return { date: d, rows: rows.map((r) => ({ ...r, customerCode: r.client?.accountCode, customerName: r.client?.legalName })) };
   }
 
+  /** Attach a document (invoice copy etc.) to a shipment from the app — a data URL (image / PDF). Same store as
+   *  the web's AWB Attachments; Delhivery's hand-off sends the latest invoice copy from here. A refused hand-off
+   *  is re-queued so the carrier is retried with it. */
+  async attachDocument(awbRaw: string, dto: { dataUrl?: string; docType?: string; label?: string }, userId?: bigint) {
+    const awb = String(awbRaw || '').trim().toUpperCase();
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, bdError: true, forwardingAwb: true, bdWaybill: true } });
+    if (!s) throw new NotFoundException(`AWB ${awb} not found`);
+    const m = String(dto?.dataUrl || '').match(/^data:([a-z0-9.+/-]+);base64,(.+)$/i);
+    if (!m) throw new BadRequestException('Attach a photo or PDF.');
+    const mimeType = m[1].toLowerCase() === 'image/jpg' ? 'image/jpeg' : m[1].toLowerCase();
+    if (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(mimeType)) throw new BadRequestException(`Unsupported file type ${mimeType} — PDF or photo only.`);
+    const data = Buffer.from(m[2], 'base64');
+    if (data.length > 12 * 1024 * 1024) throw new BadRequestException('File too large (max 12 MB).');
+    const up = await this.prisma.upload.create({ data: { kind: 'document', mimeType, sizeBytes: data.length, data }, select: { id: true } });
+    const doc = await this.prisma.document.create({
+      data: { entityType: 'shipment', entityId: s.id, docType: dto.docType || 'invoice', label: dto.label || 'Invoice copy', uploadId: up.id, createdById: userId ?? null },
+      select: { id: true, docType: true, label: true },
+    });
+    if (s.bdError && !s.forwardingAwb && !s.bdWaybill) await this.prisma.shipment.update({ where: { id: s.id }, data: { bdDispatchAt: null } });
+    return { awb, document: { ...doc, id: String(doc.id) } };
+  }
+
   /** A rider may edit / cancel only their own booking, still Booked (MAN). A carrier AWB the rider TYPED
    *  (DS Cargo, other manual carriers) can still be corrected; one an integration generated (BlueDart,
    *  Delhivery, XpressBees, Gati, V Express, AR) has to be cancelled with that carrier by CS first. */
+  async assertRiderOwns(awbRaw: string, userId: bigint) {
+    const s = await this.prisma.shipment.findUnique({ where: { awb: String(awbRaw || '').trim().toUpperCase() }, select: { createdById: true } });
+    if (!s) throw new NotFoundException(`AWB ${awbRaw} not found`);
+    if (s.createdById !== userId) throw new ForbiddenException('You can only attach documents to shipments you booked.');
+  }
+
   async assertRiderCanEdit(awbRaw: string, userId: bigint) {
     const awb = String(awbRaw || '').trim().toUpperCase();
     const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { createdById: true, statusCode: true, bdWaybill: true, forwardingAwb: true, vendor: true } });

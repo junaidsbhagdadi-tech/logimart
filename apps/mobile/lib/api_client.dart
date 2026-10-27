@@ -203,6 +203,10 @@ class ApiClient {
   Future<Map<String, dynamic>> handoffCarrier(String awb) async =>
       await post('/api/v1/carriers/handoff/$awb') as Map<String, dynamic>;
 
+  /// Attach a document to an AWB (invoice copy — Delhivery needs it). [dataUrl] = data:<mime>;base64,…
+  Future<void> attachDocument(String awb, String dataUrl, {String docType = 'invoice', String label = 'Invoice copy'}) =>
+      post('/api/v1/shipments/$awb/attachments', {'dataUrl': dataUrl, 'docType': docType, 'label': label});
+
   /// Cancel a booking (riders: own bookings only, before pickup / carrier hand-off).
   Future<void> cancelShipment(String awb, String reason) => post('/api/v1/shipments/$awb/cancel', {'reason': reason});
 

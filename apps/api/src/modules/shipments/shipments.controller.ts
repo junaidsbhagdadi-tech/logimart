@@ -373,6 +373,14 @@ export class ShipmentsController {
     return this.shipments.setForwarding(awb, dto);
   }
 
+  /** Attach an invoice copy / document to an AWB (app: photo or PDF as a data URL). A rider: own bookings only. */
+  @Post(':awb/attachments')
+  @Roles(UserRole.WAREHOUSE_HANDLER, UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN, UserRole.DRIVER)
+  async attach(@Param('awb') awb: string, @Body() dto: { dataUrl?: string; docType?: string; label?: string }, @Req() req: any) {
+    if (req.user?.role === UserRole.DRIVER) await this.shipments.assertRiderOwns(awb, BigInt(req.user.sub));
+    return this.shipments.attachDocument(awb, dto, req.user?.sub ? BigInt(req.user.sub) : undefined);
+  }
+
   /** Edit an AWB after creation (product / consignee / vendor / values …). Blocked once invoiced. */
   @Post(':awb/edit')
   @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN, UserRole.DRIVER)

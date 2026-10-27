@@ -83,6 +83,24 @@ class _BookingSummaryState extends State<BookingSummary> {
     });
   }
 
+  /// Attach the customer's invoice copy (Delhivery refuses the hand-off without it), then retry the hand-off.
+  Future<void> _attachInvoice() async {
+    final dataUrl = await pickDocumentPhotoDataUrl(context);
+    if (dataUrl == null || !mounted) return;
+    await _run(() async {
+      await ApiClient.instance.attachDocument(widget.awb, dataUrl);
+      if (!mounted) return;
+      if (_carrier != 'SELF' && _carrier != 'OTHER' && _carrierAwb == null) {
+        toast(context, 'Invoice attached — handing to the carrier…');
+        final r = await ApiClient.instance.handoffCarrier(widget.awb);
+        await _load();
+        if (mounted) toast(context, '${r['message'] ?? (_carrierAwb != null ? 'Carrier AWB $_carrierAwb generated.' : 'Sent to the carrier.')}');
+      } else {
+        toast(context, 'Invoice copy attached.');
+      }
+    });
+  }
+
   Future<void> _cancel() async {
     final reason = TextEditingController(text: 'Booked by mistake');
     final ok = await showDialog<bool>(
@@ -154,8 +172,8 @@ class _BookingSummaryState extends State<BookingSummary> {
             color: const Color(0xFFDCFCE7),
             child: ListTile(
               leading: const Icon(Icons.check_circle, color: Color(0xFF16A34A)),
-              title: Text('Booked — ${widget.awb}', style: const TextStyle(fontWeight: FontWeight.w800)),
-              subtitle: const Text('Check the details. Use Edit if anything is wrong.'),
+              title: Text('Booked — ${widget.awb}', style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF14532D))),
+              subtitle: const Text('Check the details. Use Edit if anything is wrong.', style: TextStyle(color: Color(0xFF166534))),
             ),
           ),
         Row(children: [
@@ -206,6 +224,13 @@ class _BookingSummaryState extends State<BookingSummary> {
             style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
           ),
         ],
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: _busy ? null : _attachInvoice,
+          icon: const Icon(Icons.attach_file),
+          label: const Text('Attach invoice copy'),
+          style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+        ),
         const SectionLabel('Print'),
         Wrap(spacing: 8, runSpacing: 8, children: [
           OutlinedButton.icon(

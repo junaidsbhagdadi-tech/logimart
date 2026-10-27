@@ -215,6 +215,24 @@ Future<String?> takePhotoDataUrl() async {
   return 'data:image/jpeg;base64,${base64Encode(bytes)}';
 }
 
+/// Photo of a document — camera or gallery — as a JPEG data URL (sharper than a POD photo so text stays readable).
+Future<String?> pickDocumentPhotoDataUrl(BuildContext context) async {
+  final src = await showModalBottomSheet<ImageSource>(
+    context: context,
+    builder: (ctx) => SafeArea(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        ListTile(leading: const Icon(Icons.photo_camera_outlined), title: const Text('Take a photo'), onTap: () => Navigator.pop(ctx, ImageSource.camera)),
+        ListTile(leading: const Icon(Icons.photo_library_outlined), title: const Text('Choose from gallery'), onTap: () => Navigator.pop(ctx, ImageSource.gallery)),
+      ]),
+    ),
+  );
+  if (src == null) return null;
+  final x = await ImagePicker().pickImage(source: src, maxWidth: 2200, maxHeight: 2200, imageQuality: 75);
+  if (x == null) return null;
+  final bytes = await x.readAsBytes();
+  return 'data:image/jpeg;base64,${base64Encode(bytes)}';
+}
+
 Future<void> callPhone(String phone) async {
   final uri = Uri(scheme: 'tel', path: phone.replaceAll(RegExp(r'[^0-9+]'), ''));
   await launchUrl(uri);
