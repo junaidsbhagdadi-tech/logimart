@@ -139,6 +139,15 @@ export class GatiService implements OnModuleInit {
     const goodsCode = GOODS.find(([re]) => re.test(String(s.goodsDesc || '')))?.[1] || G.goodsDefault;
     if (!goodsCode) throw new BadRequestException('Gati needs a goods code — put the content on the AWB (e.g. "garments", "auto parts") or set GATI_DEFAULT_GOODS_CODE.');
 
+    // Allcargo step 1 — pincode validation, before a docket is spent. Only a clear "no service" blocks;
+    // if the service itself errors (token/timeout) the hand-off continues and Gati's own post decides.
+    if (G.pinReqId) {
+      const pr: any = await this.pincode(String(s.destPincode)).catch(() => null);
+      if (pr && String(pr.result).toLowerCase().startsWith('succes') && Array.isArray(pr.serviceDtls) && !pr.serviceDtls.length) {
+        throw new BadRequestException(`Gati does not serve consignee pincode ${s.destPincode} — choose another carrier.`);
+      }
+    }
+
     const vendorCode = await this.ensureVendor(s);
     const pieces = s.pieces.length ? s.pieces : [{ deadKg: s.totalDeadKg || 1 }];
 
