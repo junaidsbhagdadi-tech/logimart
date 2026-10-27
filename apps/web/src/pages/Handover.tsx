@@ -141,12 +141,13 @@ export function HandoverPrint() {
         <div><b>Shipments:</b> {rows.length} · <b>Pieces:</b> {pcs} · <b>Weight:</b> {kg.toFixed(2)} kg</div>
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead><tr>{['#', 'AWB', 'Forwarding no', 'Customer', 'Consignee', 'Destination', 'Pcs', 'Weight (kg)'].map((h) => <th key={h} style={{ ...cell, background: '#eee', textAlign: 'left' }}>{h}</th>)}</tr></thead>
+        <thead><tr>{['#', 'AWB', 'Forwarding no', 'Customer code', 'Consignee', 'Destination', 'Pcs', 'Weight (kg)'].map((h) => <th key={h} style={{ ...cell, background: '#eee', textAlign: 'left' }}>{h}</th>)}</tr></thead>
         <tbody>
           {rows.map((r, i) => (
             <tr key={r.awb}>
               <td style={cell}>{i + 1}</td><td style={{ ...cell, fontFamily: 'monospace' }}>{r.awb}</td><td style={{ ...cell, fontFamily: 'monospace' }}>{r.forwardingAwb || ''}</td>
-              <td style={cell}>{r.customerCode} — {r.customerName}</td><td style={cell}>{r.consigneeName}</td>
+              {/* The carrier signs this sheet — our customer's CODE only, never their name. */}
+              <td style={cell}>{r.customerCode}</td><td style={cell}>{r.consigneeName}</td>
               <td style={cell}>{r.destination}{r.destPincode ? ` ${r.destPincode}` : ''}</td>
               <td style={{ ...cell, textAlign: 'right' }}>{r.pieces}</td><td style={{ ...cell, textAlign: 'right' }}>{Number(r.actualWeight || 0).toFixed(2)}</td>
             </tr>
