@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { deriveStatusFromBd } from '../bluedart/bd-status';
+import { cityName } from '../../common/place-name';
 
 /**
  * Gati / Allcargo Logistics B2B API (doc "Allcargo Logistics Ltd-api-json"). Env (droplet .env):
@@ -103,15 +104,15 @@ export class GatiService implements OnModuleInit {
     let h = 0; for (const ch of `${c.accountCode}|${address.toUpperCase().replace(/[^A-Z0-9]/g, '')}`) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
     const code = `${pin}${String(h % 1e9).padStart(9, '0')}`; // numeric, 15 digits
     if (await this.prisma.gatiVendor.findUnique({ where: { code } })) return code;
-    const pc = await this.prisma.pincode.findUnique({ where: { pincode: pin }, select: { city: true } }).catch(() => null);
+    const pc = { city: await cityName(this.prisma, pin, s.shipperCity, c.city) };
     const r = await this.call('GKEJCustVendDtls.jsp', {
       method: 'POST',
       body: JSON.stringify({
         custCode: G.cust,
         details: [{
           custVendorCode: code, custVendorName: cut(s.shipperName || c.legalName, 50),
-          vendorAdd1: cut(address.slice(0, 50), 50), vendorAdd2: cut(address.slice(50, 100) || (s.shipperCity || c.city || pc?.city || '.'), 50), vendorAdd3: cut(address.slice(100, 150), 50),
-          vendorCity: cut(s.shipperCity || c.city || pc?.city, 20), vendorPhoneNo: phone, vendorPincode: pin, vendorEmail: cut(String(c.contactEmail || '').split(/[,;]/)[0], 50),
+          vendorAdd1: cut(address.slice(0, 50), 50), vendorAdd2: cut(address.slice(50, 100) || pc.city || '.', 50), vendorAdd3: cut(address.slice(100, 150), 50),
+          vendorCity: cut(pc.city, 20), vendorPhoneNo: phone, vendorPincode: pin, vendorEmail: cut(String(c.contactEmail || '').split(/[,;]/)[0], 50),
           vendorReceiverFlag: 'V', vendorTinno: c.gstin || 'NA', VendorGSTNO: s.consignorGstin || c.gstin || 'NA',
         }],
       }),
@@ -148,6 +149,7 @@ export class GatiService implements OnModuleInit {
       }
     }
 
+    const recvCity = await cityName(this.prisma, String(s.destPincode), s.consigneeCity);
     const vendorCode = await this.ensureVendor(s);
     const pieces = s.pieces.length ? s.pieces : [{ deadKg: s.totalDeadKg || 1 }];
 
@@ -171,9 +173,9 @@ export class GatiService implements OnModuleInit {
         shipperCode: G.cust, orderNo: cut(s.custInvoiceNo || s.referenceNo || s.awb, 20),
         ...(dod ? { codAmt: Number(s.dodAmount).toFixed(2), codInFavourOf: 'S' } : { codAmt: '0' }),
         receiverCode: '99999', receiverName: cut(s.consigneeName, 50),
-        receiverAdd1: cut(recvAddr.slice(0, 50), 50), receiverAdd2: cut(recvAddr.slice(50, 100) || s.consigneeCity, 50),
+        receiverAdd1: cut(recvAddr.slice(0, 50), 50), receiverAdd2: cut(recvAddr.slice(50, 100) || recvCity, 50),
         receiverAdd3: cut(recvAddr.slice(100, 150), 50), receiverAdd4: cut(recvAddr.slice(150, 200), 50),
-        receiverCity: cut(s.consigneeCity, 20), receiverPhoneNo: recvPhone, receiverMobileNo: recvPhone,
+        receiverCity: cut(recvCity, 20), receiverPhoneNo: recvPhone, receiverMobileNo: recvPhone,
         receiverEmail: 'na@na.com', receiverPinCode: String(s.destPincode),
         noOfPkgs: String(pieces.length), fromPkgNo: String(pkgNos[0]), toPkgNo: String(pkgNos[pkgNos.length - 1]),
         pkgDetails: { pkginfo: pieces.map((pc: any, i: number) => ({ pkgNo: pkgNos[i], pkgLn: Number(pc.lengthCm || 1), pkgBr: Number(pc.widthCm || 1), pkgHt: Number(pc.heightCm || 1), pkgWt: Number(pc.deadKg || 0.5) })) },

@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { deriveStatusFromBd } from '../bluedart/bd-status';
+import { cityName } from '../../common/place-name';
 
 /**
  * V Express (Vijayant "ShipX" platform) — Velocia account 223882, from their Postman collection.
@@ -89,11 +90,11 @@ export class VExpressService implements OnModuleInit {
         consignor_company_id: '', consignor_company_name: cut(s.shipperName || c.legalName, 100), consignor_company_code: V.shipper,
         consignor_facility_name: '', consignor_facility_code: '',
         consignor_address_line1: cut(s.shipperAddress1 || c.addressLine, 150), consignor_address_line2: cut(s.shipperAddress2, 150),
-        consignor_city: cut(s.shipperCity || c.city || P(pin)?.city, 50), consignor_state: cut(s.shipperState || c.state || P(pin)?.state, 50),
+        consignor_city: cut(await cityName(this.prisma, pin, s.shipperCity, c.city, P(pin)?.city), 50), consignor_state: cut(s.shipperState || c.state || P(pin)?.state, 50),
         consignor_pin: pin, consignor_contact_name: cut(s.shipperContact || c.contactName || s.shipperName, 60), consignor_phone: shipPhone,
         consignee_company_id: '', consignee_company_name: cut(s.consigneeName, 100), consignee_company_code: '', consignee_facility_name: '', consignee_facility_code: '',
         consignee_address_line1: cut(s.consigneeAddress, 150), consignee_address_line2: '',
-        consignee_city: cut(s.consigneeCity || P(String(s.destPincode))?.city, 50), consignee_state: cut(s.consigneeState || P(String(s.destPincode))?.state, 50),
+        consignee_city: cut(await cityName(this.prisma, String(s.destPincode), s.consigneeCity, P(String(s.destPincode))?.city), 50), consignee_state: cut(s.consigneeState || P(String(s.destPincode))?.state, 50),
         consignee_pin: String(s.destPincode), consignee_contact_name: cut(s.consigneeName, 60), consignee_phone: consPhone,
         reference_number_1: String(s.awb), reference_number_2: cut(s.referenceNo || s.custInvoiceNo, 50),
         service_option: V.service, truck_category: '', service_provider_company_code: 'VX', vehicle_number: '', driver_name: '', driver_mobile_number: '',

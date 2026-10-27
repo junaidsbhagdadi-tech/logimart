@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { cityName } from '../../common/place-name';
 import { deriveStatusFromBd } from '../bluedart/bd-status';
 
 /**
@@ -61,9 +62,9 @@ export class ArlService implements OnModuleInit {
     if (!s) throw new BadRequestException(`AWB ${awb} not found`);
     if (s.forwardingAwb) throw new BadRequestException(`${awb} already has a carrier AWB (${s.forwardingAwb}).`);
     const pins = await this.prisma.pincode.findMany({ where: { pincode: { in: [String(s.shipperPincode || ''), String(s.destPincode || '')] } }, select: { pincode: true, city: true } }).catch(() => [] as any[]);
-    const city = (pin: string, fallback?: string | null) => String(fallback || pins.find((x: any) => x.pincode === pin)?.city || '').toUpperCase().trim();
-    const origin = city(String(s.shipperPincode || ''), s.shipperCity);
-    const dest = city(String(s.destPincode || ''), s.consigneeCity);
+    const city = async (pin: string, typed?: string | null) => (await cityName(this.prisma, pin, typed, pins.find((x: any) => x.pincode === pin)?.city)).toUpperCase().trim();
+    const origin = await city(String(s.shipperPincode || ''), s.shipperCity);
+    const dest = await city(String(s.destPincode || ''), s.consigneeCity);
     if (!origin || !dest || !s.consigneeName) throw new BadRequestException('AR Logistics needs origin city, destination city and consignee name on the AWB.');
     const volKg = (s.pieces ?? []).reduce((a: number, p: any) => a + Number(p.volKg || 0), 0);
     const r = await this.fetchJson(A.book, {

@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/c
 import { PrismaService } from '../../prisma/prisma.service';
 import { deriveStatusFromBd } from '../bluedart/bd-status';
 import { XB, xbConfigured, xbTrackConfigured } from './xpressbees.config';
+import { cityName } from '../../common/place-name';
 
 /**
  * XpressBees B2B cargo API (docs: Push Preship Cargo Manifest v1.2.1, Generate Bulk AWB, Global
@@ -174,15 +175,17 @@ export class XpressBeesService implements OnModuleInit {
 
     const toPay = String(s.paymentTerm).toUpperCase() === 'TO_PAY';
     const c = s.client ?? {};
+    const shipCity = await cityName(this.prisma, String(s.shipperPincode || c.pincode || ''), s.shipperCity, c.city);
+    const consCity = await cityName(this.prisma, String(s.destPincode || ''), s.consigneeCity);
     const shipper = {
       CompanyName: alnum(s.shipperName || c.legalName, 50), SPOCPersonName: alpha(s.shipperContact || c.contactName || s.shipperName || c.legalName, 100) || 'Shipper',
       Address: String([s.shipperAddress1, s.shipperAddress2].filter(Boolean).join(', ') || c.addressLine || '').slice(0, 250),
-      State: String(s.shipperState || c.state || '').slice(0, 50), City: String(s.shipperCity || c.city || '').slice(0, 50),
+      State: String(s.shipperState || c.state || '').slice(0, 50), City: shipCity.slice(0, 50),
       Pincode: Number(s.shipperPincode || c.pincode || 0), MobileNo: mobile(c.contactPhone || s.shipperContact), EmailID: String(c.contactEmail || '').split(/[,;]/)[0].trim(), TINNo: '',
     };
     const consignee = {
       CompanyName: alnum(s.consigneeName, 50) || 'Consignee', SPOCPersonName: alpha(s.consigneeName, 100) || 'Consignee',
-      Address: String(s.consigneeAddress || '').slice(0, 250), State: String(s.consigneeState || '').slice(0, 50), City: String(s.consigneeCity || '').slice(0, 50),
+      Address: String(s.consigneeAddress || '').slice(0, 250), State: String(s.consigneeState || '').slice(0, 50), City: consCity.slice(0, 50),
       Pincode: Number(s.destPincode || 0), MobileNo: mobile(s.consigneePhone), EmailID: '', TINNo: '',
     };
     const missing = [

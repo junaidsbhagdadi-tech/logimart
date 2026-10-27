@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { DELHIVERY, DelAccount, delAccountFor, delAccounts, delConfigured } from './delhivery.config';
 import { deriveStatusFromBd } from '../bluedart/bd-status';
+import { cityName } from '../../common/place-name';
 
 /** Delhivery's /manifest form fields are parsed as PYTHON literals (their sample: `"master": False`) —
  *  JSON's true/false/null makes the field invalid ("value is not a valid list"). Serialise accordingly. */
@@ -212,7 +213,7 @@ export class DelhiveryService implements OnModuleInit {
     fd.append('cod_amount', '0');
     fd.append('weight', String(weightG));
     fd.append('dropoff_location', pyLit({
-      consignee_name: s.consigneeName ?? '', address: s.consigneeAddress ?? '', city: s.consigneeCity ?? '',
+      consignee_name: s.consigneeName ?? '', address: s.consigneeAddress ?? '', city: await cityName(this.prisma, String(s.destPincode ?? ''), s.consigneeCity),
       state: s.consigneeState ?? '', zip: s.destPincode ?? '', phone: s.consigneePhone ?? '', email: '',
     }));
     fd.append('rov_insurance', invAmt > 50000 ? 'True' : 'False');
@@ -308,7 +309,7 @@ export class DelhiveryService implements OnModuleInit {
     if (await this.prisma.delWarehouse.findUnique({ where: { name } })) return name;
 
     const pc = await this.prisma.pincode.findUnique({ where: { pincode: pin }, select: { city: true, state: true } }).catch(() => null);
-    const city = String(s.shipperCity || c.city || pc?.city || '').trim();
+    const city = (await cityName(this.prisma, pin, s.shipperCity, c.city, pc?.city)).trim();
     const state = String(s.shipperState || c.state || pc?.state || '').trim();
     const days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
     const hours = (start: string, close: string) => Object.fromEntries(days.map((d) => [d, { start_time: start, close_time: close }]));
