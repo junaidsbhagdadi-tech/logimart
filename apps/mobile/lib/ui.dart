@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -215,19 +216,28 @@ Future<String?> takePhotoDataUrl() async {
   return 'data:image/jpeg;base64,${base64Encode(bytes)}';
 }
 
-/// Photo of a document — camera or gallery — as a JPEG data URL (sharper than a POD photo so text stays readable).
-Future<String?> pickDocumentPhotoDataUrl(BuildContext context) async {
-  final src = await showModalBottomSheet<ImageSource>(
+/// A document — camera photo, gallery photo, or a PDF (e.g. an invoice received on WhatsApp) — as a data URL.
+/// Photos are kept sharper than POD photos so the text stays readable. Max 12 MB (server limit).
+Future<String?> pickDocumentDataUrl(BuildContext context) async {
+  final src = await showModalBottomSheet<String>(
     context: context,
     builder: (ctx) => SafeArea(
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        ListTile(leading: const Icon(Icons.photo_camera_outlined), title: const Text('Take a photo'), onTap: () => Navigator.pop(ctx, ImageSource.camera)),
-        ListTile(leading: const Icon(Icons.photo_library_outlined), title: const Text('Choose from gallery'), onTap: () => Navigator.pop(ctx, ImageSource.gallery)),
+        ListTile(leading: const Icon(Icons.photo_camera_outlined), title: const Text('Take a photo'), onTap: () => Navigator.pop(ctx, 'camera')),
+        ListTile(leading: const Icon(Icons.photo_library_outlined), title: const Text('Choose from gallery'), onTap: () => Navigator.pop(ctx, 'gallery')),
+        ListTile(leading: const Icon(Icons.picture_as_pdf_outlined), title: const Text('Choose a PDF'), onTap: () => Navigator.pop(ctx, 'pdf')),
       ]),
     ),
   );
   if (src == null) return null;
-  final x = await ImagePicker().pickImage(source: src, maxWidth: 2200, maxHeight: 2200, imageQuality: 75);
+  if (src == 'pdf') {
+    final files = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['pdf']);
+    if (files.isEmpty) return null;
+    final bytes = await files.first.xFile.readAsBytes();
+    if (bytes.length > 12 * 1024 * 1024) throw Exception('PDF is too large (max 12 MB).');
+    return 'data:application/pdf;base64,${base64Encode(bytes)}';
+  }
+  final x = await ImagePicker().pickImage(source: src == 'camera' ? ImageSource.camera : ImageSource.gallery, maxWidth: 2200, maxHeight: 2200, imageQuality: 75);
   if (x == null) return null;
   final bytes = await x.readAsBytes();
   return 'data:image/jpeg;base64,${base64Encode(bytes)}';

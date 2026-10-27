@@ -85,10 +85,17 @@ class _BookingSummaryState extends State<BookingSummary> {
 
   /// Attach the customer's invoice copy (Delhivery refuses the hand-off without it), then retry the hand-off.
   Future<void> _attachInvoice() async {
-    final dataUrl = await pickDocumentPhotoDataUrl(context);
+    String? dataUrl;
+    try {
+      dataUrl = await pickDocumentDataUrl(context);
+    } catch (e) {
+      if (mounted) toast(context, '$e'.replaceFirst('Exception: ', ''), error: true);
+      return;
+    }
     if (dataUrl == null || !mounted) return;
+    final file = dataUrl;
     await _run(() async {
-      await ApiClient.instance.attachDocument(widget.awb, dataUrl);
+      await ApiClient.instance.attachDocument(widget.awb, file);
       if (!mounted) return;
       if (_carrier != 'SELF' && _carrier != 'OTHER' && _carrierAwb == null) {
         toast(context, 'Invoice attached — handing to the carrier…');

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../api_client.dart';
+import '../update_check.dart';
 import 'book_screen.dart';
 import 'deliveries_screen.dart';
 import 'pickups_screen.dart';
@@ -34,11 +35,22 @@ class _HomeShellState extends State<HomeShell> {
     _Tab('Scan', Icons.qr_code_scanner_outlined, Icons.qr_code_scanner, () => const ScanScreen()),
   ];
 
+  String _version = '';
+
+  @override
+  void initState() {
+    super.initState();
+    UpdateCheck.currentVersion().then((v) => mounted ? setState(() => _version = v) : null).catchError((_) {});
+    // Offer a newer APK once per launch (after the first frame, so the dialog has a Navigator).
+    WidgetsBinding.instance.addPostFrameCallback((_) => UpdateCheck.run(context));
+  }
+
   Future<void> _logout() async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Sign out?'),
+        content: Text('App version $_version'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Sign out')),
@@ -60,7 +72,10 @@ class _HomeShellState extends State<HomeShell> {
             Text('${me.fullName}${me.riderCode != null ? ' · ${me.riderCode}' : ''}',
                 style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
         ]),
-        actions: [IconButton(tooltip: 'Sign out', onPressed: _logout, icon: const Icon(Icons.logout))],
+        actions: [
+          IconButton(tooltip: 'Check for updates', onPressed: () => UpdateCheck.run(context, manual: true), icon: const Icon(Icons.system_update_alt)),
+          IconButton(tooltip: 'Sign out', onPressed: _logout, icon: const Icon(Icons.logout)),
+        ],
       ),
       body: IndexedStack(
         index: _i,
