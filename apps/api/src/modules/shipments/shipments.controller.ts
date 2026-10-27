@@ -256,8 +256,10 @@ export class ShipmentsController {
   /** Cancel/void a shipment — a client can cancel their own AWB before dispatch; a super admin can
    *  void a wrong AWB at any stage (excluded from billing, and cancelled with the carrier if handed off). */
   @Post(':awb/cancel')
-  @Roles(UserRole.CLIENT_ADMIN, UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
-  cancel(@Param('awb') awb: string, @Body() dto: { reason?: string }, @Req() req: any) {
+  @Roles(UserRole.CLIENT_ADMIN, UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN, UserRole.DRIVER)
+  async cancel(@Param('awb') awb: string, @Body() dto: { reason?: string }, @Req() req: any) {
+    // A rider (app) may cancel only their own booking, before pickup / carrier hand-off.
+    if (req.user?.role === UserRole.DRIVER) await this.shipments.assertRiderCanEdit(awb, BigInt(req.user.sub));
     const clientId = req.user.role === UserRole.CLIENT_ADMIN ? Number(req.user.clientId) : undefined;
     return this.shipments.cancel(awb, req.user.sub ? BigInt(req.user.sub) : undefined, clientId, dto?.reason, { isSuper: req.user?.role === UserRole.SYS_ADMIN });
   }
@@ -366,7 +368,8 @@ export class ShipmentsController {
    *  (incl. Customer Service staff) can do it too — an exceptional hand-off from the tracking screen. */
   @Post(':awb/forwarding')
   @Roles(UserRole.WAREHOUSE_HANDLER, UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN, UserRole.DRIVER)
-  setForwarding(@Param('awb') awb: string, @Body() dto: { vendor?: string; forwardingAwb?: string }) {
+  async setForwarding(@Param('awb') awb: string, @Body() dto: { vendor?: string; forwardingAwb?: string }, @Req() req: any) {
+    if (req.user?.role === UserRole.DRIVER) await this.shipments.assertRiderCanEdit(awb, BigInt(req.user.sub));
     return this.shipments.setForwarding(awb, dto);
   }
 

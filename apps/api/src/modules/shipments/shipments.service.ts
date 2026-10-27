@@ -941,7 +941,7 @@ export class ShipmentsService {
   async setForwarding(awb: string, dto: { vendor?: string; forwardingAwb?: string }) {
     const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, vendor: true } });
     if (!s) throw new NotFoundException(`AWB ${awb} not found`);
-    const forwardingAwb = dto.forwardingAwb ? String(dto.forwardingAwb).trim() : null;
+    const forwardingAwb = dto.forwardingAwb ? String(dto.forwardingAwb).replace(/\s+/g, '').toUpperCase() || null : null; // "DSE 122115" breaks tracking
     // A forwarding (carrier) AWB must carry a vendor — the vendor is what drives billing network/rates.
     // Recording just the carrier AWB with a blank vendor silently bills SELF rates. Require one here
     // (either supplied now or already on the shipment) so a missed vendor can't mis-price the invoice.
@@ -969,7 +969,10 @@ export class ShipmentsService {
   async myBookings(userId: bigint, date?: string) {
     const d = /^\d{4}-\d{2}-\d{2}$/.test(String(date || '')) ? String(date) : new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10);
     const rows = await this.prisma.shipment.findMany({
-      where: { createdById: userId, createdAt: { gte: new Date(`${d}T00:00:00+05:30`), lte: new Date(`${d}T23:59:59.999+05:30`) } },
+      where: {
+        createdById: userId, createdAt: { gte: new Date(`${d}T00:00:00+05:30`), lte: new Date(`${d}T23:59:59.999+05:30`) },
+        OR: [{ statusCode: null }, { statusCode: { not: 'CAN' } }], // cancelled bookings drop off the rider's list
+      },
       orderBy: { createdAt: 'desc' },
       take: 500,
       select: {
@@ -981,14 +984,17 @@ export class ShipmentsService {
     return { date: d, rows: rows.map((r) => ({ ...r, customerCode: r.client?.accountCode, customerName: r.client?.legalName })) };
   }
 
-  /** A rider may edit only their own booking, still Booked (MAN), not yet handed to a carrier. */
+  /** A rider may edit / cancel only their own booking, still Booked (MAN). A carrier AWB the rider TYPED
+   *  (DS Cargo, other manual carriers) can still be corrected; one an integration generated (BlueDart,
+   *  Delhivery, XpressBees, Gati, V Express, AR) has to be cancelled with that carrier by CS first. */
   async assertRiderCanEdit(awbRaw: string, userId: bigint) {
     const awb = String(awbRaw || '').trim().toUpperCase();
-    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { createdById: true, statusCode: true, bdWaybill: true, forwardingAwb: true } });
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { createdById: true, statusCode: true, bdWaybill: true, forwardingAwb: true, vendor: true } });
     if (!s) throw new NotFoundException(`AWB ${awb} not found`);
-    if (s.createdById !== userId) throw new ForbiddenException('You can only edit shipments you booked. Ask CS to correct this one.');
+    if (s.createdById !== userId) throw new ForbiddenException('You can only change shipments you booked. Ask CS to correct this one.');
     if (String(s.statusCode || 'MAN') !== 'MAN') throw new ConflictException('Already picked up — ask CS to correct it.');
-    if (s.bdWaybill || s.forwardingAwb) throw new ConflictException('Already handed to the carrier — ask CS to cancel the carrier AWB before editing.');
+    const apiCarrier = /^(BLUE|BDR)|^DLY|DELHIVERY|^XPB$|^XB$|XPRESS\s*BEES|^GATI$|ALLCARGO|^VXP$|^VX$|V\s*EXPRESS|^ARL$|AR\s*LOG/i.test(String(s.vendor || '').trim());
+    if (s.bdWaybill || (s.forwardingAwb && apiCarrier)) throw new ConflictException('Already handed to the carrier — ask CS to cancel the carrier AWB first.');
   }
 
   async editShipment(awbRaw: string, dto: any, opts?: { isSuper?: boolean }) {

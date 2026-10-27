@@ -10,7 +10,16 @@ import { CustomerMisService } from './customer-mis.service';
 export class ReportsController {
   constructor(private readonly svc: ReportsService, private readonly mis: CustomerMisService) {}
 
-  /** Customer MIS (CSV) for one customer — what tomorrow's 9 AM email will carry. */
+  /** Customer MIS (Excel) for one customer — what tomorrow's 9 AM email will carry. */
+  @Get('customer-mis/:clientId.xlsx')
+  @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN, UserRole.WAREHOUSE_HANDLER)
+  async misXlsx(@Param('clientId') clientId: string, @Res() res: any) {
+    const rows = await this.mis.rows(BigInt(clientId));
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="MIS_${clientId}.xlsx"`);
+    res.send(this.mis.xlsx(rows));
+  }
+
   @Get('customer-mis/:clientId.csv')
   @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN, UserRole.WAREHOUSE_HANDLER)
   async misCsv(@Param('clientId') clientId: string, @Res() res: any) {

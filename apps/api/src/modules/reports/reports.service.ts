@@ -111,7 +111,7 @@ export class ReportsService {
     const dateStr = new Date().toLocaleDateString('en-GB');
     const summary = { date: dateStr, bookedToday: booked, deliveredToday: delivered, piecesInTransit: inTransit, ndrOpen: ndr, revenueThisMonth: revenueMonth, outstandingReceivables: outstanding };
     const message = [
-      `Logimart daily digest — ${dateStr}`,
+      `ExcelEx Group daily digest — ${dateStr}`,
       `Booked today: ${booked}`,
       `Delivered today: ${delivered}`,
       `Pieces in transit: ${inTransit}`,

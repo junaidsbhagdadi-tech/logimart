@@ -203,6 +203,9 @@ class ApiClient {
   Future<Map<String, dynamic>> handoffCarrier(String awb) async =>
       await post('/api/v1/carriers/handoff/$awb') as Map<String, dynamic>;
 
+  /// Cancel a booking (riders: own bookings only, before pickup / carrier hand-off).
+  Future<void> cancelShipment(String awb, String reason) => post('/api/v1/shipments/$awb/cancel', {'reason': reason});
+
   /// Other carriers: record the carrier's AWB against ours.
   Future<void> setForwarding(String awb, String vendor, String forwardingAwb) =>
       post('/api/v1/shipments/$awb/forwarding', {'vendor': vendor, 'forwardingAwb': forwardingAwb});

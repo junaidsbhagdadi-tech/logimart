@@ -3,10 +3,12 @@ import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { pinRows, placeName } from '../../common/place-name';
+import * as XLSX from 'xlsx';
 
 /**
  * Daily customer MIS — each customer gets their shipments booked in the last 7 days that are still open (not
- * delivered / returned / cancelled) plus the ones delivered yesterday, as a CSV (opens in Excel), at 09:00 IST Mon–Sat.
+ * delivered / returned / cancelled) plus the ones delivered yesterday, as an Excel file, at 09:00 IST Mon–Sat.
+ * A STATUS report only — no weights or charges.
  * To: the customer's email + second email · CC: the salesperson and CS person on the customer.
  * Env: CUSTOMER_MIS_AUTOSEND ('false' to stop) · CUSTOMER_MIS_START (first day, default 2026-10-26).
  */
@@ -23,6 +25,8 @@ const ist = (d: Date | null | undefined, time = false) => {
   return `${p2(t.getUTCDate())}-${p2(t.getUTCMonth() + 1)}-${t.getUTCFullYear()}${time ? ` ${p2(t.getUTCHours())}:${p2(t.getUTCMinutes())}` : ''}`;
 };
 const csvCell = (v: any) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const BRAND = 'ExcelEx Group';
 
 @Injectable()
 export class CustomerMisService {
@@ -53,7 +57,7 @@ export class CustomerMisService {
       take: 5000,
       select: {
         awb: true, createdAt: true, referenceNo: true, custInvoiceNo: true, shipperCity: true, shipperPincode: true, consigneeName: true,
-        consigneeCity: true, destPincode: true, destZone: true, pieceCount: true, chargeWeight: true, totalDeadKg: true, vendor: true,
+        consigneeCity: true, destPincode: true, destZone: true, pieceCount: true, vendor: true,
         forwardingAwb: true, bdWaybill: true, statusCode: true, statusAt: true, expectedDelivery: true, bdStatus: true, exceptionFlag: true,
       },
     });
@@ -64,7 +68,7 @@ export class CustomerMisService {
         'AWB': s.awb, 'Booking Date': ist(s.createdAt), 'Reference': s.referenceNo || s.custInvoiceNo || '',
         'Origin': placeName(s.shipperCity, pins.get(String(s.shipperPincode || ''))), 'Destination': placeName(s.consigneeCity, pins.get(String(s.destPincode || '')), s.destZone),
         'Dest Pincode': s.destPincode || '', 'Consignee': s.consigneeName || '', 'Pcs': s.pieceCount,
-        'Weight (kg)': Number(s.chargeWeight ?? s.totalDeadKg ?? 0).toFixed(2), 'Carrier': s.vendor || 'SELF', 'Carrier AWB': s.forwardingAwb || s.bdWaybill || '',
+        'Carrier': s.vendor || 'SELF', 'Carrier AWB': s.forwardingAwb || s.bdWaybill || '',
         'Status': STATUS[code] ?? code, 'Status Date': ist(s.statusAt, true), 'Expected Delivery': s.expectedDelivery && s.expectedDelivery >= s.createdAt ? ist(s.expectedDelivery) : '', // upload data has EDDs before booking
         'Delivered On': code === 'DLD' ? ist(s.statusAt, true) : '', 'Remarks': s.exceptionFlag || (s.bdStatus && !/^(Booked|Manifested|Docket created)/i.test(s.bdStatus) ? s.bdStatus : '') || '',
       };
@@ -78,6 +82,18 @@ export class CustomerMisService {
     return Buffer.from('﻿' + body, 'utf8'); // BOM → Excel opens it as UTF-8
   }
 
+  xlsx(rows: Record<string, any>[]): Buffer {
+    const ws = rows.length ? XLSX.utils.json_to_sheet(rows) : XLSX.utils.aoa_to_sheet([['No shipments']]);
+    if (rows.length) {
+      const head = Object.keys(rows[0]);
+      ws['!cols'] = head.map((h) => ({ wch: Math.min(40, Math.max(h.length, ...rows.map((r) => String(r[h] ?? '').length)) + 2) }));
+      ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length, c: head.length - 1 } }) };
+    }
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'DAILY MIS REPORT');
+    return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+  }
+
   /** Build + send one customer's MIS. `overrideTo` sends it to an internal address instead (preview). */
   async sendFor(clientId: bigint, overrideTo?: string) {
     const c = await this.prisma.b2bClient.findUnique({ where: { id: clientId }, select: { legalName: true, accountCode: true, contactEmail: true, email2: true, salesPersonEmail: true, csPersonEmail: true } });
@@ -87,22 +103,27 @@ export class CustomerMisService {
     if (!to.length) return { clientId: String(clientId), code: c.accountCode, sent: false, reason: 'no customer email' };
     const rows = await this.rows(clientId);
     if (!rows.length) return { clientId: String(clientId), code: c.accountCode, sent: false, reason: 'nothing open or delivered yesterday' };
-    const count = (st: string) => rows.filter((r) => r['Status'] === st).length;
-    const today = ist(new Date());
-    const deliveredY = rows.filter((r) => r['Delivered On']).length;
-    const summary = [
-      `Shipments in this report: ${rows.length}`,
-      `Delivered yesterday: ${deliveredY}`,
-      `In transit / at hub: ${rows.length - deliveredY - count('Undelivered') - count('Out for delivery') - count('Booked') - count('Return to origin')}`,
-      `Out for delivery: ${count('Out for delivery')}`,
-      `Undelivered (needs attention): ${count('Undelivered')}`,
-      `Return to origin: ${count('Return to origin')}`,
-      `Booked, awaiting pickup: ${count('Booked')}`,
+    const now = new Date(Date.now() + 330 * 60000);
+    const asOn = `${p2(now.getUTCDate())}/${p2(now.getUTCMonth() + 1)}/${now.getUTCFullYear()}`;
+    const stamp = `${p2(now.getUTCDate())}_${p2(now.getUTCMonth() + 1)}_${now.getUTCFullYear()}_${p2(now.getUTCHours())}${p2(now.getUTCMinutes())}`;
+    const name = String(c.legalName || c.accountCode).toUpperCase();
+    const lines = [
+      'Dear Customer,', '',
+      'Please find details of DAILY MIS REPORT',
+      `Customer Name : ${name}`, '',
+      'Please find attached the DAILY MIS REPORT. We hope this helps you keep track of all your consignments.',
+      'You may get in touch with your SPOC for any further assistance.', '',
+      'Thanks & Regards', BRAND,
     ];
-    const text = [`Dear ${c.legalName},`, '', `Please find attached your shipment MIS as on ${today}.`, '', ...summary, '', 'For any query, reply to this email or contact your account manager.', '', 'Regards,', 'Logimart Customer Service'].join('\n');
+    const html = `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5">
+<p>Dear Customer,</p>
+<p><b>Please find details of DAILY MIS REPORT</b><br><b>Customer Name : ${esc(name)}</b></p>
+<p><b>Please find attached the DAILY MIS REPORT. We hope this helps you keep track of all your consignments.<br>
+You may get in touch with your SPOC for any further assistance.</b></p>
+<p><b>Thanks &amp; Regards</b><br><b>${BRAND}</b></p></div>`;
     const ok = await this.notify.sendMail({
-      to, cc, subject: `Shipment MIS — ${c.legalName} (${c.accountCode}) — ${today}`, text,
-      attachments: [{ filename: `MIS_${c.accountCode}_${today}.csv`, content: this.csv(rows), contentType: 'text/csv' }],
+      to, cc, subject: `DAILY MIS REPORT As on Date ${asOn} - ${name}`, text: lines.join('\n'), html,
+      attachments: [{ filename: `${c.accountCode}_DAILY MIS REPORT_${stamp}.xlsx`, content: this.xlsx(rows), contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }],
     });
     return { clientId: String(clientId), code: c.accountCode, sent: ok, to, cc, rows: rows.length };
   }

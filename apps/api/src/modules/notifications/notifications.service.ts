@@ -77,19 +77,19 @@ export class NotificationsService {
 
   private emailSubject(kind: NotifyInput['kind']): string {
     const map: Record<NotifyInput['kind'], string> = {
-      invoice: 'Invoice from Logimart', shortage: 'Shortage notice — Logimart', pod: 'Proof of delivery — Logimart',
-      exception: 'Shipment exception — Logimart', delivery: 'Delivery update — Logimart', milestone: 'Shipment update — Logimart',
-      account: 'Logimart report',
+      invoice: 'Invoice from ExcelEx Group', shortage: 'Shortage notice — ExcelEx Group', pod: 'Proof of delivery — ExcelEx Group',
+      exception: 'Shipment exception — ExcelEx Group', delivery: 'Delivery update — ExcelEx Group', milestone: 'Shipment update — ExcelEx Group',
+      account: 'ExcelEx Group report',
     };
-    return map[kind] ?? 'Logimart notification';
+    return map[kind] ?? 'ExcelEx Group notification';
   }
 
   /** Sender identity, parsed from SMTP_FROM ("Name <email>" or "email"). */
   private emailSender(): { email: string; name: string } {
     const raw = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@logimart.co.in';
     const m = raw.match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
-    if (m) return { name: (m[1] || 'Logimart').replace(/^"|"$/g, ''), email: m[2].trim() };
-    return { name: 'Logimart', email: raw.trim() };
+    if (m) return { name: (m[1] || 'ExcelEx Group').replace(/^"|"$/g, ''), email: m[2].trim() };
+    return { name: 'ExcelEx Group', email: raw.trim() };
   }
 
   /** Email — Brevo HTTPS API first (works where outbound SMTP ports are blocked, e.g. DO droplets),
