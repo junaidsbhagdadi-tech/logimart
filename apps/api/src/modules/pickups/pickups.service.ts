@@ -4,7 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { BluedartService } from '../bluedart/bluedart.service';
 import { ShipmentsService } from '../shipments/shipments.service';
 import { XpressBeesService } from '../xpressbees/xpressbees.service';
-import { isXpressBeesVendor } from '../xpressbees/xpressbees.config';
+import { isXpressBeesVendor, XB } from '../xpressbees/xpressbees.config';
 
 interface CreatePickup {
   clientId: number;
@@ -233,6 +233,15 @@ export class PickupsService {
       if (!xbAwb) {
         try { xbAwb = (await this.xb.handoff(ourAwb)).xbAwb; }
         catch (e: any) { throw new BadRequestException(`Booked ${ourAwb} for the customer, but XpressBees refused it: ${String(e?.message || e)} — fix it on the AWB page (Edit AWB) and retry.`); }
+      }
+      // XpressBees raises the pickup automatically once the shipment is manifested (confirmed by XB, 2026-10-28) —
+      // pickups come from any address, so no fixed pickup location. Only if XB_PICKUP_LOCATION is set do we
+      // also call BookPickupRequest explicitly; otherwise the XpressBees AWB is the pickup reference.
+      if (!XB.pickupLocation) {
+        const updated = await this.prisma.pickupRequest.update({
+          where: { id: BigInt(id) }, data: { token: xbAwb, handoffAt: new Date(), vendor: 'XPB', status: PickupStatus.ASSIGNED },
+        });
+        return { ...updated, token: xbAwb, awb: ourAwb, xbAwb, autoPickup: true };
       }
       const client = await this.prisma.b2bClient.findUnique({ where: { id: p.clientId }, select: { contactEmail: true, gstin: true } });
       const s = await this.prisma.shipment.findUnique({ where: { awb: ourAwb }, select: { destPincode: true, totalDeadKg: true, pieceCount: true, paymentTerm: true, serviceMode: true } });
