@@ -19,6 +19,7 @@ export class LabelsService {
     if (!shipment) throw new NotFoundException(`AWB ${awb} not found`);
 
     const client = shipment.client;
+    const vend = shipment.vendor ? await this.prisma.vendor.findFirst({ where: { vendorCode: { equals: shipment.vendor, mode: 'insensitive' } }, select: { name: true } }).catch(() => null) : null;
     const master = {
       awb: shipment.awb,
       barcode: shipment.awb,
@@ -62,7 +63,14 @@ export class LabelsService {
       referenceNo: shipment.referenceNo ?? shipment.lrNumber ?? null,
       shipmentValue: shipment.shipmentValue ? Number(shipment.shipmentValue) : (shipment.declaredValue ? Number(shipment.declaredValue) : null),
       createdAt: shipment.createdAt,
-      boxes: shipment.pieces.map((p) => ({ l: Number(p.lengthCm || 0), w: Number(p.widthCm || 0), h: Number(p.heightCm || 0), deadKg: Number(p.deadKg) })),
+      boxes: shipment.pieces.map((p) => ({ l: Number(p.lengthCm || 0), w: Number(p.widthCm || 0), h: Number(p.heightCm || 0), deadKg: Number(p.deadKg), childId: p.childId, carrierId: (p as any).carrierChildId ?? null })),
+      // Courier print set (#8): the CARRIER's AWB leads the label; ours prints underneath.
+      forwardingAwb: shipment.forwardingAwb ?? null,
+      carrierAwb: (shipment as any).bdWaybill ?? shipment.forwardingAwb ?? null,
+      vendorName: vend?.name ?? null,
+      invoiceNo: (shipment as any).custInvoiceNo ?? shipment.referenceNo ?? null,
+      chargeWeight: shipment.chargeWeight != null ? Number(shipment.chargeWeight) : null,
+      shipperName: shipment.shipperName ?? client.legalName,
     };
 
     const labels = shipment.pieces.map((p) => {

@@ -195,7 +195,13 @@ export interface MasterLabel {
   referenceNo?: string | null;
   shipmentValue?: number | null;
   createdAt?: string;
-  boxes?: { l: number; w: number; h: number; deadKg: number }[];
+  boxes?: { l: number; w: number; h: number; deadKg: number; childId?: string; carrierId?: string | null }[];
+  forwardingAwb?: string | null;
+  carrierAwb?: string | null;
+  vendorName?: string | null;
+  invoiceNo?: string | null;
+  chargeWeight?: number | null;
+  shipperName?: string | null;
 }
 export interface LabelItem {
   masterAwb: string;
