@@ -474,13 +474,59 @@ export function TrackDetail() {
             )}
 
             {tab === 'Return Detail' && (
-              ['RTO', 'RTD'].includes(d.currentCode)
-                ? <div className="grid cols-2" style={{ gap: 14 }}><Field label="Return status" value={`${d.currentLabel} (${d.currentCode})`} color="var(--warn)" /><Field label="Remarks" value={d.remarks} /></div>
-                : <p className="muted">Not a return shipment.</p>
+              <RtoPanel d={d as any} canEdit={!isClient} onDone={async () => setD(await api.lifecycleDetail((d as any).awb))} />
             )}
           </div>
         </>
       )}
     </>
+  );
+}
+
+
+/** Return Detail tab: status of a return, and (ops) the RTO close-out form — return carrier no + optional own
+ *  return AWB → books & bills the return leg and closes this AWB as Returned. */
+function RtoPanel({ d, canEdit, onDone }: { d: any; canEdit: boolean; onDone: () => void }) {
+  const [form, setForm] = useState({ forwardingNo: '', returnAwb: '', vendor: String(d.vendorCode || '') });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
+  const code = String(d.currentCode || '');
+  if (d.rtoOfAwb) return <p>This is the <strong>return leg</strong> of <a href={`/tracker/${d.rtoOfAwb}`}>{d.rtoOfAwb}</a>.</p>;
+  if (d.rtoAwb) return (
+    <div className="grid cols-2" style={{ gap: 14 }}>
+      <Field label="Return status" value={`${d.currentLabel} (${code})`} color="var(--warn)" />
+      <Field label="Return AWB" value={<a href={`/tracker/${d.rtoAwb}`}>{d.rtoAwb}</a>} />
+      <Field label="Remarks" value={d.remarks} />
+    </div>
+  );
+  const closable = ['RTO', 'UDL'].includes(code);
+  const submit = async () => {
+    setErr(''); setMsg('');
+    if (!form.forwardingNo.trim()) return setErr('Enter the return forwarding (carrier) number.');
+    setBusy(true);
+    try { const r = await api.rtoClose(d.awb, { forwardingNo: form.forwardingNo.trim(), returnAwb: form.returnAwb.trim() || undefined, vendor: form.vendor.trim() || undefined }); setMsg(r.message); onDone(); }
+    catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  };
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      {['RTO', 'RTD'].includes(code)
+        ? <div className="grid cols-2" style={{ gap: 14 }}><Field label="Return status" value={`${d.currentLabel} (${code})`} color="var(--warn)" /><Field label="Remarks" value={d.remarks} /></div>
+        : <p className="muted">Not a return shipment yet.</p>}
+      {canEdit && closable && (
+        <div className="card" style={{ margin: 0, background: 'var(--surface-2, #f6f8fa)' }}>
+          <strong>Close RTO</strong>
+          <p className="muted" style={{ fontSize: 12.5, margin: '4px 0 10px' }}>Enter the carrier's return number. This books the return AWB for the same customer (billed on their next invoice) and closes {d.awb} as Returned.</p>
+          <div className="grid cols-3" style={{ gap: 10 }}>
+            <div><label>Return forwarding no *</label><input value={form.forwardingNo} onChange={(e) => setForm({ ...form, forwardingNo: e.target.value })} placeholder="e.g. 39710944313" /></div>
+            <div><label>Carrier</label><input value={form.vendor} onChange={(e) => setForm({ ...form, vendor: e.target.value })} placeholder="vendor code, e.g. BDR" /></div>
+            <div><label>Return AWB (ours)</label><input value={form.returnAwb} onChange={(e) => setForm({ ...form, returnAwb: e.target.value })} placeholder="blank = auto" /></div>
+          </div>
+          {err && <p style={{ color: 'var(--danger, #b91c1c)', fontSize: 13 }}>{err}</p>}
+          {msg && <p style={{ color: 'var(--ok, #16a34a)', fontSize: 13 }}>{msg}</p>}
+          <button onClick={submit} disabled={busy} style={{ marginTop: 8 }}>{busy ? 'Closing…' : 'Close RTO and book return'}</button>
+        </div>
+      )}
+    </div>
   );
 }

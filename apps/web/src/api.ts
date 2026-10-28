@@ -700,6 +700,8 @@ export const api = {
   gatiHandoff: (awb: string) => request<{ awb: string; docket: string; packages: string[] }>(`/api/v1/gati/handoff/${awb}`, { method: 'POST' }),
   gatiSync: (awb: string) => request<{ awb: string; docket: string; status: string }>(`/api/v1/gati/sync/${awb}`, { method: 'POST' }),
   gatiCancel: (awb: string) => request<{ awb: string; cancelled: string }>(`/api/v1/gati/cancel/${awb}`, { method: 'POST' }),
+  rtoClose: (awb: string, body: { returnAwb?: string; forwardingNo: string; vendor?: string }) =>
+    request<{ awb: string; returnAwb: string; message: string }>(`/api/v1/shipments/${awb}/rto-close`, { method: 'POST', body: JSON.stringify(body) }),
   // Gati docket copy / package stickers come back as a PDF from our API (auth-gated) → object URL to open.
   gatiPrintUrl: (docket: string, kind: 'docket' | 'stickers') => api.openDocument(`/api/v1/gati/print/${docket}?kind=${kind}`),
   // ---- DS Cargo (tracking only) ----

@@ -373,6 +373,14 @@ export class ShipmentsController {
     return this.shipments.setForwarding(awb, dto);
   }
 
+  /** RTO close-out: record the return carrier no (+ optional own return AWB) → books + bills the return leg,
+   *  closes the original as Returned. */
+  @Post(':awb/rto-close')
+  @Roles(UserRole.WAREHOUSE_HANDLER, UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  rtoClose(@Param('awb') awb: string, @Body() dto: { returnAwb?: string; forwardingNo?: string; vendor?: string }, @Req() req: any) {
+    return this.shipments.rtoClose(awb, dto, req.user?.sub ? BigInt(req.user.sub) : undefined);
+  }
+
   /** Attach an invoice copy / document to an AWB (app: photo or PDF as a data URL). A rider: own bookings only. */
   @Post(':awb/attachments')
   @Roles(UserRole.WAREHOUSE_HANDLER, UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN, UserRole.DRIVER)

@@ -984,6 +984,58 @@ export class ShipmentsService {
     return { date: d, rows: rows.map((r) => ({ ...r, customerCode: r.client?.accountCode, customerName: r.client?.legalName })) };
   }
 
+  /**
+   * RTO close-out (#12): ops enter the RETURN carrier number (e.g. BlueDart's new waybill) and optionally our
+   * own return AWB. Books the return leg as a normal shipment for the same customer — consignee → shipper,
+   * same boxes / product / payment — so it bills like any booking (reverse-lane rate), records the carrier
+   * number on it (so tracking follows the return), and closes the original as Returned (RTD).
+   */
+  async rtoClose(awbRaw: string, dto: { returnAwb?: string; forwardingNo?: string; vendor?: string }, userId?: bigint) {
+    const awb = String(awbRaw || '').trim().toUpperCase();
+    const s: any = await this.prisma.shipment.findUnique({ where: { awb }, include: { pieces: { orderBy: { sequenceNo: 'asc' } }, client: true } });
+    if (!s) throw new NotFoundException(`AWB ${awb} not found`);
+    if (s.rtoAwb) throw new ConflictException(`RTO already closed — return AWB ${s.rtoAwb}.`);
+    if (s.rtoOfAwb) throw new BadRequestException(`${awb} is itself a return of ${s.rtoOfAwb}.`);
+    const cur = String(s.statusCode || 'MAN').toUpperCase();
+    if (['DLD', 'CAN', 'RTD'].includes(cur)) throw new ConflictException(`${awb} is ${cur} — only an undelivered / RTO shipment can be closed as a return.`);
+    const fwd = String(dto.forwardingNo || '').replace(/\s+/g, '').toUpperCase();
+    if (!fwd) throw new BadRequestException('Enter the return forwarding (carrier) number.');
+    const vendor = String(dto.vendor || s.vendor || '').trim();
+    if (!vendor) throw new BadRequestException('Pick the carrier that is bringing it back.');
+    const c = s.client ?? {};
+    const pieces = (s.pieces.length ? s.pieces : [{ deadKg: s.totalDeadKg || 0.5 }]).map((p: any) => ({
+      deadKg: Number(p.deadKg || 0.5), lengthCm: p.lengthCm != null ? Number(p.lengthCm) : undefined,
+      widthCm: p.widthCm != null ? Number(p.widthCm) : undefined, heightCm: p.heightCm != null ? Number(p.heightCm) : undefined,
+    }));
+    const shipperPin = String(s.shipperPincode || c.pincode || '');
+    const created: any = await this.create({
+      clientId: Number(s.clientId), serviceMode: s.serviceMode, product: s.product ?? undefined, paymentTerm: s.paymentTerm ?? undefined,
+      manualAwb: dto.returnAwb ? String(dto.returnAwb).trim().toUpperCase() : undefined,
+      vendor, forwardingAwb: fwd,
+      originZone: s.destZone, destZone: s.originZone, originPincode: s.destPincode ?? undefined, destPincode: shipperPin || undefined,
+      shipperName: s.consigneeName ?? undefined, shipperCity: s.consigneeCity ?? undefined, shipperState: s.consigneeState ?? undefined,
+      shipperPincode: s.destPincode ?? undefined, shipperMobile: s.consigneePhone ?? undefined, shipperGstin: s.consigneeGstin ?? undefined,
+      consigneeName: s.shipperName || c.legalName, consigneeAddress: [s.shipperAddress1, s.shipperAddress2].filter(Boolean).join(', ') || c.addressLine || undefined,
+      consigneeCity: s.shipperCity || c.city || undefined, consigneeState: s.shipperState || c.state || undefined,
+      consigneePhone: s.shipperMobile || s.shipperContact || c.contactPhone || undefined,
+      declaredValue: s.declaredValue != null ? Number(s.declaredValue) : undefined, shipmentValue: s.shipmentValue != null ? Number(s.shipmentValue) : undefined,
+      goodsDesc: `RTO of ${awb}${s.goodsDesc ? ` — ${s.goodsDesc}` : ''}`.slice(0, 200), referenceNo: awb, invoiceNo: s.custInvoiceNo ?? undefined,
+      deadKg: pieces.reduce((t: number, p: any) => t + p.deadKg, 0), pieces,
+    } as any, { skipAutoDispatch: true });
+    const retAwb = String(created?.awb ?? created?.shipment?.awb ?? '');
+    if (!retAwb) throw new BadRequestException('Could not book the return AWB.');
+    const now = new Date();
+    const note = `RTO closed — return AWB ${retAwb}, ${vendor} ${fwd}`;
+    await this.prisma.$transaction([
+      // Return leg: in transit back to the shipper; carrier tracking takes it from here.
+      this.prisma.shipment.update({ where: { awb: retAwb }, data: { rtoOfAwb: awb, statusCode: 'DPD', status: 'IN_TRANSIT' as any, statusAt: now, shipperAddress1: s.consigneeAddress ? String(s.consigneeAddress).slice(0, 250) : undefined } }),
+      this.prisma.shipment.update({ where: { id: s.id }, data: { rtoAwb: retAwb, statusCode: 'RTD', status: 'DELIVERED' as any, statusAt: now, exceptionFlag: note } }),
+      this.prisma.scanLog.create({ data: { awb, eventType: 'RTD', remark: note, scannedById: userId ?? null } }),
+      this.prisma.scanLog.create({ data: { awb: retAwb, eventType: 'MAN', remark: `Return leg of ${awb}`, scannedById: userId ?? null } }),
+    ]);
+    return { awb, returnAwb: retAwb, forwardingNo: fwd, vendor, message: `${note}. The return is billed on the customer's next invoice.` };
+  }
+
   /** Attach a document (invoice copy etc.) to a shipment from the app — a data URL (image / PDF). Same store as
    *  the web's AWB Attachments; Delhivery's hand-off sends the latest invoice copy from here. A refused hand-off
    *  is re-queued so the carrier is retried with it. */

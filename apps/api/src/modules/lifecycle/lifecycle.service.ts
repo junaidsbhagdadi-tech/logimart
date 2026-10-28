@@ -308,6 +308,7 @@ export class LifecycleService {
       currentCode: effCode,
       currentLabel: effLabel,
       remarks: s.exceptionFlag ?? null,
+      rtoAwb: (s as any).rtoAwb ?? null, rtoOfAwb: (s as any).rtoOfAwb ?? null, vendorCode: s.vendor ?? null,
       customerRemark: (s as any).customerRemark ?? null,        // remark left by the customer via portal
       customerRemarkAt: (s as any).customerRemarkAt ?? null,
       edd: s.expectedDelivery ?? eddFallback(),
