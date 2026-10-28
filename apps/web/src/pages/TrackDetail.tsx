@@ -226,7 +226,7 @@ export function TrackDetail() {
               <Field label="Account No." value={(d as any).accountCode} color="var(--brand)" />
               <Field label="Forwarding Vendor" value={(d as any).vendorName ?? (d as any).vendor ?? '—'} color="var(--brand)" />
               <Field label="Forwarding No." value={d.forwardingAwb} color="var(--brand)" />
-              <Field label="Weight (booked)" value={(d as any).chargeWeight != null ? `${Number((d as any).actualWeight).toLocaleString('en-IN')} kg actual · ${Number((d as any).chargeWeight).toLocaleString('en-IN')} kg chargeable` : '—'} />
+              {!isClient && <Field label="Weight (booked)" value={(d as any).chargeWeight != null ? `${Number((d as any).actualWeight).toLocaleString('en-IN')} kg actual · ${Number((d as any).chargeWeight).toLocaleString('en-IN')} kg chargeable` : '—'} />}
               <Field label="Pieces" value={(d as any).pieceCount ?? '—'} />
               {(d as any).referenceNo && <Field label="Reference No." value={(d as any).referenceNo} />}
               {(d as any).carrierWaybill && <Field label="BlueDart Waybill" value={(d as any).carrierWaybill} color="var(--brand)" />}
@@ -237,7 +237,7 @@ export function TrackDetail() {
               <Field label="Origin" value={d.origin} />
               <Field label="Origin Pincode" value={(d as any).originPincode} />
               <Field label="Destination" value={d.destination} />
-              <Field label="Destination Pincode" value={(d as any).destPincode} />
+              {!isClient && <Field label="Destination Pincode" value={(d as any).destPincode} />}
               <Field label="Current Location" value={d.currentLocation} />
               <Field label="Order Date (Manifested)" value={dateFmt(d.orderDate)} />
               <Field label="Current Status" value={`${d.currentLabel} — ${d.currentCode}`} color="var(--ok, #16a34a)" />

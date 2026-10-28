@@ -50,6 +50,9 @@ export class BluedartService implements OnModuleInit {
       const rows = await this.prisma.shipment.findMany({
         where: {
           createdAt: { gte: since },
+          // Only shipments still OPEN on our side. Finished ones were selected too, never re-synced (so their
+          // bdSyncedAt stayed oldest) and permanently filled the 300 slots — open shipments went stale.
+          AND: [{ OR: [{ statusCode: null }, { statusCode: { notIn: ['DLD', 'RTD', 'CAN'] } }] }],
           OR: [
             { bdWaybill: { not: null } },
             { AND: [{ forwardingAwb: { not: null } }, { OR: [{ vendor: { startsWith: 'BLUE', mode: 'insensitive' } }, { vendor: { equals: 'BDR', mode: 'insensitive' } }, ...(codes.length ? [{ vendor: { in: codes } }] : [])] }] },
@@ -57,7 +60,7 @@ export class BluedartService implements OnModuleInit {
           ],
         },
         select: { awb: true, bdStatus: true },
-        orderBy: { bdSyncedAt: 'asc' }, take: 300,
+        orderBy: { bdSyncedAt: { sort: 'asc', nulls: 'first' } }, take: 300,
       });
       // Stop polling only once the carrier status is FINAL (delivered / back with shipper / cancelled).
       // The old /deliv/ test also matched "OUT FOR DELIVERY" / "UNDELIVERED" → those were never re-synced.

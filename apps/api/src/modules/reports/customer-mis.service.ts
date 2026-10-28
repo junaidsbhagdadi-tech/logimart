@@ -67,7 +67,7 @@ export class CustomerMisService {
       return {
         'AWB': s.awb, 'Booking Date': ist(s.createdAt), 'Reference': s.referenceNo || s.custInvoiceNo || '',
         'Origin': placeName(s.shipperCity, pins.get(String(s.shipperPincode || ''))), 'Destination': placeName(s.consigneeCity, pins.get(String(s.destPincode || '')), s.destZone),
-        'Dest Pincode': s.destPincode || '', 'Consignee': s.consigneeName || '', 'Pcs': s.pieceCount,
+        'Consignee': s.consigneeName || '', 'Pcs': s.pieceCount,
         'Carrier': s.vendor || 'SELF', 'Carrier AWB': s.forwardingAwb || s.bdWaybill || '',
         'Status': STATUS[code] ?? code, 'Status Date': ist(s.statusAt, true), 'Expected Delivery': s.expectedDelivery && s.expectedDelivery >= s.createdAt ? ist(s.expectedDelivery) : '', // upload data has EDDs before booking
         'Delivered On': code === 'DLD' ? ist(s.statusAt, true) : '', 'Remarks': s.exceptionFlag || (s.bdStatus && !/^(Booked|Manifested|Docket created)/i.test(s.bdStatus) ? s.bdStatus : '') || '',

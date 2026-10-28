@@ -133,7 +133,12 @@ export class LifecycleService {
       const current = String(s.statusCode || 'MAN').toUpperCase();
       // Enforce the sequence for everyone but super admins. Re-scanning the same status is a no-op-ish
       // allowed idempotent scan; any other move must be a permitted next step.
-      if (code !== current && !isSuper && !(NEXT[current] ?? []).includes(code)) { locked.push(awb); continue; }
+      // Closing milestones (Delivered / Undelivered / RTO) are allowed from ANY open state: most shipments move
+      // on carrier status, not our hub scans, so e.g. UDL → DLD or MAN → DLD must work for ops. Terminal states
+      // (DLD/RTD/CAN) stay locked; RTD (return delivered) follows an RTO/UDL.
+      const open = !['DLD', 'RTD', 'CAN'].includes(current);
+      const closingOk = open && (['DLD', 'UDL', 'RTO'].includes(code) || (code === 'RTD' && ['RTO', 'UDL'].includes(current)));
+      if (code !== current && !isSuper && !closingOk && !(NEXT[current] ?? []).includes(code)) { locked.push(awb); continue; }
       // Derive a bag code at pickup when none exists (and the caller didn't pass one).
       let autoBag: string | undefined;
       if (code === 'PKD' && !dto.bagCode && !s.bagCode) {

@@ -749,14 +749,14 @@ export class InvoiceService {
   }
 
   async list(clientId?: bigint, scope?: bigint[] | null) {
-    // A scoped (portal) list is only served if the customer is opted in to seeing invoices, and only
-    // shows invoices that have been SENT (finance finalises + sends before the customer can see them).
+    // A scoped (portal) list is only served if the customer is opted in to seeing invoices, and shows every
+    // FINALISED invoice (anything past DRAFT) — or one explicitly sent. Drafts never reach the customer.
     if (clientId != null) {
       const c = await this.prisma.b2bClient.findUnique({ where: { id: clientId }, select: { canViewInvoices: true } });
       if (!c?.canViewInvoices) throw new ForbiddenException('Invoice access is not enabled for your account. Please contact us.');
     }
     return this.prisma.invoice.findMany({
-      where: clientId != null ? { clientId, sentAt: { not: null } } : scope ? { clientId: { in: scope } } : undefined,
+      where: clientId != null ? { clientId, OR: [{ sentAt: { not: null } }, { status: { not: 'DRAFT' } }] } : scope ? { clientId: { in: scope } } : undefined,
       orderBy: { issuedAt: 'desc' },
       include: { lines: true },
     });
@@ -785,6 +785,8 @@ export class InvoiceService {
       },
     });
     if (!inv) throw new NotFoundException('Invoice not found');
+    // Lines in booking-date order (then AWB) — the order the customer checks the bill against.
+    (inv.lines as any[]).sort((x, y) => (new Date(x.shipment?.createdAt ?? 0).getTime() - new Date(y.shipment?.createdAt ?? 0).getTime()) || String(x.shipment?.awb ?? '').localeCompare(String(y.shipment?.awb ?? '')));
     // Destination NAME per line (not the zone) — consignee city, else the pincode's city / area name.
     const pins = await pinRows(this.prisma, inv.lines.map((l: any) => l.shipment?.destPincode));
     for (const l of inv.lines as any[]) {

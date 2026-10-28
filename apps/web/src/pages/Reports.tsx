@@ -134,12 +134,13 @@ export function Reports() {
           <table>
             <thead><tr>{data.columns.map((c) => <th key={c.key}>{c.label}</th>)}</tr></thead>
             <tbody>
-              {data.rows.map((r, i) => (
+              {data.rows.slice(0, 1000).map((r, i) => (
                 <tr key={i}>{data.columns.map((c) => <td key={c.key}>{String(r[c.key] ?? '—')}</td>)}</tr>
               ))}
             </tbody>
           </table>
           {data.rows.length === 0 && <p className="muted">No data for this range.</p>}
+          {data.rows.length > 1000 && <p className="muted">Showing the first 1,000 of {data.rows.length.toLocaleString('en-IN')} rows — Export CSV for all of them.</p>}
         </div>
       )}
     </>

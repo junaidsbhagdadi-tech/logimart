@@ -272,7 +272,8 @@ export function Layout() {
             // DEPARTMENT default feature map → role defaults. Super/client admins are role-driven
             // (effectiveGrants returns null for them). Server-side RBAC remains the real boundary.
             const grants = effectiveGrants(user as any);
-            const items = g.items.filter((it) => !isRetired(it.to) && (grants ? hasFeature(grants, it.to) : it.show !== false));
+            // Retired modules stay reachable for the super admin only (e.g. First / Mid / Last mile scans).
+            const items = g.items.filter((it) => (!isRetired(it.to) || user?.role === 'SYS_ADMIN') && (grants ? hasFeature(grants, it.to) : it.show !== false));
             if (items.length === 0) return null;
             const isClosed = !!closed[g.title];
             return (

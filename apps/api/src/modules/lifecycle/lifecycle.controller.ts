@@ -35,8 +35,16 @@ export class LifecycleController {
   /** Rich tracking detail for the dedicated tracker page. CLIENT_ADMIN scoped to own AWBs. */
   @Get('detail/:awb')
   @Roles(...OPS, UserRole.CLIENT_ADMIN)
-  detail(@Param('awb') awb: string, @Req() req: any) {
-    return this.svc.trackDetail(awb, req.user.role === UserRole.CLIENT_ADMIN && req.user.clientId != null ? BigInt(req.user.clientId) : undefined);
+  async detail(@Param('awb') awb: string, @Req() req: any) {
+    const isClient = req.user.role === UserRole.CLIENT_ADMIN;
+    const d: any = await this.svc.trackDetail(awb, isClient && req.user.clientId != null ? BigInt(req.user.clientId) : undefined);
+    // Customers don't see booked weights or the destination pincode (ops-only detail).
+    if (isClient && d) {
+      delete d.actualWeight; delete d.chargeWeight; delete d.volWeight; delete d.destPincode;
+      if (d.consignee) delete d.consignee.pincode;
+      if (Array.isArray(d.pieces)) d.pieces = d.pieces.map(({ deadKg, volKg, ...p }: any) => p);
+    }
+    return d;
   }
 
   /** Super-admin only: wipe a shipment's scan history and reset it to MAN. */

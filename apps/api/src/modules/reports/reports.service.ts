@@ -334,10 +334,16 @@ export class ReportsService {
     return { columns: [{ key: 'awb', label: 'AWB' }, { key: 'deadKg', label: 'Dead kg' }, { key: 'volKg', label: 'Vol kg' }, { key: 'chargeKg', label: 'Charge kg' }], rows };
   }
 
+  /** Voided / cancelled AWBs — cancelled OR booked in the range (an AWB booked last month and voided now counts). */
   private async voidReport(range: any): Promise<Report> {
-    const s = await this.prisma.shipment.findMany({ where: { createdAt: range, status: 'CANCELLED' as any }, select: { awb: true, consigneeName: true, createdAt: true }, orderBy: { id: 'desc' }, take: 1000 });
-    const rows = s.map((x) => ({ awb: x.awb, consignee: x.consigneeName || '—', at: x.createdAt.toISOString().slice(0, 10) }));
-    return { columns: [{ key: 'awb', label: 'AWB' }, { key: 'consignee', label: 'Consignee' }, { key: 'at', label: 'Booked' }], rows };
+    const s = await this.prisma.shipment.findMany({
+      where: { statusCode: 'CAN', OR: [{ statusAt: range }, { createdAt: range }] },
+      select: { awb: true, consigneeName: true, createdAt: true, statusAt: true, exceptionFlag: true, client: { select: { accountCode: true, legalName: true } } },
+      orderBy: { statusAt: 'desc' }, take: 2000,
+    });
+    const d = (v: any) => (v ? new Date(v).toISOString().slice(0, 10) : '—');
+    const rows = s.map((x) => ({ awb: x.awb, customer: `${x.client?.accountCode ?? ''} ${x.client?.legalName ?? ''}`.trim(), consignee: x.consigneeName || '—', booked: d(x.createdAt), voided: d(x.statusAt), reason: x.exceptionFlag || '—' }));
+    return { columns: [{ key: 'awb', label: 'AWB' }, { key: 'customer', label: 'Customer' }, { key: 'consignee', label: 'Consignee' }, { key: 'booked', label: 'Booked' }, { key: 'voided', label: 'Voided' }, { key: 'reason', label: 'Reason' }], rows };
   }
 
   private async zeroReport(range: any): Promise<Report> {
@@ -464,15 +470,34 @@ export class ReportsService {
     return { columns: [{ key: 'awb', label: 'AWB' }, { key: 'rider', label: 'Field exec' }, { key: 'status', label: 'Status' }], rows };
   }
 
+  /** AWB-wise billing — every shipment booked in the range with what it was billed (invoice line: freight,
+   *  fuel, other, total) or "Unbilled". (It used to read a per-shipment charges field that is almost always
+   *  empty, so it showed 0 rows.) */
   private async billing(range: any): Promise<Report> {
-    const s = await this.prisma.shipment.findMany({ where: { createdAt: range }, select: { awb: true, product: true, chargeWeight: true, charges: true, declaredValue: true }, orderBy: { id: 'desc' }, take: 1000 });
-    const rows = s
-      .filter((x) => Array.isArray(x.charges) && (x.charges as any[]).length > 0)
-      .map((x) => {
-        const total = (x.charges as any[]).reduce((t, c) => t + Number(c.amount || 0), 0);
-        return { awb: x.awb, product: x.product || '—', chargeKg: x.chargeWeight != null ? Number(x.chargeWeight).toFixed(2) : '—', charges: total.toFixed(2), invoiceValue: x.declaredValue != null ? Number(x.declaredValue).toFixed(2) : '—' };
-      });
-    return { columns: [{ key: 'awb', label: 'AWB' }, { key: 'product', label: 'Product' }, { key: 'chargeKg', label: 'Charge kg' }, { key: 'charges', label: 'Charges ₹' }, { key: 'invoiceValue', label: 'Invoice value ₹' }], rows };
+    const s = await this.prisma.shipment.findMany({
+      where: { createdAt: range, OR: [{ statusCode: null }, { statusCode: { not: 'CAN' } }] },
+      select: {
+        awb: true, createdAt: true, product: true, chargeWeight: true, totalDeadKg: true, statusCode: true,
+        client: { select: { accountCode: true, legalName: true } },
+        invoiceLines: { select: { chargeableKg: true, freight: true, fuel: true, otherCharges: true, amount: true, invoice: { select: { invoiceNo: true } } } },
+      },
+      orderBy: { createdAt: 'asc' }, take: 20000,
+    });
+    const f = (v: any) => Number(v || 0).toFixed(2);
+    const rows = s.map((x) => {
+      const l: any = x.invoiceLines[0];
+      return {
+        date: x.createdAt.toISOString().slice(0, 10), awb: x.awb, customer: `${x.client?.accountCode ?? ''} ${x.client?.legalName ?? ''}`.trim(),
+        product: x.product || '—', status: x.statusCode || 'MAN',
+        chargeKg: l ? Number(l.chargeableKg).toFixed(2) : Number(x.chargeWeight ?? x.totalDeadKg ?? 0).toFixed(2),
+        freight: l ? f(l.freight) : '', fuel: l ? f(l.fuel) : '', other: l ? f(l.otherCharges) : '', total: l ? f(l.amount) : '',
+        invoiceNo: l?.invoice?.invoiceNo ?? 'Unbilled',
+      };
+    });
+    return {
+      columns: [{ key: 'date', label: 'Booked' }, { key: 'awb', label: 'AWB' }, { key: 'customer', label: 'Customer' }, { key: 'product', label: 'Product' }, { key: 'status', label: 'Status' }, { key: 'chargeKg', label: 'Charge kg' }, { key: 'freight', label: 'Freight ₹' }, { key: 'fuel', label: 'Fuel ₹' }, { key: 'other', label: 'Other ₹' }, { key: 'total', label: 'Total ₹ (pre-GST)' }, { key: 'invoiceNo', label: 'Invoice' }],
+      rows,
+    };
   }
 
   private async actionLog(range: any): Promise<Report> {
@@ -488,14 +513,15 @@ export class ReportsService {
   }
 
   private async missingAwb(range: any): Promise<Report> {
-    const s = await this.prisma.shipment.findMany({ where: { createdAt: range }, select: { awb: true }, take: 5000 });
-    const nums = s.map((x) => { const m = x.awb.match(/(\d+)$/); return m ? Number(m[1]) : NaN; }).filter((n) => !Number.isNaN(n)).sort((a, b) => a - b);
+    // Only OUR AWB series (letter prefix, e.g. L1000000138) — uploaded carrier waybills are not a sequence.
+    const s = await this.prisma.shipment.findMany({ where: { createdAt: range, awb: { startsWith: 'L' } }, select: { awb: true }, take: 20000 });
+    const nums = s.map((x) => { const m = x.awb.match(/^L(\d+)$/); return m ? Number(m[1]) : NaN; }).filter((n) => !Number.isNaN(n)).sort((a, b) => a - b);
     if (nums.length < 2) return { columns: [{ key: 'msg', label: 'Info' }], rows: [{ msg: 'Not enough AWBs to detect gaps.' }] };
     const min = nums[0], max = nums[nums.length - 1];
     if (max - min > 5000) return { columns: [{ key: 'msg', label: 'Info' }], rows: [{ msg: 'AWB range too large to enumerate — narrow the date range.' }] };
     const present = new Set(nums);
     const rows: { missing: number }[] = [];
-    for (let i = min; i <= max; i++) if (!present.has(i)) rows.push({ missing: i });
+    for (let i = min; i <= max; i++) if (!present.has(i)) rows.push({ missing: `L${i}` as any });
     return { columns: [{ key: 'missing', label: 'Missing AWB number' }], rows: rows.length ? rows : [{ missing: 'None — sequence is complete' as any }] };
   }
 
