@@ -17,11 +17,13 @@ const METRO: Record<string, string> = {
 };
 
 type PinRow = { city: string | null; areaName: string | null };
+/** Area codes (BOM, MAA) and zone codes (W1, S2, NE1) are not place names. */
+const isCode = (v: string) => /^[A-Za-z0-9]{1,3}$/.test(v.trim());
 
 export function placeName(typedCity: string | null | undefined, pin: PinRow | undefined | null, fallback?: string | null): string {
   const t = String(typedCity ?? '').trim();
-  if (t && !/^[A-Z]{3}$/.test(t)) return t.toUpperCase(); // a real name, not a 3-letter code
-  const code = (t || String(pin?.city ?? '')).toUpperCase();
+  if (t && !isCode(t)) return t.toUpperCase(); // a real name, not an area / zone code
+  const code = (METRO[t.toUpperCase()] ? t : String(pin?.city ?? '') || t).toUpperCase();
   return METRO[code] || String(pin?.areaName ?? '').trim().toUpperCase() || code || String(fallback ?? '').toUpperCase();
 }
 
@@ -32,11 +34,13 @@ export function placeName(typedCity: string | null | undefined, pin: PinRow | un
  */
 export async function cityName(prisma: PrismaService, pincode: string | null | undefined, ...candidates: (string | null | undefined)[]): Promise<string> {
   const list = candidates.map((c) => String(c ?? '').trim()).filter(Boolean);
-  const real = list.find((c) => !/^[A-Za-z]{3}$/.test(c));
+  const real = list.find((c) => !isCode(c));
   if (real) return real;
   const pin = String(pincode ?? '').trim();
   const row = /^\d{6}$/.test(pin) ? await prisma.pincode.findUnique({ where: { pincode: pin }, select: { city: true, areaName: true } }).catch(() => null) : null;
-  return placeName(list[0]?.toUpperCase() || null, row);
+  // Prefer a candidate that IS a known city code (e.g. originLocation 'BOM') over a zone code (shipperCity 'W1').
+  const metro = list.find((c) => METRO[c.toUpperCase()]);
+  return placeName((metro ?? list[0])?.toUpperCase() || null, row);
 }
 
 /** Look up many pincodes at once → pincode → row. */
