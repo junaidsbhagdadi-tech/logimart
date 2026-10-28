@@ -331,8 +331,8 @@ export function ShipmentDetail() {
     try { const r = await api.gatiCancel(awb!); setMsg(`🚫 Gati docket ${r.cancelled} cancelled.`); load(); }
     catch (e: any) { setError(e.message); }
   };
-  const printGati = async (what: 'printUrl' | 'stickerUrl') => {
-    try { const r = await api.gatiPrint(String((s as any).forwardingAwb)); window.open(r[what], '_blank', 'noopener'); }
+  const printGati = async (what: 'docket' | 'stickers') => {
+    try { const url = await api.gatiPrintUrl(String((s as any).forwardingAwb), what); window.open(url, '_blank', 'noopener'); }
     catch (e: any) { setError(e.message); }
   };
   const cancelXb = async () => {
@@ -454,8 +454,8 @@ export function ShipmentDetail() {
             { title: 'Carrier', items: [
               { label: `Refresh ${carrierName || 'carrier'} tracking`, icon: <Search aria-hidden />, onClick: trackCarrier, show: (apiCarrier || carrier === 'DSC') && withCarrier },
               { label: 'BlueDart pickup', icon: <CalendarClock aria-hidden />, onClick: pickupBd, show: canAssign && !isCan && carrier === 'BD', title: 'Register a BlueDart pickup for this shipment' },
-              { label: 'Gati docket print', icon: <Printer aria-hidden />, onClick: () => printGati('printUrl'), show: carrier === 'GATI' && withCarrier },
-              { label: 'Gati package stickers', icon: <Barcode aria-hidden />, onClick: () => printGati('stickerUrl'), show: carrier === 'GATI' && withCarrier },
+              { label: 'Gati docket print', icon: <Printer aria-hidden />, onClick: () => printGati('docket'), show: carrier === 'GATI' && withCarrier },
+              { label: 'Gati package stickers', icon: <Barcode aria-hidden />, onClick: () => printGati('stickers'), show: carrier === 'GATI' && withCarrier },
               { label: 'Cancel BlueDart waybill', icon: <XCircle aria-hidden />, onClick: cancelBd, danger: true, show: canAssign && !!s.bdWaybill && !isCan },
               { label: 'Cancel Delhivery LR', icon: <XCircle aria-hidden />, onClick: cancelDel, danger: true, show: canAssign && carrier === 'DLY' && withCarrier },
               { label: 'Cancel Gati docket', icon: <XCircle aria-hidden />, onClick: cancelGati, danger: true, show: canAssign && carrier === 'GATI' && withCarrier && !isCan },

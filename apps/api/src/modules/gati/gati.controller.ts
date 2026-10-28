@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles } from '../../common/rbac/roles.decorator';
@@ -40,10 +40,14 @@ export class GatiController {
     return this.gati.cancel(awb, dto?.reason);
   }
 
-  /** Gati's docket print (A4 PDF) + package sticker links for a docket. */
+  /** Gati docket copy (?kind=docket, default) or package stickers (?kind=stickers) as a PDF. */
   @Get('print/:docket')
   @Roles(UserRole.WAREHOUSE_HANDLER, UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN, UserRole.DRIVER)
-  print(@Param('docket') docket: string) {
-    return { docket, printUrl: this.gati.printUrl(docket), stickerUrl: this.gati.stickerUrl(docket) };
+  async print(@Param('docket') docket: string, @Query('kind') kind: string | undefined, @Res() res: any) {
+    const k = kind === 'stickers' ? 'stickers' : 'docket';
+    const pdf = await this.gati.pdf(docket, k);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="gati-${k}-${docket}.pdf"`);
+    res.send(pdf);
   }
 }

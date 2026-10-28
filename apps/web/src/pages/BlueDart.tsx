@@ -190,7 +190,7 @@ export function BlueDart() {
         </div>
         {gStatus ? (
           <div className="row" style={{ gap: 16, flexWrap: 'wrap', marginTop: 8 }}>
-            {['custCode', 'encCustCode', 'trackToken', 'pinReqId', 'defaultGoodsCode', 'env'].map((v) => (
+            {['custCode', 'encCustCode', 'login', 'trackToken', 'defaultGoodsCode', 'env'].map((v) => (
               <span key={v} style={{ fontSize: 13 }}><span className="muted">{v}:</span> {(gStatus[v] && !['missing', 'not set'].includes(gStatus[v])) ? <b style={{ color: 'var(--ok)' }}>{gStatus[v]}</b> : <b style={{ color: 'var(--bad, #c0392b)' }}>{gStatus[v] || 'missing'}</b>}</span>
             ))}
           </div>
