@@ -642,9 +642,10 @@ export class ShipmentsService {
       try {
         const s = await this.prisma.shipment.findFirst({
           where: { OR: [{ awb: key }, { forwardingAwb: { equals: key, mode: 'insensitive' } }, { bdWaybill: key }] },
-          select: { awb: true, chargeOverrides: true, _count: { select: { invoiceLines: true } } },
+          select: { awb: true, chargeOverrides: true, statusCode: true, _count: { select: { invoiceLines: true } } },
         });
         if (!s) throw new NotFoundException('AWB not found');
+        if (['DLD', 'RTD'].includes(String(s.statusCode || '').toUpperCase()) && !opts.isSuper) throw new ConflictException('delivered — closed, only a super admin can change it');
         if (s._count.invoiceLines > 0) throw new ConflictException('already invoiced — cancel/rebill the invoice first');
         const changed: string[] = [];
         // Customer → transfer to that account.
@@ -940,9 +941,10 @@ export class ShipmentsService {
    * (forwarding AWB) as a reference. Links our AWB to the carrier's — used by vendor-bill P&L
    * matching. (BlueDart auto-fetches this once the integration is live.)
    */
-  async setForwarding(awb: string, dto: { vendor?: string; forwardingAwb?: string }) {
-    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, vendor: true } });
+  async setForwarding(awb: string, dto: { vendor?: string; forwardingAwb?: string }, opts?: { isSuper?: boolean }) {
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, vendor: true, statusCode: true } });
     if (!s) throw new NotFoundException(`AWB ${awb} not found`);
+    if (['DLD', 'RTD'].includes(String(s.statusCode || '').toUpperCase()) && !opts?.isSuper) throw new ConflictException('Delivered — this AWB is closed and can no longer be changed. Only a super admin can correct a delivered shipment.');
     const forwardingAwb = dto.forwardingAwb ? String(dto.forwardingAwb).replace(/\s+/g, '').toUpperCase() || null : null; // "DSE 122115" breaks tracking
     // A forwarding (carrier) AWB must carry a vendor — the vendor is what drives billing network/rates.
     // Recording just the carrier AWB with a blank vendor silently bills SELF rates. Require one here
@@ -1083,6 +1085,9 @@ export class ShipmentsService {
     const awb = String(awbRaw || '').trim().toUpperCase();
     const s = await this.prisma.shipment.findUnique({ where: { awb }, include: { _count: { select: { invoiceLines: true } } } });
     if (!s) throw new NotFoundException(`AWB ${awb} not found`);
+    // Post-delivery lock: a DELIVERED (DLD) or RETURN-DELIVERED (RTD) AWB is closed — no further changes,
+    // except a super admin correcting a genuine mistake.
+    if (['DLD', 'RTD'].includes(String(s.statusCode || '').toUpperCase()) && !opts?.isSuper) throw new ConflictException('Delivered — this AWB is closed and can no longer be changed. Only a super admin can correct a delivered shipment.');
     // Invoiced shipments are locked — EXCEPT a super-admin who explicitly overrides (the edit does NOT
     // retro-change the already-raised invoice; cancel/rebill for billing changes).
     if (s._count.invoiceLines > 0 && !(opts?.isSuper && dto?.overrideInvoiced)) {

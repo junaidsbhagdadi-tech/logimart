@@ -332,7 +332,9 @@ export function TrackDetail() {
                   <div><button onClick={saveAppt} disabled={apptBusy || !appt.date}>{apptBusy ? 'Saving…' : '📅 Set appointment'}</button></div>
                 </div>
               </div>
-              <div style={{ borderTop: '1px dashed var(--line, #d7dadf)', marginTop: 14, paddingTop: 12 }}>
+              {['DLD', 'RTD'].includes(String((d as any).currentCode)) && !isSuper ? (
+                <p className="muted" style={{ borderTop: '1px dashed var(--line, #d7dadf)', marginTop: 14, paddingTop: 12, fontSize: 12.5 }}>🔒 Delivered — this AWB is closed; forwarding and scans can no longer be changed.</p>
+              ) : <div style={{ borderTop: '1px dashed var(--line, #d7dadf)', marginTop: 14, paddingTop: 12 }}>
                 <h2 style={{ marginBottom: 4, fontSize: 15 }}>🔀 Forwarding (vendor hand-off)</h2>
                 <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Record which vendor carried this AWB and the forwarding (carrier) AWB number.{(d as any).vendor ? ` Current vendor: ${(d as any).vendor}.` : ''}</p>
                 <div className="grid cols-4" style={{ gap: 10, alignItems: 'flex-end' }}>
@@ -346,7 +348,7 @@ export function TrackDetail() {
                   <div><label>Forwarding number <span className="muted">(carrier AWB)</span></label><input value={fwd.forwardingAwb} onChange={(e) => setFwd((f) => ({ ...f, forwardingAwb: e.target.value }))} placeholder="e.g. 58001396353" /></div>
                   <div><button onClick={saveFwd} disabled={fwdBusy || (!fwd.vendor && !fwd.forwardingAwb)}>{fwdBusy ? 'Saving…' : '🔀 Save forwarding'}</button></div>
                 </div>
-              </div>
+              </div>}
               <div style={{ borderTop: '1px dashed var(--line, #d7dadf)', marginTop: 14, paddingTop: 12 }}>
                 <h2 style={{ marginBottom: 4, fontSize: 15 }}>➕ Add-on / expense charge</h2>
                 <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Log an ad-hoc expense on this AWB (re-pickup, special handling, etc.). Billed to the customer on the next invoice when "Bill to customer" is ticked.</p>

@@ -401,7 +401,9 @@ export function ShipmentDetail() {
   const withCarrier = !!(s.bdWaybill || (s as any).forwardingAwb);
   const isCan = String((s as any).statusCode).toUpperCase() === 'CAN';
   const isDone = isCan || ['DLD', 'RTD'].includes(String((s as any).statusCode).toUpperCase());
-  const canEditAwb = (canEditCharges && !(s as any).invoiced) || (isSysAdmin && !!(s as any).invoiced);
+  // Delivered (DLD) / return-delivered (RTD) AWBs are closed — only the super admin can still edit them.
+  const closedDelivered = ['DLD', 'RTD'].includes(String((s as any).statusCode).toUpperCase());
+  const canEditAwb = isSysAdmin || (canEditCharges && !(s as any).invoiced && !closedDelivered);
   const changeBookingDate = async () => {
     const t = new Date((s as any).createdAt ?? Date.now()); const p2 = (n: number) => String(n).padStart(2, '0');
     const date = window.prompt(`New booking / manifest date for ${s.awb} (DD-MM-YYYY):`, `${p2(t.getDate())}-${p2(t.getMonth() + 1)}-${t.getFullYear()}`);

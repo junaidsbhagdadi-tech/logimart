@@ -370,7 +370,7 @@ export class ShipmentsController {
   @Roles(UserRole.WAREHOUSE_HANDLER, UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN, UserRole.DRIVER)
   async setForwarding(@Param('awb') awb: string, @Body() dto: { vendor?: string; forwardingAwb?: string }, @Req() req: any) {
     if (req.user?.role === UserRole.DRIVER) await this.shipments.assertRiderCanEdit(awb, BigInt(req.user.sub));
-    return this.shipments.setForwarding(awb, dto);
+    return this.shipments.setForwarding(awb, dto, { isSuper: req.user?.role === UserRole.SYS_ADMIN });
   }
 
   /** RTO close-out: record the return carrier no (+ optional own return AWB) → books + bills the return leg,
