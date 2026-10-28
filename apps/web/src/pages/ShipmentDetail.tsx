@@ -83,6 +83,7 @@ export function ShipmentDetail() {
       ewbValidUpto: (s as any).ewbValidUpto ? String((s as any).ewbValidUpto).slice(0, 10) : '',
       chargeWeight: (s as any).chargeWeight != null ? String((s as any).chargeWeight) : '',
       isDod: (s as any).isDod ? 'Y' : '',
+      fmPickup: (s as any).fmPickup ? 'pickup' : 'drop',
       dodAmount: (s as any).dodAmount != null ? String((s as any).dodAmount) : '',
       freightToCollect: (s as any).freightToCollect != null ? String((s as any).freightToCollect) : '',
     });
@@ -114,6 +115,7 @@ export function ShipmentDetail() {
       // blank charge weight → null → engine recomputes from the card (divisor/CFT + round-up)
       patch.chargeWeight = ef.chargeWeight === '' ? null : Number(ef.chargeWeight);
       patch.isDod = ef.isDod === 'Y';
+      if (/^DLY|DELHIVERY/i.test(ef.vendor || '')) patch.fmPickup = ef.fmPickup === 'pickup';
       patch.dodAmount = ef.isDod === 'Y' && ef.dodAmount !== '' ? Number(ef.dodAmount) : null;
       patch.freightToCollect = ef.freightToCollect === '' ? null : Number(ef.freightToCollect);
       // Per-box dimensions → recompute volumetric weight server-side (no debit note).
@@ -531,6 +533,12 @@ export function ShipmentDetail() {
               <input list="sd-edit-vendors" value={ef.vendor} onChange={(e) => setEfield('vendor', e.target.value.toUpperCase())} placeholder="SELF or code" />
               <datalist id="sd-edit-vendors">{vendors.map((v) => <option key={v.id} value={(v.vendorCode || v.name).toUpperCase()}>{v.vendorCode} — {v.name}</option>)}</datalist>
             </div>
+            {/^DLY|DELHIVERY/i.test(ef.vendor || '') && <div><label>Delhivery first mile</label>
+              <select value={ef.fmPickup ?? 'drop'} onChange={(e) => setEfield('fmPickup', e.target.value)}>
+                <option value="drop">Self-drop at Delhivery hub</option>
+                <option value="pickup">Delhivery picks up from the pickup address</option>
+              </select>
+            </div>}
             {/BLUE|BDR/i.test(ef.vendor || '') && bdAccts.length > 0 && <div><label>BlueDart account</label>
               <select value={ef.bdAccountId ?? ''} onChange={(e) => setEfield('bdAccountId', e.target.value)}>
                 <option value="">Default{bdAccts.find((a) => a.isDefault) ? ` — ${bdAccts.find((a) => a.isDefault)?.label}` : ''}</option>

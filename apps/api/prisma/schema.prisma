@@ -551,6 +551,7 @@ model Shipment {
 
   // ---- carrier hand-off ----
   forwardingAwb  String?   // vendor/carrier AWB entered at hand-off (any vendor); BlueDart auto-fetched once integrated
+  fmPickup       Boolean?  // Delhivery first mile: true = Delhivery picks up from the pickup address, false/null = self-drop at their hub
   rtoAwb         String?   // RTO closed: OUR return AWB (the return-leg shipment, billed like any booking)
   rtoOfAwb       String?   // on a return-leg shipment: the original AWB it brings back
   forwardingAt   DateTime?

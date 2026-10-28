@@ -31,13 +31,13 @@ export class DocumentsController {
   }
 
   @Get()
-  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN, UserRole.WAREHOUSE_HANDLER) // CS sees AWB attachments
   list(@Query('entityType') entityType: string, @Query('entityId') entityId: string) {
     return this.docs.list(entityType, Number(entityId));
   }
 
   @Get(':id/file')
-  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN, UserRole.WAREHOUSE_HANDLER)
   async serve(@Param('id') id: string, @Res() res: Response) {
     const up = await this.docs.file(Number(id));
     res.setHeader('Content-Type', up.mimeType);

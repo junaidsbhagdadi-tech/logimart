@@ -115,6 +115,8 @@ export class CreateShipmentDto {
 
   // ---- DOD (Draft on Delivery) ----
   @IsOptional() @IsBoolean() isDod?: boolean;
+  /** Delhivery first mile — true: Delhivery picks up from the pickup address; false/omitted: self-drop at their hub. */
+  @IsOptional() @IsBoolean() fmPickup?: boolean;
   @IsOptional() @IsNumber() dodAmount?: number;
   @IsOptional() @IsEnum(DodInstrument) dodInstrument?: DodInstrument; // CHEQUE | DD
 

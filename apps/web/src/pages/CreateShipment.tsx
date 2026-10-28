@@ -98,7 +98,7 @@ export function CreateShipment() {
     } catch { /* non-fatal */ } finally { setSavingWh(false); }
   };
   // services extras
-  const [svc, setSvc] = useState({ vendor: 'SELF', service: 'SELF', shipmentValue: '', referenceNo: '', forwardingAwb: '', isCommercial: false, isMedical: false, bookedAt: '', bdAccountId: '' });
+  const [svc, setSvc] = useState({ vendor: 'SELF', service: 'SELF', shipmentValue: '', referenceNo: '', forwardingAwb: '', isCommercial: false, isMedical: false, bookedAt: '', bdAccountId: '', fmPickup: 'drop' });
   const [bdAccts, setBdAccts] = useState<any[]>([]);
   useEffect(() => { api.bdAccountOptions().then(setBdAccts).catch(() => {}); }, []);
   const [entryTab, setEntryTab] = useState<'AWB' | 'PROFORMA' | 'FORWARDING'>('AWB');
@@ -446,6 +446,7 @@ export function CreateShipment() {
         // services extras
         vendor: svc.vendor || undefined,
         bdAccountId: /BLUE|BDR/i.test(svc.vendor) && svc.bdAccountId ? svc.bdAccountId : undefined,
+        fmPickup: /^DLY|DELHIVERY/i.test(svc.vendor) ? svc.fmPickup === 'pickup' : undefined,
         service: svc.service || undefined,
         shipmentValue: svc.shipmentValue ? +svc.shipmentValue : undefined,
         referenceNo: svc.referenceNo || undefined,
@@ -956,6 +957,13 @@ export function CreateShipment() {
             <select value={svc.bdAccountId} onChange={(e) => setSvc({ ...svc, bdAccountId: e.target.value })}>
               <option value="">Default{bdAccts.find((a) => a.isDefault) ? ` — ${bdAccts.find((a) => a.isDefault)?.label}` : ''}</option>
               {bdAccts.map((a) => <option key={a.id} value={a.id}>{a.label} ({a.areaCode} · {a.customerCode})</option>)}
+            </select>
+          </div>}
+          {/^DLY|DELHIVERY/i.test(svc.vendor) && <div>
+            <label>Delhivery first mile</label>
+            <select value={svc.fmPickup} onChange={(e) => setSvc({ ...svc, fmPickup: e.target.value })}>
+              <option value="drop">Self-drop at Delhivery hub</option>
+              <option value="pickup">Delhivery picks up from the pickup address</option>
             </select>
           </div>}
           {!isClient && <div><label>Service</label><input value={svc.service} onChange={(e) => setSvc({ ...svc, service: e.target.value })} placeholder="SELF / DHL / …" /></div>}

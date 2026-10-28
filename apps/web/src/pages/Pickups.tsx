@@ -68,16 +68,41 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     const a = document.createElement('a'); a.href = url; a.download = 'logimart-pickups-template.csv'; a.click(); URL.revokeObjectURL(url);
   };
+  // Split one line, honouring "quoted, values" (addresses often contain commas).
+  const splitLine = (l: string, delim: string) => {
+    if (delim === '\t') return l.split('\t');
+    const out: string[] = []; let cur = ''; let q = false;
+    for (let i = 0; i < l.length; i++) {
+      const ch = l[i];
+      if (ch === '"') { if (q && l[i + 1] === '"') { cur += '"'; i++; } else q = !q; }
+      else if (ch === delim && !q) { out.push(cur); cur = ''; }
+      else cur += ch;
+    }
+    out.push(cur);
+    return out;
+  };
   const parseBulk = (text: string) => {
     const lines = text.trim().split(/\r?\n/).filter((l) => l.trim());
     if (!lines.length) return [] as any[];
     const delim = lines[0].includes('\t') ? '\t' : ',';
     const known = BULK_COLS.split(',');
-    const first = lines[0].split(delim).map((h) => h.trim());
+    const first = splitLine(lines[0], delim).map((h) => h.trim());
     const useHeader = first.some((h) => known.includes(h));
     const cols = useHeader ? first : known;
     const body = useHeader ? lines.slice(1) : lines;
-    return body.map((l) => { const p = l.split(delim); const o: any = {}; cols.forEach((c, i) => { o[c] = (p[i] ?? '').trim(); }); return o; });
+    return body.map((l) => { const p = splitLine(l, delim); const o: any = {}; cols.forEach((c, i) => { o[c] = (p[i] ?? '').trim(); }); return o; });
+  };
+  // An Excel file (first sheet) or CSV → the paste box (tab-separated, so commas inside cells are safe).
+  const onBulkFile = async (f: File | null) => {
+    if (!f) return;
+    setError('');
+    try {
+      if (/\.xlsx?$/i.test(f.name)) {
+        const XLSX = await import('xlsx');
+        const wb = XLSX.read(await f.arrayBuffer(), { type: 'array', cellDates: true });
+        setBulkText(XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]], { FS: '\t', dateNF: 'yyyy-mm-dd', blankrows: false }));
+      } else setBulkText(await f.text());
+    } catch (e: any) { setError(`Could not read ${f.name}: ${e?.message || e}`); }
   };
   const doBulk = async () => {
     setError(''); setBulkResult(null);
@@ -250,8 +275,6 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
           {!isClient && <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>Creates a pickup request (no AWB) — it appears in <a href="/pickups">Pickups</a> to hand off to a vendor. To book a shipment with an AWB at the door instead, use <a href="/pickup-book/awb">Book at pickup (AWB)</a>.</p>}
         </div>
       )}
-      {mode === 'book' ? null : (<>
-
       {(isClient || isOps) && (
         <div className="card">
           <details>
@@ -271,6 +294,10 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
                 </select>
               </label>
               <button className="secondary" style={{ padding: '5px 12px', fontSize: 12 }} onClick={downloadTemplate}>⬇ Download CSV template</button>
+              <label className="secondary" style={{ padding: '5px 12px', fontSize: 12, cursor: 'pointer', border: '1px solid var(--border, #cbd5e1)', borderRadius: 8 }}>
+                ⬆ Choose Excel / CSV file
+                <input type="file" accept=".xlsx,.xls,.csv,.txt" style={{ display: 'none' }} onChange={(e) => { onBulkFile(e.target.files?.[0] ?? null); e.target.value = ''; }} />
+              </label>
             </div>
             <textarea rows={6} style={{ width: '100%', fontFamily: 'monospace', fontSize: 12 }} value={bulkText} onChange={(e) => setBulkText(e.target.value)} placeholder={BULK_COLS} />
             <div className="row" style={{ gap: 8, marginTop: 8, alignItems: 'center' }}>
@@ -288,6 +315,9 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
           </details>
         </div>
       )}
+
+      {mode === 'book' ? null : (<>
+
 
       <div className="card">
         <div className="row" style={{ gap: 6, marginBottom: 10, alignItems: 'center' }}>

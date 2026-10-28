@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 
 const MAX_BYTES = 12 * 1024 * 1024; // 12 MB
@@ -79,5 +80,32 @@ export class DocumentsService {
     if (!doc) throw new NotFoundException('Document not found');
     await this.prisma.document.update({ where: { id: doc.id }, data: { status: 'archived' } });
     return { id, archived: true };
+  }
+
+  /**
+   * Invoice / e-way bill copies on a shipment (taken in the rider app or attached on the AWB page) are only
+   * needed until delivery: once an AWB has been DELIVERED for 7 days (grace for CS / accounts queries) they are
+   * deleted — the document row and its stored bytes. Daily 03:15 IST. DOC_PURGE_DAYS overrides the 7.
+   */
+  @Cron('15 3 * * *', { timeZone: 'Asia/Kolkata' })
+  async purgeDeliveredDocs() {
+    const days = Number(process.env.DOC_PURGE_DAYS ?? 7);
+    if (!(days >= 0)) return { removed: 0 };
+    const cutoff = new Date(Date.now() - days * 864e5);
+    const docs = await this.prisma.document.findMany({
+      where: { entityType: 'shipment', docType: { in: ['invoice', 'ewaybill'] } },
+      select: { id: true, entityId: true, uploadId: true },
+    });
+    if (!docs.length) return { removed: 0 };
+    const delivered = await this.prisma.shipment.findMany({
+      where: { id: { in: [...new Set(docs.map((d) => d.entityId))] }, statusCode: 'DLD', statusAt: { lt: cutoff } },
+      select: { id: true },
+    });
+    const ids = new Set(delivered.map((x) => String(x.id)));
+    const gone = docs.filter((d) => ids.has(String(d.entityId)));
+    if (!gone.length) return { removed: 0 };
+    await this.prisma.document.deleteMany({ where: { id: { in: gone.map((d) => d.id) } } });
+    await this.prisma.upload.deleteMany({ where: { id: { in: gone.map((d) => d.uploadId) } } }).catch(() => {});
+    return { removed: gone.length };
   }
 }

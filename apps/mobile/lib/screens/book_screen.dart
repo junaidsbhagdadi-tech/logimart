@@ -104,6 +104,8 @@ class _NewBookingState extends State<_NewBooking> {
   final _pickPhone = TextEditingController();
 
   bool _busy = false;
+  // Optional document photos (or PDFs) taken at booking — uploaded to the AWB once it's booked.
+  String? _invDoc, _ewbDoc;
 
   static const _lastContentKey = 'quickbook_content';
 
@@ -225,6 +227,15 @@ class _NewBookingState extends State<_NewBooking> {
         ],
       }..removeWhere((k, v) => v == null);
       final res = await ApiClient.instance.createShipment(body);
+      // Attach the invoice / e-way bill photos to the new AWB (a failed upload never undoes the booking).
+      final newAwb = '${res['awb']}';
+      for (final d in [if (_invDoc != null) ['invoice', 'Invoice copy', _invDoc!], if (_ewbDoc != null) ['ewaybill', 'E-way bill', _ewbDoc!]]) {
+        try {
+          await ApiClient.instance.attachDocument(newAwb, d[2], docType: d[0], label: d[1]);
+        } catch (e) {
+          if (mounted) toast(context, 'Booked, but the ${d[1]} upload failed: $e', error: true);
+        }
+      }
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_lastContentKey, _content.text.trim());
       if (!mounted) return;
@@ -238,6 +249,27 @@ class _NewBookingState extends State<_NewBooking> {
     }
   }
 
+  /// Photo / PDF of a document for the AWB — tap to take one, tap again to remove it.
+  Widget _docButton(String what, String? value, void Function(String?) set) {
+    final done = value != null;
+    return OutlinedButton.icon(
+      onPressed: _busy
+          ? null
+          : () async {
+              if (done) return set(null);
+              try {
+                final d = await pickDocumentDataUrl(context);
+                if (d != null) set(d);
+              } catch (e) {
+                if (mounted) toast(context, '$e'.replaceFirst('Exception: ', ''), error: true);
+              }
+            },
+      icon: Icon(done ? Icons.check_circle : Icons.add_a_photo_outlined, color: done ? const Color(0xFF16A34A) : null),
+      label: Text(done ? '$what ✓ (tap to remove)' : '$what photo', overflow: TextOverflow.ellipsis),
+      style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46)),
+    );
+  }
+
   /// Book the next one for the same customer / product / carrier — clear the per-shipment fields.
   void _next() {
     for (final t in [_conName, _conPhone, _conAddr, _conPin, _conGst, _kg, _awb, _fwd, _ref, _invNo, _invAmt, _ewb]) {
@@ -246,6 +278,8 @@ class _NewBookingState extends State<_NewBooking> {
     setState(() {
       _lines = [_BoxLine()];
       _destCity = '';
+      _invDoc = null;
+      _ewbDoc = null;
     });
   }
 
@@ -394,6 +428,12 @@ class _NewBookingState extends State<_NewBooking> {
                   decoration: const InputDecoration(labelText: 'Invoice ₹'))),
         ]),
         ScanField(controller: _ewb, label: needEway ? 'E-way bill no. (needed: ₹50,000+)' : 'E-way bill no. (optional)'),
+        const SectionLabel('Photos (optional)'),
+        Row(children: [
+          Expanded(child: _docButton('Invoice', _invDoc, (v) => setState(() => _invDoc = v))),
+          const SizedBox(width: 10),
+          Expanded(child: _docButton('E-way bill', _ewbDoc, (v) => setState(() => _ewbDoc = v))),
+        ]),
         const SizedBox(height: 22),
         FilledButton.icon(
           onPressed: _busy ? null : _book,

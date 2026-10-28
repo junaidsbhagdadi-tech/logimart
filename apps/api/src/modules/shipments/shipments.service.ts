@@ -292,6 +292,7 @@ export class ShipmentsService {
             : null,
         // DOD (Draft on Delivery)
         isDod: dto.isDod ?? false,
+        fmPickup: (dto as any).fmPickup ?? null,
         dodAmount: dto.isDod && dto.dodAmount != null ? new Prisma.Decimal(dto.dodAmount) : null,
         dodInstrument: dto.isDod ? dto.dodInstrument ?? null : null,
         pieces: { create: pieces },
@@ -1133,6 +1134,7 @@ export class ShipmentsService {
     }
     // DOD on/off + amount, and the To-Pay freight to collect — both go to BlueDart as CollactableAmount.
     if (dto.isDod !== undefined) data.isDod = !!dto.isDod;
+    if (dto.fmPickup !== undefined) data.fmPickup = dto.fmPickup === null ? null : !!dto.fmPickup;
     dec('dodAmount', dto.dodAmount);
     dec('freightToCollect', dto.freightToCollect);
     const effDod = data.isDod ?? s.isDod;

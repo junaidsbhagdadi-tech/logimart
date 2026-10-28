@@ -227,7 +227,10 @@ export class DelhiveryService implements OnModuleInit {
     fd.append('doc_file', new Blob([new Uint8Array(inv.data)], { type: inv.mimeType }), inv.filename);
     fd.append('shipment_details', pyLit([{ order_id: String(s.awb), box_count: Number(s.pieceCount ?? 1), description: s.goodsDesc ?? 'Goods', weight: weightG, waybills: [], master: false }]));
     if (dims.length) fd.append('dimensions', pyLit(dims));
-    fd.append('fm_pickup', 'False'); // schedule the pickup separately via createPickup
+    // First mile, chosen per AWB: Delhivery PICKS UP from the pickup address (customer's place or our warehouse —
+    // whatever the AWB's pickup address is), or we SELF-DROP at their hub. Unset → DELHIVERY_FM_PICKUP_DEFAULT (false).
+    const fmPickup = s.fmPickup ?? /^(1|true|yes)$/i.test(String(process.env.DELHIVERY_FM_PICKUP_DEFAULT ?? 'false'));
+    fd.append('fm_pickup', fmPickup ? 'True' : 'False');
     fd.append('freight_mode', toPay ? 'fod' : 'fop'); // fod = freight on delivery (To-Pay), fop = freight on payer
     // Billing party = the Delhivery account holder (us), with our GST/PAN — Delhivery invoices us, not the
     // end customer. The goods' owner goes in as the consignor.
