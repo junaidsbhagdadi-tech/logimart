@@ -113,11 +113,19 @@ export function TrackDetail() {
   // Manual scan update — record a milestone straight from the tracker (replaces the sidebar "Update Scans").
   const canScan = !!user && user.role !== 'CLIENT_ADMIN';
   const [scan, setScan] = useState({ code: 'PKD', location: '', remark: '', at: '' });
+  // RTO from the scan form: the carrier's return number + our return AWB (original + "R") → billed + tracked.
+  const [rto, setRto] = useState({ forwardingNo: '', vendor: '', returnAwb: '' });
   const [scanBusy, setScanBusy] = useState(false);
   const doScan = async () => {
     if (!d || !scan.code) return;
     setScanBusy(true); setError(''); setMsg('');
     try {
+      // RTO with the return carrier number → book the return AWB (original + R) in the same step.
+      if (scan.code === 'RTO' && rto.forwardingNo.trim() && !(d as any).rtoAwb) {
+        const rr = await api.rtoClose(d.awb, { forwardingNo: rto.forwardingNo.trim(), vendor: (rto.vendor || (d as any).vendorCode || '').trim() || undefined, returnAwb: rto.returnAwb.trim() || undefined });
+        setMsg(`✓ ${rr.message}`); setRto({ forwardingNo: '', vendor: '', returnAwb: '' }); search(d.awb);
+        return;
+      }
       const r = await api.lifecycleScan({ awbs: [d.awb], code: scan.code, location: scan.location || undefined, remark: scan.remark || undefined, scanAt: scan.at || undefined });
       if (r.duplicate?.length) setError(`⚠ ${scan.code} is already recorded on ${d.awb} — a scan can't be repeated.`);
       else if (r.locked?.length) setError(`🔒 ${scan.code} is out of sequence / terminal — super-admin only.`);
@@ -323,6 +331,14 @@ export function TrackDetail() {
                 <div><label>Remark <span className="muted">(optional)</span></label><input value={scan.remark} onChange={(e) => setScan((s) => ({ ...s, remark: e.target.value }))} placeholder="reason / note" /></div>
                 <div><button onClick={doScan} disabled={scanBusy}>{scanBusy ? 'Updating…' : '＋ Update scan'}</button></div>
               </div>
+              {scan.code === 'RTO' && !(d as any).rtoAwb && (
+                <div className="grid cols-4" style={{ gap: 10, alignItems: 'flex-end', marginTop: 10, padding: 10, borderRadius: 8, background: 'var(--surface-2, #f6f8fa)' }}>
+                  <div><label>Return forwarding no <span className="muted">(carrier's return AWB)</span></label><input value={rto.forwardingNo} onChange={(e) => setRto((x) => ({ ...x, forwardingNo: e.target.value }))} placeholder="e.g. 39710944313" /></div>
+                  <div><label>Carrier</label><input value={rto.vendor} onChange={(e) => setRto((x) => ({ ...x, vendor: e.target.value.toUpperCase() }))} placeholder={(d as any).vendorCode || 'vendor code'} /></div>
+                  <div><label>Return AWB <span className="muted">(billed)</span></label><input value={rto.returnAwb} onChange={(e) => setRto((x) => ({ ...x, returnAwb: e.target.value.toUpperCase() }))} placeholder={`${d.awb}R`} /></div>
+                  <p className="muted" style={{ fontSize: 12, margin: 0 }}>With a return forwarding no, the return AWB ({d.awb}R) is booked + billed to the customer and tracked on that number. {d.awb} turns Returned when it's delivered back.</p>
+                </div>
+              )}
               <div style={{ borderTop: '1px dashed var(--line, #d7dadf)', marginTop: 14, paddingTop: 12 }}>
                 <h2 style={{ marginBottom: 4, fontSize: 15 }}>📅 Appointment delivery</h2>
                 <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Set the appointment date — it shows on the tracker Remarks and in the global appointment notification.{(d as any).apptDate ? ` Current: ${apptFmt((d as any).apptDate)}` : ''}</p>
@@ -517,16 +533,16 @@ function RtoPanel({ d, canEdit, onDone }: { d: any; canEdit: boolean; onDone: ()
         : <p className="muted">Not a return shipment yet.</p>}
       {canEdit && closable && (
         <div className="card" style={{ margin: 0, background: 'var(--surface-2, #f6f8fa)' }}>
-          <strong>Close RTO</strong>
-          <p className="muted" style={{ fontSize: 12.5, margin: '4px 0 10px' }}>Enter the carrier's return number. This books the return AWB for the same customer (billed on their next invoice) and closes {d.awb} as Returned.</p>
+          <strong>Return to origin</strong>
+          <p className="muted" style={{ fontSize: 12.5, margin: '4px 0 10px' }}>Enter the carrier's return number. This books return AWB {d.awb}R for the same customer (billed on their next invoice, tracked on the return number). {d.awb} turns Returned when the return is delivered.</p>
           <div className="grid cols-3" style={{ gap: 10 }}>
             <div><label>Return forwarding no *</label><input value={form.forwardingNo} onChange={(e) => setForm({ ...form, forwardingNo: e.target.value })} placeholder="e.g. 39710944313" /></div>
             <div><label>Carrier</label><input value={form.vendor} onChange={(e) => setForm({ ...form, vendor: e.target.value })} placeholder="vendor code, e.g. BDR" /></div>
-            <div><label>Return AWB (ours)</label><input value={form.returnAwb} onChange={(e) => setForm({ ...form, returnAwb: e.target.value })} placeholder="blank = auto" /></div>
+            <div><label>Return AWB (ours)</label><input value={form.returnAwb} onChange={(e) => setForm({ ...form, returnAwb: e.target.value })} placeholder={`${d.awb}R`} /></div>
           </div>
           {err && <p style={{ color: 'var(--danger, #b91c1c)', fontSize: 13 }}>{err}</p>}
           {msg && <p style={{ color: 'var(--ok, #16a34a)', fontSize: 13 }}>{msg}</p>}
-          <button onClick={submit} disabled={busy} style={{ marginTop: 8 }}>{busy ? 'Closing…' : 'Close RTO and book return'}</button>
+          <button onClick={submit} disabled={busy} style={{ marginTop: 8 }}>{busy ? 'Saving…' : 'Mark RTO and book return'}</button>
         </div>
       )}
     </div>

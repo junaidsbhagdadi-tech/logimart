@@ -373,8 +373,8 @@ export class ShipmentsController {
     return this.shipments.setForwarding(awb, dto, { isSuper: req.user?.role === UserRole.SYS_ADMIN });
   }
 
-  /** RTO close-out: record the return carrier no (+ optional own return AWB) → books + bills the return leg,
-   *  closes the original as Returned. */
+  /** RTO: record the return carrier no (+ optional own return AWB, default original + "R") → books + bills the
+   *  return leg; the original closes as Returned when the return is delivered. */
   @Post(':awb/rto-close')
   @Roles(UserRole.WAREHOUSE_HANDLER, UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
   rtoClose(@Param('awb') awb: string, @Body() dto: { returnAwb?: string; forwardingNo?: string; vendor?: string }, @Req() req: any) {

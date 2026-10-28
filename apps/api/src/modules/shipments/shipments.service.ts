@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Prisma, ShipmentStatus, PieceStatus, ScanCheckpoint } from '@prisma/client';
+import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { pinRows, placeName } from '../../common/place-name';
 import { COMPANY, VOLUMETRIC_DIVISOR } from '../../config/company';
@@ -989,10 +990,11 @@ export class ShipmentsService {
   }
 
   /**
-   * RTO close-out (#12): ops enter the RETURN carrier number (e.g. BlueDart's new waybill) and optionally our
-   * own return AWB. Books the return leg as a normal shipment for the same customer — consignee → shipper,
-   * same boxes / product / payment — so it bills like any booking (reverse-lane rate), records the carrier
-   * number on it (so tracking follows the return), and closes the original as Returned (RTD).
+   * RTO: ops mark the AWB Return-to-Origin with the carrier's RETURN number (e.g. BlueDart's new waybill).
+   * Books the return leg as a normal shipment for the same customer — consignee → shipper, same boxes /
+   * product / payment — under OUR AWB = original + "R" (e.g. 17605595700R), so it bills like any booking
+   * (reverse-lane rate) and its tracking follows the carrier's return number. The original stays RTO while
+   * the goods travel back and becomes Returned (RTD) automatically once the return AWB is delivered.
    */
   async rtoClose(awbRaw: string, dto: { returnAwb?: string; forwardingNo?: string; vendor?: string }, userId?: bigint) {
     const awb = String(awbRaw || '').trim().toUpperCase();
@@ -1014,7 +1016,7 @@ export class ShipmentsService {
     const shipperPin = String(s.shipperPincode || c.pincode || '');
     const created: any = await this.create({
       clientId: Number(s.clientId), serviceMode: s.serviceMode, product: s.product ?? undefined, paymentTerm: s.paymentTerm ?? undefined,
-      manualAwb: dto.returnAwb ? String(dto.returnAwb).trim().toUpperCase() : undefined,
+      manualAwb: dto.returnAwb ? String(dto.returnAwb).trim().toUpperCase() : `${awb}R`,
       vendor, forwardingAwb: fwd,
       originZone: s.destZone, destZone: s.originZone, originPincode: s.destPincode ?? undefined, destPincode: shipperPin || undefined,
       shipperName: s.consigneeName ?? undefined, shipperCity: s.consigneeCity ?? undefined, shipperState: s.consigneeState ?? undefined,
@@ -1029,15 +1031,36 @@ export class ShipmentsService {
     const retAwb = String(created?.awb ?? created?.shipment?.awb ?? '');
     if (!retAwb) throw new BadRequestException('Could not book the return AWB.');
     const now = new Date();
-    const note = `RTO closed — return AWB ${retAwb}, ${vendor} ${fwd}`;
+    const note = `RTO — returning under ${retAwb} (${vendor} ${fwd})`;
     await this.prisma.$transaction([
       // Return leg: in transit back to the shipper; carrier tracking takes it from here.
       this.prisma.shipment.update({ where: { awb: retAwb }, data: { rtoOfAwb: awb, statusCode: 'DPD', status: 'IN_TRANSIT' as any, statusAt: now, shipperAddress1: s.consigneeAddress ? String(s.consigneeAddress).slice(0, 250) : undefined } }),
-      this.prisma.shipment.update({ where: { id: s.id }, data: { rtoAwb: retAwb, statusCode: 'RTD', status: 'DELIVERED' as any, statusAt: now, exceptionFlag: note } }),
-      this.prisma.scanLog.create({ data: { awb, eventType: 'RTD', remark: note, scannedById: userId ?? null } }),
-      this.prisma.scanLog.create({ data: { awb: retAwb, eventType: 'MAN', remark: `Return leg of ${awb}`, scannedById: userId ?? null } }),
+      // Original: RTO until the return is delivered (then RTD automatically — closeDeliveredReturns).
+      this.prisma.shipment.update({ where: { id: s.id }, data: { rtoAwb: retAwb, statusCode: 'RTO', status: 'IN_TRANSIT' as any, statusAt: now, exceptionFlag: note } }),
+      ...(cur !== 'RTO' ? [this.prisma.scanLog.create({ data: { awb, eventType: 'RTO', remark: note, scannedById: userId ?? null } })] : []),
+      this.prisma.scanLog.create({ data: { awb: retAwb, eventType: 'MAN', remark: `Return of ${awb}`, scannedById: userId ?? null } }),
     ]);
-    return { awb, returnAwb: retAwb, forwardingNo: fwd, vendor, message: `${note}. The return is billed on the customer's next invoice.` };
+    return { awb, returnAwb: retAwb, forwardingNo: fwd, vendor, message: `${note}. ${retAwb} is billed on the customer's next invoice; ${awb} closes as Returned when the return is delivered.` };
+  }
+
+  /** Every 15 min: an RTO whose return AWB has been DELIVERED back to the shipper closes as Returned (RTD). */
+  @Cron('*/15 * * * *')
+  async closeDeliveredReturns() {
+    const open = await this.prisma.shipment.findMany({ where: { rtoAwb: { not: null }, statusCode: 'RTO' }, select: { id: true, awb: true, rtoAwb: true } });
+    if (!open.length) return { closed: 0 };
+    const legs = await this.prisma.shipment.findMany({ where: { awb: { in: open.map((o) => o.rtoAwb as string) }, statusCode: 'DLD' }, select: { awb: true, statusAt: true } });
+    const done = new Map(legs.map((l) => [l.awb, l.statusAt]));
+    let closed = 0;
+    for (const o of open) {
+      if (!done.has(o.rtoAwb as string)) continue;
+      const at = done.get(o.rtoAwb as string) ?? new Date();
+      await this.prisma.$transaction([
+        this.prisma.shipment.update({ where: { id: o.id }, data: { statusCode: 'RTD', status: 'DELIVERED' as any, statusAt: at, exceptionFlag: `Returned to shipper — return AWB ${o.rtoAwb} delivered` } }),
+        this.prisma.scanLog.create({ data: { awb: o.awb, eventType: 'RTD', remark: `Return AWB ${o.rtoAwb} delivered to shipper`, scanAt: at } }),
+      ]);
+      closed++;
+    }
+    return { closed };
   }
 
   /** Attach a document (invoice copy etc.) to a shipment from the app — a data URL (image / PDF). Same store as
