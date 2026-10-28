@@ -1008,6 +1008,9 @@ export class ShipmentsService {
     if (!fwd) throw new BadRequestException('Enter the return forwarding (carrier) number.');
     const vendor = String(dto.vendor || s.vendor || '').trim();
     if (!vendor) throw new BadRequestException('Pick the carrier that is bringing it back.');
+    // Most carriers (Delhivery, XpressBees …) bring an RTO back under the SAME AWB; BlueDart issues a new one.
+    // The same number is fine here — it's set on the return leg after booking (skips the duplicate check).
+    const sameNo = [s.forwardingAwb, s.bdWaybill].filter(Boolean).map((x: any) => String(x).replace(/\s+/g, '').toUpperCase()).includes(fwd);
     const c = s.client ?? {};
     const pieces = (s.pieces.length ? s.pieces : [{ deadKg: s.totalDeadKg || 0.5 }]).map((p: any) => ({
       deadKg: Number(p.deadKg || 0.5), lengthCm: p.lengthCm != null ? Number(p.lengthCm) : undefined,
@@ -1017,7 +1020,7 @@ export class ShipmentsService {
     const created: any = await this.create({
       clientId: Number(s.clientId), serviceMode: s.serviceMode, product: s.product ?? undefined, paymentTerm: s.paymentTerm ?? undefined,
       manualAwb: dto.returnAwb ? String(dto.returnAwb).trim().toUpperCase() : `${awb}R`,
-      vendor, forwardingAwb: fwd,
+      vendor, forwardingAwb: sameNo ? undefined : fwd,
       originZone: s.destZone, destZone: s.originZone, originPincode: s.destPincode ?? undefined, destPincode: shipperPin || undefined,
       shipperName: s.consigneeName ?? undefined, shipperCity: s.consigneeCity ?? undefined, shipperState: s.consigneeState ?? undefined,
       shipperPincode: s.destPincode ?? undefined, shipperMobile: s.consigneePhone ?? undefined, shipperGstin: s.consigneeGstin ?? undefined,
@@ -1034,7 +1037,7 @@ export class ShipmentsService {
     const note = `RTO — returning under ${retAwb} (${vendor} ${fwd})`;
     await this.prisma.$transaction([
       // Return leg: in transit back to the shipper; carrier tracking takes it from here.
-      this.prisma.shipment.update({ where: { awb: retAwb }, data: { rtoOfAwb: awb, statusCode: 'DPD', status: 'IN_TRANSIT' as any, statusAt: now, shipperAddress1: s.consigneeAddress ? String(s.consigneeAddress).slice(0, 250) : undefined } }),
+      this.prisma.shipment.update({ where: { awb: retAwb }, data: { rtoOfAwb: awb, forwardingAwb: fwd, vendor, statusCode: 'DPD', status: 'IN_TRANSIT' as any, statusAt: now, shipperAddress1: s.consigneeAddress ? String(s.consigneeAddress).slice(0, 250) : undefined } }),
       // Original: RTO until the return is delivered (then RTD automatically — closeDeliveredReturns).
       this.prisma.shipment.update({ where: { id: s.id }, data: { rtoAwb: retAwb, statusCode: 'RTO', status: 'IN_TRANSIT' as any, statusAt: now, exceptionFlag: note } }),
       ...(cur !== 'RTO' ? [this.prisma.scanLog.create({ data: { awb, eventType: 'RTO', remark: note, scannedById: userId ?? null } })] : []),
@@ -1048,7 +1051,8 @@ export class ShipmentsService {
   async closeDeliveredReturns() {
     const open = await this.prisma.shipment.findMany({ where: { rtoAwb: { not: null }, statusCode: 'RTO' }, select: { id: true, awb: true, rtoAwb: true } });
     if (!open.length) return { closed: 0 };
-    const legs = await this.prisma.shipment.findMany({ where: { awb: { in: open.map((o) => o.rtoAwb as string) }, statusCode: 'DLD' }, select: { awb: true, statusAt: true } });
+    // Return leg delivered back (DLD) — or, when it shares the carrier number, the carrier's "RTO delivered" (RTD).
+    const legs = await this.prisma.shipment.findMany({ where: { awb: { in: open.map((o) => o.rtoAwb as string) }, statusCode: { in: ['DLD', 'RTD'] } }, select: { awb: true, statusAt: true } });
     const done = new Map(legs.map((l) => [l.awb, l.statusAt]));
     let closed = 0;
     for (const o of open) {
