@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ShipmentStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { cityName } from '../../common/place-name';
 import { effectiveCode } from '../bluedart/bd-status';
 import { RateService } from '../billing/rate.service';
 import { StorageService } from '../storage/storage.service';
@@ -301,8 +302,9 @@ export class LifecycleService {
       originPincode: s.shipperPincode ?? null,
       destPincode: s.destPincode ?? null,
       shipper: s.shipperName ?? (s as any).client?.legalName ?? null,
-      origin: [s.originLocation, s.originHub?.code].filter(Boolean).join(' - ') || s.originZone,
-      destination: [s.consigneeCity, s.destHub?.code].filter(Boolean).join(' - ') || s.destZone,
+      // Full city NAMES (CHENNAI, MUMBAI) — the city fields often hold 3-letter area codes (MAA, BOM).
+      origin: await cityName(this.prisma, s.shipperPincode, s.shipperCity, s.originLocation, s.originZone),
+      destination: await cityName(this.prisma, s.destPincode, s.consigneeCity, s.destZone),
       currentLocation: s.currentLocation ?? bdLatestLoc ?? (s.destHub ? `${s.destHub.name} - ${s.destHub.code}` : null),
       orderDate: manAt,
       currentCode: effCode,

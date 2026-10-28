@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { cityName, pinRows, placeName } from '../../common/place-name';
 import { LIFECYCLE } from '../lifecycle/lifecycle.service';
 
 const CODES = new Set<string>(LIFECYCLE.map((l) => l.code));
@@ -28,6 +29,7 @@ export class TrackingService {
     // Index by every key a paste could have used.
     const byAwb = new Map<string, typeof ships[number]>();
     for (const s of ships) for (const k of [s.awb, s.forwardingAwb, s.referenceNo, s.lrNumber]) if (k) byAwb.set(String(k).toUpperCase(), s);
+    const pins = await pinRows(this.prisma, ships.map((x: any) => x.destPincode));
     return awbs.map((awb) => {
       const s = byAwb.get(awb);
       if (!s) return { awb, found: false };
@@ -35,7 +37,7 @@ export class TrackingService {
       return {
         awb: s.awb, found: true, statusCode: s.statusCode ?? 'MAN',
         currentLabel: labelOf(String(s.statusCode ?? 'MAN')), status: s.status,
-        destination: s.destHub?.name ?? s.consigneeCity ?? s.destZone,
+        destination: placeName((s as any).consigneeCity, pins.get(String((s as any).destPincode || '')), s.destZone),
         consignee: s.consigneeName ?? null, pieceCount: s.pieceCount, delivered,
         expectedDelivery: s.expectedDelivery ?? null, forwardingAwb: s.forwardingAwb ?? null,
       };
@@ -104,8 +106,8 @@ export class TrackingService {
       statusCode: s.statusCode ?? 'MAN',
       currentLabel: labelOf(String(s.statusCode ?? 'MAN')),
       // Prefer the real place (city/pincode) over the internal zone code (AHD/BHW) for origin & dest.
-      origin: (s as any).shipperCity ?? (s as any).originLocation ?? (s as any).shipperPincode ?? s.originZone,
-      destination: (s as any).consigneeCity ?? (s as any).destPincode ?? s.destHub?.name ?? s.destZone,
+      origin: await cityName(this.prisma, (s as any).shipperPincode, (s as any).shipperCity, (s as any).originLocation, s.originZone),
+      destination: await cityName(this.prisma, (s as any).destPincode, (s as any).consigneeCity, s.destZone),
       pieceCount: s.pieceCount,
       delivered,
       isShort: delivered > 0 && delivered < s.pieceCount,

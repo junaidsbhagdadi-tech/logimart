@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { randomUUID } from 'crypto';
 import { Prisma, ShipmentStatus, PieceStatus, ScanCheckpoint } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { pinRows, placeName } from '../../common/place-name';
 import { COMPANY, VOLUMETRIC_DIVISOR } from '../../config/company';
 import { regionFromPincode } from '../../common/regions';
 import { RateService } from '../billing/rate.service';
@@ -1261,6 +1262,7 @@ export class ShipmentsService {
       }
       return [...groups.entries()].map(([d, n]) => (n > 1 ? `${n}×${d}` : d)).join(', ');
     };
+    const destPins = await pinRows(this.prisma, shipments.map((x: any) => x.destPincode));
     return shipments.map((s) => ({
       awb: s.awb,
       invoiced: s._count.invoiceLines > 0,
@@ -1269,7 +1271,7 @@ export class ShipmentsService {
       customerCode: s.client.accountCode,
       customerName: s.client.legalName,
       consigneeName: s.consigneeName ?? '',
-      destination: s.consigneeCity ?? s.destPincode ?? s.destZone,
+      destination: placeName(s.consigneeCity, destPins.get(String(s.destPincode || '')), s.destZone),
       product: s.product ?? '',
       vendor: s.vendor ?? (s.bdWaybill ? 'BLUEDART' : 'SELF'),
       forwardingAwb: s.forwardingAwb ?? s.bdWaybill ?? null,
