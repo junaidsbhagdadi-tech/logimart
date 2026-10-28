@@ -83,7 +83,7 @@ export function ShipmentDetail() {
       ewbValidUpto: (s as any).ewbValidUpto ? String((s as any).ewbValidUpto).slice(0, 10) : '',
       chargeWeight: (s as any).chargeWeight != null ? String((s as any).chargeWeight) : '',
       isDod: (s as any).isDod ? 'Y' : '',
-      fmPickup: (s as any).fmPickup ? 'pickup' : 'drop',
+      fmPickup: (s as any).fmPickup === false ? 'drop' : 'pickup',
       dodAmount: (s as any).dodAmount != null ? String((s as any).dodAmount) : '',
       freightToCollect: (s as any).freightToCollect != null ? String((s as any).freightToCollect) : '',
     });

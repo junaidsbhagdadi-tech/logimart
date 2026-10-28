@@ -36,6 +36,7 @@ export function QuickBook() {
   const [vendors, setVendors] = useState<{ code: string; name: string }[]>([]);
   const [product, setProduct] = useState('');
   const [vendor, setVendor] = useState('');
+  const [fmPickup, setFmPickup] = useState('pickup'); // Delhivery first mile: pickup (default) / drop
   const [ref, setRef] = useState('');
   const [content, setContent] = useState(() => { try { return localStorage.getItem(LAST_CONTENT_KEY) || ''; } catch { return ''; } });
   const [awb, setAwb] = useState('');
@@ -121,6 +122,7 @@ export function QuickBook() {
         shipperMobile: (pickupElsewhere ? pick.phone : cust.contactPhone) || undefined,
         consigneeName: con.name, consigneePhone: con.phone || undefined, consigneeAddress: con.address || undefined, consigneeGstin: con.gst || undefined,
         vendor: vendor || undefined, forwardingAwb: fwd.trim() || undefined, manualAwb: awb.trim() || undefined,
+        fmPickup: /^DLY|DELHIVERY/i.test(vendor) ? fmPickup === 'pickup' : undefined,
         referenceNo: ref || undefined, goodsDesc: content || undefined,
         shipmentValue: invAmt ? +invAmt : undefined, declaredValue: invAmt ? +invAmt : undefined,
         invoiceNo: invNo || undefined, ewbNo: ewb || undefined,
@@ -222,6 +224,12 @@ export function QuickBook() {
               {vendors.map((v) => <option key={v.code} value={v.code}>{v.code} — {v.name}</option>)}
             </select>
           </Field></div>
+          {/^DLY|DELHIVERY/i.test(vendor) && <div style={{ flex: 1 }}><Field label="Delhivery first mile">
+            <select value={fmPickup} onChange={(e) => setFmPickup(e.target.value)}>
+              <option value="pickup">Delhivery picks up from the pickup address</option>
+              <option value="drop">Self-drop at Delhivery hub</option>
+            </select>
+          </Field></div>}
         </div>
         {sugg.length > 0 && (
           <div style={{ margin: '-4px 0 10px' }}>

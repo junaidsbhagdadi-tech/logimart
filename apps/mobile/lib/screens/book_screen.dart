@@ -81,6 +81,7 @@ class _NewBookingState extends State<_NewBooking> {
   Map<String, dynamic>? _cust;
   String? _product;
   String? _vendor;
+  bool _fmPickup = true; // Delhivery first mile: Delhivery picks up (default) / self-drop at their hub
   String _docType = 'NDOX';
   bool _pickupElsewhere = false;
 
@@ -211,6 +212,7 @@ class _NewBookingState extends State<_NewBooking> {
         'consigneeAddress': opt(_conAddr),
         'consigneeGstin': opt(_conGst),
         'vendor': _vendor,
+        if (RegExp(r'^DLY|DELHIVERY', caseSensitive: false).hasMatch(_vendor ?? '')) 'fmPickup': _fmPickup,
         'forwardingAwb': opt(_fwd)?.toUpperCase(),
         'manualAwb': opt(_awb)?.toUpperCase(),
         'referenceNo': opt(_ref),
@@ -356,6 +358,17 @@ class _NewBookingState extends State<_NewBooking> {
           ],
           onChanged: (v) => setState(() => _vendor = v),
         ),
+        if (RegExp(r'^DLY|DELHIVERY', caseSensitive: false).hasMatch(_vendor ?? ''))
+          DropdownButtonFormField<bool>(
+            initialValue: _fmPickup,
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: 'Delhivery first mile'),
+            items: const [
+              DropdownMenuItem(value: true, child: Text('Delhivery picks up from the pickup address')),
+              DropdownMenuItem(value: false, child: Text('Self-drop at Delhivery hub')),
+            ],
+            onChanged: (v) => setState(() => _fmPickup = v ?? true),
+          ),
         const SizedBox(height: 10),
         SegmentedButton<String>(
           segments: const [

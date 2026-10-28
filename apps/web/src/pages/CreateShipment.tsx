@@ -98,7 +98,7 @@ export function CreateShipment() {
     } catch { /* non-fatal */ } finally { setSavingWh(false); }
   };
   // services extras
-  const [svc, setSvc] = useState({ vendor: 'SELF', service: 'SELF', shipmentValue: '', referenceNo: '', forwardingAwb: '', isCommercial: false, isMedical: false, bookedAt: '', bdAccountId: '', fmPickup: 'drop' });
+  const [svc, setSvc] = useState({ vendor: 'SELF', service: 'SELF', shipmentValue: '', referenceNo: '', forwardingAwb: '', isCommercial: false, isMedical: false, bookedAt: '', bdAccountId: '', fmPickup: 'pickup' });
   const [bdAccts, setBdAccts] = useState<any[]>([]);
   useEffect(() => { api.bdAccountOptions().then(setBdAccts).catch(() => {}); }, []);
   const [entryTab, setEntryTab] = useState<'AWB' | 'PROFORMA' | 'FORWARDING'>('AWB');
