@@ -62,6 +62,7 @@ import { Masters } from './pages/Masters';
 import { Customer360 } from './pages/Customer360';
 import { ClientPortal } from './pages/ClientPortal';
 import { Developers } from './pages/Developers';
+import { LoginGreeting } from './components/LoginGreeting';
 import { BulkRateUpload } from './pages/BulkRateUpload';
 import { Deliver } from './pages/Deliver';
 import { PickupBook } from './pages/PickupBook';
@@ -94,6 +95,8 @@ export function App() {
     );
   }
   return (
+    <>
+    <LoginGreeting />
     <Routes>
       <Route path="/track" element={<Track />} />
       <Route path="/track/:awb" element={<Track />} />
@@ -194,5 +197,6 @@ export function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
+    </>
   );
 }

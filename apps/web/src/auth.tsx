@@ -40,6 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await api.login(email, password);
     setToken(res.accessToken);
     localStorage.setItem(USER_KEY, JSON.stringify(res.user));
+    try { sessionStorage.setItem('lm_greet', '1'); } catch { /* private mode */ }
     setUser(res.user);
   };
 

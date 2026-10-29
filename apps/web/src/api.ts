@@ -331,6 +331,7 @@ export interface Credit {
 }
 
 export const api = {
+  greeting: () => request<{ name: string | null; isNew: boolean; isClient: boolean; counts: { bookedToday: number; ofd: number; inTransit: number; deliveredToday: number; exceptions: number } }>('/api/v1/stats/greeting'),
   login: (email: string, password: string) =>
     request<{
       accessToken: string;
