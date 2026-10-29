@@ -27,11 +27,15 @@ export function ClientPortal() {
     const q = shipQ.trim();
     if (!q) { setShipHits(null); return; }
     const t = setTimeout(() => {
-      api.awbList(50, q).then((rows: any[]) => setShipHits(rows.map((r) => ({ awb: r.awb, createdAt: r.bookDate, destination: r.destination, statusCode: r.statusCode || 'MAN', hasPod: false })))).catch(() => setShipHits([]));
+      api.awbList(50, q).then((rows: any[]) => setShipHits(rows)).catch(() => setShipHits([]));
     }, 350);
     return () => clearTimeout(t);
   }, [shipQ]);
-  const reload = () => api.portalOverview().then(setD).catch(() => {});
+  // swdev #8-9 — recent shipments in the Shipment List format (awb-list rows, customer-stripped server-side).
+  const [recent, setRecent] = useState<any[]>([]);
+  const loadRecent = () => api.awbList(15).then(setRecent).catch(() => {});
+  useEffect(() => { loadRecent(); }, []);
+  const reload = () => { api.portalOverview().then(setD).catch(() => {}); loadRecent(); };
   const saveAppt = async () => {
     if (!appt) return;
     try { await api.portalAppointment(appt.awb, { date: appt.date || undefined, remark: appt.remark || undefined }); setMsg(`✓ Appointment updated for ${appt.awb}. Our CS team has been notified.`); setAppt(null); reload(); }
@@ -64,8 +68,8 @@ export function ClientPortal() {
   const exportShipments = async () => {
     try {
       const rows = await api.awbList(2000);
-      const head = ['AWB', 'Booked', 'Destination', 'Status', 'Pieces'];
-      const body = rows.map((r: any) => [r.awb, r.createdAt ? fmtDate(r.createdAt) : '', r.route ?? r.destZone ?? '', r.status ?? r.statusCode ?? '', r.pieceCount ?? '']);
+      const head = ['AWB No', 'Book Date', 'Customer Code', 'Customer Name', 'Consignee Name', 'Origin Name', 'Destination Name', 'Shipment Value', 'E-way Bill', 'Product', 'Vendor', 'Fwd AWB', 'Pieces', 'Status'];
+      const body = rows.map((r: any) => [r.awb, r.bookDate ? fmtDate(r.bookDate) : '', r.customerCode, r.customerName, r.consigneeName, r.originName, r.destination, r.shipmentValue ?? '', r.ewbNo ?? '', r.product, r.vendor, r.forwardingAwb ?? '', r.pieces, r.statusCode]);
       const csv = [head, ...body].map((r) => r.map((c: any) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
       const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
       const a = document.createElement('a'); a.href = url; a.download = `my-shipments-${new Date().toISOString().slice(0, 10)}.csv`; a.click(); URL.revokeObjectURL(url);
@@ -155,7 +159,7 @@ export function ClientPortal() {
       </div>
 
       <div className="grid" style={{ gridTemplateColumns: '1.5fr 1fr', gap: 12, alignItems: 'start' }}>
-        {/* LEFT: trend + recent shipments */}
+        {/* LEFT: trend */}
         <div className="grid" style={{ gap: 12 }}>
           <div className="card">
             <div className="row" style={{ justifyContent: 'space-between' }}><h2 style={{ margin: 0 }}>📈 Shipping trend</h2><span className="muted">last 6 months</span></div>
@@ -167,40 +171,6 @@ export function ClientPortal() {
                   <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>{t.month}</div>
                 </div>
               ))}
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ margin: 0 }}>{shipHits ? `Search results (${shipHits.length})` : 'Recent shipments'}</h2>
-              <div className="row" style={{ gap: 8, alignItems: 'center' }}>
-                <input value={shipQ} onChange={(e) => setShipQ(e.target.value)} placeholder="🔍 AWB / reference / consignee" style={{ width: 230, padding: '5px 10px', fontSize: 13 }} />
-                <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={exportShipments}>⬇ Export CSV</button>
-                <Link to="/awb-list" className="muted" style={{ fontSize: 12 }}>view all →</Link>
-              </div>
-            </div>
-            <div style={{ overflowX: 'auto', marginTop: 6 }}>
-              <table>
-                <thead><tr><th>AWB</th><th>Booked</th><th>Destination</th><th>Status</th><th></th></tr></thead>
-                <tbody>
-                  {(shipHits ?? d.recentShipments).map((s: any) => (
-                    <tr key={s.awb}>
-                      <td><Link to={`/tracker/${s.awb}`}><strong>{s.awb}</strong></Link></td>
-                      <td>{dd(s.createdAt)}</td>
-                      <td>{s.destination}</td>
-                      <td><StatusBadge code={s.statusCode} /></td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        <Link to={`/tracker/${s.awb}`}><button className="secondary" style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }}>🧭 Track</button></Link>
-                        {!['DLD', 'CAN', 'RTD'].includes(s.statusCode) && <button className="secondary" style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }} title="Request an appointment delivery date/time" onClick={() => setAppt({ awb: s.awb, date: '', remark: '' })}>📅 Appt</button>}
-                        <button className="secondary" style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }} title="Leave a remark for CS" onClick={() => addRemark(s.awb)}>✎ Remark</button>
-                        {s.hasPod && <Link to={`/tracker/${s.awb}`}><button className="secondary" style={{ padding: '3px 8px', fontSize: 12 }} title="View / download POD">📄 POD</button></Link>}
-                        {['MAN', 'PKD'].includes(s.statusCode) && <CancelBtn awb={s.awb} onDone={() => api.portalOverview().then(setD)} />}
-                      </td>
-                    </tr>
-                  ))}
-                  {(shipHits ?? d.recentShipments).length === 0 && <tr><td colSpan={5} className="muted">{shipHits ? 'No shipment matches that search.' : 'No shipments yet — book your first one.'}</td></tr>}
-                </tbody>
-              </table>
             </div>
           </div>
         </div>
@@ -232,6 +202,50 @@ export function ClientPortal() {
               </tbody>
             </table>
           </div>}
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 style={{ margin: 0 }}>{shipHits ? `Search results (${shipHits.length})` : 'Recent shipments'}</h2>
+          <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+            <input value={shipQ} onChange={(e) => setShipQ(e.target.value)} placeholder="🔍 AWB / reference / consignee" style={{ width: 230, padding: '5px 10px', fontSize: 13 }} />
+            <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={exportShipments}>⬇ Export CSV</button>
+            <Link to="/awb-list" className="muted" style={{ fontSize: 12 }}>view all →</Link>
+          </div>
+        </div>
+        <div style={{ overflowX: 'auto', marginTop: 6 }}>
+          <table>
+            <thead><tr><th>AWB No</th><th>Book Date</th><th>Customer Code</th><th>Customer Name</th><th>Consignee Name</th><th>Origin Name</th><th>Destination Name</th><th>Shipment Value</th><th>E-way Bill</th><th>Product</th><th>Vendor</th><th>Fwd AWB</th><th>Pieces</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              {(shipHits ?? recent).map((s: any) => (
+                <tr key={s.awb}>
+                  <td><Link to={`/tracker/${s.awb}`}><strong>{s.awb}</strong></Link></td>
+                  <td>{dd(s.bookDate)}</td>
+                  <td>{s.customerCode}</td>
+                  <td>{s.customerName}</td>
+                  <td>{s.consigneeName || '—'}</td>
+                  <td>{s.originName || '—'}</td>
+                  <td>{s.destination || '—'}</td>
+                  <td>{s.shipmentValue != null ? inr(s.shipmentValue) : '—'}</td>
+                  <td>{s.ewbNo || '—'}</td>
+                  <td>{s.product || '—'}</td>
+                  <td>{s.vendor || '—'}</td>
+                  <td>{s.forwardingAwb || '—'}</td>
+                  <td>{s.pieces}</td>
+                  <td><StatusBadge code={s.statusCode} /></td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    <Link to={`/tracker/${s.awb}`}><button className="secondary" style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }}>🧭 Track</button></Link>
+                    {!['DLD', 'CAN', 'RTD'].includes(s.statusCode) && <button className="secondary" style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }} title="Request an appointment delivery date/time" onClick={() => setAppt({ awb: s.awb, date: '', remark: '' })}>📅 Appt</button>}
+                    <button className="secondary" style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }} title="Leave a remark for CS" onClick={() => addRemark(s.awb)}>✎ Remark</button>
+                    {s.hasPod && <Link to={`/tracker/${s.awb}`}><button className="secondary" style={{ padding: '3px 8px', fontSize: 12 }} title="View / download POD">📄 POD</button></Link>}
+                    {['MAN', 'PKD'].includes(s.statusCode) && <CancelBtn awb={s.awb} onDone={reload} />}
+                  </td>
+                </tr>
+              ))}
+              {(shipHits ?? recent).length === 0 && <tr><td colSpan={15} className="muted">{shipHits ? 'No shipment matches that search.' : 'No shipments yet — book your first one.'}</td></tr>}
+            </tbody>
+          </table>
         </div>
       </div>
     </>

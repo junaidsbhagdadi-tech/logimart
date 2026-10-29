@@ -228,7 +228,10 @@ export class ShipmentsController {
   async awbList(@Req() req: any, @Query('limit') limit?: string, @Query('search') search?: string, @Query('from') from?: string, @Query('to') to?: string, @Query('ewbPending') ewbPending?: string, @Query('vendors') vendors?: string) {
     const clientId = req.user.role === UserRole.CLIENT_ADMIN && req.user.clientId != null ? BigInt(req.user.clientId) : undefined;
     const scope = clientId == null ? await scopedClientIds(this.prisma, req.user) : null;
-    return this.shipments.awbList(clientId, limit ? Number(limit) : 300, search, from, to, scope, ewbPending === '1' || ewbPending === 'true', vendors ? vendors.split(',') : undefined);
+    const rows = await this.shipments.awbList(clientId, limit ? Number(limit) : 300, search, from, to, scope, ewbPending === '1' || ewbPending === 'true', vendors ? vendors.split(',') : undefined);
+    // Customer view: no weights, dimensions, PINs or carrier waybill (swdev #8-9).
+    if (clientId != null) return rows.map(({ actualWeight, chargeWeight, dimensions, originPincode, destPincode, deliveryVendor, ...r }: any) => r);
+    return rows;
   }
 
   @Get(':awb')

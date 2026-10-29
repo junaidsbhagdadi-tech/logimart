@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { BulkChangeDialog } from '../components/BulkChangeDialog';
+import { StatusBadge } from '../components/StatusBadge';
 
 type Row = {
   awb: string; invoiced?: boolean; bookDate: string; shipperName: string; customerCode: string; customerName: string;
@@ -10,35 +11,44 @@ type Row = {
   actualWeight: number; chargeWeight: number; pieces: number; deliveryVendor: string; status: string;
   shipmentValue?: number | null; originPincode?: string | null; destPincode?: string | null; dimensions?: string;
   ewbNo?: string | null; ewbPending?: boolean; // ₹50k+ with no e-way bill number on file
+  originName?: string; statusCode?: string;
 };
 
+// swdev #8-9 — one layout for customers and staff: no weights, dims, PINs or carrier waybill on screen.
 const COLS: { key: keyof Row; label: string; num?: boolean }[] = [
   { key: 'awb', label: 'AWB No' },
   { key: 'bookDate', label: 'Book Date' },
-  { key: 'shipperName', label: 'Shipper Name' },
   { key: 'customerCode', label: 'Customer Code' },
   { key: 'customerName', label: 'Customer Name' },
   { key: 'consigneeName', label: 'Consignee Name' },
-  { key: 'destination', label: 'Destination' },
-  { key: 'originPincode', label: 'Origin PIN' },
-  { key: 'destPincode', label: 'Dest PIN' },
+  { key: 'originName', label: 'Origin Name' },
+  { key: 'destination', label: 'Destination Name' },
   { key: 'shipmentValue', label: 'Shipment Value', num: true },
   { key: 'ewbNo', label: 'E-way Bill' },
   { key: 'product', label: 'Product' },
   { key: 'vendor', label: 'Vendor' },
   { key: 'forwardingAwb', label: 'Fwd AWB' },
-  { key: 'actualWeight', label: 'Actual Weight', num: true },
-  { key: 'chargeWeight', label: 'Charge Weight', num: true },
   { key: 'pieces', label: 'Pieces', num: true },
+  { key: 'statusCode', label: 'Status' },
+];
+// Staff Excel export keeps the operational detail the screen no longer shows.
+const EXPORT_EXTRA: { key: keyof Row; label: string }[] = [
+  { key: 'actualWeight', label: 'Actual Weight' },
+  { key: 'chargeWeight', label: 'Charge Weight' },
+  { key: 'originPincode', label: 'Origin PIN' },
+  { key: 'destPincode', label: 'Dest PIN' },
   { key: 'dimensions', label: 'Dimensions (cm)' },
   { key: 'deliveryVendor', label: 'Delivery Vendor' },
 ];
 
 const PAGE = 10;
+const BTN = { padding: '3px 8px', fontSize: 12, whiteSpace: 'nowrap' as const };
 
 export function AwbEntryList() {
   const { user } = useAuth();
   const isSuper = user?.role === 'SYS_ADMIN';
+  const isClient = user?.role === 'CLIENT_ADMIN';
+  const [appt, setAppt] = useState<{ awb: string; date: string; remark: string } | null>(null);
   const isOps = ['HUB_MANAGER', 'SYS_ADMIN'].includes(user?.role || ''); // bulk void
   const canChangeDate = ['HUB_MANAGER', 'FINANCE_EXEC', 'SYS_ADMIN'].includes(user?.role || ''); // finance moves AWBs between billing months
   const nav = useNavigate();
@@ -191,11 +201,31 @@ export function AwbEntryList() {
     } catch (e: any) { setError(e.message); }
   };
 
+  // Appointment / remark — customers go to CS through the portal endpoints; staff write straight to the AWB.
+  const saveAppt = async () => {
+    if (!appt) return;
+    try {
+      if (isClient) await api.portalAppointment(appt.awb, { date: appt.date || undefined, remark: appt.remark || undefined });
+      else await api.setAppointment(appt.awb, { date: appt.date || undefined, note: appt.remark || undefined });
+      setMsg(`✓ Appointment ${isClient ? 'sent to CS' : 'saved'} for ${appt.awb}.`); setAppt(null);
+    } catch (e: any) { setError(e.message); }
+  };
+  const addRemark = async (awb: string) => {
+    const r = window.prompt(isClient ? `Remark for our CS team about ${awb}:` : `Internal remark for ${awb} (shows on the timeline, not to the customer):`);
+    if (r == null || !r.trim()) return;
+    try {
+      if (isClient) await api.portalRemark(awb, r.trim());
+      else await api.recordScan({ awb, eventType: 'COMMENT', remark: r.trim() });
+      setMsg(`✓ Remark saved for ${awb}.`);
+    } catch (e: any) { setError(e.message); }
+  };
+
   // Excel export of the CURRENTLY FILTERED rows (not just the visible page).
   const exportXls = async () => {
     const XLSX = await import('xlsx');
-    const head = COLS.map((c) => c.label);
-    const data = filtered.map((r) => COLS.map((c) => (c.key === 'bookDate' ? fmtDate(r.bookDate) : c.key === 'ewbNo' ? (r.ewbNo || (r.ewbPending ? 'PENDING' : '')) : ((r as any)[c.key] ?? ''))));
+    const cols = isClient ? COLS : [...COLS, ...EXPORT_EXTRA];
+    const head = cols.map((c) => c.label);
+    const data = filtered.map((r) => cols.map((c) => (c.key === 'bookDate' ? fmtDate(r.bookDate) : c.key === 'ewbNo' ? (r.ewbNo || (r.ewbPending ? 'PENDING' : '')) : ((r as any)[c.key] ?? ''))));
     const ws = XLSX.utils.aoa_to_sheet([head, ...data]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Shipments');
@@ -212,6 +242,19 @@ export function AwbEntryList() {
           <button type="submit" disabled={!trackAwb.trim()}>🧭 Track</button>
         </form>
       </div>
+      {appt && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 1300, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setAppt(null)}>
+          <div className="card" style={{ maxWidth: 420, width: '90%' }} onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ marginTop: 0 }}>📅 Appointment delivery — {appt.awb}</h2>
+            <div><label>Date &amp; time</label><input type="datetime-local" value={appt.date} onChange={(e) => setAppt({ ...appt, date: e.target.value })} /></div>
+            <div style={{ marginTop: 8 }}><label>Remark <span className="muted">(optional)</span></label><input value={appt.remark} onChange={(e) => setAppt({ ...appt, remark: e.target.value })} placeholder="e.g. Call 98xxxxxxx before delivery" /></div>
+            <div className="row" style={{ gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
+              <button className="secondary" onClick={() => setAppt(null)}>Cancel</button>
+              <button onClick={saveAppt} disabled={!appt.date && !appt.remark}>{isClient ? 'Send to CS' : 'Save'}</button>
+            </div>
+          </div>
+        </div>
+      )}
       {error && <div className="error">{error}</div>}
       {msg && <div className="card" style={{ borderLeft: '4px solid var(--ok, #16a34a)', fontSize: 13 }}>{msg}</div>}
 
@@ -247,7 +290,7 @@ export function AwbEntryList() {
             <thead>
               <tr>
                 {canChangeDate && <th style={{ width: 32 }}><input type="checkbox" checked={allSelected} onChange={toggleSelAll} style={{ width: 'auto' }} title="Select all (filtered)" /></th>}
-                {COLS.map((c) => <th key={c.key}>{c.label}</th>)}<th>Action</th>
+                {COLS.map((c) => <th key={c.key}>{c.label}</th>)}<th>Track</th><th>Appt</th><th>Remark</th>
               </tr>
               <tr>
                 {canChangeDate && <th></th>}
@@ -257,36 +300,33 @@ export function AwbEntryList() {
                       style={{ fontSize: 12, padding: '5px 7px', fontWeight: 400 }} />
                   </th>
                 ))}
-                <th></th>
+                <th></th><th></th><th></th>
               </tr>
             </thead>
             <tbody>
               {slice.map((r) => (
                 <tr key={r.awb} style={sel.has(r.awb) ? { background: 'var(--bg-soft, #f2f4f7)' } : undefined}>
                   {canChangeDate && <td><input type="checkbox" checked={sel.has(r.awb)} onChange={() => toggleSel(r.awb)} style={{ width: 'auto' }} /></td>}
-                  <td><Link to={`/shipments/${r.awb}`}><strong>{r.awb}</strong></Link>{r.invoiced && <span title="Invoiced — locked for editing" style={{ marginLeft: 6 }}>🔒</span>}{r.ewbPending && <span className="badge EXCEPTION" title="Invoice value ₹50,000+ and no e-way bill number — enter it via Edit AWB" style={{ marginLeft: 6 }}>EWB</span>}</td>
+                  <td><Link to={isClient ? `/tracker/${encodeURIComponent(r.awb)}` : `/shipments/${r.awb}`}><strong>{r.awb}</strong></Link>{r.invoiced && <span title="Invoiced — locked for editing" style={{ marginLeft: 6 }}>🔒</span>}{r.ewbPending && <span className="badge EXCEPTION" title="Invoice value ₹50,000+ and no e-way bill number — enter it via Edit AWB" style={{ marginLeft: 6 }}>EWB</span>}</td>
                   <td>{fmtDate(r.bookDate)}</td>
-                  <td>{r.shipperName}</td>
                   <td>{r.customerCode}</td>
                   <td>{r.customerName}</td>
                   <td>{r.consigneeName || '—'}</td>
+                  <td>{r.originName || '—'}</td>
                   <td>{r.destination || '—'}</td>
-                  <td>{r.originPincode || '—'}</td>
-                  <td>{r.destPincode || '—'}</td>
                   <td>{r.shipmentValue != null ? `₹${Number(r.shipmentValue).toLocaleString('en-IN')}` : '—'}</td>
                   <td>{r.ewbNo || (r.ewbPending ? <span className="badge EXCEPTION">Pending</span> : '—')}</td>
                   <td>{r.product || '—'}</td>
                   <td>{r.vendor || '—'}</td>
                   <td>{r.forwardingAwb || '—'}</td>
-                  <td>{r.actualWeight.toFixed(3)}</td>
-                  <td>{r.chargeWeight.toFixed(3)}</td>
                   <td>{r.pieces}</td>
-                  <td>{r.dimensions || '—'}</td>
-                  <td>{r.deliveryVendor}</td>
-                  <td><Link to={`/shipments/${r.awb}`} className="muted" style={{ fontSize: 12 }}>open →</Link></td>
+                  <td><StatusBadge code={r.statusCode} /></td>
+                  <td><Link to={`/tracker/${encodeURIComponent(r.awb)}`}><button className="secondary" style={BTN}>🧭 Track</button></Link></td>
+                  <td>{!['DLD', 'CAN', 'RTD'].includes(r.statusCode || '') && <button className="secondary" style={BTN} title="Appointment delivery date / time" onClick={() => setAppt({ awb: r.awb, date: '', remark: '' })}>📅 Appt</button>}</td>
+                  <td><button className="secondary" style={BTN} title={isClient ? 'Leave a remark for our CS team' : 'Add an internal remark to the timeline'} onClick={() => addRemark(r.awb)}>✎ Remark</button></td>
                 </tr>
               ))}
-              {slice.length === 0 && <tr><td colSpan={COLS.length + (isOps ? 2 : 1)} className="muted">No entries match.</td></tr>}
+              {slice.length === 0 && <tr><td colSpan={COLS.length + 4} className="muted">No entries match.</td></tr>}
             </tbody>
           </table>
         </div>

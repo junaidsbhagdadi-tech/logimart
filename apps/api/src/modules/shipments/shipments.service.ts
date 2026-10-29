@@ -1295,6 +1295,7 @@ export class ShipmentsService {
       return [...groups.entries()].map(([d, n]) => (n > 1 ? `${n}×${d}` : d)).join(', ');
     };
     const destPins = await pinRows(this.prisma, shipments.map((x: any) => x.destPincode));
+    const origPins = await pinRows(this.prisma, shipments.map((x: any) => x.shipperPincode));
     return shipments.map((s) => ({
       awb: s.awb,
       invoiced: s._count.invoiceLines > 0,
@@ -1304,6 +1305,7 @@ export class ShipmentsService {
       customerName: s.client.legalName,
       consigneeName: s.consigneeName ?? '',
       destination: placeName(s.consigneeCity, destPins.get(String(s.destPincode || '')), s.destZone),
+      originName: placeName(s.shipperCity ?? s.originLocation, origPins.get(String(s.shipperPincode || '')), s.originZone),
       product: s.product ?? '',
       vendor: s.vendor ?? (s.bdWaybill ? 'BLUEDART' : 'SELF'),
       forwardingAwb: s.forwardingAwb ?? s.bdWaybill ?? null,
@@ -1320,6 +1322,7 @@ export class ShipmentsService {
       bdStatus: (s as any).bdStatus ?? null,
       ewbNo: s.ewbNo ?? null,
       ewbPending: isEwbPending(s),
+      hasPod: !!(s as any).podUrl,
     }));
   }
 
