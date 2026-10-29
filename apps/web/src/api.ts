@@ -344,6 +344,9 @@ export const api = {
   }>('/api/v1/reports/data-health'),
   listShipments: () => request<ShipmentRow[]>('/api/v1/shipments'),
   getShipment: (awb: string) => request<Shipment>(`/api/v1/shipments/${awb}`),
+  myBookings: (date?: string) => request<{ date: string; rows: any[] }>(`/api/v1/shipments/my-bookings${date ? `?date=${date}` : ''}`),
+  attachShipmentDoc: (awb: string, dataUrl: string, docType = 'invoice', label = 'Invoice copy') =>
+    request<any>(`/api/v1/shipments/${encodeURIComponent(awb)}/attachments`, { method: 'POST', body: JSON.stringify({ dataUrl, docType, label }) }),
   getLabels: (awb: string) =>
     request<{ awb: string; pieceCount: number; master: MasterLabel; labels: LabelItem[] }>(
       `/api/v1/shipments/${awb}/print-mps-labels`,

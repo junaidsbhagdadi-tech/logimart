@@ -2,57 +2,85 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { ScanButton } from '../components/BarcodeScanner';
+import { StatusBadge } from '../components/StatusBadge';
 
 /**
- * Quick booking — the phone-first booking screen (eShipz-style): only what's needed to book, with
- * barcode scanning for AWB / forwarding no / reference / invoice / e-way bill / GST. Parcel or Document.
- * Customer code bills the right account; the pickup address defaults to the customer's own address
- * (change it only when picking up elsewhere). Same booking API as the full New Shipment form.
+ * Quick booking — the same screen as the rider app's Book tab (swdev #8-7): "New booking" and
+ * "My bookings", the same sections in the same order, invoice / e-way bill photos, and after booking
+ * the same summary (edit, cancel, hand to carrier, attach invoice, print). Same booking API.
  */
 
 type Cust = { id: string; accountCode: string; legalName: string; addressLine?: string | null; city?: string | null; state?: string | null; pincode?: string | null; contactPhone?: string | null; contactName?: string | null; defaultVendor?: string | null };
-type Box = { nos: string; l: string; w: string; h: string; kg: string };
-type Settings = { prefillPhone: boolean; prefillContent: boolean; docDefault: boolean; autoRef: boolean; totalWeight: boolean };
+type Line = { nos: string; l: string; w: string; h: string };
+type Settings = { prefillPhone: boolean; docDefault: boolean; autoRef: boolean };
 
 const SETTINGS_KEY = 'lm_quickbook_settings';
 const LAST_CONTENT_KEY = 'lm_quickbook_content';
-const DEFAULTS: Settings = { prefillPhone: false, prefillContent: true, docDefault: false, autoRef: false, totalWeight: true };
+const DEFAULTS: Settings = { prefillPhone: false, docDefault: false, autoRef: false };
 const load = <T,>(k: string, d: T): T => { try { const v = localStorage.getItem(k); return v ? { ...d, ...JSON.parse(v) } : d; } catch { return d; } };
 const save = (k: string, v: unknown) => { try { localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v)); } catch { /* private mode */ } };
-const blankBox = (): Box => ({ nos: '1', l: '', w: '', h: '', kg: '' });
-// Defined at module level (not inside QuickBook) so inputs keep focus while typing.
-const Field = ({ label, children }: { label: string; children: any }) => <div style={{ marginBottom: 10 }}><label style={{ fontSize: 12 }}>{label}</label>{children}</div>;
+const blankLine = (): Line => ({ nos: '1', l: '', w: '', h: '' });
+const count = (l: Line) => Math.min(999, Math.max(1, Math.floor(Number(l.nos) || 1)));
+const isDly = (v: string) => /^DLY|DELHIVERY/i.test(v);
+const todayIst = () => new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10);
+const fileToDataUrl = (f: File) => new Promise<string>((ok, bad) => { const r = new FileReader(); r.onload = () => ok(String(r.result)); r.onerror = () => bad(r.error); r.readAsDataURL(f); });
+
+// Module level (not inside the component) so inputs keep focus while typing.
+const Section = ({ children }: { children: any }) => <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--muted, #6b7280)', margin: '18px 0 6px' }}>{children}</div>;
+const Field = ({ label, hint, children }: { label: string; hint?: string; children: any }) => <div style={{ marginBottom: 10, flex: 1 }}><label style={{ fontSize: 12 }}>{label}</label>{children}{hint && <div className="muted" style={{ fontSize: 11.5 }}>{hint}</div>}</div>;
 
 export function QuickBook() {
+  const [view, setView] = useState<'new' | 'mine'>('new');
+  const [summaryAwb, setSummaryAwb] = useState<{ awb: string; justBooked: boolean } | null>(null);
+  const [mineKey, setMineKey] = useState(0);
+
+  if (summaryAwb) return <BookingSummary awb={summaryAwb.awb} justBooked={summaryAwb.justBooked} onClose={() => { setSummaryAwb(null); setMineKey((k) => k + 1); }} />;
+  return (
+    <div style={{ maxWidth: 560, margin: '0 auto', paddingBottom: 80 }}>
+      <h1 style={{ margin: '0 0 10px' }}>⚡ Quick booking</h1>
+      <div className="row" style={{ gap: 0, marginBottom: 6 }}>
+        {([['new', '＋ New booking'], ['mine', '☰ My bookings']] as const).map(([v, label], i) => (
+          <button key={v} className={view === v ? '' : 'secondary'} style={{ flex: 1, borderRadius: i === 0 ? '10px 0 0 10px' : '0 10px 10px 0' }} onClick={() => { setView(v); if (v === 'mine') setMineKey((k) => k + 1); }}>{label}</button>
+        ))}
+      </div>
+      {/* Keep the form mounted (like the app's IndexedStack) so switching tabs never loses a half-filled booking. */}
+      <div style={{ display: view === 'new' ? 'block' : 'none' }}><NewBooking onBooked={(awb) => setSummaryAwb({ awb, justBooked: true })} /></div>
+      {view === 'mine' && <MyBookings key={mineKey} onOpen={(awb) => setSummaryAwb({ awb, justBooked: false })} />}
+    </div>
+  );
+}
+
+function NewBooking({ onBooked }: { onBooked: (awb: string) => void }) {
   const [st, setSt] = useState<Settings>(() => load(SETTINGS_KEY, DEFAULTS));
   const [showSettings, setShowSettings] = useState(false);
   const setSetting = (k: keyof Settings, v: boolean) => setSt((s) => { const n = { ...s, [k]: v }; save(SETTINGS_KEY, n); return n; });
 
-  const [docType, setDocType] = useState<'NDOX' | 'DOX'>(() => (load(SETTINGS_KEY, DEFAULTS).docDefault ? 'DOX' : 'NDOX'));
   const [customers, setCustomers] = useState<Cust[]>([]);
-  const [custText, setCustText] = useState('');
-  const [cust, setCust] = useState<Cust | null>(null);
   const [products, setProducts] = useState<{ code: string; name: string; surface: boolean }[]>([]);
   const [vendors, setVendors] = useState<{ code: string; name: string }[]>([]);
+  const [custText, setCustText] = useState('');
+  const [cust, setCust] = useState<Cust | null>(null);
   const [product, setProduct] = useState('');
   const [vendor, setVendor] = useState('');
-  const [fmPickup, setFmPickup] = useState('pickup'); // Delhivery first mile: pickup (default) / drop
-  const [ref, setRef] = useState('');
+  const [fmPickup, setFmPickup] = useState(true); // Delhivery first mile: Delhivery picks up (default) / self-drop
+  const [docType, setDocType] = useState<'NDOX' | 'DOX'>(() => (load(SETTINGS_KEY, DEFAULTS).docDefault ? 'DOX' : 'NDOX'));
+  const [pickupElsewhere, setPickupElsewhere] = useState(false);
+  const [pick, setPick] = useState({ address: '', pincode: '', phone: '' });
+  const [con, setCon] = useState({ name: '', pincode: '', phone: '', address: '', gst: '' });
+  const [destCity, setDestCity] = useState('');
+  const [lines, setLines] = useState<Line[]>([blankLine()]);
+  const [kg, setKg] = useState('');
   const [content, setContent] = useState(() => { try { return localStorage.getItem(LAST_CONTENT_KEY) || ''; } catch { return ''; } });
   const [awb, setAwb] = useState('');
   const [fwd, setFwd] = useState('');
+  const [ref, setRef] = useState('');
   const [invNo, setInvNo] = useState('');
   const [invAmt, setInvAmt] = useState('');
   const [ewb, setEwb] = useState('');
-  const [boxes, setBoxes] = useState<Box[]>([blankBox()]);
-  const [totalKg, setTotalKg] = useState('');
-  const [pickupElsewhere, setPickupElsewhere] = useState(false);
-  const [pick, setPick] = useState({ address: '', pincode: '', phone: '' });
-  const [con, setCon] = useState({ name: '', phone: '', address: '', pincode: '', gst: '' });
-  const [destCity, setDestCity] = useState('');
+  const [invDoc, setInvDoc] = useState<{ name: string; url: string } | null>(null);
+  const [ewbDoc, setEwbDoc] = useState<{ name: string; url: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const [booked, setBooked] = useState<{ awb: string; vendor: string } | null>(null);
 
   useEffect(() => {
     api.bookingCustomers().then((cs: any[]) => setCustomers(cs)).catch(() => {});
@@ -64,176 +92,144 @@ export function QuickBook() {
     api.listVendors().then((v: any[]) => setVendors(v.filter((x) => x.isActive !== false).map((x) => ({ code: x.vendorCode, name: x.name })))).catch(() => {});
   }, []);
   useEffect(() => { if (st.prefillPhone && !con.phone) setCon((c) => ({ ...c, phone: '0000000000' })); /* eslint-disable-next-line */ }, [st.prefillPhone]);
-  useEffect(() => { if (st.autoRef && !ref) setRef(`R${Date.now().toString().slice(-8)}`); /* eslint-disable-next-line */ }, [st.autoRef, booked]);
+  useEffect(() => { if (st.autoRef && !ref) setRef(`R${Date.now().toString().slice(-8)}`); /* eslint-disable-next-line */ }, [st.autoRef]);
 
-  // Customer: type the code (or name) — matched on exact code first, then "CODE — NAME" from the list.
+  // Customer: type the code or name and pick from the list (the app's customer picker).
   const pickCustomer = (v: string) => {
     setCustText(v);
     const s = v.trim().toLowerCase();
     const m = customers.find((c) => c.accountCode.toLowerCase() === s || `${c.accountCode} — ${c.legalName}`.toLowerCase() === s);
     setCust(m ?? null);
-    if (m?.defaultVendor && !vendor) setVendor(String(m.defaultVendor).toUpperCase());
+    const dv = String(m?.defaultVendor || '').toUpperCase();
+    if (dv && vendors.some((x) => x.code.toUpperCase() === dv)) setVendor(vendors.find((x) => x.code.toUpperCase() === dv)!.code);
   };
-  // Carrier suggestion for this customer × product × destination: serviceable first, then cheapest.
+  const lookDest = (p: string) => {
+    setCon((c) => ({ ...c, pincode: p }));
+    setDestCity('');
+    if (/^\d{6}$/.test(p)) api.lookupPincode(p).then((i: any) => setDestCity(i?.known === false ? 'Not in the pincode master' : [i?.city, i?.state].filter(Boolean).join(', '))).catch(() => {});
+  };
+
+  // Carrier suggestion for this customer × product × destination (serviceable first, then cheapest).
   const [sugg, setSugg] = useState<{ vendor: string; name: string; price: number | null; serviceable: boolean | null; tatDays: number | null }[]>([]);
   useEffect(() => {
     setSugg([]);
     if (!cust || !product || !/^\d{6}$/.test(con.pincode)) return;
     const t = setTimeout(() => {
-      api.carrierSuggest({ clientId: Number(cust.id), product, originPincode: (pickupElsewhere ? pick.pincode : cust.pincode) || undefined, destPincode: con.pincode, deadKg: Number(totalKg) || undefined })
+      api.carrierSuggest({ clientId: Number(cust.id), product, originPincode: (pickupElsewhere ? pick.pincode : cust.pincode) || undefined, destPincode: con.pincode, deadKg: Number(kg) || undefined })
         .then((r) => setSugg(r.carriers.slice(0, 6))).catch(() => {});
     }, 600);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cust?.id, product, con.pincode]);
-  const lookDest = (p: string) => {
-    setCon((c) => ({ ...c, pincode: p }));
-    setDestCity('');
-    if (/^\d{6}$/.test(p)) api.lookupPincode(p).then((i: any) => setDestCity(i?.known === false ? '⚠ not in the pincode master' : [i?.city, i?.state].filter(Boolean).join(', '))).catch(() => {});
-  };
 
-  const totalBoxes = boxes.reduce((s, b) => s + Math.max(1, Math.floor(Number(b.nos) || 1)), 0);
-  const kgSum = st.totalWeight ? Number(totalKg) || 0 : boxes.reduce((s, b) => s + (Number(b.kg) || 0) * Math.max(1, Math.floor(Number(b.nos) || 1)), 0);
+  const boxes = lines.reduce((s, l) => s + count(l), 0);
   const needEway = Number(invAmt) >= 50000;
-  const sel = products.find((p) => p.code === product);
-  const originPin = pickupElsewhere ? pick.pincode : (cust?.pincode ?? '');
-  const ready = !!cust && !!product && /^\d{6}$/.test(con.pincode) && kgSum > 0 && !!con.name && (!pickupElsewhere || (!!pick.address && /^\d{6}$/.test(pick.pincode)));
   const missing = useMemo(() => [
-    !cust && 'customer', !product && 'product', !/^\d{6}$/.test(con.pincode) && 'consignee pincode', !con.name && 'consignee name', !(kgSum > 0) && 'weight',
-    pickupElsewhere && !pick.address && 'pickup address', pickupElsewhere && !/^\d{6}$/.test(pick.pincode) && 'pickup pincode',
-  ].filter(Boolean) as string[], [cust, product, con, kgSum, pickupElsewhere, pick]);
+    !cust && 'customer', !product && 'product', !/^\d{6}$/.test(con.pincode.trim()) && 'consignee pincode', !con.name.trim() && 'consignee name',
+    !(Number(kg) > 0) && 'weight', pickupElsewhere && !pick.address.trim() && 'pickup address', pickupElsewhere && !/^\d{6}$/.test(pick.pincode.trim()) && 'pickup pincode',
+  ].filter(Boolean) as string[], [cust, product, con, kg, pickupElsewhere, pick]);
 
   const book = async () => {
-    if (!ready || !cust) return;
+    if (missing.length) { setErr(`Missing: ${missing.join(', ')}`); return; }
+    const c = cust!;
+    const sel = products.find((p) => p.code === product);
+    const perBox = +(Number(kg) / boxes).toFixed(3);
+    const originPin = pickupElsewhere ? pick.pincode.trim() : (c.pincode ?? '');
+    const inv = Number(invAmt) > 0 ? Number(invAmt) : undefined;
+    const opt = (v: string) => v.trim() || undefined;
     setBusy(true); setErr('');
     try {
-      const perBoxKg = st.totalWeight ? +(kgSum / totalBoxes).toFixed(3) : 0;
-      const pieces = boxes.flatMap((b) => Array.from({ length: Math.max(1, Math.floor(Number(b.nos) || 1)) }, () => ({
-        deadKg: st.totalWeight ? perBoxKg : Number(b.kg) || 0.5,
-        lengthCm: b.l ? +b.l : undefined, widthCm: b.w ? +b.w : undefined, heightCm: b.h ? +b.h : undefined,
-      })));
       const res = await api.createShipment({
-        clientId: Number(cust.id), product, docType, serviceMode: sel?.surface ? 'ROAD_PTL' : 'AIR_EXPRESS',
+        clientId: Number(c.id), product, docType, serviceMode: sel?.surface ? 'ROAD_PTL' : 'AIR_EXPRESS',
         originZone: 'SOUTH', destZone: 'SOUTH', // re-derived server-side from the pincodes
-        originPincode: originPin || undefined, destPincode: con.pincode,
-        shipperName: cust.legalName, shipperContact: cust.contactName || undefined,
-        shipperAddress1: pickupElsewhere ? pick.address : (cust.addressLine || undefined),
-        shipperPincode: originPin || undefined, shipperCity: pickupElsewhere ? undefined : (cust.city || undefined),
-        shipperMobile: (pickupElsewhere ? pick.phone : cust.contactPhone) || undefined,
-        consigneeName: con.name, consigneePhone: con.phone || undefined, consigneeAddress: con.address || undefined, consigneeGstin: con.gst || undefined,
-        vendor: vendor || undefined, forwardingAwb: fwd.trim() || undefined, manualAwb: awb.trim() || undefined,
-        fmPickup: /^DLY|DELHIVERY/i.test(vendor) ? fmPickup === 'pickup' : undefined,
-        referenceNo: ref || undefined, goodsDesc: content || undefined,
-        shipmentValue: invAmt ? +invAmt : undefined, declaredValue: invAmt ? +invAmt : undefined,
-        invoiceNo: invNo || undefined, ewbNo: ewb || undefined,
-        paymentTerm: 'PREPAID', pieces,
+        originPincode: originPin || undefined, destPincode: con.pincode.trim(),
+        shipperName: c.legalName, shipperContact: c.contactName || undefined,
+        shipperAddress1: pickupElsewhere ? pick.address.trim() : (c.addressLine || undefined),
+        shipperPincode: originPin || undefined, shipperCity: pickupElsewhere ? undefined : (c.city || undefined),
+        shipperMobile: (pickupElsewhere ? opt(pick.phone) : c.contactPhone) || undefined,
+        consigneeName: con.name.trim(), consigneePhone: opt(con.phone), consigneeAddress: opt(con.address), consigneeGstin: opt(con.gst),
+        vendor: vendor || undefined, fmPickup: isDly(vendor) ? fmPickup : undefined,
+        forwardingAwb: opt(fwd)?.toUpperCase(), manualAwb: opt(awb)?.toUpperCase(), referenceNo: opt(ref), goodsDesc: opt(content),
+        shipmentValue: inv, declaredValue: inv, invoiceNo: opt(invNo), ewbNo: opt(ewb),
+        paymentTerm: 'PREPAID',
+        // One piece per box, each carrying its line's size (volumetric weight is worked out server-side).
+        pieces: lines.flatMap((l) => Array.from({ length: count(l) }, () => ({ deadKg: perBox, lengthCm: Number(l.l) > 0 ? +l.l : undefined, widthCm: Number(l.w) > 0 ? +l.w : undefined, heightCm: Number(l.h) > 0 ? +l.h : undefined }))),
       } as any);
-      if (st.prefillContent) save(LAST_CONTENT_KEY, content);
-      setBooked({ awb: res.awb, vendor: vendor || 'SELF' });
+      // Attach the invoice / e-way bill photos to the new AWB (a failed upload never undoes the booking).
+      const failed: string[] = [];
+      for (const [doc, docType, label] of [[invDoc, 'invoice', 'Invoice copy'], [ewbDoc, 'ewaybill', 'E-way bill']] as const) {
+        if (doc) await api.attachShipmentDoc(res.awb, doc.url, docType, label).catch(() => failed.push(label));
+      }
+      save(LAST_CONTENT_KEY, content.trim());
+      if (failed.length) alert(`Booked, but the ${failed.join(' and ')} upload failed — attach it again from the summary.`);
+      next();
+      onBooked(res.awb);
     } catch (e: any) { setErr(e.message); }
     finally { setBusy(false); }
   };
 
-  // Book the next one for the same customer/product/vendor — clear the per-shipment fields.
+  // Book the next one for the same customer / product / carrier — clear the per-shipment fields.
   const next = () => {
-    setBooked(null); setErr(''); setAwb(''); setFwd(''); setInvNo(''); setInvAmt(''); setEwb(''); setTotalKg('');
-    setBoxes([blankBox()]); setRef(''); setCon({ name: '', phone: st.prefillPhone ? '0000000000' : '', address: '', pincode: '', gst: '' }); setDestCity('');
-    if (!st.prefillContent) setContent('');
+    setCon({ name: '', pincode: '', phone: st.prefillPhone ? '0000000000' : '', address: '', gst: '' }); setDestCity('');
+    setKg(''); setAwb(''); setFwd(''); setRef(st.autoRef ? `R${Date.now().toString().slice(-8)}` : ''); setInvNo(''); setInvAmt(''); setEwb('');
+    setLines([blankLine()]); setInvDoc(null); setEwbDoc(null);
   };
 
-  const scanRow = (value: string, set: (v: string) => void, placeholder: string, title: string) => (
+  const scan = (value: string, set: (v: string) => void, placeholder: string, title: string) => (
     <div className="row" style={{ gap: 6 }}><input style={{ flex: 1 }} value={value} onChange={(e) => set(e.target.value)} placeholder={placeholder} /><ScanButton title={title} onScan={set} /></div>
   );
-
-  if (booked) {
-    return (
-      <div style={{ maxWidth: 520, margin: '0 auto' }}>
-        <div className="card" style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 40 }}>✅</div>
-          <h2 style={{ margin: '6px 0' }}>Booked — {booked.awb}</h2>
-          <p className="muted" style={{ marginTop: 0 }}>{cust?.accountCode} — {cust?.legalName} · {booked.vendor}</p>
-          <div className="row" style={{ gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <Link to={`/shipments/${booked.awb}/labels`}><button>🏷 Print label</button></Link>
-            <Link to={`/handover?vendor=${encodeURIComponent(booked.vendor)}`}><button className="secondary">📋 Handover manifest</button></Link>
-            <button className="secondary" onClick={next}>➕ Book next</button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const docButton = (what: string, doc: { name: string } | null, set: (d: { name: string; url: string } | null) => void) => (
+    doc
+      ? <button type="button" className="secondary" style={{ flex: 1, padding: 12 }} onClick={() => set(null)} title="Remove">✅ {what} ✓ (click to remove)</button>
+      : <label className="button secondary" style={{ flex: 1, padding: 12, textAlign: 'center', cursor: 'pointer', border: '1px solid var(--border, #d0d5dd)', borderRadius: 8, fontWeight: 600 }}>
+          📷 {what} photo
+          <input type="file" accept="image/*,application/pdf" capture="environment" style={{ display: 'none' }} onChange={async (e) => {
+            const f = e.target.files?.[0]; e.target.value = '';
+            if (!f) return;
+            if (f.size > 8 * 1024 * 1024) { setErr(`${what} file is over 8 MB — take a smaller photo.`); return; }
+            set({ name: f.name, url: await fileToDataUrl(f) });
+          }} />
+        </label>
+  );
 
   return (
-    <div style={{ maxWidth: 520, margin: '0 auto', paddingBottom: 80 }}>
-      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 style={{ margin: 0 }}>⚡ Quick booking</h1>
-        <button className="secondary" style={{ padding: '4px 10px' }} onClick={() => setShowSettings((v) => !v)} title="Settings">⚙</button>
+    <>
+      <div className="row" style={{ justifyContent: 'flex-end', marginTop: -4 }}>
+        <button className="secondary" style={{ padding: '2px 10px', fontSize: 12 }} onClick={() => setShowSettings((v) => !v)} title="Settings">⚙ Settings</button>
       </div>
-
       {showSettings && (
         <div className="card" style={{ padding: 12 }}>
-          {([['prefillPhone', 'Pre-fill receiver phone (0000000000)'], ['prefillContent', 'Remember parcel content'], ['docDefault', 'Document as default'], ['autoRef', 'Auto customer reference'], ['totalWeight', 'One total weight (split across boxes)']] as const).map(([k, label]) => (
+          {([['prefillPhone', 'Pre-fill receiver phone (0000000000)'], ['docDefault', 'Document as default'], ['autoRef', 'Auto customer reference']] as const).map(([k, label]) => (
             <label key={k} className="row" style={{ justifyContent: 'space-between', alignItems: 'center', fontSize: 13, fontWeight: 400, padding: '4px 0' }}>
               {label}<input type="checkbox" checked={st[k]} onChange={(e) => setSetting(k, e.target.checked)} style={{ width: 'auto' }} />
             </label>
           ))}
+          <div className="muted" style={{ fontSize: 11.5 }}>Content is always remembered for the next booking, as in the app.</div>
         </div>
       )}
 
-      <div className="row" style={{ gap: 0, margin: '10px 0' }}>
-        {(['NDOX', 'DOX'] as const).map((t) => (
-          <button key={t} className={docType === t ? '' : 'secondary'} style={{ flex: 1, borderRadius: t === 'NDOX' ? '10px 0 0 10px' : '0 10px 10px 0' }} onClick={() => setDocType(t)}>{t === 'NDOX' ? '📦 Parcel' : '📄 Document'}</button>
-        ))}
-      </div>
+      <Section>Customer</Section>
+      <input list="qb-customers" value={custText} onChange={(e) => pickCustomer(e.target.value)} placeholder="🏢 Choose customer — code or name" />
+      <datalist id="qb-customers">{customers.map((c) => <option key={c.id} value={`${c.accountCode} — ${c.legalName}`} />)}</datalist>
+      {cust && <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>{[cust.city, cust.pincode].filter(Boolean).join(' · ')}</div>}
+      {!cust && custText.trim() && <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>Pick a customer from the list.</div>}
 
-      {err && <div className="error">{err}</div>}
-
-      <div className="card" style={{ padding: 14 }}>
-        <Field label="Customer code *">
-          <input list="qb-customers" value={custText} onChange={(e) => pickCustomer(e.target.value)} placeholder="type the code, e.g. 111130" />
-          <datalist id="qb-customers">{customers.map((c) => <option key={c.id} value={`${c.accountCode} — ${c.legalName}`} />)}</datalist>
-          {cust && <div style={{ fontSize: 12.5, marginTop: 4 }}><strong>{cust.legalName}</strong></div>}
-          {!cust && custText.trim() && <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>No customer with that code yet — pick from the list.</div>}
+      <div style={{ marginTop: 10 }}>
+        <Field label="Product">
+          <select value={product} onChange={(e) => setProduct(e.target.value)}>
+            <option value="">— select —</option>
+            {products.map((p) => <option key={p.code} value={p.code}>{p.code} — {p.name}</option>)}
+          </select>
         </Field>
-        {cust && (
-          <div style={{ fontSize: 12.5, marginTop: -4, marginBottom: 10, padding: '6px 8px', borderRadius: 8, background: 'var(--surface-2, #f1f3f6)' }}>
-            {!pickupElsewhere
-              ? <>Pickup: {[cust.addressLine, cust.city, cust.pincode].filter(Boolean).join(', ') || <span className="muted">no address on the customer — enter one below</span>}</>
-              : <>Pickup from a different address:</>}
-            <label className="row" style={{ gap: 6, alignItems: 'center', fontWeight: 400, marginTop: 4 }}><input type="checkbox" checked={pickupElsewhere} onChange={(e) => setPickupElsewhere(e.target.checked)} style={{ width: 'auto' }} /> Pick up from a different address</label>
-            {pickupElsewhere && (
-              <div style={{ marginTop: 6 }}>
-                <input value={pick.address} onChange={(e) => setPick((p) => ({ ...p, address: e.target.value }))} placeholder="Pickup address *" style={{ marginBottom: 6 }} />
-                <div className="row" style={{ gap: 6 }}>
-                  <input value={pick.pincode} maxLength={6} onChange={(e) => setPick((p) => ({ ...p, pincode: e.target.value }))} placeholder="Pincode *" />
-                  <input value={pick.phone} onChange={(e) => setPick((p) => ({ ...p, phone: e.target.value }))} placeholder="Contact phone" />
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-        <div className="row" style={{ gap: 8 }}>
-          <div style={{ flex: 1 }}><Field label="Product *">
-            <select value={product} onChange={(e) => setProduct(e.target.value)}>
-              <option value="">— select —</option>
-              {products.map((p) => <option key={p.code} value={p.code}>{p.code} — {p.name}</option>)}
-            </select>
-          </Field></div>
-          <div style={{ flex: 1 }}><Field label="Vendor">
-            <select value={vendor} onChange={(e) => setVendor(e.target.value)}>
-              <option value="">SELF</option>
-              {vendors.map((v) => <option key={v.code} value={v.code}>{v.code} — {v.name}</option>)}
-            </select>
-          </Field></div>
-          {/^DLY|DELHIVERY/i.test(vendor) && <div style={{ flex: 1 }}><Field label="Delhivery first mile">
-            <select value={fmPickup} onChange={(e) => setFmPickup(e.target.value)}>
-              <option value="pickup">Delhivery picks up from the pickup address</option>
-              <option value="drop">Self-drop at Delhivery hub</option>
-            </select>
-          </Field></div>}
-        </div>
+        <Field label="Carrier (optional)">
+          <select value={vendor} onChange={(e) => setVendor(e.target.value)}>
+            <option value="">— Own network / decide later —</option>
+            {vendors.map((v) => <option key={v.code} value={v.code}>{v.code}  {v.name}</option>)}
+          </select>
+        </Field>
         {sugg.length > 0 && (
           <div style={{ margin: '-4px 0 10px' }}>
-            <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>Suggested carriers for {con.pincode} — tap to pick</div>
+            <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>Suggested carriers for {con.pincode} — click to pick</div>
             <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
               {sugg.map((c) => (
                 <button key={c.vendor} type="button" className={vendor === c.vendor ? '' : 'secondary'} disabled={c.serviceable === false}
@@ -245,59 +241,242 @@ export function QuickBook() {
             </div>
           </div>
         )}
-        <div className="row" style={{ gap: 8 }}>
-          <div style={{ flex: 1 }}><Field label="Reference">{scanRow(ref, setRef, 'customer ref', 'Scan the reference')}</Field></div>
-          <div style={{ flex: 1 }}><Field label={docType === 'DOX' ? 'Content' : 'Parcel content'}><input value={content} onChange={(e) => setContent(e.target.value)} placeholder="e.g. Cosmetics" /></Field></div>
-        </div>
-        <Field label="AWB (blank = auto)">{scanRow(awb, setAwb, 'scan or type the AWB', 'Scan the AWB barcode')}</Field>
-        {vendor && <Field label="Forwarding no (vendor AWB)">{scanRow(fwd, setFwd, 'carrier AWB / LR', 'Scan the carrier barcode')}</Field>}
+        {isDly(vendor) && (
+          <Field label="Delhivery first mile">
+            <select value={fmPickup ? 'pickup' : 'drop'} onChange={(e) => setFmPickup(e.target.value === 'pickup')}>
+              <option value="pickup">Delhivery picks up from the pickup address</option>
+              <option value="drop">Self-drop at Delhivery hub</option>
+            </select>
+          </Field>
+        )}
       </div>
 
-      {docType === 'NDOX' && (
-        <div className="card" style={{ padding: 14 }}>
-          <div className="row" style={{ gap: 8 }}>
-            <div style={{ flex: 1 }}><Field label="Invoice number">{scanRow(invNo, setInvNo, 'invoice no', 'Scan the invoice barcode')}</Field></div>
-            <div style={{ flex: 1 }}><Field label="Invoice amount ₹"><input type="number" inputMode="decimal" value={invAmt} onChange={(e) => setInvAmt(e.target.value)} /></Field></div>
+      <div className="row" style={{ gap: 0, margin: '6px 0 10px' }}>
+        {(['NDOX', 'DOX'] as const).map((t) => (
+          <button key={t} className={docType === t ? '' : 'secondary'} style={{ flex: 1, borderRadius: t === 'NDOX' ? '10px 0 0 10px' : '0 10px 10px 0' }} onClick={() => setDocType(t)}>{t === 'NDOX' ? '📦 Parcel' : '📄 Document'}</button>
+        ))}
+      </div>
+
+      <label className="row" style={{ justifyContent: 'space-between', alignItems: 'center', fontWeight: 400, padding: '4px 0' }}>
+        <span><span style={{ fontWeight: 600 }}>Pickup from another address</span><br /><span className="muted" style={{ fontSize: 12 }}>Off = the customer's own address{cust && !pickupElsewhere && cust.addressLine ? ` (${[cust.addressLine, cust.city, cust.pincode].filter(Boolean).join(', ')})` : ''}</span></span>
+        <input type="checkbox" checked={pickupElsewhere} onChange={(e) => setPickupElsewhere(e.target.checked)} style={{ width: 'auto' }} />
+      </label>
+      {pickupElsewhere && (
+        <>
+          <Field label="Pickup address"><textarea rows={2} value={pick.address} onChange={(e) => setPick((p) => ({ ...p, address: e.target.value }))} /></Field>
+          <div className="row" style={{ gap: 12 }}>
+            <Field label="Pickup pincode"><input inputMode="numeric" maxLength={6} value={pick.pincode} onChange={(e) => setPick((p) => ({ ...p, pincode: e.target.value }))} /></Field>
+            <Field label="Pickup phone"><input inputMode="tel" value={pick.phone} onChange={(e) => setPick((p) => ({ ...p, phone: e.target.value }))} /></Field>
           </div>
-          {(needEway || ewb) && <Field label={`E-way bill no${needEway ? ' (₹50,000+ — required; blank = flagged EWB pending)' : ''}`}>{scanRow(ewb, setEwb, '12-digit e-way bill', 'Scan the e-way bill barcode')}</Field>}
-        </div>
+        </>
       )}
 
-      <div className="card" style={{ padding: 14 }}>
+      <Section>Consignee</Section>
+      <Field label="Name"><input value={con.name} onChange={(e) => setCon((c) => ({ ...c, name: e.target.value }))} /></Field>
+      <div className="row" style={{ gap: 12 }}>
+        <Field label="Pincode" hint={destCity || undefined}><input inputMode="numeric" maxLength={6} value={con.pincode} onChange={(e) => lookDest(e.target.value)} /></Field>
+        <Field label="Phone"><input inputMode="tel" value={con.phone} onChange={(e) => setCon((c) => ({ ...c, phone: e.target.value }))} /></Field>
+      </div>
+      <Field label="Address"><textarea rows={2} value={con.address} onChange={(e) => setCon((c) => ({ ...c, address: e.target.value }))} /></Field>
+      <Field label="GSTIN (optional)">{scan(con.gst, (v) => setCon((c) => ({ ...c, gst: v.toUpperCase() })), '', 'Scan the GST barcode')}</Field>
+
+      <Section>Boxes ({boxes}) — sizes optional</Section>
+      {lines.map((l, i) => (
+        <div key={i} className="row" style={{ gap: 6, alignItems: 'flex-end', marginBottom: 6 }}>
+          <div style={{ width: 70 }}><label style={{ fontSize: 12 }}>Boxes</label><input type="number" inputMode="numeric" value={l.nos} onChange={(e) => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, nos: e.target.value } : x)))} /></div>
+          {(['l', 'w', 'h'] as const).map((k) => (
+            <div key={k} style={{ flex: 1 }}><label style={{ fontSize: 12 }}>{k.toUpperCase()} cm</label><input type="number" inputMode="decimal" value={l[k]} onChange={(e) => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, [k]: e.target.value } : x)))} /></div>
+          ))}
+          {lines.length > 1 ? <button className="secondary" style={{ padding: '6px 8px' }} title="Remove" onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}>✕</button> : <span style={{ width: 30 }} />}
+        </div>
+      ))}
+      <button className="secondary" style={{ padding: '3px 10px', fontSize: 12, marginBottom: 10 }} onClick={() => setLines((ls) => [...ls, blankLine()])}>＋ Another box size</button>
+      <Field label="Total weight (kg)"><input type="number" inputMode="decimal" value={kg} onChange={(e) => setKg(e.target.value)} /></Field>
+      <Field label="Content / description"><input value={content} onChange={(e) => setContent(e.target.value)} /></Field>
+
+      <Section>Numbers (scan or type)</Section>
+      <Field label="AWB no.">{scan(awb, setAwb, 'Blank = auto-generate', 'Scan the AWB barcode')}</Field>
+      <Field label="Forwarding / carrier AWB (optional)">{scan(fwd, setFwd, '', 'Scan the carrier barcode')}</Field>
+      <Field label="Reference no. (optional)">{scan(ref, setRef, '', 'Scan the reference')}</Field>
+      <div className="row" style={{ gap: 12 }}>
+        <Field label="Invoice no.">{scan(invNo, setInvNo, '', 'Scan the invoice barcode')}</Field>
+        <Field label="Invoice ₹"><input type="number" inputMode="decimal" value={invAmt} onChange={(e) => setInvAmt(e.target.value)} /></Field>
+      </div>
+      <Field label={needEway ? 'E-way bill no. (needed: ₹50,000+)' : 'E-way bill no. (optional)'}>{scan(ewb, setEwb, '', 'Scan the e-way bill barcode')}</Field>
+
+      <Section>Photos (optional)</Section>
+      <div className="row" style={{ gap: 10 }}>
+        {docButton('Invoice', invDoc, setInvDoc)}
+        {docButton('E-way bill', ewbDoc, setEwbDoc)}
+      </div>
+
+      {err && <div className="error" style={{ marginTop: 12 }}>{err}</div>}
+      <div style={{ position: 'sticky', bottom: 0, padding: '14px 0 10px', background: 'var(--bg, #f6f8fa)' }}>
+        <button style={{ width: '100%', padding: 14, fontSize: 15 }} disabled={busy} onClick={book}>{busy ? 'Booking…' : '✓ Book shipment'}</button>
+        {missing.length > 0 && <div className="muted" style={{ fontSize: 12, textAlign: 'center', marginTop: 4 }}>Needed: {missing.join(', ')}</div>}
+      </div>
+    </>
+  );
+}
+
+/** Today's (or a picked day's) bookings by me — open one, or tick several of a carrier and print the handover manifest. */
+function MyBookings({ onOpen }: { onOpen: (awb: string) => void }) {
+  const [day, setDay] = useState(todayIst());
+  const [rows, setRows] = useState<any[]>([]);
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [vendor, setVendor] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const reload = () => {
+    setLoading(true); setError('');
+    api.myBookings(day).then((r) => { setRows(r.rows); setSel((s) => new Set([...s].filter((a) => r.rows.some((x: any) => x.awb === a)))); })
+      .catch((e) => setError(e.message)).finally(() => setLoading(false));
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(reload, [day]);
+  const v = (r: any) => (String(r.vendor || '') ? String(r.vendor).toUpperCase() : 'SELF');
+  const vendors = [...new Set(rows.map(v))].sort();
+  const shown = rows.filter((r) => vendor == null || v(r) === vendor);
+  const printManifest = () => {
+    const picked = rows.filter((r) => sel.has(r.awb));
+    const vs = [...new Set(picked.map(v))];
+    if (vs.length > 1) { alert(`Pick shipments of ONE carrier — a manifest is per carrier (${vs.join(', ')}).`); return; }
+    window.open(`/handover/print?date=${day}&vendor=${encodeURIComponent(vs[0])}&awbs=${encodeURIComponent(picked.map((r) => r.awb).join(','))}`, '_blank');
+  };
+  return (
+    <div>
+      <div className="row" style={{ gap: 8, alignItems: 'center', margin: '8px 0' }}>
+        <input type="date" value={day} max={todayIst()} onChange={(e) => e.target.value && setDay(e.target.value)} style={{ width: 170 }} />
+        <span style={{ flex: 1 }} />
+        <button className="secondary" onClick={reload} title="Refresh">⟳</button>
+      </div>
+      {vendors.length > 1 && (
+        <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+          {[null, ...vendors].map((x) => <button key={x ?? 'all'} className={vendor === x ? '' : 'secondary'} style={{ padding: '3px 12px', fontSize: 12 }} onClick={() => setVendor(x)}>{x ?? 'All'}</button>)}
+        </div>
+      )}
+      {loading ? <p className="muted">Loading…</p> : error ? <div className="error">{error}</div> : shown.length === 0 ? <p className="muted">No bookings by you on this day.</p> : (
+        <div className="card" style={{ padding: 0 }}>
+          {shown.map((r) => {
+            const carrierAwb = r.bdWaybill ?? r.forwardingAwb;
+            return (
+              <div key={r.awb} className="row" style={{ gap: 10, alignItems: 'center', padding: '10px 12px', borderBottom: '1px solid var(--border, #eceef1)' }}>
+                <input type="checkbox" checked={sel.has(r.awb)} style={{ width: 'auto' }} onChange={(e) => setSel((s) => { const n = new Set(s); e.target.checked ? n.add(r.awb) : n.delete(r.awb); return n; })} />
+                <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => onOpen(r.awb)}>
+                  <div style={{ fontWeight: 700 }}>{r.awb} · {v(r)} <StatusBadge code={r.statusCode || 'MAN'} /></div>
+                  <div className="muted" style={{ fontSize: 12.5 }}>{r.customerCode} → {r.consigneeName || ''}, {r.consigneeCity || r.destPincode || ''}</div>
+                  <div className="muted" style={{ fontSize: 12.5 }}>{r.pieceCount} box(es){carrierAwb ? ` · carrier AWB ${carrierAwb}` : ' · not handed to carrier'}</div>
+                </div>
+                <button className="secondary" style={{ padding: '4px 10px' }} onClick={() => onOpen(r.awb)}>›</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {sel.size > 0 && (
+        <div style={{ position: 'sticky', bottom: 0, padding: '10px 0', background: 'var(--bg, #f6f8fa)' }}>
+          <button style={{ width: '100%', padding: 12 }} onClick={printManifest}>🖨 Print manifest ({sel.size})</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** What was booked — edit / cancel / hand to carrier / attach invoice / print (the app's booking summary). */
+function BookingSummary({ awb, justBooked, onClose }: { awb: string; justBooked: boolean; onClose: () => void }) {
+  const [s, setS] = useState<any>(null);
+  const [error, setError] = useState('');
+  const [msg, setMsg] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [bdCodes, setBdCodes] = useState<string[]>([]);
+  const reload = () => api.getShipment(awb).then(setS).catch((e) => setError(e.message));
+  useEffect(() => {
+    reload();
+    api.bdAccountOptions().then((r) => setBdCodes(r.flatMap((a) => [a.customerCode, a.accountCode]).filter(Boolean).map((x) => String(x).toUpperCase()))).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [awb]);
+
+  const run = async (fn: () => Promise<void>) => { setBusy(true); setError(''); setMsg(''); try { await fn(); } catch (e: any) { setError(e.message); } finally { setBusy(false); } };
+  if (!s) return <div style={{ maxWidth: 560, margin: '0 auto' }}>{error ? <div className="error">{error}</div> : <p className="muted">Loading {awb}…</p>}</div>;
+
+  const vend = String(s.vendor || '').toUpperCase();
+  const carrier = s.bdWaybill || /^(BLUE|BDR)/.test(vend) || bdCodes.includes(vend) ? 'BD'
+    : /DELHIVERY|^DLY/.test(vend) ? 'DLY' : /^XPB$|XPRESS\s*BEES|^XB$/.test(vend) ? 'XB' : /^GATI$|ALLCARGO/.test(vend) ? 'GATI'
+    : /^VXP$|^VX$|V\s*EXPRESS/.test(vend) ? 'VXP' : /^ARL$|AR\s*LOG/.test(vend) ? 'ARL' : !vend || vend === 'SELF' ? 'SELF' : 'OTHER';
+  const carrierName = ({ BD: 'BlueDart', DLY: 'Delhivery', XB: 'XpressBees', GATI: 'Gati', VXP: 'V Express', ARL: 'AR Logistics', SELF: 'own network' } as Record<string, string>)[carrier] ?? vend;
+  const carrierAwb: string | null = s.bdWaybill ?? s.forwardingAwb ?? null;
+  const manualCarrierAwb = !s.bdWaybill && (carrier === 'OTHER' || carrier === 'SELF');
+  const editable = String(s.statusCode || 'MAN') === 'MAN' && (!carrierAwb || manualCarrierAwb);
+  const pieces = s.rollup?.pieceCount ?? s.pieceCount;
+
+  const handoff = () => run(async () => {
+    if (carrier === 'OTHER') {
+      const f = window.prompt(`${vend} AWB:`); if (!f?.trim()) return;
+      await api.setForwarding(awb, { vendor: vend, forwardingAwb: f.trim().toUpperCase() });
+      await reload(); setMsg(`Carrier AWB ${f.trim().toUpperCase()} saved.`); return;
+    }
+    const r = await api.carrierHandoff(awb);
+    await reload(); setMsg(r.message || (r.carrierAwb ? `Carrier AWB ${r.carrierAwb} generated.` : 'Sent to the carrier.'));
+  });
+  const attachInvoice = (f?: File) => f && run(async () => {
+    await api.attachShipmentDoc(awb, await fileToDataUrl(f), 'invoice', 'Invoice copy');
+    if (carrier !== 'SELF' && carrier !== 'OTHER' && !carrierAwb) {
+      const r = await api.carrierHandoff(awb); await reload();
+      setMsg(`Invoice attached. ${r.message || 'Sent to the carrier.'}`);
+    } else setMsg('Invoice copy attached.');
+  });
+  const cancel = () => {
+    const reason = window.prompt(`Cancel ${awb}? The booking is cancelled and drops off your list. This cannot be undone.\n\nReason:`, 'Booked by mistake');
+    if (reason == null) return;
+    run(async () => { await api.cancelShipment(awb, reason.trim() || 'Cancelled at booking desk'); onClose(); });
+  };
+  const row = (k: string, v: any) => (v == null || String(v) === '' ? null : <div className="row" style={{ gap: 8, padding: '3px 0' }}><span className="muted" style={{ width: 120, flexShrink: 0 }}>{k}</span><strong style={{ fontWeight: 600 }}>{String(v)}</strong></div>);
+  const btn: React.CSSProperties = { width: '100%', padding: 12, marginTop: 10 };
+
+  return (
+    <div style={{ maxWidth: 560, margin: '0 auto', paddingBottom: 40 }}>
+      <button className="secondary" style={{ padding: '3px 10px', marginBottom: 10 }} onClick={onClose}>← {justBooked ? 'Book next' : 'Back'}</button>
+      {justBooked && (
+        <div className="card" style={{ background: '#dcfce7', borderColor: '#86efac', color: '#14532d' }}>
+          <strong style={{ fontSize: 16 }}>✅ Booked — {awb}</strong>
+          <div style={{ fontSize: 13, color: '#166534' }}>Check the details. Use Edit if anything is wrong.</div>
+        </div>
+      )}
+      {error && <div className="error">{error}</div>}
+      {msg && <div className="card" style={{ borderLeft: '4px solid var(--ok, #16a34a)', fontSize: 13 }}>{msg}</div>}
+      <div className="card">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-          <strong style={{ fontSize: 13 }}>Boxes ({totalBoxes})</strong>
-          <button className="secondary" style={{ padding: '2px 10px', fontSize: 12 }} onClick={() => setBoxes((b) => [...b, blankBox()])}>+ size</button>
+          <strong>{s.client?.accountCode} — {s.client?.legalName}</strong><StatusBadge code={s.statusCode || 'MAN'} />
         </div>
-        {boxes.map((b, i) => (
-          <div key={i} className="row" style={{ gap: 4, marginTop: 6, alignItems: 'center' }}>
-            <input style={{ width: 52 }} type="number" inputMode="numeric" value={b.nos} onChange={(e) => setBoxes((bs) => bs.map((x, j) => (j === i ? { ...x, nos: e.target.value } : x)))} title="Number of boxes" />
-            <span className="muted">×</span>
-            {(['l', 'w', 'h'] as const).map((k) => <input key={k} style={{ width: 60 }} type="number" inputMode="decimal" placeholder={k.toUpperCase() + ' cm'} value={b[k]} onChange={(e) => setBoxes((bs) => bs.map((x, j) => (j === i ? { ...x, [k]: e.target.value } : x)))} />)}
-            {!st.totalWeight && <input style={{ width: 62 }} type="number" inputMode="decimal" placeholder="kg/box" value={b.kg} onChange={(e) => setBoxes((bs) => bs.map((x, j) => (j === i ? { ...x, kg: e.target.value } : x)))} />}
-            {boxes.length > 1 && <button className="secondary" style={{ padding: '2px 8px' }} onClick={() => setBoxes((bs) => bs.filter((_, j) => j !== i))}>✕</button>}
-          </div>
-        ))}
-        {st.totalWeight
-          ? <div style={{ marginTop: 10 }}><label style={{ fontSize: 12 }}>Total weight (kg) *</label><input type="number" inputMode="decimal" value={totalKg} onChange={(e) => setTotalKg(e.target.value)} /></div>
-          : <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>Total {kgSum.toFixed(2)} kg</div>}
+        <Section>Shipment</Section>
+        {row('Product', s.product)}
+        {row('Carrier', vend || 'Own network')}
+        {row('Carrier AWB', carrierAwb)}
+        {row('Boxes', pieces)}
+        {row('Weight (kg)', s.chargeWeight ?? s.rollup?.totalDeadKg)}
+        {row('Content', s.goodsDesc)}
+        {row('Reference', s.referenceNo)}
+        {row('Invoice', [s.custInvoiceNo ?? s.invoiceNo, s.declaredValue != null ? `₹${s.declaredValue}` : null].filter(Boolean).join(' · '))}
+        {row('E-way bill', s.ewbNo)}
+        <Section>Consignee</Section>
+        {row('Name', s.consigneeName)}
+        {row('Phone', s.consigneePhone)}
+        {row('Address', [s.consigneeAddress, s.consigneeCity, s.destPincode].filter(Boolean).join(', '))}
       </div>
 
-      <div className="card" style={{ padding: 14 }}>
-        <strong style={{ fontSize: 13 }}>Consignee</strong>
-        <div className="row" style={{ gap: 8, marginTop: 8 }}>
-          <div style={{ flex: 1 }}><Field label="Name *"><input value={con.name} onChange={(e) => setCon((c) => ({ ...c, name: e.target.value }))} /></Field></div>
-          <div style={{ flex: 1 }}><Field label="Phone"><input inputMode="tel" value={con.phone} onChange={(e) => setCon((c) => ({ ...c, phone: e.target.value }))} /></Field></div>
-        </div>
-        <Field label="Address"><input value={con.address} onChange={(e) => setCon((c) => ({ ...c, address: e.target.value }))} /></Field>
-        <div className="row" style={{ gap: 8 }}>
-          <div style={{ flex: 1 }}><Field label="Pincode *"><input inputMode="numeric" maxLength={6} value={con.pincode} onChange={(e) => lookDest(e.target.value)} />{destCity && <div className="muted" style={{ fontSize: 11.5 }}>{destCity}</div>}</Field></div>
-          <div style={{ flex: 1 }}><Field label="GST">{scanRow(con.gst, (v) => setCon((c) => ({ ...c, gst: v })), 'optional', 'Scan the GST barcode')}</Field></div>
-        </div>
-      </div>
+      {editable && <Link to={`/shipments/${awb}`}><button className="secondary" style={btn}>✎ Edit booking</button></Link>}
+      {editable && <button className="secondary" style={{ ...btn, color: 'var(--bad, #c0392b)', borderColor: 'var(--bad, #c0392b)' }} disabled={busy} onClick={cancel}>🗑 Cancel booking</button>}
+      {carrier !== 'SELF' && !carrierAwb && <button style={btn} disabled={busy} onClick={handoff}>{busy ? 'Working…' : carrier === 'OTHER' ? `Enter ${vend} AWB` : `➤ Hand to ${carrierName} — generate AWB`}</button>}
+      <label className="button secondary" style={{ ...btn, display: 'block', textAlign: 'center', cursor: 'pointer', border: '1px solid var(--border, #d0d5dd)', borderRadius: 8, fontWeight: 600 }}>
+        📎 Attach invoice copy
+        <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; attachInvoice(f); }} />
+      </label>
 
-      <div style={{ position: 'sticky', bottom: 0, padding: '10px 0', background: 'var(--bg, #f6f8fa)' }}>
-        <button style={{ width: '100%', padding: 14, fontSize: 15 }} disabled={!ready || busy} onClick={book}>{busy ? 'Booking…' : '📦 Book shipment'}</button>
-        {!ready && missing.length > 0 && <div className="muted" style={{ fontSize: 12, textAlign: 'center', marginTop: 4 }}>Needed: {missing.join(', ')}</div>}
+      <Section>Print</Section>
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <a href={`/shipments/${awb}/awb-print`} target="_blank" rel="noreferrer"><button className="secondary">📄 AWB copy</button></a>
+        <a href={`/shipments/${awb}/bd-label`} target="_blank" rel="noreferrer"><button className="secondary">🏷 Courier label</button></a>
+        {s.bdWaybill && <a href={`/shipments/${awb}/bd-awb`} target="_blank" rel="noreferrer"><button className="secondary">🚚 BlueDart AWB</button></a>}
       </div>
     </div>
   );

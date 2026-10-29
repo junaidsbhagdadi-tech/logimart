@@ -32,7 +32,7 @@ export class ShipmentsController {
 
   /** Rider app — shipments I booked on a day (IST, default today): reopen, edit, hand off, print, manifest. */
   @Get('my-bookings')
-  @Roles(UserRole.DRIVER, UserRole.HUB_MANAGER, UserRole.WAREHOUSE_HANDLER, UserRole.SYS_ADMIN)
+  @Roles(UserRole.DRIVER, UserRole.HUB_MANAGER, UserRole.WAREHOUSE_HANDLER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
   myBookings(@Req() req: any, @Query('date') date?: string) {
     return this.shipments.myBookings(BigInt(req.user.sub), date);
   }
