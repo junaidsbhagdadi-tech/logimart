@@ -61,6 +61,7 @@ import { Pincodes } from './pages/Pincodes';
 import { Masters } from './pages/Masters';
 import { Customer360 } from './pages/Customer360';
 import { ClientPortal } from './pages/ClientPortal';
+import { Developers } from './pages/Developers';
 import { BulkRateUpload } from './pages/BulkRateUpload';
 import { Deliver } from './pages/Deliver';
 import { PickupBook } from './pages/PickupBook';
@@ -86,6 +87,7 @@ export function App() {
         {/* public, no login */}
         <Route path="/track" element={<Track />} />
         <Route path="/track/:awb" element={<Track />} />
+        <Route path="/developers" element={<Developers />} />
         <Route path="/login" element={<Login />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
@@ -95,6 +97,7 @@ export function App() {
     <Routes>
       <Route path="/track" element={<Track />} />
       <Route path="/track/:awb" element={<Track />} />
+      <Route path="/developers" element={<Developers />} />
       <Route path="/deliver" element={<Deliver />} />
       <Route path="/invoices/:id/print" element={<InvoicePrint />} />
       <Route path="/notes/:id/print" element={<NotePrint />} />

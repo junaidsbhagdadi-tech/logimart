@@ -1161,6 +1161,7 @@ export class InvoiceService {
         id: String(client.id), legalName: client.legalName, accountCode: client.accountCode, gstin: client.gstin, pan: client.pan,
         city: client.city, state: client.state, salesPerson: client.salesPerson, isActive: client.isActive, isCreditHold: client.isCreditHold,
         accountType: client.accountType, creditDays: client.creditDays,
+        apiKeyHint: client.apiKey ? `${client.apiKey.slice(0, 3)}…${client.apiKey.slice(-4)}` : null, // never the full key
       },
       credit: {
         limit: r2n(Number(client.creditLimit)), outstanding: r2n(Number(client.outstandingBal)),

@@ -20,16 +20,51 @@ export function Customer360() {
 
   useEffect(() => { if (id) api.customerOverview(id).then(setD).catch((e) => setError(e.message)); }, [id]);
 
+  const [newKey, setNewKey] = useState<string | null>(null);
+  const reloadOverview = () => api.customerOverview(id!).then(setD).catch((e) => setError(e.message));
   const genKey = async () => {
-    if (!confirm('Generate a new external-API key for this customer? Any existing key stops working.')) return;
-    try { const r = await api.genCustomerApiKey(id!); window.prompt('API key — copy it now (shown once). Send in the x-api-key header to /api/ext/v1/*', r.apiKey); }
+    if (d?.client?.apiKeyHint && !confirm('Rotate the API key? The current key stops working immediately — the customer must switch to the new one.')) return;
+    try { const r = await api.genCustomerApiKey(id!); setNewKey(r.apiKey); reloadOverview(); }
     catch (e: any) { setError(e.message); }
   };
+  const revokeKey = async () => {
+    if (!confirm('Revoke the API key? The customer\'s integration stops working immediately.')) return;
+    try { await api.revokeCustomerApiKey(id!); setNewKey(null); reloadOverview(); }
+    catch (e: any) { setError(e.message); }
+  };
+  const integrationNote = (key: string) => [
+    `Logimart API access — ${d?.client?.legalName} (${d?.client?.accountCode})`,
+    '',
+    `Base URL: ${window.location.origin}`,
+    `API key:  ${key}`,
+    'Send it as the header  x-api-key: <key>  on every call. Keep it on your server only.',
+    '',
+    'Book:    POST /api/ext/v1/shipments',
+    'Track:   GET  /api/ext/v1/track/{awb}',
+    'List:    GET  /api/ext/v1/shipments',
+    'Cancel:  POST /api/ext/v1/shipments/{awb}/cancel',
+    'Test:    GET  /api/ext/v1/ping',
+    '',
+    `Full reference with examples: ${window.location.origin}/developers`,
+  ].join('\n');
 
   if (error) return <div className="error" style={{ margin: 20 }}>{error}</div>;
   if (!d) return <p className="muted" style={{ margin: 20 }}>Loading customer 360…</p>;
 
   const c = d.client, cr = d.credit, k = d.kpis, ag = d.aging;
+  const keyModal = newKey && (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 1300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="card" style={{ maxWidth: 620, width: '92%' }}>
+        <h2 style={{ marginTop: 0 }}>🔑 API key for {c.legalName}</h2>
+        <p className="muted" style={{ fontSize: 13, marginTop: -4 }}>Shown only now. Copy the note below and send it to the customer's developer (email, not WhatsApp groups).</p>
+        <textarea readOnly value={integrationNote(newKey)} rows={15} style={{ width: '100%', fontFamily: 'monospace', fontSize: 12.5 }} onFocus={(e) => e.currentTarget.select()} />
+        <div className="row" style={{ gap: 8, marginTop: 10, justifyContent: 'flex-end' }}>
+          <button className="secondary" onClick={() => navigator.clipboard?.writeText(integrationNote(newKey))}>📋 Copy</button>
+          <button onClick={() => setNewKey(null)}>Done</button>
+        </div>
+      </div>
+    </div>
+  );
   const buckets = [
     { key: 'current', label: '0–30', color: '#2f9e57' },
     { key: 'd1_30', label: '1–30 od', color: '#b7902a' },
@@ -41,6 +76,7 @@ export function Customer360() {
 
   return (
     <>
+      {keyModal}
       {/* identity + actions */}
       <div className="card">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
@@ -61,7 +97,8 @@ export function Customer360() {
             <button className="secondary" onClick={() => nav('/customers')}>✎ Edit</button>
             <Link to={`/invoices`}><button className="secondary">🧾 Invoices</button></Link>
             <Link to={`/create`}><button className="secondary">＋ New Shipment</button></Link>
-            {isSuper && <button className="secondary" onClick={genKey} title="Generate the customer's external-API key">🔑 API key</button>}
+            {isSuper && <button className="secondary" onClick={genKey} title={c.apiKeyHint ? `Active key ${c.apiKeyHint} — rotate it` : "Issue the customer's API key"}>🔑 {c.apiKeyHint ? `API key ${c.apiKeyHint}` : 'Issue API key'}</button>}
+            {isSuper && c.apiKeyHint && <button className="secondary" onClick={revokeKey} title="Revoke the API key">✕ Revoke</button>}
             <Link to={`/invoices`}><button>🧾 Generate Invoice</button></Link>
           </div>
         </div>

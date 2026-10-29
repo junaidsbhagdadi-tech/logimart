@@ -49,6 +49,10 @@ export class CustomersController {
   @Roles(UserRole.SYS_ADMIN)
   apiKey(@Param('id') id: string) { return this.customers.generateApiKey(Number(id)); }
 
+  @Delete(':id/api-key')
+  @Roles(UserRole.SYS_ADMIN)
+  revokeApiKey(@Param('id') id: string) { return this.customers.revokeApiKey(Number(id)); }
+
   @Get(':id/fuel-surcharges')
   @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
   async listFuel(@Param('id') id: string, @Req() req: any) { await this.inScope(req, id); return this.customers.listFuel(Number(id)); }

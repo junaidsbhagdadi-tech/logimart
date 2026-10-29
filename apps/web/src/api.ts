@@ -454,6 +454,7 @@ export const api = {
     }>(`/api/v1/billing/charge-breakup?${[clientId ? `clientId=${clientId}` : '', from ? `from=${from}` : '', to ? `to=${to}` : ''].filter(Boolean).join('&')}`),
   customerOverview: (clientId: string | number) => request<any>(`/api/v1/clients/${clientId}/overview`),
   genCustomerApiKey: (clientId: string | number) => request<{ apiKey: string }>(`/api/v1/clients/${clientId}/api-key`, { method: 'POST' }),
+  revokeCustomerApiKey: (clientId: string | number) => request<{ ok: boolean }>(`/api/v1/clients/${clientId}/api-key`, { method: 'DELETE' }),
   portalOverview: () => request<any>('/api/v1/portal/overview'),
   portalAppointment: (awb: string, body: { date?: string; remark?: string }) =>
     request<{ ok: boolean }>(`/api/v1/shipments/${awb}/portal-appointment`, { method: 'POST', body: JSON.stringify(body) }),

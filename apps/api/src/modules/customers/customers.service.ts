@@ -1,3 +1,4 @@
+import { ApiKeyGuard } from '../../common/api-key.guard';
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { randomBytes } from 'crypto';
@@ -14,7 +15,15 @@ export class CustomersService {
     if (!c) throw new NotFoundException('Customer not found');
     const apiKey = 'lm_' + randomBytes(24).toString('hex');
     await this.prisma.b2bClient.update({ where: { id: c.id }, data: { apiKey } });
+    ApiKeyGuard.flush();
     return { apiKey };
+  }
+
+  /** Revoke the customer's external-API key — their integration stops immediately. */
+  async revokeApiKey(id: number) {
+    await this.prisma.b2bClient.update({ where: { id: BigInt(id) }, data: { apiKey: null } });
+    ApiKeyGuard.flush();
+    return { ok: true };
   }
 
   /** Account code from the legal-name initials + a sequence, if not supplied. */

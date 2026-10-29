@@ -9,6 +9,8 @@ import { PrismaService } from '../prisma/prisma.service';
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
   private static cache = new Map<string, { clientId: bigint; exp: number }>();
+  /** Drop cached keys so a rotated / revoked key stops working at once (single API process). */
+  static flush() { ApiKeyGuard.cache.clear(); }
   constructor(private readonly prisma: PrismaService) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
