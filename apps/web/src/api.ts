@@ -615,6 +615,7 @@ export const api = {
     request<{ network: string; imported: number }>('/api/v1/rate-cards/edl/bulk', { method: 'POST', body: JSON.stringify({ network, rows }) }),
   listEdl: (network?: string) => request<any[]>(`/api/v1/rate-cards/edl${network ? `?network=${network}` : ''}`),
   listVendorBills: (vendorCode?: string) => request<any[]>(`/api/v1/vendor-bills${vendorCode ? `?vendorCode=${vendorCode}` : ''}`),
+  reconcileVendorSheet: (rows: any[]) => request<{ count: number; matched: number; withDifferences: number; rows: any[] }>('/api/v1/vendor-bills/reconcile', { method: 'POST', body: JSON.stringify({ rows }) }),
   bulkVendorBills: (rows: any[]) => request<{ imported: number; failed: number; errors: any[] }>('/api/v1/vendor-bills/bulk', { method: 'POST', body: JSON.stringify({ rows }) }),
   getPnl: (from?: string, to?: string, onProgress?: (done: number, total: number) => void) =>
     runReport<{ count: number; totalSell: number; totalCost: number; totalMargin: number; rows: any[] }>('pnl', { from, to }, onProgress),

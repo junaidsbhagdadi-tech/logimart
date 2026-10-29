@@ -21,4 +21,11 @@ export class VendorBillsController {
   bulk(@Body() dto: { rows: any[] }) {
     return this.vb.bulkUpsert(dto.rows ?? []);
   }
+
+  /** Vendor P&L sheet → differences vs our billing, matched on forwarding no (nothing stored). */
+  @Post('reconcile')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  reconcile(@Body() dto: { rows: any[] }) {
+    return this.vb.reconcileSheet((dto.rows ?? []).slice(0, 5000));
+  }
 }

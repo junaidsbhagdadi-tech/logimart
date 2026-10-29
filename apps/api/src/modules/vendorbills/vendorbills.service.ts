@@ -42,4 +42,74 @@ export class VendorBillsService {
       orderBy: { createdAt: 'desc' }, take: 2000,
     });
   }
+
+  /**
+   * Vendor P&L sheet reconciliation (swdev #8-5). Each sheet row is matched to our shipment by
+   * forwarding no (forwardingAwb / bdWaybill / LR no), falling back to our AWB, and compared with
+   * what we billed the customer on that AWB (latest invoice line). Read-only — nothing is stored.
+   */
+  async reconcileSheet(rows: any[]) {
+    const clean = (v: any) => String(v ?? '').trim().toUpperCase();
+    const fwds = [...new Set(rows.map((r) => clean(r.forwardingNo)).filter(Boolean))];
+    const awbs = [...new Set(rows.map((r) => clean(r.awb)).filter(Boolean))];
+    const ships = await this.prisma.shipment.findMany({
+      where: { OR: [
+        ...(fwds.length ? [{ forwardingAwb: { in: fwds } }, { bdWaybill: { in: fwds } }, { lrNumber: { in: fwds } }, { awb: { in: fwds } }] : []),
+        ...(awbs.length ? [{ awb: { in: awbs } }] : []),
+      ] },
+      select: {
+        id: true, awb: true, forwardingAwb: true, bdWaybill: true, lrNumber: true, vendor: true, statusCode: true,
+        chargeWeight: true, totalDeadKg: true, totalVolKg: true, shipmentValue: true, declaredValue: true, destPincode: true,
+        client: { select: { accountCode: true, legalName: true } },
+        invoiceLines: { select: { amount: true, chargeableKg: true, breakup: true, invoice: { select: { id: true, invoiceNo: true, status: true } } } },
+      },
+    });
+    const byFwd = new Map<string, (typeof ships)[number]>();
+    const byAwb = new Map<string, (typeof ships)[number]>();
+    for (const sh of ships) {
+      for (const k of [sh.forwardingAwb, sh.bdWaybill, sh.lrNumber]) if (k) byFwd.set(clean(k), sh);
+      byAwb.set(clean(sh.awb), sh);
+    }
+    const n = (v: any) => (v == null || v === '' || isNaN(Number(v)) ? null : +Number(v).toFixed(2));
+    const diff = (theirs: number | null, ours: number | null) => (theirs == null || ours == null ? null : +(theirs - ours).toFixed(2));
+    const out = rows.map((r) => {
+      const fwd = clean(r.forwardingNo), awb = clean(r.awb);
+      const sh = (fwd && (byFwd.get(fwd) ?? byAwb.get(fwd))) || (awb && byAwb.get(awb)) || null;
+      const sheet = { vendorCode: String(r.vendorCode ?? '').trim(), awb: String(r.awb ?? '').trim(), forwardingNo: String(r.forwardingNo ?? '').trim(),
+        chargeWeight: n(r.chargeWeight), invoiceValue: n(r.invoiceValue), destPincode: String(r.destPincode ?? '').trim(), edl: n(r.edl), totalExGst: n(r.totalExGst) };
+      if (!sh) return { ...sheet, matched: false, issues: ['Forwarding no not found in our system'] };
+      const line = [...sh.invoiceLines].sort((a, b) => (b.invoice.id > a.invoice.id ? 1 : -1))[0];
+      const bk: any = line?.breakup ?? null;
+      const ours = {
+        ourAwb: sh.awb, customerCode: sh.client.accountCode, customerName: sh.client.legalName, ourVendor: sh.vendor ?? '', status: sh.statusCode ?? '',
+        invoiceNo: line?.invoice.invoiceNo ?? null,
+        ourChargeWeight: line ? n(line.chargeableKg) : n(sh.chargeWeight ?? Math.max(Number(sh.totalDeadKg), Number(sh.totalVolKg))),
+        ourInvoiceValue: n(sh.shipmentValue ?? sh.declaredValue),
+        ourDestPincode: sh.destPincode ?? '',
+        ourEdl: line ? n(bk?.oda ?? 0) : null,
+        ourTotalExGst: line ? n(line.amount) : null,
+      };
+      const d = {
+        diffChargeWeight: diff(sheet.chargeWeight, ours.ourChargeWeight),
+        diffInvoiceValue: diff(sheet.invoiceValue, ours.ourInvoiceValue),
+        diffEdl: diff(sheet.edl, ours.ourEdl),
+        diffTotalExGst: diff(sheet.totalExGst, ours.ourTotalExGst),
+      };
+      const issues: string[] = [];
+      if (!line) issues.push('Not billed yet');
+      if (d.diffChargeWeight) issues.push('Charged weight');
+      if (d.diffInvoiceValue) issues.push('Invoice value');
+      if (sheet.destPincode && ours.ourDestPincode && sheet.destPincode !== ours.ourDestPincode) issues.push('Destination pincode');
+      if (d.diffEdl) issues.push('EDL');
+      if (d.diffTotalExGst) issues.push('Total sales');
+      if (sheet.vendorCode && ours.ourVendor && sheet.vendorCode.toUpperCase() !== ours.ourVendor.toUpperCase()) issues.push('Vendor');
+      return { ...sheet, matched: true, ...ours, ...d, issues };
+    });
+    return {
+      count: out.length,
+      matched: out.filter((x) => x.matched).length,
+      withDifferences: out.filter((x) => x.issues.length).length,
+      rows: out,
+    };
+  }
 }
