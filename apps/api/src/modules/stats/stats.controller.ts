@@ -40,7 +40,7 @@ export class StatsController {
     const n = (where: any) => this.prisma.shipment.count({ where: { ...base, ...where } });
     const [bookedToday, ofd, inTransit, deliveredToday, exceptions] = await Promise.all([
       n({ createdAt: { gte: startIst }, NOT: { statusCode: 'CAN' } }),
-      n({ statusCode: 'OFD' }),
+      n({ statusCode: 'OFD', statusAt: { gte: new Date(Date.now() - 7 * 864e5) } }), // ignore long-stuck OFDs
       n({ statusCode: { in: ['PKD', 'ORD', 'DPD', 'DRD'] }, createdAt: { gte: new Date(Date.now() - 30 * 864e5) } }),
       n({ statusCode: 'DLD', statusAt: { gte: startIst } }),
       isClient ? Promise.resolve(0) : n({ exceptionFlag: { not: null }, statusCode: { notIn: ['DLD', 'RTD', 'CAN'] }, createdAt: { gte: new Date(Date.now() - 30 * 864e5) } }),
