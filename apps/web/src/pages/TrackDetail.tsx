@@ -161,6 +161,15 @@ export function TrackDetail() {
 
   // Appointment delivery date — updates the shipment + shows in Remarks.
   const [appt, setAppt] = useState({ date: '', note: '' });
+  // #12 — message to the customer: pops up in their portal until they mark it done.
+  const [toCust, setToCust] = useState('');
+  const [toCustBusy, setToCustBusy] = useState(false);
+  const sendToCust = async () => {
+    if (!d || !toCust.trim()) return;
+    setToCustBusy(true); setError(''); setMsg('');
+    try { await api.recordScan({ awb: d.awb, eventType: 'COMMENT', remark: toCust.trim(), notifyCustomer: true }); setToCust(''); setMsg('✓ Sent — it pops up for the customer until they mark it done.'); search(d.awb); }
+    catch (e: any) { setError(e.message); } finally { setToCustBusy(false); }
+  };
   const [apptBusy, setApptBusy] = useState(false);
   const saveAppt = async () => {
     if (!d || !appt.date) return;
@@ -237,8 +246,8 @@ export function TrackDetail() {
               {!isClient && <Field label="Weight (booked)" value={(d as any).chargeWeight != null ? `${Number((d as any).actualWeight).toLocaleString('en-IN')} kg actual · ${Number((d as any).chargeWeight).toLocaleString('en-IN')} kg chargeable` : '—'} />}
               <Field label="Pieces" value={(d as any).pieceCount ?? '—'} />
               {(d as any).referenceNo && <Field label="Reference No." value={(d as any).referenceNo} />}
-              {(d as any).carrierWaybill && <Field label="BlueDart Waybill" value={(d as any).carrierWaybill} color="var(--brand)" />}
-              {(d as any).carrierStatus && <Field label="BlueDart Status" value={(d as any).carrierStatus} color="var(--ok, #16a34a)" />}
+              {(d as any).carrierWaybill && <Field label="Carrier waybill" value={(d as any).carrierWaybill} color="var(--brand)" />}
+              {(d as any).carrierStatus && <Field label="Carrier status" value={(d as any).carrierStatus} color="var(--ok, #16a34a)" />}
               {(d as any).pickupStage && <Field label="BlueDart Pickup" value={(d as any).pickupStage === 'PICKED' ? '✓ Picked up by BlueDart' : '🕑 Scheduled with BlueDart — pending collection'} color={(d as any).pickupStage === 'PICKED' ? 'var(--ok, #16a34a)' : 'var(--warn, #d97706)'} />}
               <Field label="Pay Mode" value={d.payMode} />
               <Field label="Shipper" value={d.shipper} />
@@ -259,12 +268,15 @@ export function TrackDetail() {
               {Number((d as any).dodAmount) > 0 && <Field label="Collect DOD" value={`₹${Number((d as any).dodAmount).toLocaleString('en-IN')}`} color="var(--danger, #c0392b)" />}
               <Field label="Service Type" value={d.serviceType} color="var(--brand)" />
               <Field label="Trip Route" value={d.tripRoute} />
+              <Field label="Booked by" value={(d as any).bookedBy || '—'} color="var(--brand)" />
               <Field label="Pickup Rider" value={d.pickupRider} color="var(--brand)" />
               <Field label="Delivery Rider" value={d.deliveryRider} color="var(--brand)" />
               <Field label="Pickup POD" value={d.pickupPod ? <a href={d.pickupPod} target="_blank" rel="noreferrer">🖼 view</a> : '—'} />
               <Field label="Delivery POD" value={d.deliveryPod
                 ? <span>🖼 <a href={d.deliveryPod} target="_blank" rel="noreferrer">view</a>{!isClient && <> · <label style={{ cursor: 'pointer', color: 'var(--brand)' }}>replace<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => uploadPodImg(e.target.files?.[0])} /></label></>}</span>
-                : (isClient ? '—' : <label style={{ cursor: 'pointer', color: 'var(--brand)' }}>⬆ Upload POD<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => uploadPodImg(e.target.files?.[0])} /></label>)} />
+                : d.currentCode === 'DLD'
+                  ? <span>✓ e-POD{(d as any).podReceivedBy ? <> · received by <b>{(d as any).podReceivedBy}</b></> : ' · delivered (carrier confirmation)'}{!isClient && <> · <label style={{ cursor: 'pointer', color: 'var(--brand)' }}>upload image<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => uploadPodImg(e.target.files?.[0])} /></label></>}</span>
+                  : (isClient ? '—' : <label style={{ cursor: 'pointer', color: 'var(--brand)' }}>⬆ Upload POD<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => uploadPodImg(e.target.files?.[0])} /></label>)} />
             </div>
             {(d as any).isDod && (() => {
               const x: any = d;
@@ -340,6 +352,12 @@ export function TrackDetail() {
                 </div>
               )}
               <div style={{ borderTop: '1px dashed var(--line, #d7dadf)', marginTop: 14, paddingTop: 12 }}>
+                <h2 style={{ marginBottom: 4, fontSize: 15 }}>💬 Message to customer</h2>
+                <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Pops up in the customer's portal until they mark it done.{(d as any).csComment ? ` Last: “${(d as any).csComment}” — ${(d as any).csCommentReadAt ? 'done by customer' : 'waiting for the customer'}.` : ''}</p>
+                <div className="grid cols-4" style={{ gap: 10, alignItems: 'flex-end', marginBottom: 14 }}>
+                  <div style={{ gridColumn: 'span 3' }}><label>Message</label><input value={toCust} onChange={(e) => setToCust(e.target.value)} placeholder="e.g. Consignee not reachable — please share an alternate number" /></div>
+                  <div><button onClick={sendToCust} disabled={toCustBusy || !toCust.trim()}>{toCustBusy ? 'Sending…' : '💬 Send to customer'}</button></div>
+                </div>
                 <h2 style={{ marginBottom: 4, fontSize: 15 }}>📅 Appointment delivery</h2>
                 <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Set the appointment date — it shows on the tracker Remarks and in the global appointment notification.{(d as any).apptDate ? ` Current: ${apptFmt((d as any).apptDate)}` : ''}</p>
                 <div className="grid cols-4" style={{ gap: 10, alignItems: 'flex-end' }}>

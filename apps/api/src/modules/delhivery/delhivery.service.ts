@@ -230,7 +230,7 @@ export class DelhiveryService implements OnModuleInit {
     // First mile, chosen per AWB: Delhivery PICKS UP from the pickup address (customer's place or our warehouse —
     // whatever the AWB's pickup address is), or we SELF-DROP at their hub. Unset → DELHIVERY_FM_PICKUP_DEFAULT (false).
     const fmPickup = s.fmPickup ?? /^(1|true|yes)$/i.test(String(process.env.DELHIVERY_FM_PICKUP_DEFAULT ?? 'false'));
-    fd.append('fm_pickup', fmPickup ? 'True' : 'False');
+    fd.append('fm_pickup', fmPickup ? 'True' : 'False'); // + an explicit pickup request below
     fd.append('freight_mode', toPay ? 'fod' : 'fop'); // fod = freight on delivery (To-Pay), fop = freight on payer
     // Billing party = the Delhivery account holder (us), with our GST/PAN — Delhivery invoices us, not the
     // end customer. The goods' owner goes in as the consignor.
@@ -265,7 +265,40 @@ export class DelhiveryService implements OnModuleInit {
       }
       if (!lrn) await this.prisma.shipment.update({ where: { id: s.id }, data: { vendor: s.vendor || 'DLY', bdStatus: `Delhivery job ${jobId}`, bdHandedAt: new Date() } });
     }
+    // First mile = Delhivery pickup → raise their pickup request for the pickup point (fm_pickup alone doesn't).
+    if (fmPickup) {
+      try {
+        const pk = await this.pickupFor(pickup, Number(s.pieceCount || 1));
+        await this.prisma.shipment.update({ where: { id: s.id }, data: { bdPickupToken: pk.pickupId } });
+      } catch (e: any) {
+        await this.prisma.shipment.update({ where: { id: s.id }, data: { exceptionFlag: `Delhivery pickup request failed: ${String(e?.message || e).slice(0, 180)}` } }).catch(() => {});
+      }
+    }
     return { awb, lrn, jobId, response: resp };
+  }
+
+  /** Delhivery pickup slot: booked before 1 PM IST → today 14:00, else tomorrow 11:00. */
+  private pickupSlot() {
+    const ist = new Date(Date.now() + 330 * 60000);
+    const late = ist.getUTCHours() >= 13;
+    const d = new Date(ist.getTime() + (late ? 864e5 : 0));
+    return { date: d.toISOString().slice(0, 10), startTime: late ? '11:00:00' : '14:00:00' };
+  }
+
+  /** Raise a Delhivery pickup request at a registered pickup point (current account). Returns their id. */
+  private async pickupFor(warehouse: string, packages: number) {
+    const r: any = await this.createPickup({ warehouse, ...this.pickupSlot(), packages: Math.max(1, packages) });
+    const id = r?.pickup_id ?? r?.data?.pickup_id ?? r?.pr_id ?? r?.request_id ?? r?.data?.request_id ?? r?.id ?? r?.data?.id;
+    if (id == null && (r?.success === false || r?.error)) throw new BadRequestException(`Delhivery refused the pickup: ${JSON.stringify(r?.error ?? r?.message ?? r).slice(0, 200)}`);
+    return { pickupId: String(id ?? 'requested'), response: r };
+  }
+
+  /** A pickup request from the Pickups page → register its address as a pickup point and book the pickup. */
+  async schedulePickupRequest(p: { vendor?: string | null; client: any; address: string; pincode: string; city?: string | null; contactName?: string | null; contactPhone?: string | null; boxes?: number }) {
+    return this.withAccount(p.vendor, async () => {
+      const wh = await this.ensureWarehouse({ client: p.client, shipperName: p.contactName || p.client?.legalName, shipperAddress1: p.address, shipperPincode: p.pincode, shipperCity: p.city, shipperMobile: p.contactPhone });
+      return { warehouse: wh, ...(await this.pickupFor(wh, Number(p.boxes || 1))) };
+    });
   }
 
   /** Read a manifest job; once Complete, store the LR (forwardingAwb) and the per-box waybills. */

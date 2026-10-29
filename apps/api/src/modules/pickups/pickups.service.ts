@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { BluedartService } from '../bluedart/bluedart.service';
 import { ShipmentsService } from '../shipments/shipments.service';
 import { XpressBeesService } from '../xpressbees/xpressbees.service';
+import { DelhiveryService } from '../delhivery/delhivery.service';
 import { isXpressBeesVendor, XB } from '../xpressbees/xpressbees.config';
 
 interface CreatePickup {
@@ -29,7 +30,7 @@ interface CreatePickup {
 
 @Injectable()
 export class PickupsService {
-  constructor(private readonly prisma: PrismaService, private readonly bluedart: BluedartService, private readonly shipments: ShipmentsService, private readonly xb: XpressBeesService) {}
+  constructor(private readonly prisma: PrismaService, private readonly bluedart: BluedartService, private readonly shipments: ShipmentsService, private readonly xb: XpressBeesService, private readonly delhivery: DelhiveryService) {}
 
   create(dto: CreatePickup) {
     return this.prisma.pickupRequest.create({
@@ -254,6 +255,13 @@ export class PickupsService {
         where: { id: BigInt(id) }, data: { token: pk.pickupRequestId, handoffAt: new Date(), vendor: 'XPB', status: PickupStatus.ASSIGNED },
       });
       return { ...updated, token: pk.pickupRequestId, awb: ourAwb, xbAwb };
+    }
+    // Delhivery: register the pickup address as their pickup point and raise a pickup request → their id = token.
+    if (/^DLY|DELHIVERY/i.test(vendor) && !opts.token) {
+      const client = await this.prisma.b2bClient.findUnique({ where: { id: p.clientId } });
+      const pk = await this.delhivery.schedulePickupRequest({ vendor, client, address: p.pickupAddress, pincode: String(p.pincode || ''), city: (p as any).city, contactName: p.contactName, contactPhone: p.contactPhone, boxes: (p as any).estPieces });
+      const updated = await this.prisma.pickupRequest.update({ where: { id: BigInt(id) }, data: { token: pk.pickupId, handoffAt: new Date(), vendor, status: PickupStatus.ASSIGNED } });
+      return { ...updated, token: pk.pickupId, warehouse: pk.warehouse };
     }
     if (!vendor) throw new BadRequestException('Pick a vendor to hand this pickup off to.');
     const updated = await this.prisma.pickupRequest.update({

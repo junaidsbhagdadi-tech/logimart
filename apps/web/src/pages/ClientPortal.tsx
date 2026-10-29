@@ -151,7 +151,7 @@ export function ClientPortal() {
         <div className="card"><label>Total shipments</label><div style={{ fontSize: 24, fontWeight: 800 }}>{k.total.toLocaleString('en-IN')}</div></div>
         <div className="card"><label>Delivered</label><div style={{ fontSize: 24, fontWeight: 800, color: 'var(--ok)' }}>{k.delivered.toLocaleString('en-IN')}</div><div className="muted" style={{ fontSize: 11 }}>{k.deliveredPct}% of total</div></div>
         <div className="card"><label>In transit</label><div style={{ fontSize: 24, fontWeight: 800 }}>{k.inTransit.toLocaleString('en-IN')}</div></div>
-        <div className="card"><label>On-time delivery</label><div style={{ fontSize: 24, fontWeight: 800, color: k.onTimePct != null && k.onTimePct < 85 ? 'var(--warn)' : 'var(--ok)' }}>{k.onTimePct != null ? `${k.onTimePct}%` : '—'}</div><div className="muted" style={{ fontSize: 11 }}>{k.rto} RTO</div></div>
+        <div className="card"><label>Returns (RTO)</label><div style={{ fontSize: 24, fontWeight: 800 }}>{k.rto}</div></div>
       </div>
 
       <div className="grid" style={{ gridTemplateColumns: '1.5fr 1fr', gap: 12, alignItems: 'start' }}>

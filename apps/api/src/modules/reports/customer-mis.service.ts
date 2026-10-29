@@ -6,8 +6,8 @@ import { pinRows, placeName } from '../../common/place-name';
 import * as XLSX from 'xlsx';
 
 /**
- * Daily customer MIS — each customer gets their shipments booked in the last 7 days that are still open (not
- * delivered / returned / cancelled) plus the ones delivered yesterday, as an Excel file, at 09:00 IST Mon–Sat.
+ * Daily customer MIS — each customer gets EVERY shipment booked in the last 30 days (any status except
+ * cancelled — delivered ones too) plus older ones delivered yesterday, as an Excel file, at 09:00 IST Mon–Sat.
  * A STATUS report only — no weights or charges.
  * To: the customer's email + second email · CC: the salesperson and CS person on the customer.
  * Env: CUSTOMER_MIS_AUTOSEND ('false' to stop) · CUSTOMER_MIS_START (first day, default 2026-10-26).
@@ -47,9 +47,9 @@ export class CustomerMisService {
       where: {
         clientId,
         OR: [
-          // Open shipments booked in the last 7 days only — older bulk-uploaded ones carry stale statuses
-          // (thousands still "Booked" weeks later), which must not reach customers until they're refreshed.
-          { createdAt: { gte: new Date(y.to.getTime() - 7 * 864e5) }, OR: [{ statusCode: null }, { statusCode: { notIn: ['DLD', 'RTD', 'CAN'] } }] },
+          // Everything booked in the last 30 days, delivered or not (customers count their shipments and
+          // expect all of them); older bulk-uploaded ones with stale statuses stay out.
+          { createdAt: { gte: new Date(y.to.getTime() - 30 * 864e5) }, OR: [{ statusCode: null }, { statusCode: { not: 'CAN' } }] },
           { statusCode: 'DLD', statusAt: { gte: y.from, lt: y.to } },
         ],
       },

@@ -4,7 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RateService } from './rate.service';
 import { COMPANY } from '../../config/company';
-import { pinRows, placeName } from '../../common/place-name';
+import { cityName, pinRows, placeName } from '../../common/place-name';
 
 const GST_RATE = 0.18; // India GST
 
@@ -597,7 +597,7 @@ export class InvoiceService {
         Shipper: s.shipperName ?? '', ManifestNo: '', VendorCode: vendorCode(s.vendor), ProductCode: s.product ?? '',
         Origin: s.originZone ?? '', PaymentType: s.paymentTerm === 'TO_PAY' ? 'T' : 'R', Pieces: s.pieceCount,
         ActualWeight: num(s.totalDeadKg), ChargeWeight: num(b.chargeableKg), Forwarding_AWB: s.awb, Consignee_Name: s.consigneeName ?? '',
-        Consignee_Pin: s.destPincode ?? '', DestinationName: s.consigneeCity ?? '', ZoneCode: s.destZone ?? '',
+        Consignee_Pin: s.destPincode ?? '', DestinationName: await cityName(this.prisma, s.destPincode, s.consigneeCity, s.destZone), ZoneCode: s.destZone ?? '',
         DomIntl: 'D', Origin_2: s.originZone ?? '', Content: s.goodsDesc ?? '', Instruction: '', ContractCustomer: 'Y',
         Description: '', EntryLocked: 'Unlocked',
         Freight: num(b.freight), 'AIRWAYBILL CHARGES': num(b.awb), 'Emergency Sit. Surhrg.': num(b.emergency),

@@ -25,8 +25,11 @@ export class DsCargoService implements OnModuleInit {
     (t as any).unref?.();
   }
 
-  async track(docket: string) {
-    const url = `${TRACK_URL}?AWBNo=${encodeURIComponent(docket.trim())}`;
+  async track(docketRaw: string) {
+    // DS Cargo only knows the docket WITH its prefix ("122118" → null, "DSE122118" → found).
+    const d0 = docketRaw.replace(/\s+/g, '').toUpperCase();
+    const docket = /^\d+$/.test(d0) ? `DSE${d0}` : d0;
+    const url = `${TRACK_URL}?AWBNo=${encodeURIComponent(docket)}`;
     const res = await fetch(url, { headers: { Accept: 'application/json' } });
     const text = await res.text();
     if (!res.ok) throw new BadRequestException(`DS Cargo tracking ${res.status}: ${text.slice(0, 200)}`);

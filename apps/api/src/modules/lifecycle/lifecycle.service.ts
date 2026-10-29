@@ -206,7 +206,16 @@ export class LifecycleService {
 
   /** Rich tracking detail for the dedicated tracker page (header + milestone stepper + scan grid). */
   async trackDetail(awbRaw: string, clientId?: bigint) {
-    const awb = String(awbRaw || '').trim().toUpperCase();
+    let awb = String(awbRaw || '').trim().toUpperCase();
+    // Find by our AWB, else by the carrier AWB, the customer's reference or their invoice number (#6).
+    if (!(await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true } }))) {
+      const key = String(awbRaw || '').trim();
+      const alt = key ? await this.prisma.shipment.findFirst({
+        where: { OR: [{ forwardingAwb: { equals: key, mode: 'insensitive' } }, { bdWaybill: key }, { referenceNo: { equals: key, mode: 'insensitive' } }, { custInvoiceNo: { equals: key, mode: 'insensitive' } }, { lrNumber: { equals: key, mode: 'insensitive' } }] },
+        orderBy: { createdAt: 'desc' }, select: { awb: true },
+      }) : null;
+      if (alt) awb = alt.awb;
+    }
     const labelOf = (c: string) => LIFECYCLE.find((l) => l.code === c)?.label || c;
     const s = await this.prisma.shipment.findUnique({
       where: { awb },
@@ -322,6 +331,10 @@ export class LifecycleService {
       serviceType: s.product ?? s.service ?? null,
       tripRoute: [s.originHub?.code, s.destHub?.code].filter(Boolean).join(' → ') || null,
       pickupRider: riderOf('PKD'),
+      // #13 — who booked it: the login that generated the AWB (rider, CS, staff).
+      bookedBy: (s as any).createdById ? await this.prisma.user.findUnique({ where: { id: (s as any).createdById }, select: { fullName: true, riderCode: true } }).then((u) => (u ? `${u.fullName}${u.riderCode ? ` (${u.riderCode})` : ''}` : null)).catch(() => null) : null,
+      podReceivedBy: (s as any).podReceivedBy ?? null,
+      csComment: (s as any).csComment ?? null, csCommentAt: (s as any).csCommentAt ?? null, csCommentReadAt: (s as any).csCommentReadAt ?? null,
       deliveryRider: riderOf('OFD', 'DLD'),
       deliveryPod: await this.storage.resolve(s.podUrl),
       pickupPod: await this.storage.resolve(s.pickupPodUrl),

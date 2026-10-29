@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { hasFeature, effectiveGrants } from '../rights';
@@ -78,7 +78,14 @@ export function Layout() {
   // #16 — customer remarks awaiting CS (all pages, staff only).
   const [custReqs, setCustReqs] = useState<any[]>([]);
   const [custOpen, setCustOpen] = useState(false);
-  const loadCustReqs = () => api.customerRequests().then(setCustReqs).catch(() => {});
+  // Pops open by itself whenever a customer remark arrives, and keeps coming back until each is marked Done.
+  const seenReqs = useRef<Set<string>>(new Set());
+  const loadCustReqs = () => api.customerRequests().then((r) => {
+    setCustReqs(r);
+    const fresh = r.some((x: any) => !seenReqs.current.has(`${x.awb}|${x.remarkAt}`));
+    r.forEach((x: any) => seenReqs.current.add(`${x.awb}|${x.remarkAt}`));
+    if (fresh) setCustOpen(true);
+  }).catch(() => {});
   const ackCust = async (awb: string) => { try { await api.ackCustomerRequest(awb); setCustReqs((r) => r.filter((x) => x.awb !== awb)); } catch { /* ignore */ } };
   // Customer side: CS comments awaiting the customer — opens automatically so they read & respond.
   const [csMsgs, setCsMsgs] = useState<{ awb: string; comment: string; at: string; consignee: string | null; destination: string | null }[]>([]);
@@ -88,7 +95,7 @@ export function Layout() {
   useEffect(() => {
     if (!user || user.role !== 'CLIENT_ADMIN') return;
     loadCsMsgs();
-    const t = setInterval(() => api.portalCsComments().then(setCsMsgs).catch(() => {}), 60000);
+    const t = setInterval(() => api.portalCsComments().then((m) => { setCsMsgs((old) => { if (m.some((x) => !old.some((o) => o.awb === x.awb && o.at === x.at))) setCsOpen(true); return m; }); }).catch(() => {}), 60000);
     return () => clearInterval(t);
   }, [user]);
   const answerCs = async (awb: string, withReply: boolean) => {

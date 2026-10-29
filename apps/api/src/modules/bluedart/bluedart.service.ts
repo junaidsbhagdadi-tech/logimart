@@ -901,6 +901,8 @@ export class BluedartService implements OnModuleInit {
     // For a pickup-only shipment, capture the waybill BlueDart assigned so later syncs track by it.
     const discovered = !waybill ? ((raw.match(/WaybillNo="([^"]+)"/) || [])[1] || null) : null;
     const { scans, bdStatus, bdStatusDate } = this.parseScans(raw);
+    // Electronic POD: BlueDart's tracking names who received a delivered shipment (no POD image in the API).
+    const receivedBy = ((raw.match(/<ReceivedBy>([^<]+)<\/ReceivedBy>/) || [])[1] || '').trim() || null;
     // A reference/waybill query with no shipment yet (e.g. a pickup not collected) returns a
     // placeholder like "Incorrect Waybill number or No Information" — don't store it as a real status.
     const noData = scans.length === 0 && /incorrect waybill|no information|not linked|no data/i.test(raw);
@@ -915,6 +917,7 @@ export class BluedartService implements OnModuleInit {
         ...(bdStatus && !noData ? { bdStatus } : {}),
         ...(derived ? { statusCode: derived.statusCode, status: derived.status, statusAt: bdStatusDate ? new Date(bdStatusDate) : new Date() } : {}),
         ...(scans.length ? { bdScans: JSON.stringify(scans) } : {}),
+        ...(receivedBy ? { podReceivedBy: receivedBy.slice(0, 120) } : {}),
         bdSyncedAt: new Date(),
       },
     });
