@@ -91,6 +91,7 @@ class _NewBookingState extends State<_NewBooking> {
   final _conPin = TextEditingController();
   final _conGst = TextEditingController();
   String _destCity = '';
+  String _oda = ''; // "DLY: ODA" / "Own network: Normal" for the chosen carrier
   List<_BoxLine> _lines = [_BoxLine()];
   final _kg = TextEditingController();
   final _awb = TextEditingController();
@@ -106,7 +107,7 @@ class _NewBookingState extends State<_NewBooking> {
 
   bool _busy = false;
   // Optional document photos (or PDFs) taken at booking — uploaded to the AWB once it's booked.
-  String? _invDoc, _ewbDoc;
+  String? _invDoc, _ewbDoc, _boxDoc; // box picture is deleted once the shipment is delivered
 
   static const _lastContentKey = 'quickbook_content';
 
@@ -165,7 +166,21 @@ class _NewBookingState extends State<_NewBooking> {
       final i = await ApiClient.instance.pincode(v);
       if (mounted) {
         setState(() => _destCity =
-            i['known'] == false ? 'Not in the pincode master' : [i['city'], i['state']].where((x) => x != null).join(', '));
+            i['known'] == false ? 'Not in the pincode master' : [i['cityName'] ?? i['city'], i['state']].where((x) => x != null).join(', '));
+      }
+    } catch (_) {}
+    _refreshOda();
+  }
+
+  /// ODA or normal for the chosen carrier — re-run when the pincode, carrier or product changes.
+  Future<void> _refreshOda() async {
+    final pin = _conPin.text.trim();
+    setState(() => _oda = '');
+    if (!RegExp(r'^\d{6}$').hasMatch(pin)) return;
+    try {
+      final o = await ApiClient.instance.vendorOda(pin, _vendor, _product);
+      if (mounted && _conPin.text.trim() == pin) {
+        setState(() => _oda = '${o['vendor'] == 'SELF' ? 'Own network' : o['vendor']}: ${o['label']}');
       }
     } catch (_) {}
   }
@@ -231,7 +246,7 @@ class _NewBookingState extends State<_NewBooking> {
       final res = await ApiClient.instance.createShipment(body);
       // Attach the invoice / e-way bill photos to the new AWB (a failed upload never undoes the booking).
       final newAwb = '${res['awb']}';
-      for (final d in [if (_invDoc != null) ['invoice', 'Invoice copy', _invDoc!], if (_ewbDoc != null) ['ewaybill', 'E-way bill', _ewbDoc!]]) {
+      for (final d in [if (_invDoc != null) ['invoice', 'Invoice copy', _invDoc!], if (_ewbDoc != null) ['ewaybill', 'E-way bill', _ewbDoc!], if (_boxDoc != null) ['box', 'Box picture', _boxDoc!]]) {
         try {
           await ApiClient.instance.attachDocument(newAwb, d[2], docType: d[0], label: d[1]);
         } catch (e) {
@@ -282,6 +297,8 @@ class _NewBookingState extends State<_NewBooking> {
       _destCity = '';
       _invDoc = null;
       _ewbDoc = null;
+      _boxDoc = null;
+      _oda = '';
     });
   }
 
@@ -334,7 +351,7 @@ class _NewBookingState extends State<_NewBooking> {
           isExpanded: true,
           decoration: const InputDecoration(labelText: 'Product'),
           items: _products.map((p) => DropdownMenuItem(value: p.code, child: Text('${p.code} — ${p.name}', overflow: TextOverflow.ellipsis))).toList(),
-          onChanged: (v) => setState(() => _product = v),
+          onChanged: (v) { setState(() => _product = v); _refreshOda(); },
         ),
         DropdownButtonFormField<String?>(
           key: ValueKey('v$_vendor'), // re-seeded when the customer's default carrier fills it in
@@ -356,7 +373,7 @@ class _NewBookingState extends State<_NewBooking> {
                   ]), overflow: TextOverflow.ellipsis),
                 )),
           ],
-          onChanged: (v) => setState(() => _vendor = v),
+          onChanged: (v) { setState(() => _vendor = v); _refreshOda(); },
         ),
         if (RegExp(r'^DLY|DELHIVERY', caseSensitive: false).hasMatch(_vendor ?? ''))
           DropdownButtonFormField<bool>(
@@ -402,7 +419,7 @@ class _NewBookingState extends State<_NewBooking> {
               keyboardType: TextInputType.number,
               maxLength: 6,
               onChanged: _lookupPin,
-              decoration: InputDecoration(labelText: 'Pincode', helperText: _destCity.isEmpty ? null : _destCity, counterText: ''),
+              decoration: InputDecoration(labelText: 'Pincode', helperText: [_destCity, _oda].where((x) => x.isNotEmpty).join(' · ').isEmpty ? null : [_destCity, _oda].where((x) => x.isNotEmpty).join(' · '), helperMaxLines: 2, counterText: ''),
             ),
           ),
           const SizedBox(width: 12),
@@ -447,6 +464,9 @@ class _NewBookingState extends State<_NewBooking> {
           const SizedBox(width: 10),
           Expanded(child: _docButton('E-way bill', _ewbDoc, (v) => setState(() => _ewbDoc = v))),
         ]),
+        const SizedBox(height: 8),
+        _docButton('Box', _boxDoc, (v) => setState(() => _boxDoc = v)),
+        const Padding(padding: EdgeInsets.only(top: 4), child: Text('The box picture is deleted automatically once the shipment is delivered.', style: TextStyle(fontSize: 11.5, color: Colors.black54))),
         const SizedBox(height: 22),
         FilledButton.icon(
           onPressed: _busy ? null : _book,

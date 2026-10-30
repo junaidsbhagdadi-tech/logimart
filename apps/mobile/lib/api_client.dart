@@ -188,6 +188,10 @@ class ApiClient {
   Future<Map<String, dynamic>> pincode(String pin) async =>
       await get('/api/v1/pincodes/$pin') as Map<String, dynamic>;
 
+  /// ODA / Normal for one carrier (+ the product's mode) at a destination pincode.
+  Future<Map<String, dynamic>> vendorOda(String pin, String? vendor, String? product) async =>
+      await get('/api/v1/pincodes/$pin/oda?vendor=${Uri.encodeQueryComponent(vendor ?? '')}&product=${Uri.encodeQueryComponent(product ?? '')}') as Map<String, dynamic>;
+
   Future<Map<String, dynamic>> createShipment(Map<String, dynamic> body) async =>
       await post('/api/v1/shipments', body) as Map<String, dynamic>;
 
