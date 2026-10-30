@@ -21,9 +21,13 @@ export class PincodesService {
    */
   private async fullCity(pincode: string, hit: { city: string | null; areaName: string | null }): Promise<string> {
     if (hit.city && !isCode(hit.city)) return hit.city.toUpperCase();
-    const rows = await this.prisma.serviceablePincode.findMany({ where: { pincode }, select: { city: true } });
+    const rows = await this.prisma.serviceablePincode.findMany({ where: { pincode }, select: { city: true, network: true } });
+    // BlueDart lists carry the AREA (e.g. MULANTHURUTHY) — other carriers carry the city (Cochin), so they count more.
     const count = new Map<string, number>();
-    for (const r of rows) { const c = String(r.city ?? '').trim().toUpperCase(); if (c && !isCode(c)) count.set(c, (count.get(c) ?? 0) + 1); }
+    for (const r of rows) {
+      const c = String(r.city ?? '').trim().toUpperCase();
+      if (c && !isCode(c)) count.set(c, (count.get(c) ?? 0) + (/^(BDR|BLUEDART)/i.test(r.network) ? 0.1 : 1));
+    }
     const best = [...count.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
     return best ?? placeName(null, hit);
   }
