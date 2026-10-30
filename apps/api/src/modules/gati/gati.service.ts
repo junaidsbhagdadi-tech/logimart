@@ -14,7 +14,7 @@ import { cityName } from '../../common/place-name';
  *   GATI_USERNAME / GATI_PASSWORD   API login for A2C01 (issued by Gati — NOT the portal login)  SECRET
  *   GATI_TRACK_TOKEN       16-char tracking token (A2C04 body "token")                         SECRET
  *   GATI_AUTH_KEYS         optional JSON {requid: key} overriding the per-requid authorization keys
- *   GATI_DEFAULT_GOODS_CODE  goods code when the content doesn't say (e.g. 33 MISC MANUFACTURED)
+ *   GATI_DEFAULT_GOODS_CODE  goods code when the content doesn't say (3-digit, e.g. 401 HOUSE HOLD GOODS)
  *
  * Booking: pincode check (A2C05) → register the pickup point (A2C06, once) → docket (A2C07) → package series
  * (A2C08) → post docket (A2C02). Docket = forwardingAwb, package nos = box ids. Prints: A2C10 / A2C11.
@@ -43,12 +43,23 @@ export const gatiConfigured = () => !!(G.cust && G.enc && G.user && G.pass);
 export const isGatiVendor = (v?: string | null) => /^GATI$|ALLCARGO/i.test(String(v ?? '').trim());
 
 // Goods codes (Gati cargo class) by keyword in the goods description.
+// Gati goods codes (cargo class list in the API doc). Only the 3-digit codes are used: Gati's API
+// rejects the 2-digit ones ("goodsCode Should be numeric") — found in UAT, Oct 2026. First match wins.
 const GOODS: [RegExp, string][] = [
-  [/GARMENT|APPAREL|SHIRT|CLOTH|FABRIC|TEXTILE/i, '37'], [/SAREE/i, '507'], [/AUTO|SPARE|VEHICLE/i, '14'],
-  [/LAPTOP/i, '208'], [/COMPUTER|PRINTER/i, '19'], [/ELECTRONIC|MOBILE|PHONE|TV/i, '24'], [/ELECTRICAL|CABLE|WIRE/i, '25'],
-  [/PHARMA|MEDIC|DRUG|TABLET/i, '23'], [/COSMETIC/i, '20'], [/CHEMICAL/i, '16'], [/MACHINE|MACHINERY/i, '32'],
-  [/FOOD|SNACK|SPICE|GROCER/i, '402'], [/BOOK/i, '601'], [/STATIONER/i, '603'], [/FURNITURE|WOOD/i, '42'],
-  [/GLASS/i, '30'], [/PLASTIC/i, '406'], [/TOY|BABY/i, '414'], [/HOUSEHOLD|HOUSE HOLD/i, '401'], [/STEEL|IRON|METAL/i, '306'],
+  [/SILK\s*SAREE/i, '505'], [/COTTON\s*SAREE/i, '506'], [/SAREE/i, '507'], [/YARN/i, '508'], [/HANDLOOM/i, '504'],
+  [/GARMENT|APPAREL|SHIRT|T-?SHIRT|JEANS|KURTI|DRESS|CLOTHING/i, '410'], [/CLOTH|FABRIC|TEXTILE/i, '502'], [/FOOTWEAR|SHOE|SANDAL|CHAPPAL/i, '420'],
+  [/LAPTOP/i, '208'], [/MONITOR/i, '201'], [/KEYBOARD/i, '202'], [/PRINTER/i, '204'], [/COMPUTER/i, '205'],
+  [/TELEVISION|\bTV\b/i, '451'], [/FRIDGE|REFRIGERATOR/i, '452'], [/AUDIO|SPEAKER/i, '453'], [/WASHING\s*MACHINE/i, '454'], [/\bAC\b|AIR\s*CONDITION|COOLER/i, '455'],
+  [/ELECTRONIC|MOBILE|PHONE/i, '206'], [/CABLE|WIRE/i, '103'], [/ELECTRICAL|SWITCH|LIGHT|LED/i, '102'],
+  [/AUTO|SPARE|VEHICLE|TYRE|TIRE/i, '302'], [/ENGINE/i, '311'], [/LUBRICANT|\bOIL\b/i, '456'],
+  [/SURGICAL/i, '708'], [/MEDICAL\s*(EQUIP|DEVICE)/i, '703'], [/AYURVED|HOMEO/i, '702'], [/VACCINE/i, '707'], [/PHARMA|MEDIC|DRUG|TABLET|CAPSULE|SYRUP/i, '705'],
+  [/COSMETIC|BEAUTY|SKIN\s*CARE/i, '404'], [/PAINT/i, '803'], [/ADHESIVE|GLUE/i, '804'], [/LIQUID\s*CHEM/i, '802'], [/CHEMICAL/i, '801'],
+  [/MACHINE\s*PART/i, '305'], [/MACHINE\s*TOOL/i, '301'], [/TEXTILE\s*MACHIN/i, '308'], [/MACHINE|MACHINERY/i, '304'],
+  [/FOOD\s*GRAIN|RICE|WHEAT|PULSE/i, '912'], [/\bTEA\b/i, '104'], [/BISCUIT/i, '119'], [/SWEET|SALT/i, '908'], [/FOOD|SNACK|SPICE|GROCER/i, '402'],
+  [/BOOK/i, '601'], [/MAGAZINE/i, '602'], [/DIARY|DIARIES/i, '604'], [/STATIONER/i, '603'], [/PRINTED|BROCHURE|CATALOG/i, '607'], [/ADVERTIS|POSTER|BANNER/i, '605'],
+  [/GLASS/i, '405'], [/PLASTIC/i, '406'], [/RUBBER/i, '902'], [/GIFT/i, '407'], [/SPORT/i, '408'], [/HANDICRAFT/i, '412'], [/SANITARY/i, '413'],
+  [/TOY|BABY/i, '414'], [/FURNITURE|HOUSEHOLD|HOUSE HOLD|KITCHEN|UTENSIL|COOKER/i, '401'], [/STEEL|IRON|METAL/i, '306'],
+  [/SEED/i, '903'], [/AGRI/i, '901'], [/ACCESSOR/i, '910'],
 ];
 
 // Gati transit status code → wording our shared carrier mapper understands (null = no milestone change).
