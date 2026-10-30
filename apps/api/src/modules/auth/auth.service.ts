@@ -12,17 +12,27 @@ export class AuthService {
     private readonly jwt: JwtService,
   ) {}
 
+  /** Sign in with an email OR a username (e.g. a customer's account code). */
   async login(email: string, password: string, ip = 'unknown') {
-    const key = `email:${String(email || '').trim().toLowerCase()}`;
+    const id = String(email || '').trim();
+    const key = `email:${id.toLowerCase()}`;
     LoginGuard.assertAllowed(key, ip);
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = id.includes('@')
+      ? await this.prisma.user.findFirst({ where: { email: { equals: id, mode: 'insensitive' } } })
+      : await this.prisma.user.findUnique({ where: { username: id.toUpperCase() } });
     const ok = !!user && user.isActive && (await bcrypt.compare(password, user.passwordHash));
     if (!ok || !user) {
       LoginGuard.failed(key, ip);
       throw new UnauthorizedException('Invalid credentials');
     }
     LoginGuard.succeeded(key);
+    this.logEvent(user.id, 'IN', ip, 'web');
     return this.issue(user);
+  }
+
+  /** Attendance trail: one row per sign-in / sign-out (never blocks the login). */
+  logEvent(userId: bigint, kind: 'IN' | 'OUT', ip?: string, via?: string) {
+    this.prisma.loginLog.create({ data: { userId, kind, ip: ip ?? null, via: via ?? null } }).catch(() => {});
   }
 
   /** Mobile-app login for field riders: Rider ID (e.g. RID001) + numeric PIN. */
@@ -37,6 +47,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid Rider ID or PIN');
     }
     LoginGuard.succeeded(key);
+    this.logEvent(user.id, 'IN', ip, 'app');
     return this.issue(user);
   }
 

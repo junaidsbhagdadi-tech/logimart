@@ -57,6 +57,7 @@ import { ExpenseTracker } from './pages/ExpenseTracker';
 import { PerBoxRates } from './pages/PerBoxRates';
 import { Receivables } from './pages/Receivables';
 import { AuditLog } from './pages/AuditLog';
+import { Attendance } from './pages/Attendance';
 import { Pincodes } from './pages/Pincodes';
 import { Masters } from './pages/Masters';
 import { Customer360 } from './pages/Customer360';
@@ -189,6 +190,7 @@ export function App() {
         <Route path="/green-tax" element={gate('/green-tax', canMaster) ? <GreenTax /> : <Navigate to="/" replace />} />
         <Route path="/reports" element={gate('/reports', canReports) ? <Reports /> : <Navigate to="/" replace />} />
         <Route path="/data-health" element={gate('/data-health', isAdminFin || canMaster) ? <DataHealth /> : <Navigate to="/" replace />} />
+        <Route path="/attendance" element={['SYS_ADMIN', 'ADMIN', 'FINANCE_EXEC'].includes(String(user?.role)) ? <Attendance /> : <Navigate to="/" replace />} />
         <Route path="/audit" element={user?.role === 'SYS_ADMIN' ? <AuditLog /> : <Navigate to="/" replace />} />
         <Route path="/users" element={user?.role === 'SYS_ADMIN' ? <Users /> : <Navigate to="/" replace />} />
         <Route path="/riders" element={gate('/riders', user?.role === 'SYS_ADMIN' || user?.role === 'HUB_MANAGER') ? <Riders /> : <Navigate to="/" replace />} />

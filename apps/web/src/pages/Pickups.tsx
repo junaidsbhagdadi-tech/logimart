@@ -126,7 +126,30 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
   const dayKey = (d: any) => { const x = new Date(d); return `${x.getFullYear()}-${x.getMonth()}-${x.getDate()}`; };
   const todayKey = dayKey(new Date());
   const yesterdayKey = dayKey(new Date(Date.now() - 864e5));
-  const visibleRows = rows.filter((p) => dateFilter === 'all' || (dateFilter === 'today' ? dayKey(p.createdAt) === todayKey : dayKey(p.createdAt) === yesterdayKey));
+  const [listQ, setListQ] = useState('');
+  const visibleRows = rows.filter((p) => dateFilter === 'all' || (dateFilter === 'today' ? dayKey(p.createdAt) === todayKey : dayKey(p.createdAt) === yesterdayKey))
+    .filter((p) => !listQ.trim() || [p.id, p.customerCode, p.customerName, p.city, p.pincode, p.vendor, p.token, p.pickedAwb, p.refNo, p.createdByName, p.contactName, p.contactPhone, p.status]
+      .some((v) => String(v ?? '').toLowerCase().includes(listQ.trim().toLowerCase())));
+  // #13 — tick pickups, then hand them all to one courier.
+  const [pickSel, setPickSel] = useState<Set<string>>(new Set());
+  const [bulkHv, setBulkHv] = useState('');
+  const [bulkHBusy, setBulkHBusy] = useState(false);
+  const togglePick = (id: string) => setPickSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const bulkHandoff = async () => {
+    const ids = visibleRows.filter((p) => pickSel.has(String(p.id)) && !p.token).map((p) => String(p.id));
+    if (!ids.length || !bulkHv) return;
+    if (isXbVendor(bulkHv)) { setError('XpressBees books with the destination — hand those off one at a time.'); return; }
+    if (!confirm(`Hand ${ids.length} pickup(s) to ${bulkHv}?`)) return;
+    setBulkHBusy(true); setError(''); setMsg('');
+    const ok: string[] = [], bad: string[] = [];
+    for (const id of ids) {
+      try { const r: any = await api.pickupHandoff(id, { vendor: bulkHv }); ok.push(`#${id}${r?.token ? ` → ${r.token}` : ''}`); }
+      catch (e: any) { bad.push(`#${id}: ${e.message}`); }
+    }
+    setBulkHBusy(false); setPickSel(new Set()); load();
+    setMsg(`✓ Handed ${ok.length}/${ids.length} to ${bulkHv}${ok.length ? ` — ${ok.join(', ')}` : ''}`);
+    if (bad.length) setError(`Not handed off: ${bad.join(' · ')}`);
+  };
 
   const set = (k: keyof typeof blank, v: string | boolean) => setForm((f) => ({ ...f, [k]: v }));
   // Auto-fetch the city from the pincode (6 digits), like the booking form.
@@ -181,7 +204,7 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
   const isBdVendor = (code: string) => /^(BLUE|BDR)/i.test(code) || /^(BDR|BLUE|BD )/i.test(vendors.find((v) => v.vendorCode === code)?.name || '');
   // XpressBees also books with the destination (manifest → XpressBees AWB, then their pickup request).
   const isXbVendor = (code: string) => /^XPB$|XPRESS\s*BEES/i.test(code) || /XPRESS\s*BEES/i.test(vendors.find((v) => v.vendorCode === code)?.name || '');
-  const needsDest = (code: string) => isBdVendor(code) || isXbVendor(code);
+  const needsDest = (code: string) => isXbVendor(code);
   const openHandoff = (p: any) => {
     setHandoffFor(p); setHVendor(p.vendor || ''); setHToken(''); setHToPay(false); setError(''); setMsg('');
     setHd({ destPincode: '', consigneeName: '', consigneePhone: '', consigneeAddress: '', weight: p.weight != null ? String(p.weight) : '', pieces: String(p.estPieces || 1), value: p.invoiceValue != null ? String(p.invoiceValue) : '' });
@@ -208,15 +231,14 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
   // Mark-picked modal (capture AWB / weight / pcs / value).
   const [pickedFor, setPickedFor] = useState<any | null>(null);
   const [pk, setPk] = useState({ awb: '', weight: '', pieces: '', value: '', destPincode: '', consigneeName: '', consigneePhone: '' });
-  const openPicked = (p: any) => { setPickedFor(p); setPk({ awb: p.pickedAwb || '', weight: p.pickedWeight || p.weight || '', pieces: String(p.estPieces || ''), value: p.pickedValue || p.invoiceValue || '', destPincode: '', consigneeName: '', consigneePhone: '' }); setError(''); };
+  const openPicked = (p: any) => { setPickedFor(p); setPk({ awb: '', weight: p.pickedWeight || p.weight || '', pieces: String(p.estPieces || ''), value: p.pickedValue || p.invoiceValue || '', destPincode: '', consigneeName: '', consigneePhone: '' }); setError(''); };
   const doPicked = async () => {
     if (!pickedFor) return;
     try {
-      const r: any = await api.completePickup(String(pickedFor.id), { awb: pk.awb || undefined, weight: pk.weight ? +pk.weight : undefined, pieces: pk.pieces ? +pk.pieces : undefined, value: pk.value ? +pk.value : undefined,
+      const r: any = await api.completePickup(String(pickedFor.id), { forwardingNo: pk.awb.trim() || undefined, weight: pk.weight ? +pk.weight : undefined, pieces: pk.pieces ? +pk.pieces : undefined, value: pk.value ? +pk.value : undefined,
         destPincode: pk.destPincode || undefined, consigneeName: pk.consigneeName || undefined, consigneePhone: pk.consigneePhone || undefined });
-      setMsg(r?.shipment?.booked ? `✓ Picked — AWB ${r.shipment.awb} booked to the customer (it will be billed).`
-        : r?.shipment ? `✓ Picked — linked to the already-booked AWB ${r.shipment.awb}.`
-        : pk.awb ? '✓ Picked. Add the destination pincode to book it for billing (or book the AWB separately).' : '✓ Marked picked.');
+      setMsg(r?.shipment ? `✓ Picked — our AWB ${r.shipment.awb}${r.forwardingNo ? ` · forwarding no ${r.forwardingNo}` : ''}${r.shipment.booked ? ' (booked to the customer, it will be billed)' : ''}.`
+        : pk.awb ? `✓ Picked — forwarding no ${pk.awb.trim()} recorded. Add the destination pincode to generate our AWB for billing.` : '✓ Marked picked.');
       setPickedFor(null); load();
     } catch (e: any) { setError(e.message); }
   };
@@ -325,13 +347,26 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
           {(['all', 'today', 'yesterday'] as const).map((k) => (
             <button key={k} className={dateFilter === k ? '' : 'secondary'} style={{ padding: '4px 12px', textTransform: 'capitalize' }} onClick={() => setDateFilter(k)}>{k}</button>
           ))}
+          <input value={listQ} onChange={(e) => setListQ(e.target.value)} placeholder="Search customer / city / vendor / token / AWB / booked by…" style={{ maxWidth: 320, marginLeft: 8 }} />
           <span className="muted" style={{ fontSize: 12, marginLeft: 'auto' }}>{visibleRows.length} pickup(s)</span>
         </div>
+        {isOps && (
+          <div className="row" style={{ gap: 8, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span className="muted" style={{ fontSize: 12 }}>{pickSel.size ? <><b>{pickSel.size}</b> selected</> : 'Tick pickups to hand them off together'}</span>
+            <select value={bulkHv} onChange={(e) => setBulkHv(e.target.value)} style={{ width: 'auto' }}>
+              <option value="">— courier —</option>
+              {vendors.map((v) => <option key={v.vendorCode} value={v.vendorCode}>{v.vendorCode} — {v.name}</option>)}
+            </select>
+            <button disabled={!pickSel.size || !bulkHv || bulkHBusy} onClick={bulkHandoff}>{bulkHBusy ? 'Handing off…' : `📅 Hand ${pickSel.size || ''} to courier`}</button>
+            {pickSel.size > 0 && <button className="secondary" onClick={() => setPickSel(new Set())}>Clear</button>}
+          </div>
+        )}
         <table>
-          <thead><tr><th>#</th><th>Date</th>{isOps && <th>Customer</th>}<th>Product</th><th>From → To</th><th>Boxes</th><th>Wt</th><th>Status</th><th>Vendor token</th>{isOps && <th>Rider</th>}{isOps && <th></th>}</tr></thead>
+          <thead><tr>{isOps && <th style={{ width: 28 }}><input type="checkbox" style={{ width: 'auto' }} checked={visibleRows.some((p) => !p.token) && visibleRows.filter((p) => !p.token).every((p) => pickSel.has(String(p.id)))} onChange={(e) => setPickSel(e.target.checked ? new Set(visibleRows.filter((p) => !p.token).map((p) => String(p.id))) : new Set())} title="Select all not yet handed off" /></th>}<th>#</th><th>Date</th>{isOps && <th>Customer</th>}<th>Product</th><th>From → To</th><th>Boxes</th><th>Wt</th><th>Status</th><th>Vendor</th><th>Vendor token</th><th>Booked by</th>{isOps && <th>Rider</th>}{isOps && <th></th>}</tr></thead>
           <tbody>
             {visibleRows.map((p) => (
               <tr key={p.id}>
+                {isOps && <td>{!p.token && <input type="checkbox" style={{ width: 'auto' }} checked={pickSel.has(String(p.id))} onChange={() => togglePick(String(p.id))} />}</td>}
                 <td>{p.id}</td><td style={{ whiteSpace: 'nowrap' }}>{p.createdAt ? fmtDate(p.createdAt) : '—'}</td>
                 {isOps && <td><button className="link" style={{ textAlign: 'left' }} onClick={() => openDetail(p)} title="View full pickup detail">{p.customerName ?? '—'}{p.customerCode ? <span className="muted" style={{ fontSize: 11 }}> ({p.customerCode})</span> : null}</button></td>}
                 <td>{p.product ?? p.cargoMode ?? '—'}</td>
@@ -339,7 +374,9 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
                 <td>{p.estPieces}</td>
                 <td>{p.weight ? Number(p.weight) : '—'}</td>
                 <td><span className={`badge ${p.status}`}>{p.status}</span></td>
-                <td>{p.token ? <span title={`${p.vendor || 'Carrier'} pickup token`}><b>{p.token}</b>{p.vendor ? <span className="muted" style={{ fontSize: 11 }}> · {p.vendor}</span> : null}</span> : <span className="muted">—</span>}</td>
+                <td>{p.vendor ? <b>{p.vendor}</b> : <span className="muted">—</span>}</td>
+                <td>{p.token ? <span title={`${p.vendor || 'Carrier'} pickup token`}><b>{p.token}</b></span> : <span className="muted">—</span>}{p.pickedAwb && <div className="muted" style={{ fontSize: 11 }}>AWB {p.pickedAwb}</div>}</td>
+                <td style={{ fontSize: 12 }}>{p.createdByName ?? <span className="muted">—</span>}</td>
                 {isOps && <td>{p.status === 'ASSIGNED' || p.status === 'PICKED' ? riderLabel(p.assignedRiderId) : '—'}</td>}
                 {isOps && (
                   <td className="row" style={{ gap: 6 }}>
@@ -443,7 +480,7 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
 
       {handoffFor && (
         <Modal title={`Hand off pickup #${handoffFor.id} to a vendor`} width={560} onClose={() => setHandoffFor(null)}>
-          <p className="muted" style={{ marginTop: 0, fontSize: 12.5 }}>Pick the carrier (you can override the customer's choice). BlueDart registers the pickup and returns a token automatically; for any other vendor enter the token they give you (optional).</p>
+          <p className="muted" style={{ marginTop: 0, fontSize: 12.5 }}>Pick the carrier (you can override the customer's choice). BlueDart and Delhivery register the pickup and return a token automatically; for any other vendor enter the token they give you (optional). The carrier's AWB is entered as the forwarding no when you mark it picked.</p>
           <div><label>Vendor</label>
             <select value={hVendor} onChange={(e) => setHVendor(e.target.value)}>
               <option value="">— select vendor —</option>
@@ -464,6 +501,8 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
                 <div style={{ gridColumn: 'span 2' }}><label>Invoice value ₹ *</label><input type="number" value={hd.value} onChange={(e) => setHd((x) => ({ ...x, value: e.target.value }))} /></div>
               </div>
             </div>
+          ) : isBdVendor(hVendor) ? (
+            <p className="muted" style={{ marginTop: 10, fontSize: 12 }}>BlueDart sees only the account code (LOGIMART {handoffFor.customerCode ?? ''}) with the pickup address and mobile — not the customer's name.</p>
           ) : (
             <div style={{ marginTop: 10 }}><label>Pickup token <span className="muted" style={{ fontSize: 11 }}>(from the vendor — optional)</span></label><input value={hToken} onChange={(e) => setHToken(e.target.value)} /></div>
           )}
@@ -476,15 +515,15 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
 
       {pickedFor && (
         <Modal title={`Mark picked — pickup #${pickedFor.id}`} width={460} onClose={() => setPickedFor(null)}>
-          <p className="muted" style={{ marginTop: 0, fontSize: 12.5 }}>Capture the actuals at pickup.</p>
+          <p className="muted" style={{ marginTop: 0, fontSize: 12.5 }}>Capture the actuals at pickup. Our internal AWB is generated automatically{pickedFor.pickedAwb ? ` (already booked: ${pickedFor.pickedAwb})` : ''} — type only the vendor's number.</p>
           <div className="grid cols-2" style={{ gap: 10 }}>
-            <div style={{ gridColumn: 'span 2' }}><label>AWB no.</label><input value={pk.awb} onChange={(e) => setPk((s) => ({ ...s, awb: e.target.value }))} /></div>
+            <div style={{ gridColumn: 'span 2' }}><label>Forwarding no. <span className="muted" style={{ fontSize: 11 }}>(vendor's AWB{pickedFor.vendor ? ` — ${pickedFor.vendor}` : ''})</span></label><input value={pk.awb} onChange={(e) => setPk((s) => ({ ...s, awb: e.target.value }))} placeholder="e.g. BlueDart waybill" /></div>
             <div><label>Weight (kg)</label><input type="number" value={pk.weight} onChange={(e) => setPk((s) => ({ ...s, weight: e.target.value }))} /></div>
             <div><label>Pieces</label><input type="number" value={pk.pieces} onChange={(e) => setPk((s) => ({ ...s, pieces: e.target.value }))} /></div>
             <div style={{ gridColumn: 'span 2' }}><label>Invoice value ₹</label><input type="number" value={pk.value} onChange={(e) => setPk((s) => ({ ...s, value: e.target.value }))} /></div>
             <div style={{ gridColumn: 'span 2', borderTop: '1px solid var(--border)', paddingTop: 8 }}>
               <strong style={{ fontSize: 12.5 }}>Book it for billing</strong>
-              <div className="muted" style={{ fontSize: 11.5 }}>With an AWB + destination pincode the shipment is booked to this customer now (marked Picked) and goes on their bill. An AWB that's already booked is just linked.</div>
+              <div className="muted" style={{ fontSize: 11.5 }}>With the destination pincode our AWB is generated now (marked Picked, forwarding no attached) and it goes on the customer's bill. A forwarding no that's already booked is just linked.</div>
             </div>
             <div><label>Destination pincode</label><input value={pk.destPincode} maxLength={6} onChange={(e) => setPk((s) => ({ ...s, destPincode: e.target.value }))} /></div>
             <div><label>Consignee phone</label><input value={pk.consigneePhone} onChange={(e) => setPk((s) => ({ ...s, consigneePhone: e.target.value }))} /></div>

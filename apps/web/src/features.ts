@@ -74,6 +74,7 @@ export const FEATURE_CATALOG: FeatureSection[] = [
   { section: 'Insights & Admin', features: [
     { to: '/reports', label: 'Reports' },
     { to: '/riders', label: 'Riders & Drivers' },
+    { to: '/attendance', label: 'Attendance' },
     { to: '/audit', label: 'Audit Log' },
     { to: '/feedback', label: 'Feedback' },
   ] },

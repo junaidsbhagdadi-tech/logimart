@@ -45,6 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
+    api.logoutEvent().catch(() => {}); // attendance: record the sign-out (fires before the token is cleared)
     clearToken();
     localStorage.removeItem(USER_KEY);
     setUser(null);

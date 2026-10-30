@@ -235,6 +235,7 @@ export function Layout() {
       { to: '/data-health', icon: '🩺', label: 'Data Health', show: isAdminFin || canMaster },
       { to: '/riders', icon: '🛵', label: 'Riders & Drivers', show: canMaster },
       { to: '/users', icon: '⚙️', label: 'Users', show: isSysAdmin },
+      { to: '/attendance', icon: '🕒', label: 'Attendance', show: isAdminFin },
       { to: '/bluedart', icon: '🚚', label: 'Carrier APIs', show: isSysAdmin },
       { to: '/audit', icon: '🕵', label: 'Audit Log', show: isSysAdmin },
       { to: '/feedback', icon: '💬', label: 'Feedback', show: isSysAdmin },

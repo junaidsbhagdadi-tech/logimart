@@ -327,7 +327,7 @@ export class InvoiceService {
     });
     const overLimit = newBalance > Number(client.creditLimit);
     await this.prisma.b2bClient.update({ where: { id: client.id }, data: { outstandingBal: new Prisma.Decimal(newBalance), isCreditHold: overLimit } });
-    const updated = await this.prisma.invoice.update({ where: { id: inv.id }, data: { status: InvoiceStatus.ISSUED, issuedAt: new Date() } });
+    const updated = await this.prisma.invoice.update({ where: { id: inv.id }, data: { status: InvoiceStatus.ISSUED, issuedAt: inv.dateManual ? inv.issuedAt : new Date() } });
     // Email the invoice ONLY to the customer's BILLING email(s) (contactEmail, comma-separated for
     // multiple). email2 is the Reports (MIS/NDR) address and is deliberately NOT copied on invoices.
     const portal = `${process.env.APP_URL ?? 'https://erp.logimart.co.in'}/portal`;
@@ -762,6 +762,32 @@ export class InvoiceService {
     });
   }
 
+  /**
+   * Edit the invoice date / billing period of an UNLOCKED (draft) invoice. A set invoice date is kept
+   * when the invoice is later locked (locking otherwise stamps today). The due date follows the new
+   * period end + the customer's credit days. Lines are not re-pulled — add/remove AWBs for that.
+   */
+  async setDates(invoiceId: number, dto: { invoiceDate?: string; periodStart?: string; periodEnd?: string }) {
+    const inv = await this.prisma.invoice.findUnique({ where: { id: BigInt(invoiceId) }, include: { client: { select: { creditDays: true } } } });
+    if (!inv) throw new NotFoundException('Invoice not found');
+    if (inv.status !== InvoiceStatus.DRAFT) throw new BadRequestException('Only an unlocked (draft) invoice can be edited.');
+    const day = (v?: string) => {
+      if (!v) return undefined;
+      const m = String(v).trim().match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/); // DD-MM-YYYY too
+      const d = new Date(m ? `${m[3]}-${m[2]}-${m[1]}` : String(v).slice(0, 10));
+      if (isNaN(+d)) throw new BadRequestException(`Bad date: ${v}`);
+      return d;
+    };
+    const invoiceDate = day(dto.invoiceDate), periodStart = day(dto.periodStart), periodEnd = day(dto.periodEnd);
+    const ps = periodStart ?? inv.periodStart, pe = periodEnd ?? inv.periodEnd;
+    if (+ps > +pe) throw new BadRequestException('"From" date is after the "To" date.');
+    const data: Prisma.InvoiceUpdateInput = { periodStart: ps, periodEnd: pe };
+    if (periodEnd) data.dueDate = new Date(+pe + (inv.client?.creditDays ?? 0) * 86400000);
+    if (invoiceDate) { data.issuedAt = new Date(`${invoiceDate.toISOString().slice(0, 10)}T12:00:00+05:30`); data.dateManual = true; }
+    const u = await this.prisma.invoice.update({ where: { id: inv.id }, data });
+    return { ok: true, invoiceDate: u.issuedAt, periodStart: u.periodStart, periodEnd: u.periodEnd, dueDate: u.dueDate };
+  }
+
   /** Finance/CS "sends" a completed invoice to the customer — only then is it visible on the portal. */
   async send(invoiceId: number) {
     const inv = await this.prisma.invoice.findUnique({ where: { id: BigInt(invoiceId) }, select: { id: true, status: true, sentAt: true, invoiceNo: true } });
@@ -775,7 +801,7 @@ export class InvoiceService {
     const inv = await this.prisma.invoice.findUnique({
       where: { id: BigInt(id) },
       include: {
-        lines: { include: { shipment: { select: { awb: true, originZone: true, destZone: true, createdAt: true, consigneeCity: true, destPincode: true } } } },
+        lines: { include: { shipment: { select: { awb: true, originZone: true, destZone: true, createdAt: true, consigneeCity: true, destPincode: true, consigneeName: true, product: true, pieceCount: true, totalDeadKg: true, referenceNo: true } } } },
         client: {
           select: {
             legalName: true, accountCode: true, gstin: true,
@@ -1118,7 +1144,7 @@ export class InvoiceService {
 
     // invoices + per-invoice remaining (signed sum of ledger entries)
     const invoices = await this.prisma.invoice.findMany({
-      where: { clientId: cid, sentAt: { not: null } }, orderBy: { issuedAt: 'desc' },
+      where: { clientId: cid, OR: [{ sentAt: { not: null } }, { status: { not: 'DRAFT' } }] }, orderBy: { issuedAt: 'desc' },
       select: { id: true, invoiceNo: true, periodStart: true, periodEnd: true, total: true, status: true, dueDate: true, issuedAt: true },
     });
     const sums = await this.prisma.ledgerEntry.groupBy({ by: ['invoiceId'], where: { clientId: cid, invoiceId: { not: null } }, _sum: { amount: true } });
@@ -1249,7 +1275,7 @@ export class InvoiceService {
     // invoices + remaining
     // Only SENT invoices — the dashboard used to list unsent ones too, which then 404'd ("Invoice not
     // found") on click and never appeared on the customer's Invoices page.
-    const invoices = await this.prisma.invoice.findMany({ where: { clientId: cid, sentAt: { not: null } }, orderBy: { issuedAt: 'desc' }, take: 8, select: { id: true, invoiceNo: true, periodStart: true, periodEnd: true, total: true, dueDate: true, status: true } });
+    const invoices = await this.prisma.invoice.findMany({ where: { clientId: cid, OR: [{ sentAt: { not: null } }, { status: { not: 'DRAFT' } }] }, orderBy: { issuedAt: 'desc' }, take: 8, select: { id: true, invoiceNo: true, periodStart: true, periodEnd: true, total: true, dueDate: true, status: true } });
     const sums = await this.prisma.ledgerEntry.groupBy({ by: ['invoiceId'], where: { clientId: cid, invoiceId: { not: null } }, _sum: { amount: true } });
     const remMap = new Map(sums.map((s) => [String(s.invoiceId), Number(s._sum.amount ?? 0)]));
     let overdue = 0;

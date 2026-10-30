@@ -20,7 +20,7 @@ const DEPT_COLUMNS: { value: string; label: string; accent: string }[] = [
   { value: 'MANAGEMENT', label: 'Management', accent: '#7c3aed' },
   { value: '', label: 'Unassigned', accent: '#94a3b8' },
 ];
-const blank = { fullName: '', email: '', password: '', role: 'WAREHOUSE_HANDLER', department: '', hubId: '', clientId: '' };
+const blank = { fullName: '', email: '', username: '', password: '', role: 'WAREHOUSE_HANDLER', department: '', hubId: '', clientId: '' };
 
 export function Users() {
   const [rows, setRows] = useState<any[]>([]);
@@ -32,6 +32,7 @@ export function Users() {
   const [hubs, setHubs] = useState<{ id: string; code: string; name: string }[]>([]);
   const [clients, setClients] = useState<{ id: string; legalName: string; accountCode: string }[]>([]);
   const [cred, setCred] = useState<{ email: string; password: string; url: string; heading: string } | null>(null);
+  const [custQ, setCustQ] = useState('');
   const [copied, setCopied] = useState(false);
   // #10 — location/company data scope (Branch + Billing company masters). Nothing ticked = sees all.
   const [scopeUser, setScopeUser] = useState<any | null>(null);
@@ -41,7 +42,7 @@ export function Users() {
   const [companyM, setCompanyM] = useState<{ code: string; name: string }[]>([]);
 
   const credText = (c: { email: string; password: string; url: string }) =>
-    `ExcelEx Express login\nURL: ${c.url}\nEmail: ${c.email}\nTemporary password: ${c.password}\nPlease sign in and change your password.`;
+    `ExcelEx Express login\nURL: ${c.url}\nUsername: ${c.email}\nTemporary password: ${c.password}\nPlease sign in and change your password.`;
   const copyCred = async () => {
     if (!cred) return;
     try { await navigator.clipboard.writeText(credText(cred)); setCopied(true); setTimeout(() => setCopied(false), 2000); }
@@ -93,24 +94,40 @@ export function Users() {
     catch (e: any) { setError(e.message); }
   };
 
-  const set = (k: keyof typeof blank, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (k: keyof typeof blank, v: string) => setForm((f) => {
+    const n = { ...f, [k]: v };
+    if (k === 'clientId' && v && (!f.username || f.username === clients.find((c) => c.id === f.clientId)?.accountCode)) {
+      n.username = clients.find((c) => c.id === v)?.accountCode ?? f.username; // customer login → username = account code
+      if (n.role !== 'CLIENT_ADMIN') n.role = 'CLIENT_ADMIN';
+    }
+    return n;
+  });
+  const setUsername = async (u: any) => {
+    const v = prompt(`Username for ${u.fullName} (sign-in id instead of email — e.g. the account code). Blank removes it.`, u.username ?? '');
+    if (v === null) return;
+    try { await api.updateUser(u.id, { username: v.trim() || null } as any); setMsg(v.trim() ? `${u.fullName} can now sign in as ${v.trim().toUpperCase()}` : `Username removed for ${u.fullName}`); load(); }
+    catch (e: any) { setError(e.message); }
+  };
+  const isNoEmail = (e?: string) => /@no-email\.logimart\.co\.in$/i.test(String(e ?? ''));
 
   const create = async () => {
     setError(''); setMsg(''); setCred(null);
     try {
       const res: any = await api.createUser({
         fullName: form.fullName,
-        email: form.email,
+        email: form.email.trim() || undefined,
+        username: form.username.trim() || undefined,
         password: form.password || undefined,
         role: form.role,
         department: form.department || undefined,
         hubId: form.hubId ? +form.hubId : undefined,
         clientId: form.clientId ? +form.clientId : undefined,
       });
+      const loginId = res?.loginId ?? (form.username.trim().toUpperCase() || form.email);
       if (res?.tempPassword) {
-        setCred({ email: res.email ?? form.email, password: res.tempPassword, url: res.loginUrl ?? window.location.origin, heading: `Account created — ${form.email}` });
+        setCred({ email: loginId, password: res.tempPassword, url: res.loginUrl ?? window.location.origin, heading: `Account created — ${loginId}` });
       } else {
-        setMsg(`✓ Created ${form.email}. Login credentials emailed to ${form.email}.`);
+        setMsg(`✓ Created ${loginId}.${res?.credentialsEmailedTo ? ` Login credentials emailed to ${res.credentialsEmailedTo}.` : ''}`);
       }
       setForm({ ...blank });
       load();
@@ -167,7 +184,8 @@ export function Users() {
         <h2>Create user</h2>
         <div className="grid cols-3">
           <div><label>Full name *</label><input value={form.fullName} onChange={(e) => set('fullName', e.target.value)} /></div>
-          <div><label>Email *</label><input value={form.email} onChange={(e) => set('email', e.target.value)} /></div>
+          <div><label>Email <span className="muted">(or a username)</span></label><input value={form.email} onChange={(e) => set('email', e.target.value)} /></div>
+          <div><label>Username <span className="muted">(e.g. customer account code)</span></label><input value={form.username} onChange={(e) => set('username', e.target.value.toUpperCase())} placeholder="optional — signs in with this instead of email" /></div>
           <div><label>Password <span className="muted">(blank = auto-generate + email)</span></label><input value={form.password} onChange={(e) => set('password', e.target.value)} placeholder="leave blank to auto-generate" /></div>
           <div>
             <label>Role <span className="muted">(security boundary)</span></label>
@@ -195,7 +213,7 @@ export function Users() {
             </select>
           </div>
         </div>
-        <button style={{ marginTop: 12 }} disabled={!form.fullName || !form.email} onClick={create}>Create user</button>
+        <button style={{ marginTop: 12 }} disabled={!form.fullName || (!form.email.trim() && !form.username.trim())} onClick={create}>Create user</button>
       </div>
 
       <p className="muted" style={{ fontSize: 12.5, margin: '4px 2px 10px' }}>
@@ -206,7 +224,7 @@ export function Users() {
       </p>
 
       {DEPT_COLUMNS.map((col) => {
-        const members = rows.filter((u) => (u.department || '') === col.value);
+        const members = rows.filter((u) => u.role !== 'CLIENT_ADMIN' && (u.department || '') === col.value);
         if (col.value === '' && members.length === 0) return null; // hide empty Unassigned
         return (
           <div className="card" key={col.value || 'none'} style={{ borderLeft: `4px solid ${col.accent}`, marginBottom: 14 }}>
@@ -221,12 +239,12 @@ export function Users() {
               <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>No one in this department yet.</p>
             ) : (
               <table>
-                <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Department</th><th>Active</th><th></th></tr></thead>
+                <thead><tr><th>Name</th><th>Email / username</th><th>Role</th><th>Department</th><th>Active</th><th></th></tr></thead>
                 <tbody>
                   {members.map((u) => (
                     <tr key={u.id}>
                       <td><strong>{u.fullName}</strong></td>
-                      <td>{u.email}</td>
+                      <td>{isNoEmail(u.email) ? '—' : u.email}{u.username && <div className="muted" style={{ fontSize: 11.5 }}>👤 {u.username}</div>}</td>
                       <td>
                         <select value={u.role} onChange={(e) => changeRole(u, e.target.value)} style={{ width: 'auto' }}>
                           {ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
@@ -260,6 +278,49 @@ export function Users() {
           </div>
         );
       })}
+
+      {(() => {
+        const all = rows.filter((u) => u.role === 'CLIENT_ADMIN');
+        const qq = custQ.trim().toLowerCase();
+        const list = all.filter((u) => !qq || `${u.fullName} ${u.email} ${u.username ?? ''} ${clientName(u.clientId) ?? ''}`.toLowerCase().includes(qq));
+        return (
+          <div className="card" style={{ borderLeft: '4px solid #0ea5a4', marginBottom: 14 }}>
+            <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+              <h2 style={{ margin: 0, fontSize: 16 }}>🏢 Customer logins <span className="muted" style={{ fontSize: 13, fontWeight: 700 }}>· {all.length}</span></h2>
+              <input value={custQ} onChange={(e) => setCustQ(e.target.value)} placeholder="Search name / username / account code / customer…" style={{ maxWidth: 340 }} />
+            </div>
+            {!list.length ? <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>{all.length ? 'No customer login matches.' : 'No customer logins yet — create one above with Role = Customer and pick the customer account (the username defaults to its account code).'}</p> : (
+              <div style={{ overflowX: 'auto' }}>
+                <table>
+                  <thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Customer account</th><th>Active</th><th></th></tr></thead>
+                  <tbody>
+                    {list.map((u) => (
+                      <tr key={u.id}>
+                        <td><strong>{u.fullName}</strong></td>
+                        <td>{u.username ? <strong>{u.username}</strong> : <span className="muted">—</span>} <button className="secondary" style={{ padding: '1px 6px', fontSize: 11 }} title="Set the sign-in username" onClick={() => setUsername(u)}>✏</button></td>
+                        <td>{isNoEmail(u.email) ? <span className="muted">—</span> : u.email}</td>
+                        <td>
+                          <select value={u.clientId != null ? String(u.clientId) : ''} onChange={(e) => changeClient(u, e.target.value)} title="Customer this portal login is linked to" style={{ width: 'auto', maxWidth: 240, ...(u.clientId == null ? { borderColor: 'var(--danger, #c0392b)', color: 'var(--danger, #c0392b)' } : {}) }}>
+                            <option value="">⚠ link customer…</option>
+                            {clients.map((c) => <option key={c.id} value={c.id}>{c.accountCode} — {c.legalName}</option>)}
+                          </select>
+                        </td>
+                        <td><span className={`badge ${u.isActive ? 'DELIVERED' : 'CANCELLED'}`}>{u.isActive ? 'ACTIVE' : 'DISABLED'}</span></td>
+                        <td className="row" style={{ gap: 6 }}>
+                          <button className="secondary" onClick={() => toggle(u)}>{u.isActive ? 'Disable' : 'Enable'}</button>
+                          <button className="secondary" onClick={() => resetPwd(u)}>Reset pwd</button>
+                          <button className="secondary" onClick={() => openGrants(u)} title="Override this login's portal features">🔑 Features{u.featureGrants ? ` (${Array.isArray(u.featureGrants) ? u.featureGrants.length : Object.keys(u.featureGrants).length})` : ''}</button>
+                          <button className="secondary" title="Delete user" onClick={async () => { if (!confirm(`Delete login ${u.username ?? u.email}? This cannot be undone.`)) return; try { await api.deleteUser(u.id); setMsg(`Deleted ${u.username ?? u.email}`); load(); } catch (e: any) { setError(e.message); } }}>🗑</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {scopeUser && <Modal title={`Access scope — ${scopeUser.fullName}`} width={620} onClose={() => setScopeUser(null)}>
         <p className="muted" style={{ marginTop: 0, fontSize: 12.5 }}>

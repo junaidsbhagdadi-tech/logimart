@@ -5,7 +5,7 @@ import { TrackingService } from '../tracking/tracking.service';
 import { ShipmentsService } from '../shipments/shipments.service';
 
 // Surface products ride ROAD_PTL; everything else is air express (same split the booking screens use).
-const SURFACE = new Set(['SFC', 'TOSFC', 'HUB', 'DOD', 'XSE', 'FOD', 'TRAIN']);
+const SURFACE = new Set(['SFC', 'TOSFC', 'HUB', 'DOD', 'FOD', 'TRAIN']); // XSE (DTDC Premium) is air
 const PIN = /^\d{6}$/;
 
 /**

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { api, Invoice } from '../api';
 import { useAuth } from '../auth';
 
@@ -10,6 +10,40 @@ export function InvoiceDetail() {
   const canDispute = isFinance || user?.role === 'CLIENT_ADMIN';
   const [inv, setInv] = useState<Invoice | null>(null);
   const [error, setError] = useState('');
+  const [sp] = useSearchParams();
+  const [dateOpen, setDateOpen] = useState(sp.get('edit') === '1');
+  const [df, setDf] = useState({ invoiceDate: '', periodStart: '', periodEnd: '' });
+  useEffect(() => {
+    if (inv) setDf({ invoiceDate: String(inv.issuedAt ?? '').slice(0, 10), periodStart: inv.periodStart.slice(0, 10), periodEnd: inv.periodEnd.slice(0, 10) });
+  }, [inv]);
+  const saveDates = async () => {
+    try { await api.setInvoiceDates(id!, df); setDateOpen(false); setError(''); load(); } catch (e: any) { setError(e.message); }
+  };
+
+  // Bill working sheet (per-AWB charge breakup as billed on this invoice) — for the customer too.
+  const worksheet = async () => {
+    if (!inv) return;
+    const XLSX = await import('xlsx');
+    const rank = (k: string) => (k === 'freight' ? 0 : k === 'fuel' ? 1 : 2);
+    const heads = Array.from(new Set(inv.lines.flatMap((l: any) => Object.keys(l.breakup ?? {}).filter((k) => typeof (l.breakup as any)[k] === 'number'))))
+      .filter((k) => !['subtotal', 'total', 'chargeableKg', 'gst', 'tax'].includes(k))
+      .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+    const rows = inv.lines.map((l: any, i: number) => {
+      const s = l.shipment ?? {};
+      const r: Record<string, any> = {
+        'Sl': i + 1, 'AWB No': s.awb ?? '', 'Booking date': s.createdAt ? new Date(s.createdAt).toLocaleDateString('en-GB') : '',
+        'Reference': s.referenceNo ?? '', 'Consignee': s.consigneeName ?? '', 'Destination': s.destName ?? s.consigneeCity ?? '', 'Pincode': s.destPincode ?? '',
+        'Product': s.product ?? '', 'Pieces': s.pieceCount ?? '', 'Actual kg': s.totalDeadKg != null ? Number(s.totalDeadKg) : '', 'Chargeable kg': Number(l.chargeableKg),
+      };
+      if (heads.length) for (const h of heads) r[h.toUpperCase()] = Number((l.breakup as any)?.[h] ?? 0);
+      else { r['FREIGHT'] = Number(l.freight ?? 0); r['FUEL'] = Number(l.fuel ?? 0); r['OTHER'] = Number(l.otherCharges ?? 0); }
+      r['Total (ex-GST)'] = Number(l.amount);
+      return r;
+    });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Bill working');
+    XLSX.writeFile(wb, `Bill-working-${inv.invoiceNo}.xlsx`);
+  };
 
   const load = () => {
     if (id) api.getInvoice(id).then(setInv).catch((e) => setError(e.message));
@@ -90,9 +124,23 @@ export function InvoiceDetail() {
         <h1>{inv.invoiceNo}</h1>
         <div className="row" style={{ alignItems: 'center' }}>
           <span className={`badge ${inv.status}`}>{inv.status}</span>
+          <button className="secondary" onClick={worksheet} title="Per-AWB charge breakup of this invoice (Excel)">⬇ Bill worksheet</button>
           <a href={`/invoices/${id}/print`} target="_blank" rel="noreferrer"><button>⬇ Download / Print</button></a>
         </div>
       </div>
+
+      {dateOpen && isFinance && inv.status === 'DRAFT' && (
+        <div className="card" style={{ borderLeft: '4px solid var(--navy)' }}>
+          <h2>Edit invoice dates</h2>
+          <div className="grid cols-3">
+            <div><label>Invoice date</label><input type="date" value={df.invoiceDate} onChange={(e) => setDf({ ...df, invoiceDate: e.target.value })} /></div>
+            <div><label>From invoice date</label><input type="date" value={df.periodStart} onChange={(e) => setDf({ ...df, periodStart: e.target.value })} /></div>
+            <div><label>To invoice date</label><input type="date" value={df.periodEnd} onChange={(e) => setDf({ ...df, periodEnd: e.target.value })} /></div>
+          </div>
+          <p className="muted" style={{ fontSize: 12 }}>Only while the invoice is unlocked. The invoice date is kept when you lock it; the due date follows the new "to" date. AWBs on the bill don't change — add / remove them below.</p>
+          <div className="row"><button onClick={saveDates}>Save dates</button><button className="secondary" onClick={() => setDateOpen(false)}>Cancel</button></div>
+        </div>
+      )}
 
       {payOpen && (
         <div className="card" style={{ borderLeft: '4px solid var(--navy)' }}>
@@ -116,6 +164,7 @@ export function InvoiceDetail() {
 
       <div className="card">
         <div className="grid cols-3">
+          <div><label>Invoice date</label>{inv.issuedAt ? new Date(inv.issuedAt).toLocaleDateString('en-GB') : '—'}</div>
           <div><label>Period</label>{inv.periodStart.slice(0, 10)} → {inv.periodEnd.slice(0, 10)}</div>
           <div><label>Due date</label>{inv.dueDate.slice(0, 10)}</div>
           <div><label>Subtotal</label>₹{inv.subtotal}</div>
@@ -126,6 +175,7 @@ export function InvoiceDetail() {
         <div className="row" style={{ marginTop: 12 }}>
           {isFinance && inv.status !== 'PAID' && <button onClick={openPay}>Record payment</button>}
           {isFinance && !inv.irn && <button className="secondary" onClick={einvoice}>Generate e-invoice (IRN)</button>}
+          {isFinance && inv.status === 'DRAFT' && !dateOpen && <button className="secondary" onClick={() => setDateOpen(true)}>✏ Edit dates</button>}
         </div>
       </div>
 

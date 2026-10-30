@@ -369,6 +369,7 @@ export function Invoices() {
                       <Link to={`/invoices/${inv.id}`}><button className="secondary" style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }} title="View / edit AWBs">👁</button></Link>
                       <a href={`/invoices/${inv.id}/print`} target="_blank" rel="noreferrer"><button className="secondary" style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }} title="Print">🖨</button></a>
                       {isFinance && rights.edit && inv.status === 'DRAFT' && <>
+                        <Link to={`/invoices/${inv.id}?edit=1`}><button className="secondary" style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }} title="Edit invoice date / from / to (unlocked invoice)">✏</button></Link>
                         <button className="secondary" style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }} title="Add an AWB" onClick={() => addAwb(inv)}>＋AWB</button>
                         <button style={{ padding: '3px 8px', fontSize: 12, marginRight: 4 }} title="Lock / issue this invoice" onClick={() => lockInv(inv)}>🔒 Lock</button>
                       </>}

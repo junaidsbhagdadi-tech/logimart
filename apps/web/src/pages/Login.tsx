@@ -34,7 +34,7 @@ export function Login() {
         </div>
         {error && <div className="error">{error}</div>}
         <div style={{ marginBottom: 12 }}>
-          <label>Email</label>
+          <label>Email or username</label>
           <input value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
         </div>
         <div style={{ marginBottom: 16 }}>

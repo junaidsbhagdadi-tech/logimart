@@ -495,8 +495,9 @@ export class BluedartService implements OnModuleInit {
     // Reverse/to-pay variants carry the base product after a TO/T prefix (TODP→DP, TOSFC→SFC, TAPEX→APEX).
     const base = p === 'TODP' ? 'DP' : p === 'TOSFC' ? 'SFC' : p === 'TAPEX' ? 'APEX' : p;
     const sm = String(s.serviceMode ?? '');
+    // DP first: a DP booking is AIR_EXPRESS too, so testing AIR first sent every DP out as Apex.
+    if (/^(DP|TDD|NDD)$|PRIORITY/i.test(base)) return 'D'; // Domestic Priority (air express / courier)
     if (/AIR|APEX/i.test(sm + base)) return 'A';           // Dart Apex (air)
-    if (/\bDP\b|TDD|NDD|PRIORITY/i.test(base)) return 'D'; // Domestic Priority (air express / courier)
     return 'E';                                             // Surface / Ground
   }
 
@@ -524,6 +525,12 @@ export class BluedartService implements OnModuleInit {
     return 'P';
   }
 
+  /** What BlueDart is shown as the shipper: our customer's account code only (e.g. "LOGIMART 111531"). */
+  private maskedShipper(s: any): string {
+    const code = String(s?.client?.accountCode ?? '').trim();
+    return code ? `LOGIMART ${code}` : 'LOGIMART';
+  }
+
   /** Map Logimart shipment → BlueDart GenerateWayBill request (TSD v2.7), under account `acc`. */
   private mapWaybill(s: any, acc: BdAcc, opts: { originArea?: string; outstation?: boolean } = {}) {
     // Dimensions grouped by identical box size, with a Count per size (TSD Dimension object).
@@ -547,13 +554,15 @@ export class BluedartService implements OnModuleInit {
           // flag → waybill issued; OriginArea = the pickup's area → "UnauthorizedUser".)
           OriginArea: opts.originArea || acc.originArea || BLUEDART.originArea || String(s.originZone ?? '').slice(0, 3).toUpperCase(),
           CustomerCode: acc.customerCode,
-          CustomerName: (s.shipperName ?? s.client?.legalName ?? '').slice(0, 30),
+          // BlueDart sees only OUR customer's account code, never the customer's name (address + mobile
+          // stay — the pickup needs them).
+          CustomerName: this.maskedShipper(s).slice(0, 30),
           CustomerAddress1: (s.shipperAddress1 ?? s.client?.addressLine ?? '').slice(0, 30),
           CustomerAddress2: (s.shipperAddress2 ?? '').slice(0, 30),
           CustomerPincode: s.shipperPincode ?? s.client?.pincode ?? '',
           CustomerMobile: this.bdShipperMobile(s),
           CustomerGSTNumber: s.consignorGstin ?? s.client?.gstin ?? '',
-          Sender: (s.shipperName ?? s.client?.legalName ?? '').slice(0, 20),
+          Sender: this.maskedShipper(s).slice(0, 20),
           // TO-PAY = carriage from outside the account's home area, billed to THIS account (TSD: "when
           // mutually agreed for shipment carriage from any place other than place of contract signup").
           // Set for the to-pay products and for any out-of-area pickup. (Consignee-pays is FOD → SubProduct A.)
@@ -630,7 +639,7 @@ export class BluedartService implements OnModuleInit {
     const time = dto.time || String(BLUEDART.pickupTime || '1600').replace(/^(\d{2})(\d{2})$/, '$1:$2');
     const toPay = this.isToPay(s);
     const weight = Number(Number(s.chargeWeight ?? s.totalDeadKg ?? 1).toFixed(2));
-    const name = String(s.shipperName ?? s.client?.legalName ?? '').slice(0, 30);
+    const name = this.maskedShipper(s).slice(0, 30); // account code only — never our customer's name
     const addr1 = String(s.shipperAddress1 ?? s.client?.addressLine ?? '').trim();
     // Pre-flight: a pickup needs a real pickup address + a reachable contact, else BlueDart rejects it
     // (or books a junk collection). Surface the gap plainly instead of a cryptic carrier error.

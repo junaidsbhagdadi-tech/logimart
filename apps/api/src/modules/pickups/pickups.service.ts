@@ -9,6 +9,8 @@ import { isXpressBeesVendor, XB } from '../xpressbees/xpressbees.config';
 
 interface CreatePickup {
   clientId: number;
+  createdById?: number;
+  createdByName?: string;
   pickupAddress: string;
   city?: string;
   pincode?: string;
@@ -53,13 +55,15 @@ export class PickupsService {
         invoiceValue: dto.invoiceValue != null ? new Prisma.Decimal(dto.invoiceValue) : null,
         ewbNo: dto.ewbNo,
         notes: dto.notes,
+        createdById: dto.createdById != null ? BigInt(dto.createdById) : null,
+        createdByName: dto.createdByName ?? null,
       },
     });
   }
 
   /** Bulk pickup-request upload. Each row resolves its client by accountCode or internal id (or the
    *  forced clientId for a portal login). Bad rows are reported, good rows imported — the rest continue. */
-  async bulkCreate(rows: any[], forcedClientId?: number, vendor?: string) {
+  async bulkCreate(rows: any[], forcedClientId?: number, vendor?: string, by?: { id?: number; name?: string }) {
     const results: { row: string; ok: boolean; error?: string }[] = [];
     for (const r of rows || []) {
       const label = String(r.pickupAddress ?? r.accountCode ?? r.clientId ?? '(blank)').slice(0, 40);
@@ -84,7 +88,7 @@ export class PickupsService {
           cargoMode: r.cargoMode, vendor: (r.vendor && String(r.vendor).trim()) || vendor || undefined,
           invoiceNo: r.invoiceNo, invoiceDate: r.invoiceDate,
           invoiceValue: r.invoiceValue != null && r.invoiceValue !== '' ? Number(r.invoiceValue) : undefined,
-          ewbNo: r.ewbNo, notes: r.notes,
+          ewbNo: r.ewbNo, notes: r.notes, createdById: by?.id, createdByName: by?.name,
         });
         results.push({ row: label, ok: true });
       } catch (e) { results.push({ row: label, ok: false, error: (e as Error).message }); }
@@ -95,6 +99,7 @@ export class PickupsService {
   /** Client admins see only their own requests; ops staff see all. Each row carries the requesting
    *  customer's code + name (for the CS list). */
   async list(clientId?: bigint, scope?: bigint[] | null) {
+    // (createdByName is stored at booking; older rows show "—")
     const rows = await this.prisma.pickupRequest.findMany({
       where: clientId != null ? { clientId } : scope ? { clientId: { in: scope } } : undefined,
       orderBy: { createdAt: 'desc' },
@@ -139,10 +144,28 @@ export class PickupsService {
    * an AWB already booked (ours or a carrier no) is linked; otherwise, with a destination pincode, the
    * shipment is BOOKED now under the pickup's customer (product/vendor/pickup address from the request)
    * and moved to Picked — so it lands on the customer's bill. Without a destination it's recorded only.
+   *  `forwardingNo` (the vendor's AWB): our internal AWB is GENERATED and the vendor number is stored as
+   * the forwarding no — ops only type the carrier's number.
    */
-  async complete(id: number, captured: { awb?: string; weight?: number; pieces?: number; value?: number; destPincode?: string; consigneeName?: string; consigneePhone?: string; consigneeAddress?: string } = {}, userId?: bigint) {
+  async complete(id: number, captured: { awb?: string; forwardingNo?: string; weight?: number; pieces?: number; value?: number; destPincode?: string; consigneeName?: string; consigneePhone?: string; consigneeAddress?: string } = {}, userId?: bigint) {
     const p = await this.exists(id);
     let shipment: { awb: string; booked: boolean } | null = null;
+    const fwd = String(captured.forwardingNo ?? '').trim().toUpperCase();
+    if (fwd && !captured.awb) {
+      const existing = await this.prisma.shipment.findFirst({ where: { OR: [{ awb: fwd }, { forwardingAwb: { equals: fwd, mode: 'insensitive' } }, { bdWaybill: fwd }] }, select: { awb: true, clientId: true, statusCode: true } });
+      if (existing && String(existing.clientId) !== String(p.clientId)) throw new BadRequestException(`Forwarding no ${fwd} is already booked under another customer — check the number.`);
+      if (existing) captured = { ...captured, awb: existing.awb };
+      else if (p.pickedAwb) {
+        // Already booked at the hand-off → just attach the carrier's number to that AWB.
+        await this.prisma.shipment.update({ where: { awb: String(p.pickedAwb) }, data: { forwardingAwb: fwd } }).catch(() => {});
+        captured = { ...captured, awb: String(p.pickedAwb) };
+      } else if (captured.destPincode && String(captured.destPincode).trim()) {
+        const isBd = await this.bluedart.isBlueDartVendor(p.vendor);
+        const created: any = await this.bookFromPickup(p, { destPincode: String(captured.destPincode), consigneeName: captured.consigneeName, consigneePhone: captured.consigneePhone, consigneeAddress: captured.consigneeAddress, weight: captured.weight, pieces: captured.pieces, value: captured.value });
+        await this.prisma.shipment.update({ where: { awb: created.awb }, data: { forwardingAwb: fwd, ...(isBd ? { bdWaybill: fwd } : {}) } });
+        captured = { ...captured, awb: created.awb };
+      }
+    }
     // Default to the shipment already booked at the BlueDart hand-off (request.pickedAwb).
     const awb = String(captured.awb || p.pickedAwb || '').trim().toUpperCase();
     if (awb) {
@@ -167,13 +190,13 @@ export class PickupsService {
       where: { id: BigInt(id) },
       data: {
         status: PickupStatus.PICKED,
-        ...(captured.awb ? { pickedAwb: String(captured.awb).trim() } : {}),
+        ...(captured.awb ? { pickedAwb: String(captured.awb).trim() } : fwd ? { pickedAwb: fwd } : {}),
         ...(captured.weight != null ? { pickedWeight: new Prisma.Decimal(captured.weight) } : {}),
         ...(captured.pieces != null ? { pickedPieces: Math.max(1, Math.floor(captured.pieces)) } : {}),
         ...(captured.value != null ? { pickedValue: new Prisma.Decimal(captured.value) } : {}),
       },
     });
-    return { ...updated, shipment };
+    return { ...updated, shipment, forwardingNo: fwd || null };
   }
 
   /** Full detail for one pickup request (+ the customer), for the CS detail popup. */
@@ -195,6 +218,20 @@ export class PickupsService {
     const vendor = (opts.vendor || p.vendor || '').trim();
     // BlueDart = the generic BDR code OR a per-account BlueDart vendor (476954 LOGM, 439154 XLX, …) —
     // those previously failed the /^BLUE|BDR/ test and were only *recorded*, never sent to BlueDart.
+    if (await this.bluedart.isBlueDartVendor(vendor || p.vendor) && !opts.destPincode && !p.pickedAwb) {
+      // The simple hand-off (same window as other vendors): register a BlueDart PICKUP only → token.
+      // BlueDart's waybill is then typed in as the forwarding no when the pickup is marked picked.
+      const client = await this.prisma.b2bClient.findUnique({ where: { id: p.clientId }, select: { accountCode: true } });
+      const r = await this.bluedart.scheduleAdhocPickup({
+        pincode: String(p.pincode || ''), name: `LOGIMART ${client?.accountCode ?? ''}`.trim(), phone: p.contactPhone || '', address1: p.pickupAddress,
+        city: p.city ?? undefined, pieces: p.estPieces, weight: p.weight != null ? Number(p.weight) : undefined, toPay: !!opts.toPay,
+        date: opts.date, remarks: `Pickup #${id}${p.refNo ? ` ref ${p.refNo}` : ''}`, vendor: vendor || p.vendor, bdAccountId: p.bdAccountId ?? null,
+      });
+      const updated = await this.prisma.pickupRequest.update({
+        where: { id: BigInt(id) }, data: { token: r.token, handoffAt: new Date(), vendor: vendor || p.vendor || 'BDR', status: PickupStatus.ASSIGNED },
+      });
+      return { ...updated, token: r.token, outstation: r.outstation, pickupOnly: true };
+    }
     if (await this.bluedart.isBlueDartVendor(vendor || p.vendor)) {
       // BlueDart is never given a bare pickup: it books with the DESTINATION. Book the shipment for the
       // customer (billable), then GenerateWayBill — in-area that returns the AWB + registers the pickup;

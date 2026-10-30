@@ -63,8 +63,9 @@ export class BillingController {
   @Get('billing/invoices/:id')
   async get(@Param('id') id: string, @Req() req: any) {
     const inv = await this.invoices.get(Number(id));
-    // A client may only open its OWN invoices, and only once they've been SENT.
-    if (req.user.role === UserRole.CLIENT_ADMIN && (String((inv as any).clientId) !== String(req.user.clientId) || !(inv as any).sentAt)) {
+    // A client may only open its OWN invoices, and only once finalised (locked) or sent — the same rule
+    // as the portal list (a listed invoice used to open as "Invoice not found" until it was also sent).
+    if (req.user.role === UserRole.CLIENT_ADMIN && (String((inv as any).clientId) !== String(req.user.clientId) || (!(inv as any).sentAt && (inv as any).status === 'DRAFT'))) {
       throw new NotFoundException('Invoice not found');
     }
     if (req.user.role !== UserRole.CLIENT_ADMIN) await assertClientInScope(this.prisma, req.user, (inv as any).clientId);
@@ -105,6 +106,13 @@ export class BillingController {
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
   lock(@Param('id') id: string) {
     return this.invoices.lockInvoice(Number(id));
+  }
+
+  /** Change the invoice date / billing period of an UNLOCKED (draft) invoice. */
+  @Post('billing/invoices/:id/dates')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  setDates(@Param('id') id: string, @Body() dto: { invoiceDate?: string; periodStart?: string; periodEnd?: string }) {
+    return this.invoices.setDates(Number(id), dto ?? {});
   }
 
   /** Add an AWB to a DRAFT invoice (#8). */

@@ -32,6 +32,8 @@ class AssignDto {
 }
 class CompleteDto {
   @IsOptional() @IsString() awb?: string;
+  // the vendor's AWB — our internal AWB is generated and this is stored as the forwarding no
+  @IsOptional() @IsString() forwardingNo?: string;
   @IsOptional() @IsNumber() weight?: number;
   @IsOptional() @IsInt() pieces?: number;
   @IsOptional() @IsNumber() value?: number;
@@ -64,19 +66,28 @@ export class PickupsController {
 
   @Post()
   @Roles(UserRole.CLIENT_ADMIN, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
-  create(@Body() dto: CreatePickupDto, @Req() req: any) {
+  async create(@Body() dto: CreatePickupDto, @Req() req: any) {
     const clientId =
       req.user.role === UserRole.CLIENT_ADMIN ? Number(req.user.clientId) : dto.clientId!;
-    return this.pickups.create({ ...dto, clientId });
+    return this.pickups.create({ ...dto, clientId, ...(await this.by(req)) });
   }
 
   /** Bulk pickup upload. A client-portal login is pinned to its own account; ops staff resolve
    *  each row's customer from the sheet (accountCode / id). */
   @Post('bulk')
   @Roles(UserRole.CLIENT_ADMIN, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
-  bulk(@Body() body: { rows: any[]; vendor?: string }, @Req() req: any) {
+  async bulk(@Body() body: { rows: any[]; vendor?: string }, @Req() req: any) {
     const forced = req.user.role === UserRole.CLIENT_ADMIN ? Number(req.user.clientId) : undefined;
-    return this.pickups.bulkCreate(body?.rows ?? [], forced, body?.vendor);
+    const by = await this.by(req);
+    return this.pickups.bulkCreate(body?.rows ?? [], forced, body?.vendor, { id: by.createdById, name: by.createdByName });
+  }
+
+  /** Who is booking — stored on the request ("Booked by" on the pickups list). */
+  private async by(req: any): Promise<{ createdById?: number; createdByName?: string }> {
+    const id = req.user?.sub ? Number(req.user.sub) : undefined;
+    if (!id) return {};
+    const u = await this.prisma.user.findUnique({ where: { id: BigInt(id) }, select: { fullName: true, riderCode: true } }).catch(() => null);
+    return { createdById: id, createdByName: u ? `${u.fullName}${u.riderCode ? ` (${u.riderCode})` : ''}` : undefined };
   }
 
   @Get()

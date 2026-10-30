@@ -523,6 +523,8 @@ export const api = {
       '/api/v1/billing/invoices/' + invoiceId + '/pay',
       { method: 'POST', body: JSON.stringify(body) },
     ),
+  setInvoiceDates: (invoiceId: string, body: { invoiceDate?: string; periodStart?: string; periodEnd?: string }) =>
+    request<{ ok: boolean }>('/api/v1/billing/invoices/' + invoiceId + '/dates', { method: 'POST', body: JSON.stringify(body) }),
   lockInvoice: (invoiceId: string) =>
     request<{ creditHold: boolean; newBalance: number }>('/api/v1/billing/invoices/' + invoiceId + '/lock', { method: 'POST' }),
   sendInvoice: (invoiceId: string) =>
@@ -565,6 +567,8 @@ export const api = {
 
   // ---- users (admin) ----
   listUsers: () => request<any[]>('/api/v1/users'),
+  attendance: (from: string, to: string) => request<any>(`/api/v1/attendance?from=${from}&to=${to}`),
+  logoutEvent: () => request<{ ok: boolean }>('/api/v1/auth/logout', { method: 'POST', body: JSON.stringify({ via: 'web' }) }),
   createUser: (body: unknown) =>
     request('/api/v1/users', { method: 'POST', body: JSON.stringify(body) }),
   // Riders / drivers (mobile-app field staff)
@@ -891,7 +895,7 @@ export const api = {
     request<{ total: number; created: number; results: { row: string; ok: boolean; error?: string }[] }>('/api/v1/pickups/bulk', { method: 'POST', body: JSON.stringify({ rows, vendor: vendor || undefined }) }),
   assignPickup: (id: string, riderId: number) =>
     request(`/api/v1/pickups/${id}/assign`, { method: 'POST', body: JSON.stringify({ riderId }) }),
-  completePickup: (id: string, body: { awb?: string; weight?: number; pieces?: number; value?: number; destPincode?: string; consigneeName?: string; consigneePhone?: string; consigneeAddress?: string } = {}) =>
+  completePickup: (id: string, body: { awb?: string; forwardingNo?: string; weight?: number; pieces?: number; value?: number; destPincode?: string; consigneeName?: string; consigneePhone?: string; consigneeAddress?: string } = {}) =>
     request(`/api/v1/pickups/${id}/complete`, { method: 'POST', body: JSON.stringify(body) }),
   pickupDetail: (id: string) => request<any>(`/api/v1/pickups/${id}`),
   pickupHandoff: (id: string, body: { vendor?: string; toPay?: boolean; date?: string; token?: string; destPincode?: string; consigneeName?: string; consigneePhone?: string; consigneeAddress?: string; weight?: number; pieces?: number; value?: number } = {}) =>

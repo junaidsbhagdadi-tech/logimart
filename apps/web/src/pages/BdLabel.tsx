@@ -5,12 +5,13 @@ import { Barcode } from '../components/Barcode';
 
 /**
  * Courier print set (#8, BlueDart-style, every carrier). Each page is 89 × 69 mm:
- *   1. AWB label — goes with the invoice
- *   2. POD copy — the carrier keeps it (signature / seal table)
+ *   1. AWB label (MASTER) — goes with the invoice
+ *   2. Box details — sizes / weight / box count
  *   3. AWB label — stuck on the invoice
- *   4. AWB label — shipper's copy
- *   5…  one sticker per box
- * The CARRIER's AWB is the barcode; our own AWB prints underneath it.
+ *   4. POD copy — the carrier keeps it (signature / seal table)
+ *   5. AWB label — shipper's copy
+ *   6…  one sticker per box, barcode = carrier AWB + "-0001", "-0002", …
+ * The CARRIER's AWB is the barcode; our own AWB prints on every page.
  */
 const d2 = (n: number) => String(n).padStart(2, '0');
 const ddmmyyyy = (v?: string) => { if (!v) return ''; const d = new Date(v); return `${d2(d.getDate())}/${d2(d.getMonth() + 1)}/${d.getFullYear()}`; };
@@ -62,13 +63,23 @@ export function BdLabel() {
   const dims = [...dimGroups.entries()].map(([k, n]) => (dimGroups.size > 1 || n > 1 ? `${k} (${n})` : k)).join(', ') || '—';
   const sender = `${m.accountCode || ''} - ${m.shipperName || m.consignor.name}`;
   const date = ddmmyyyy(m.createdAt);
+  // Page 2 — boxes grouped by identical size, with their weight where each box's weight is known.
+  const groupMap = new Map<string, { dims: string; n: number; kg: number }>();
+  boxes.forEach((b) => {
+    const k = b.l && b.w && b.h ? `${Number(b.l).toFixed(1)} X ${Number(b.w).toFixed(1)} X ${Number(b.h).toFixed(1)}` : '—';
+    const g = groupMap.get(k) ?? { dims: k, n: 0, kg: 0 };
+    g.n += 1; g.kg += Number(b.deadKg || 0); groupMap.set(k, g);
+  });
+  const boxGroups = [...groupMap.values()];
+  // Our internal AWB goes on every page (the barcode is the carrier's number).
+  const ourTag = carrierAwb && !isOwn ? <span className="cl-small"> | Our AWB: {m.awb}</span> : null;
 
   const label = (copy: string) => (
     <section className="cl" key={copy}>
       <div className="cl-copy">{copy}</div>
       <div className="cl-title">{title}</div>
       <div className="cl-line cl-big">Org: {org} - Dst: {dst}{m.referenceNo ? <span className="cl-small"> | Ref No: {m.referenceNo}</span> : null}</div>
-      <div className="cl-line cl-big">Wgt: {kg} KGs | {m.pieceCount} Boxes | Date:{date}</div>
+      <div className="cl-line cl-big">Wgt: {kg} KGs | MASTER - {m.pieceCount} Boxes | Date:{date}</div>
       <div className="cl-bar">
         <Barcode value={lead} />
         {carrierAwb && !isOwn && <div className="cl-our">Our AWB: <b>{m.awb}</b></div>}
@@ -88,7 +99,7 @@ export function BdLabel() {
     <div className="cl-page">
       <div className="cl-toolbar no-print">
         <Link to={`/shipments/${m.awb}`}>← {m.awb}</Link>
-        <span className="cl-hint">{4 + boxes.length} pages · 89 × 69 mm</span>
+        <span className="cl-hint">{5 + boxes.length} pages · 89 × 69 mm</span>
         <button onClick={() => window.print()}>🖨 Print</button>
       </div>
       {!carrierAwb && !isOwn && (
@@ -100,11 +111,29 @@ export function BdLabel() {
       {label('1 · WITH INVOICE')}
 
       <section className="cl">
-        <div className="cl-copy">2 · CARRIER POD COPY</div>
+        <div className="cl-copy">2 · BOX DETAILS</div>
+        <div className="cl-title">{title}</div>
+        <div className="cl-line">AWB: {lead} | DATE: {date} | BOX DETAILS</div>
+        <div className="cl-line">INV NO: {m.invoiceNo || '—'} | INV VAL: {money(m.shipmentValue) || '—'} INR</div>
+        <table className="cl-pod cl-boxes">
+          <thead><tr><th>SL. NO.</th><th>DIMENSIONS (CMS)</th><th>WEIGHT (KGS)</th><th>NO. OF BOXES</th></tr></thead>
+          <tbody>
+            {boxGroups.map((g, i) => <tr key={g.dims}><td>{i + 1}</td><td>{g.dims}</td><td>{g.kg ? g.kg.toFixed(2) : ''}</td><td>{g.n}</td></tr>)}
+            <tr><td /><td><b>TOTAL</b></td><td><b>{kg} KGS</b></td><td><b>{boxes.length}</b></td></tr>
+          </tbody>
+        </table>
+        <div className="cl-line">SENDER : {sender}</div>
+        <div className="cl-line cl-cmdty">RECEIVER : {m.destPincode || '—'}{ourTag}</div>
+      </section>
+
+      {label('3 · STICK ON INVOICE')}
+
+      <section className="cl">
+        <div className="cl-copy">4 · CARRIER POD COPY</div>
         <div className="cl-title">{title}</div>
         <div className="cl-pod-head">POD COPY | <b>AWB: {lead} | BOXES: {m.pieceCount} NOS</b></div>
         <div className="cl-line">SENDER : {sender}</div>
-        <div className="cl-line">RECEIVER : {m.destPincode || m.consignee.name}</div>
+        <div className="cl-line">RECEIVER : {m.destPincode || m.consignee.name}{ourTag}</div>
         <div className="cl-bar cl-bar-sm"><Barcode value={lead} /></div>
         <table className="cl-pod">
           <thead><tr><th>RECEIVED BY</th><th>SEAL / SIGNATURE</th><th>RECEIVED ON</th><th>REMARKS</th></tr></thead>
@@ -112,26 +141,30 @@ export function BdLabel() {
         </table>
       </section>
 
-      {label('3 · STICK ON INVOICE')}
-      {label('4 · SHIPPER COPY')}
+      {label('5 · SHIPPER COPY')}
 
-      {boxes.map((b, i) => (
-        <section className="cl" key={`box${i}`}>
-          <div className="cl-copy">BOX {i + 1} OF {boxes.length}</div>
-          <div className="cl-title">{title}</div>
-          <div className="cl-line cl-big">Org: {org} - Dst: {dst}</div>
-          <div className="cl-bar">
-            <Barcode value={b.carrierId || lead} />
-            {!isOwn && <div className="cl-our">Our AWB: <b>{m.awb}</b>{b.childId ? ` · ${b.childId}` : ''}</div>}
-          </div>
-          <div className="cl-line cl-big">Box {i + 1} / {boxes.length}{b.deadKg ? ` | ${Number(b.deadKg).toFixed(2)} KGs` : ''}{b.l ? ` | ${b.l} x ${b.w} x ${b.h}` : ''}</div>
-          <div className="cl-recv">
-            <div>Receiver : {m.consignee.name}</div>
-            <div>Pincode : {m.destPincode || '—'}</div>
-          </div>
-          <div className="cl-line">Sender: {sender}</div>
-        </section>
-      ))}
+      {boxes.map((b, i) => {
+        const boxNo = b.carrierId || `${lead}-${String(i + 1).padStart(4, '0')}`;
+        return (
+          <section className="cl" key={`box${i}`}>
+            <div className="cl-copy">{6 + i} · BOX {i + 1} OF {boxes.length}</div>
+            <div className="cl-title">{title}</div>
+            <div className="cl-line cl-big">Org: {org} - Dst: {dst}{m.referenceNo ? <span className="cl-small"> | Ref No: {m.referenceNo}</span> : null}</div>
+            <div className="cl-line cl-big">Boxes: {i + 1} of {boxes.length} | Date:{date}{b.deadKg ? <span className="cl-small"> | {Number(b.deadKg).toFixed(2)} KGs</span> : null}</div>
+            <div className="cl-bar">
+              <Barcode value={boxNo} />
+              <div className="cl-our">{boxNo}{!isOwn ? <> · Our AWB: <b>{m.awb}</b></> : null}</div>
+            </div>
+            <div className="cl-line">Sender: {sender}</div>
+            <div className="cl-line">Inv No: {m.invoiceNo || '—'} | Inv Val: {money(m.shipmentValue) || '—'} INR</div>
+            <div className="cl-recv">
+              <div>Receiver : {m.consignee.name}</div>
+              <div className="cl-addr">{m.consignee.address}</div>
+              <div>Pincode : {m.destPincode || '—'} Ph: {m.consigneePhone || m.consignee.phone || '—'}</div>
+            </div>
+          </section>
+        );
+      })}
 
       <style>{`
         .cl-page { background:#eee; min-height:100vh; padding:16px; display:flex; flex-direction:column; align-items:center; gap:14px; }
@@ -157,6 +190,8 @@ export function BdLabel() {
         .cl-pod { width:100%; border-collapse:collapse; margin-top:1mm; flex:1; }
         .cl-pod th, .cl-pod td { border:1.2px solid #111; font-size:6.5pt; padding:.6mm; text-align:center; }
         .cl-pod td { height:14mm; }
+        .cl-boxes { flex:0; margin:1mm 0; }
+        .cl-boxes td { height:auto; font-size:7pt; font-weight:700; }
         @media print {
           .cl-page { background:#fff; padding:0; gap:0; display:block; }
           .no-print { display:none !important; }

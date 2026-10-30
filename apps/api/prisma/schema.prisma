@@ -41,6 +41,7 @@ model User {
   client       B2bClient? @relation(fields: [clientId], references: [id])
   fullName     String
   email        String    @unique
+  username     String?   @unique // alternative login id (UPPERCASE) — e.g. a customer's account code
   passwordHash String
   role         UserRole
   department   Department? // functional desk — drives default feature access (see Department enum)
@@ -736,6 +737,8 @@ model PickupRequest {
   token         String?
   handoffAt     DateTime?
   bdAccountId   BigInt?
+  createdById   BigInt?      // who booked it (staff or the customer's portal login)
+  createdByName String?
   createdAt     DateTime     @default(now())
 
   @@index([status, createdAt])
@@ -817,6 +820,7 @@ model Invoice {
   dueDate     DateTime      @db.Date
   issuedAt    DateTime?
   sentAt      DateTime?     // set when CS/finance "sends" it — only then is it visible on the customer portal
+  dateManual  Boolean       @default(false) // invoice date set by hand on the draft — kept when locked
   // ---- GST e-invoice (IRP) ----
   irn         String?       // Invoice Reference Number
   irnAckNo    String?
@@ -1690,4 +1694,18 @@ model IntlRateCard {
   @@index([mode])
   @@index([clientId])
   @@map("intl_rate_cards")
+}
+
+/// Sign-in / sign-out events — the attendance trail (date-wise summary for salary).
+model LoginLog {
+  id     BigInt   @id @default(autoincrement())
+  userId BigInt
+  kind   String   // IN | OUT
+  at     DateTime @default(now())
+  ip     String?
+  via    String?  // web | app
+
+  @@index([userId, at])
+  @@index([at])
+  @@map("login_logs")
 }
