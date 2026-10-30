@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { Prisma, ShipmentStatus, PieceStatus, ScanCheckpoint } from '@prisma/client';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
+import { resolveScannedAwb } from '../../common/resolve-awb';
 import { pinRows, placeName } from '../../common/place-name';
 import { COMPANY, VOLUMETRIC_DIVISOR } from '../../config/company';
 import { regionFromPincode } from '../../common/regions';
@@ -1422,7 +1423,9 @@ export class ShipmentsService {
     return { ok: true, awb, overrides: clean };
   }
 
-  async findByAwb(awb: string) {
+  async findByAwb(awbIn: string) {
+    // A scanned carrier barcode / box id opens its shipment too.
+    const awb = (await resolveScannedAwb(this.prisma, awbIn)) ?? String(awbIn || '').trim().toUpperCase();
     const shipment = await this.prisma.shipment.findUnique({
       where: { awb },
       include: {

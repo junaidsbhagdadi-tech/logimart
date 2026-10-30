@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ShipmentStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { resolveScannedAwb } from '../../common/resolve-awb';
 
 const STATUS_MAP: Record<string, ShipmentStatus> = {
   PICKUP_IN: ShipmentStatus.PICKED_UP,
@@ -16,7 +17,9 @@ export class OpscanService {
 
   /** Record an operational scan (pickup-in, out-scan, manifest-in, undelivered, miss-route). */
   async record(dto: { awb: string; eventType: string; serviceCenter?: string; remark?: string; notifyCustomer?: boolean }, userId?: bigint) {
-    const awb = (dto.awb || '').trim().toUpperCase();
+    const typed = (dto.awb || '').trim().toUpperCase();
+    // A carrier barcode (Delhivery LR / box id, BlueDart waybill, …) or a box id scans as its AWB.
+    const awb = (await resolveScannedAwb(this.prisma, typed)) ?? typed;
     // A CS comment flagged for the customer is pushed to their portal as a popup until they read / reply.
     if (dto.eventType === 'COMMENT' && dto.notifyCustomer && dto.remark?.trim()) {
       await this.prisma.shipment.updateMany({ where: { awb }, data: { csComment: dto.remark.trim(), csCommentAt: new Date(), csCommentReadAt: null } });

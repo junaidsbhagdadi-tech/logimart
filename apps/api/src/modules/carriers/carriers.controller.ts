@@ -27,6 +27,13 @@ export class CarriersController {
   }
 
   /** Carrier suggestion for a booking — price, live serviceability, transit days. */
+  /** Track any carrier number — also ones never booked with us. Staff only. */
+  @Get('carriers/lookup/:number')
+  @Roles(UserRole.WAREHOUSE_HANDLER, UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SALES, UserRole.ADMIN, UserRole.SYS_ADMIN)
+  lookup(@Param('number') number: string) {
+    return this.carriers.lookup(number);
+  }
+
   @Post('carriers/suggest')
   @Roles(...OPS, UserRole.FINANCE_EXEC, UserRole.SALES)
   suggest(@Body() dto: { clientId: number; product: string; originPincode?: string; destPincode: string; deadKg?: number; pcs?: number; declaredValue?: number; air?: boolean }) {

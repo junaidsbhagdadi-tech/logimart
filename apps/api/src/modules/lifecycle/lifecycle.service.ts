@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ShipmentStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { resolveScannedAwb } from '../../common/resolve-awb';
 import { cityName } from '../../common/place-name';
 import { effectiveCode } from '../bluedart/bd-status';
 import { RateService } from '../billing/rate.service';
@@ -106,8 +107,10 @@ export class LifecycleService {
   async scan(dto: { awbs: string[]; code: string; hubId?: number; location?: string; remark?: string; podDataUrl?: string; bagCode?: string; scanAt?: string }, userId?: bigint, role?: string) {
     const code = String(dto.code || '').trim().toUpperCase();
     if (!CODES.has(code)) throw new BadRequestException(`Unknown status code ${code}.`);
-    const awbs = (dto.awbs || []).map((a) => String(a).trim().toUpperCase()).filter(Boolean);
-    if (!awbs.length) throw new BadRequestException('No AWB scanned.');
+    const scanned = (dto.awbs || []).map((a) => String(a).trim().toUpperCase()).filter(Boolean);
+    if (!scanned.length) throw new BadRequestException('No AWB scanned.');
+    // A carrier barcode (Delhivery LR / box id, BlueDart waybill, …) or a box id scans as its AWB.
+    const awbs = [...new Set(await Promise.all(scanned.map(async (a) => (await resolveScannedAwb(this.prisma, a)) ?? a)))];
     // DLD needs a POD — but a POD already uploaded on the shipment (podUrl) counts, so a manual
     // "mark delivered" after uploading the POD separately works. Only shipments with neither a fresh
     // podDataUrl nor an existing POD are held back (reported in `needPod`).

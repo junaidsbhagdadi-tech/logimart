@@ -352,8 +352,11 @@ export const api = {
     request<{ awb: string; pieceCount: number; master: MasterLabel; labels: LabelItem[] }>(
       `/api/v1/shipments/${awb}/print-mps-labels`,
     ),
+  vendorOda: (pincode: string, vendor?: string, product?: string) =>
+    request<{ vendor: string; known: boolean; serviceable: boolean; isOda: boolean; label: string; matches: { network: string; mode: string; isOda: boolean }[] }>(
+      `/api/v1/pincodes/${pincode}/oda?vendor=${encodeURIComponent(vendor || '')}&product=${encodeURIComponent(product || '')}`),
   lookupPincode: (pincode: string) =>
-    request<{ pincode: string; city: string | null; state: string | null; region: string | null; tier: number | null; isOda: boolean; known: boolean }>(
+    request<{ pincode: string; city: string | null; cityName?: string; state: string | null; region: string | null; tier: number | null; isOda: boolean; known: boolean }>(
       `/api/v1/pincodes/${pincode}`,
     ),
   createShipment: (body: unknown) =>
@@ -614,7 +617,7 @@ export const api = {
       `/api/v1/pincodes/service-areas?limit=${limit}${network ? `&network=${encodeURIComponent(network)}` : ''}`),
   toggleServiceArea: (id: string | number, patch: { isOda?: boolean; isActive?: boolean }) =>
     request<any>(`/api/v1/pincodes/service-areas/${id}/toggle`, { method: 'POST', body: JSON.stringify(patch) }),
-  bulkServiceAreas: (rows: Record<string, string>[], defaultNetwork = 'SELF') =>
+  bulkServiceAreas: (rows: Record<string, string>[], defaultNetwork = 'SELF', defaultMode = '') =>
     request<{ imported: number; failed: number; errors: { pincode: string; error: string }[] }>(
       '/api/v1/pincodes/service-areas/bulk', { method: 'POST', body: JSON.stringify({ rows, defaultNetwork }) }),
   bulkPincodeMapping: (rows: Record<string, any>[]) =>
@@ -625,6 +628,14 @@ export const api = {
   listEdl: (network?: string) => request<any[]>(`/api/v1/rate-cards/edl${network ? `?network=${network}` : ''}`),
   listVendorBills: (vendorCode?: string) => request<any[]>(`/api/v1/vendor-bills${vendorCode ? `?vendorCode=${vendorCode}` : ''}`),
   reconcileVendorSheet: (rows: any[]) => request<{ count: number; matched: number; withDifferences: number; rows: any[] }>('/api/v1/vendor-bills/reconcile', { method: 'POST', body: JSON.stringify({ rows }) }),
+  vendorBillUploads: () => request<{ vendor: string; day: string; rows: number; total: number; firstPickup: string | null; lastPickup: string | null }[]>('/api/v1/vendor-bills/uploads'),
+  deleteVendorBillUploads: (vendorCode: string, day?: string) => request<{ ok: boolean; deleted: number }>('/api/v1/vendor-bills/uploads/delete', { method: 'POST', body: JSON.stringify({ vendorCode, day }) }),
+  vendorRegister: (f: { vendorCode?: string; from?: string; to?: string; status?: string }) => request<any[]>(`/api/v1/vendor-bills/register${qs(f)}`),
+  addVendorInvoice: (body: any) => request<any>('/api/v1/vendor-bills/register', { method: 'POST', body: JSON.stringify(body) }),
+  deleteVendorInvoice: (id: string) => request<{ ok: boolean }>(`/api/v1/vendor-bills/register/${id}`, { method: 'DELETE' }),
+  vendorBillPayments: (vendorCode?: string) => request<any[]>(`/api/v1/vendor-bills/payments${vendorCode ? `?vendorCode=${encodeURIComponent(vendorCode)}` : ''}`),
+  recordVendorBillPayment: (body: any) => request<{ ok: boolean; paymentId: string; settled: { invoiceNo: string; amount: number }[]; unallocated: number }>('/api/v1/vendor-bills/payments', { method: 'POST', body: JSON.stringify(body) }),
+  deleteVendorBillPayment: (id: string) => request<{ ok: boolean }>(`/api/v1/vendor-bills/payments/${id}`, { method: 'DELETE' }),
   bulkVendorBills: (rows: any[]) => request<{ imported: number; failed: number; errors: any[] }>('/api/v1/vendor-bills/bulk', { method: 'POST', body: JSON.stringify({ rows }) }),
   getPnl: (from?: string, to?: string, onProgress?: (done: number, total: number) => void) =>
     runReport<{ count: number; totalSell: number; totalCost: number; totalMargin: number; rows: any[] }>('pnl', { from, to }, onProgress),
@@ -721,6 +732,7 @@ export const api = {
   // Gati docket copy / package stickers come back as a PDF from our API (auth-gated) → object URL to open.
   gatiPrintUrl: (docket: string, kind: 'docket' | 'stickers') => api.openDocument(`/api/v1/gati/print/${docket}?kind=${kind}`),
   // ---- DS Cargo (tracking only) ----
+  dsTrack: (docket: string) => request<any>(`/api/v1/dscargo/track/${encodeURIComponent(docket)}`),
   dsSync: (awb: string) => request<{ awb: string; docket: string; status: string }>(`/api/v1/dscargo/sync/${awb}`, { method: 'POST' }),
   // ---- XpressBees B2B cargo ----
   xbStatus: () => request<{ configured: boolean; tracking: boolean; [k: string]: any }>('/api/v1/xpressbees/status'),
@@ -971,6 +983,21 @@ export const api = {
     const data = text ? JSON.parse(text) : null;
     if (!res.ok) throw new ApiError(res.status, data?.message || res.statusText);
     return data;
+  },
+  carrierLookup: (number: string) => request<{ number: string; hits: { carrier: string; number: string; status: string; service?: string; origin?: string; destination?: string; pickedUp?: string; expected?: string; statusAt?: string; receivedBy?: string | null; weight?: string; scans: { status: string; date: string; time: string; location: string }[] }[] }>(`/api/v1/carriers/lookup/${encodeURIComponent(number)}`),
+  /** Bulk POD download → saves a ZIP (POD images + e-POD pages + summary CSV). */
+  downloadPodZip: async (awbs: string[]) => {
+    const token = getToken();
+    const res = await fetch(`${BASE}/api/v1/shipments/pods/zip`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ awbs }),
+    });
+    if (!res.ok) { let m = res.statusText; try { m = (await res.json())?.message || m; } catch { /* not json */ } throw new ApiError(res.status, m); }
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement('a'); a.href = url; a.download = `POD-${new Date().toISOString().slice(0, 10)}${awbs.length === 1 ? `-${awbs[0]}` : ''}.zip`; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    return { count: Number(res.headers.get('X-Pod-Count') || 0) };
   },
   deleteDocument: (id: string) => request(`/api/v1/documents/${id}`, { method: 'DELETE' }),
   // The /file endpoint is auth-gated, so a plain <a href> gets 401 — fetch it WITH the token and

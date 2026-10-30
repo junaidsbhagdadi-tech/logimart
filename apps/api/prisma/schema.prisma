@@ -933,13 +933,14 @@ model ServiceablePincode {
   state     String?
   network   String   @default("SELF") // 'SELF' (own network) or a vendor name/code
   vendorId  BigInt?
-  mode      String?  // SURFACE | AIR
+  mode      String   @default("") // SURFACE | AIR | APEX | DP … ('' = unspecified). Part of the key, so a
+                                     // vendor's AIR list and its SURFACE list live side by side.
   tatDays   Int?     // committed transit days
   isOda     Boolean  @default(false)
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  @@unique([pincode, network])
+  @@unique([pincode, network, mode])
   @@index([pincode])
   @@index([network])
   @@map("serviceable_pincodes")
@@ -1708,4 +1709,62 @@ model LoginLog {
   @@index([userId, at])
   @@index([at])
   @@map("login_logs")
+}
+
+/// Vendor bill REGISTER — the vendors' own invoices to us (one row per vendor invoice), separate from the
+/// AWB-level cost lines in vendor_bills. Settled by VendorBillPayment (one payment can clear many invoices).
+model VendorInvoice {
+  id          BigInt    @id @default(autoincrement())
+  vendorCode  String
+  periodFrom  DateTime? @db.Date
+  periodTo    DateTime? @db.Date
+  invoiceDate DateTime  @db.Date
+  location    String?
+  invoiceNo   String
+  amount      Decimal   @default(0) @db.Decimal(14, 2) // taxable total
+  gst         Decimal   @default(0) @db.Decimal(14, 2)
+  grandTotal  Decimal   @default(0) @db.Decimal(14, 2)
+  dueDate     DateTime? @db.Date
+  settled     Decimal   @default(0) @db.Decimal(14, 2) // paid + TDS + other deductions allocated so far
+  status      String    @default("OPEN") // OPEN | PARTIAL | PAID
+  notes       String?
+  createdById BigInt?
+  createdAt   DateTime  @default(now())
+
+  allocations VendorPaymentAllocation[]
+
+  @@unique([vendorCode, invoiceNo])
+  @@index([vendorCode, invoiceDate])
+  @@map("vendor_invoices")
+}
+
+model VendorBillPayment {
+  id          BigInt   @id @default(autoincrement())
+  vendorCode  String
+  paidOn      DateTime @db.Date
+  amount      Decimal  @default(0) @db.Decimal(14, 2) // paid out
+  tds         Decimal  @default(0) @db.Decimal(14, 2)
+  other       Decimal  @default(0) @db.Decimal(14, 2)
+  otherNote   String?
+  mode        String? // NEFT / RTGS / cheque / UPI / cash
+  reference   String? // UTR / cheque no.
+  createdById BigInt?
+  createdAt   DateTime @default(now())
+
+  allocations VendorPaymentAllocation[]
+
+  @@index([vendorCode, paidOn])
+  @@map("vendor_bill_payments")
+}
+
+model VendorPaymentAllocation {
+  id        BigInt            @id @default(autoincrement())
+  paymentId BigInt
+  payment   VendorBillPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  invoiceId BigInt
+  invoice   VendorInvoice     @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  amount    Decimal           @db.Decimal(14, 2)
+
+  @@index([invoiceId])
+  @@map("vendor_bill_payment_allocations")
 }

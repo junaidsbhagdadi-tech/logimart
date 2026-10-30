@@ -66,8 +66,8 @@ export class PincodesController {
   @Post('service-areas/bulk')
   @UseGuards(RolesGuard)
   @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
-  bulkServiceAreas(@Body() dto: { rows: any[]; defaultNetwork?: string }) {
-    return this.pincodes.bulkServiceAreas(dto.rows ?? [], dto.defaultNetwork || 'SELF');
+  bulkServiceAreas(@Body() dto: { rows: any[]; defaultNetwork?: string; defaultMode?: string }) {
+    return this.pincodes.bulkServiceAreas(dto.rows ?? [], dto.defaultNetwork || 'SELF', dto.defaultMode || '');
   }
 
   /** Bulk upload the pincode → per-product zone + EDL mapping (PINCODE MAPPING format). */
@@ -88,6 +88,13 @@ export class PincodesController {
   @Get('lane-tat/:origin/:dest')
   laneTat(@Param('origin') origin: string, @Param('dest') dest: string) {
     return this.pincodes.laneTat(origin, dest);
+  }
+
+  /** ODA / normal for one vendor (+ product's mode) at a destination — quick booking. */
+  @Get(':pincode/oda')
+  @UseGuards(RolesGuard)
+  vendorOda(@Param('pincode') pincode: string, @Query('vendor') vendor?: string, @Query('product') product?: string) {
+    return this.pincodes.vendorOda(pincode, vendor, product);
   }
 
   @Get(':pincode')

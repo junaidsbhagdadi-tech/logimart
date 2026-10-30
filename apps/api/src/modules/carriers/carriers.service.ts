@@ -38,6 +38,47 @@ export class CarriersService implements OnModuleInit {
     private readonly shipments: ShipmentsService,
   ) {}
 
+  /**
+   * Track a carrier number that is NOT booked with us ("normal tracking" for any BlueDart / DS Cargo /
+   * XpressBees / Gati number). Asks the carriers whose number format fits, in parallel; every hit is
+   * returned normalised: status, route, delivery, scans.
+   */
+  async lookup(numberRaw: string) {
+    const n = String(numberRaw || '').replace(/\s+/g, '').toUpperCase();
+    if (n.length < 6) throw new BadRequestException('Enter a full carrier AWB / docket number.');
+    const tag = <T>(p: Promise<T>, ms = 15000) => Promise.race([p, new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
+    const x = (raw: string, t: string) => ((raw.match(new RegExp(`<${t}>([^<]*)</${t}>`)) || [])[1] || '').trim();
+    const tries: Promise<any>[] = [];
+    if (/^\d{8,12}$/.test(n)) tries.push(tag(this.bd.track(n)).then((r: any) => {
+      const raw = typeof r === 'string' ? r : String(r?.raw ?? '');
+      if (!/<Shipment[^>]*WaybillNo=/.test(raw) || !x(raw, 'Status')) return null;
+      const scans = [...raw.matchAll(/<ScanDetail>([\s\S]*?)<\/ScanDetail>/g)].map((m) => ({ status: x(m[1], 'Scan'), date: x(m[1], 'ScanDate'), time: x(m[1], 'ScanTime'), location: x(m[1], 'ScannedLocation') }));
+      return { carrier: 'BlueDart', number: n, status: x(raw, 'Status'), service: x(raw, 'Service'), origin: x(raw, 'Origin'), destination: x(raw, 'Destination'), pickedUp: x(raw, 'PickUpDate'), expected: x(raw, 'ExpectedDeliveryDate'), statusAt: `${x(raw, 'StatusDate')} ${x(raw, 'StatusTime')}`.trim(), receivedBy: x(raw, 'ReceivedBy') || null, weight: x(raw, 'Weight'), scans };
+    }).catch(() => null));
+    if (/^(DSE)?\d{5,9}$/.test(n)) tries.push(tag(this.ds.track(n)).then((d: any) => {
+      const status = String(d?.Status || d?.status || '').trim();
+      if (!status) return null;
+      return { carrier: 'DS Cargo', number: /^\d/.test(n) ? `DSE${n}` : n, status, origin: d.from_city ?? '', destination: d.to_city ?? '', statusAt: d.delivery_date ?? '', receivedBy: d.receiver_name || d.POD_Remark || null, scans: [] };
+    }).catch(() => null));
+    if (/^\d{12,16}$/.test(n)) tries.push(tag(this.xb.track(n)).then((d: any) => {
+      const body = d?.data ?? d;
+      const status = String(body?.status ?? body?.current_status ?? body?.shipment_status ?? '').trim();
+      if (!status || /not found|invalid/i.test(status)) return null;
+      const hist: any[] = body?.history ?? body?.scans ?? body?.tracking ?? [];
+      return { carrier: 'XpressBees', number: n, status, origin: body?.origin ?? '', destination: body?.destination ?? '', statusAt: body?.status_date ?? body?.updated_at ?? '', receivedBy: body?.received_by ?? null,
+        scans: Array.isArray(hist) ? hist.map((h: any) => ({ status: h.status_name ?? h.status ?? h.message ?? '', date: h.status_date ?? h.date ?? h.event_time ?? '', time: '', location: h.location ?? h.city ?? '' })) : [] };
+    }).catch(() => null));
+    if (/^\d{9,10}$/.test(n)) tries.push(tag(this.gati.track(n)).then((r: any) => {
+      const d = Array.isArray(r?.details) ? r.details[0] : r?.details;
+      if (!d?.DOCKET_NUMBER || d?.errmsg) return null;
+      const tl: any[] = d.TRANSIT_DTLS ?? [];
+      return { carrier: 'Gati', number: n, status: d.DOCKET_STATUS || tl[0]?.INTRANSIT_STATUS || '', origin: d.BOOKING_STN ?? d.ORIGIN ?? '', destination: d.DELIVERY_STN ?? d.DESTINATION ?? '', statusAt: d.DELIVERY_DATE ?? '', receivedBy: d.RECEIVER_NAME ?? null,
+        scans: tl.map((t: any) => ({ status: t.INTRANSIT_STATUS ?? '', date: t.INTRANSIT_DATE ?? '', time: t.INTRANSIT_TIME ?? '', location: t.INTRANSIT_LOCATION ?? '' })) };
+    }).catch(() => null));
+    const hits = (await Promise.all(tries)).filter(Boolean);
+    return { number: n, hits };
+  }
+
   async kind(vendor?: string | null): Promise<CarrierKind> {
     const v = String(vendor ?? '').trim().toUpperCase();
     if (!v || v === 'SELF') return 'SELF';

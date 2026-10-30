@@ -36,6 +36,8 @@ export function BlueDart() {
   // Delhivery
   const [dStatus, setDStatus] = useState<{ configured: boolean; [k: string]: any } | null>(null);
   const [gStatus, setGStatus] = useState<{ configured: boolean; [k: string]: any } | null>(null);
+  const [dsDocket, setDsDocket] = useState('DSE100718');
+  const [dsOut, setDsOut] = useState<any>(null);
   const [xStatus, setXStatus] = useState<{ configured: boolean; tracking: boolean; pool?: { kind: string; routeMode: string; free: number; total: number }[]; [k: string]: any } | null>(null);
   const [dPin, setDPin] = useState('');
   const [dSvc, setDSvc] = useState<any>(null);
@@ -198,6 +200,23 @@ export function BlueDart() {
         {gStatus && !gStatus.configured && (
           <p className="muted" style={{ fontSize: 12.5, marginTop: 10 }}>Set on the droplet <code>.env</code> and restart (Allcargo must whitelist IP <b>168.144.77.53</b>): <code>GATI_CUST_CODE</code>, <code>GATI_ENC_CUST_CODE</code>, <code>GATI_TRACK_TOKEN</code>, <code>GATI_PIN_REQID</code>, optional <code>GATI_DEFAULT_GOODS_CODE</code>, <code>GATI_ENV=uat</code> to test.</p>
         )}
+      </div>
+
+      <h2 id="dscargo" style={{ margin: '18px 0 4px' }}>DS Cargo</h2>
+      <div className="card">
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 style={{ margin: 0 }}>Tracking</h2>
+          <span className="badge DELIVERED">LIVE · TRACKING ONLY</span>
+        </div>
+        <p className="muted" style={{ fontSize: 12.5, marginTop: 6 }}>
+          DS Cargo's tracking is an open API (no key) — <code>authorcodesoftware.in/dsapi/tracking/Tracking/?AWBNo=DSE…</code>. Shipments forwarded to DS Cargo
+          (vendor <b>DSC</b>, docket as the forwarding no) sync their status automatically. There is no booking API — record the docket via "Forward to vendor".
+        </p>
+        <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input value={dsDocket} onChange={(e) => setDsDocket(e.target.value.toUpperCase())} placeholder="Docket e.g. DSE100718" style={{ maxWidth: 220 }} />
+          <button className="secondary" disabled={!dsDocket.trim()} onClick={async () => { setDsOut(null); try { setDsOut(await api.dsTrack(dsDocket.trim())); } catch (e: any) { setDsOut({ error: e.message }); } }}>Test track</button>
+        </div>
+        {dsOut && <pre style={{ marginTop: 10, maxHeight: 260, overflow: 'auto', background: 'var(--bg-soft, #f1f3f6)', padding: 10, borderRadius: 8, fontSize: 12 }}>{JSON.stringify(dsOut, null, 2)}</pre>}
       </div>
 
       <h2 id="xpressbees" style={{ margin: '18px 0 4px' }}>XpressBees</h2>

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { ScanButton } from '../components/BarcodeScanner';
 import { StatusBadge } from '../components/StatusBadge';
+import { QuickBulk } from './QuickBulk';
 
 /**
  * Quick booking — the same screen as the rider app's Book tab (swdev #8-7): "New booking" and
@@ -27,24 +28,25 @@ const fileToDataUrl = (f: File) => new Promise<string>((ok, bad) => { const r = 
 
 // Module level (not inside the component) so inputs keep focus while typing.
 const Section = ({ children }: { children: any }) => <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--muted, #6b7280)', margin: '18px 0 6px' }}>{children}</div>;
-const Field = ({ label, hint, children }: { label: string; hint?: string; children: any }) => <div style={{ marginBottom: 10, flex: 1 }}><label style={{ fontSize: 12 }}>{label}</label>{children}{hint && <div className="muted" style={{ fontSize: 11.5 }}>{hint}</div>}</div>;
+const Field = ({ label, hint, children }: { label: string; hint?: any; children: any }) => <div style={{ marginBottom: 10, flex: 1 }}><label style={{ fontSize: 12 }}>{label}</label>{children}{hint && <div className="muted" style={{ fontSize: 11.5 }}>{hint}</div>}</div>;
 
 export function QuickBook() {
-  const [view, setView] = useState<'new' | 'mine'>('new');
+  const [view, setView] = useState<'new' | 'mine' | 'bulk'>('new');
   const [summaryAwb, setSummaryAwb] = useState<{ awb: string; justBooked: boolean } | null>(null);
   const [mineKey, setMineKey] = useState(0);
 
   if (summaryAwb) return <BookingSummary awb={summaryAwb.awb} justBooked={summaryAwb.justBooked} onClose={() => { setSummaryAwb(null); setMineKey((k) => k + 1); }} />;
   return (
-    <div style={{ maxWidth: 560, margin: '0 auto', paddingBottom: 80 }}>
+    <div style={{ maxWidth: view === 'bulk' ? 900 : 560, margin: '0 auto', paddingBottom: 80 }}>
       <h1 style={{ margin: '0 0 10px' }}>⚡ Quick booking</h1>
       <div className="row" style={{ gap: 0, marginBottom: 6 }}>
-        {([['new', '＋ New booking'], ['mine', '☰ My bookings']] as const).map(([v, label], i) => (
-          <button key={v} className={view === v ? '' : 'secondary'} style={{ flex: 1, borderRadius: i === 0 ? '10px 0 0 10px' : '0 10px 10px 0' }} onClick={() => { setView(v); if (v === 'mine') setMineKey((k) => k + 1); }}>{label}</button>
+        {([['new', '＋ New booking'], ['mine', '☰ My bookings'], ['bulk', '⬆ Bulk']] as const).map(([v, label], i) => (
+          <button key={v} className={view === v ? '' : 'secondary'} style={{ flex: 1, borderRadius: i === 0 ? '10px 0 0 10px' : i === 2 ? '0 10px 10px 0' : 0 }} onClick={() => { setView(v); if (v === 'mine') setMineKey((k) => k + 1); }}>{label}</button>
         ))}
       </div>
       {/* Keep the form mounted (like the app's IndexedStack) so switching tabs never loses a half-filled booking. */}
       <div style={{ display: view === 'new' ? 'block' : 'none' }}><NewBooking onBooked={(awb) => setSummaryAwb({ awb, justBooked: true })} /></div>
+      {view === 'bulk' && <QuickBulk />}
       {view === 'mine' && <MyBookings key={mineKey} onOpen={(awb) => setSummaryAwb({ awb, justBooked: false })} />}
     </div>
   );
@@ -79,6 +81,7 @@ function NewBooking({ onBooked }: { onBooked: (awb: string) => void }) {
   const [ewb, setEwb] = useState('');
   const [invDoc, setInvDoc] = useState<{ name: string; url: string } | null>(null);
   const [ewbDoc, setEwbDoc] = useState<{ name: string; url: string } | null>(null);
+  const [boxDoc, setBoxDoc] = useState<{ name: string; url: string } | null>(null); // deleted once delivered
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
@@ -106,8 +109,22 @@ function NewBooking({ onBooked }: { onBooked: (awb: string) => void }) {
   const lookDest = (p: string) => {
     setCon((c) => ({ ...c, pincode: p }));
     setDestCity('');
-    if (/^\d{6}$/.test(p)) api.lookupPincode(p).then((i: any) => setDestCity(i?.known === false ? 'Not in the pincode master' : [i?.city, i?.state].filter(Boolean).join(', '))).catch(() => {});
+    if (/^\d{6}$/.test(p)) api.lookupPincode(p).then((i: any) => setDestCity(i?.known === false ? 'Not in the pincode master' : [i?.cityName || i?.city, i?.state].filter(Boolean).join(', '))).catch(() => {});
   };
+  // ODA or normal for the chosen carrier (its own coverage list, product's mode) — own network = pincode master.
+  const [oda, setOda] = useState<{ label: string; isOda: boolean; serviceable: boolean; vendor: string } | null>(null);
+  useEffect(() => {
+    setOda(null);
+    if (!/^\d{6}$/.test(con.pincode)) return;
+    const t = setTimeout(() => api.vendorOda(con.pincode, vendor, product).then(setOda).catch(() => {}), 250);
+    return () => clearTimeout(t);
+  }, [con.pincode, vendor, product]);
+  const odaChip = oda && (
+    <span style={{ display: 'inline-block', marginTop: 3, padding: '1px 8px', borderRadius: 999, fontSize: 11.5, fontWeight: 700,
+      background: !oda.serviceable ? '#fde2e1' : oda.isOda ? '#fff1d6' : '#dcf5e8', color: !oda.serviceable ? '#a12622' : oda.isOda ? '#8a5300' : '#0f6e45' }}>
+      {oda.vendor === 'SELF' ? 'Own network' : oda.vendor}: {oda.label}
+    </span>
+  );
 
   // Carrier suggestion for this customer × product × destination (serviceable first, then cheapest).
   const [sugg, setSugg] = useState<{ vendor: string; name: string; price: number | null; serviceable: boolean | null; tatDays: number | null }[]>([]);
@@ -157,7 +174,7 @@ function NewBooking({ onBooked }: { onBooked: (awb: string) => void }) {
       } as any);
       // Attach the invoice / e-way bill photos to the new AWB (a failed upload never undoes the booking).
       const failed: string[] = [];
-      for (const [doc, docType, label] of [[invDoc, 'invoice', 'Invoice copy'], [ewbDoc, 'ewaybill', 'E-way bill']] as const) {
+      for (const [doc, docType, label] of [[invDoc, 'invoice', 'Invoice copy'], [ewbDoc, 'ewaybill', 'E-way bill'], [boxDoc, 'box', 'Box picture']] as const) {
         if (doc) await api.attachShipmentDoc(res.awb, doc.url, docType, label).catch(() => failed.push(label));
       }
       save(LAST_CONTENT_KEY, content.trim());
@@ -172,7 +189,7 @@ function NewBooking({ onBooked }: { onBooked: (awb: string) => void }) {
   const next = () => {
     setCon({ name: '', pincode: '', phone: st.prefillPhone ? '0000000000' : '', address: '', gst: '' }); setDestCity('');
     setKg(''); setAwb(''); setFwd(''); setRef(st.autoRef ? `R${Date.now().toString().slice(-8)}` : ''); setInvNo(''); setInvAmt(''); setEwb('');
-    setLines([blankLine()]); setInvDoc(null); setEwbDoc(null);
+    setLines([blankLine()]); setInvDoc(null); setEwbDoc(null); setBoxDoc(null);
   };
 
   const scan = (value: string, set: (v: string) => void, placeholder: string, title: string) => (
@@ -274,7 +291,7 @@ function NewBooking({ onBooked }: { onBooked: (awb: string) => void }) {
       <Section>Consignee</Section>
       <Field label="Name"><input value={con.name} onChange={(e) => setCon((c) => ({ ...c, name: e.target.value }))} /></Field>
       <div className="row" style={{ gap: 12 }}>
-        <Field label="Pincode" hint={destCity || undefined}><input inputMode="numeric" maxLength={6} value={con.pincode} onChange={(e) => lookDest(e.target.value)} /></Field>
+        <Field label="Pincode" hint={destCity || odaChip ? <>{destCity}{destCity && odaChip ? ' · ' : ''}{odaChip}</> : undefined}><input inputMode="numeric" maxLength={6} value={con.pincode} onChange={(e) => lookDest(e.target.value)} /></Field>
         <Field label="Phone"><input inputMode="tel" value={con.phone} onChange={(e) => setCon((c) => ({ ...c, phone: e.target.value }))} /></Field>
       </div>
       <Field label="Address"><textarea rows={2} value={con.address} onChange={(e) => setCon((c) => ({ ...c, address: e.target.value }))} /></Field>
@@ -308,7 +325,9 @@ function NewBooking({ onBooked }: { onBooked: (awb: string) => void }) {
       <div className="row" style={{ gap: 10 }}>
         {docButton('Invoice', invDoc, setInvDoc)}
         {docButton('E-way bill', ewbDoc, setEwbDoc)}
+        {docButton('Box', boxDoc, setBoxDoc)}
       </div>
+      <div className="muted" style={{ fontSize: 11.5, marginTop: -4, marginBottom: 6 }}>The box picture is deleted automatically once the shipment is delivered.</div>
 
       {err && <div className="error" style={{ marginTop: 12 }}>{err}</div>}
       <div style={{ position: 'sticky', bottom: 0, padding: '14px 0 10px', background: 'var(--bg, #f6f8fa)' }}>

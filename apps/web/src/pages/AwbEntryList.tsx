@@ -116,6 +116,14 @@ export function AwbEntryList() {
   const setFilter = (k: string, v: string) => { setFilters((f) => ({ ...f, [k]: v })); setPage(0); };
 
   // Super-admin select + delete (across the whole filtered set, not just the visible page).
+  const [podBusy, setPodBusy] = useState(false);
+  const podZip = async () => {
+    const awbs = sel.size ? Array.from(sel) : filtered.slice(0, 300).map((r) => r.awb);
+    if (!awbs.length) return;
+    setPodBusy(true); setError('');
+    try { const r = await api.downloadPodZip(awbs); setMsg(`✓ POD zip downloaded — ${r.count} AWB(s)${!sel.size && filtered.length > 300 ? ' (first 300 of the filtered list — narrow the filter for the rest)' : ''}.`); }
+    catch (e: any) { setError(e.message); } finally { setPodBusy(false); }
+  };
   const toggleSel = (awb: string) => setSel((s) => { const n = new Set(s); n.has(awb) ? n.delete(awb) : n.add(awb); return n; });
   const allSelected = filtered.length > 0 && filtered.every((r) => sel.has(r.awb));
   const toggleSelAll = () => setSel(allSelected ? new Set() : new Set(filtered.map((r) => r.awb)));
@@ -210,13 +218,17 @@ export function AwbEntryList() {
       setMsg(`✓ Appointment ${isClient ? 'sent to CS' : 'saved'} for ${appt.awb}.`); setAppt(null);
     } catch (e: any) { setError(e.message); }
   };
-  const addRemark = async (awb: string) => {
-    const r = window.prompt(isClient ? `Remark for our CS team about ${awb}:` : `Internal remark for ${awb} (shows on the timeline, not to the customer):`);
-    if (r == null || !r.trim()) return;
+  // Customers: a remark goes to our CS. Staff: a remark is shown to the customer as a portal popup
+  // (default) — untick for an internal-only note on the timeline.
+  const [rmk, setRmk] = useState<{ awb: string; text: string; toCustomer: boolean } | null>(null);
+  const addRemark = (awb: string) => setRmk({ awb, text: '', toCustomer: true });
+  const saveRemark = async () => {
+    if (!rmk || !rmk.text.trim()) return;
     try {
-      if (isClient) await api.portalRemark(awb, r.trim());
-      else await api.recordScan({ awb, eventType: 'COMMENT', remark: r.trim() });
-      setMsg(`✓ Remark saved for ${awb}.`);
+      if (isClient) await api.portalRemark(rmk.awb, rmk.text.trim());
+      else await api.recordScan({ awb: rmk.awb, eventType: 'COMMENT', remark: rmk.text.trim(), notifyCustomer: rmk.toCustomer });
+      setMsg(`✓ Remark saved for ${rmk.awb}${!isClient && rmk.toCustomer ? ' — the customer sees it as a popup on their portal' : ''}.`);
+      setRmk(null);
     } catch (e: any) { setError(e.message); }
   };
 
@@ -255,6 +267,24 @@ export function AwbEntryList() {
           </div>
         </div>
       )}
+      {rmk && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 1300, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setRmk(null)}>
+          <div className="card" style={{ maxWidth: 440, width: '90%' }} onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ marginTop: 0 }}>✎ Remark — {rmk.awb}</h2>
+            <textarea autoFocus rows={3} value={rmk.text} onChange={(e) => setRmk({ ...rmk, text: e.target.value })} placeholder={isClient ? 'Message for our CS team' : 'e.g. Consignee asked for delivery after 4 PM'} style={{ width: '100%' }} />
+            {!isClient && (
+              <label className="row" style={{ gap: 6, alignItems: 'center', fontWeight: 400, fontSize: 13, marginTop: 8 }}>
+                <input type="checkbox" checked={rmk.toCustomer} onChange={(e) => setRmk({ ...rmk, toCustomer: e.target.checked })} style={{ width: 'auto' }} />
+                Show to the customer (popup on their portal)
+              </label>
+            )}
+            <div className="row" style={{ gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
+              <button className="secondary" onClick={() => setRmk(null)}>Cancel</button>
+              <button onClick={saveRemark} disabled={!rmk.text.trim()}>{isClient ? 'Send to CS' : rmk.toCustomer ? 'Send to customer' : 'Save internal note'}</button>
+            </div>
+          </div>
+        </div>
+      )}
       {error && <div className="error">{error}</div>}
       {msg && <div className="card" style={{ borderLeft: '4px solid var(--ok, #16a34a)', fontSize: 13 }}>{msg}</div>}
 
@@ -272,6 +302,7 @@ export function AwbEntryList() {
               title="Show only ₹50,000+ AWBs with no e-way bill number — open one and use Edit AWB to enter it">⚠ EWB pending{ewbOnly ? ` (${rows.length})` : ''}</button>
             {Object.values(filters).some(Boolean) && <button className="secondary" onClick={() => setFilters({})}>Clear filters</button>}
             <button className="secondary" onClick={exportXls} disabled={!filtered.length} title="Download the filtered list to Excel">⬇ Excel</button>
+            <button className="secondary" onClick={podZip} disabled={!filtered.length || podBusy} title="Download the PODs of the ticked AWBs (or the filtered list, up to 300) as one ZIP">{podBusy ? 'Preparing…' : `⬇ PODs (zip)${sel.size ? ` · ${sel.size}` : ''}`}</button>
           </div>
           <div className="row" style={{ gap: 8 }}>
             {isOps && sel.size > 0 && <button className="secondary" title="Void the selected AWBs — excluded from billing, record kept (reversible)" onClick={voidSelected}>🚫 Void {sel.size}</button>}
@@ -323,7 +354,7 @@ export function AwbEntryList() {
                   <td><StatusBadge code={r.statusCode} /></td>
                   <td><Link to={`/tracker/${encodeURIComponent(r.awb)}`}><button className="secondary" style={BTN}>🧭 Track</button></Link></td>
                   <td>{!['DLD', 'CAN', 'RTD'].includes(r.statusCode || '') && <button className="secondary" style={BTN} title="Appointment delivery date / time" onClick={() => setAppt({ awb: r.awb, date: '', remark: '' })}>📅 Appt</button>}</td>
-                  <td><button className="secondary" style={BTN} title={isClient ? 'Leave a remark for our CS team' : 'Add an internal remark to the timeline'} onClick={() => addRemark(r.awb)}>✎ Remark</button></td>
+                  <td><button className="secondary" style={BTN} title={isClient ? 'Leave a remark for our CS team' : 'Add a remark — shown to the customer as a popup (or internal only)'} onClick={() => addRemark(r.awb)}>✎ Remark</button></td>
                 </tr>
               ))}
               {slice.length === 0 && <tr><td colSpan={COLS.length + 4} className="muted">No entries match.</td></tr>}

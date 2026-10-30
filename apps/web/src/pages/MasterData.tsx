@@ -19,7 +19,20 @@ export function MasterData() {
   // ---- serviceability coverage (SELF network / vendor-wise bulk upload) ----
   const covCols = 'pincode,city,state,mode,tatDays,isOda';
   const [net, setNet] = useState('SELF');
+  const [covMode, setCovMode] = useState(''); // applied to rows whose file has no mode column
   const [covText, setCovText] = useState('');
+  const [covXlsRows, setCovXlsRows] = useState<Record<string, string>[] | null>(null); // a parsed .xlsx
+  const [covFile, setCovFile] = useState('');
+  const onCovFile = async (f: File) => {
+    setCovFile(f.name); setCovResult(null);
+    if (/\.xlsx?$/i.test(f.name)) {
+      const XLSX = await import('xlsx');
+      const wb = XLSX.read(await f.arrayBuffer(), { type: 'array' });
+      const rows = XLSX.utils.sheet_to_json<Record<string, any>>(wb.Sheets[wb.SheetNames[0]], { defval: '', raw: false });
+      setCovXlsRows(rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [String(k).trim(), String(v ?? '').trim()]))));
+      setCovText('');
+    } else { setCovXlsRows(null); setCovText(await f.text()); }
+  };
   const [covRows, setCovRows] = useState<ServiceArea[]>([]);
   const [covFilter, setCovFilter] = useState('');
   const [networks, setNetworks] = useState<string[]>([]);
@@ -50,13 +63,19 @@ export function MasterData() {
   };
   const importCoverage = async () => {
     setError(''); setCovResult(null);
-    const rows = parseCsv(covText);
+    const rows = covXlsRows ?? parseCsv(covText);
     if (rows.length === 0) { setError(`Paste CSV rows (${covCols}) or upload a file.`); return; }
     setCovBusy(true);
+    // Big carrier lists (20k+ pincodes) go up in chunks — one giant request timed out / was refused.
+    const total = { imported: 0, failed: 0, errors: [] as { pincode: string; error: string }[] };
     try {
-      const res = await api.bulkServiceAreas(rows, net.trim() || 'SELF');
-      setCovResult(res); setCovText(''); loadCoverage();
-    } catch (e: any) { setError(e.message); }
+      for (let i = 0; i < rows.length; i += 2000) {
+        const res = await api.bulkServiceAreas(rows.slice(i, i + 2000), net.trim() || 'SELF', covMode);
+        total.imported += res.imported; total.failed += res.failed; total.errors.push(...res.errors);
+        setCovResult({ ...total, errors: total.errors.slice(0, 50) });
+      }
+      setCovText(''); setCovXlsRows(null); setCovFile(''); loadCoverage();
+    } catch (e: any) { setError(`${e.message} (after ${total.imported} imported)`); }
     setCovBusy(false);
   };
 
@@ -127,7 +146,7 @@ export function MasterData() {
       <div className="card">
         <h2>📤 Bulk upload serviceable pincodes — SELF network / vendor-wise</h2>
         <p className="muted" style={{ marginTop: -6 }}>
-          Load coverage for your own <strong>SELF</strong> network or a specific <strong>vendor</strong>. Columns: <code>{covCols}</code>. Same pincode + network is updated; the base directory is kept in sync.
+          Load coverage for your own <strong>SELF</strong> network or a specific <strong>vendor</strong>. Columns: <code>{covCols}</code> (carrier headers like "PIN CODE", "ODA/EDL", "TAT Days" are understood). CSV or Excel. A vendor's <strong>AIR</strong>, <strong>SURFACE</strong>, <strong>APEX</strong> and <strong>DP</strong> lists are kept separately — uploading one never removes another; the same pincode + network + mode is updated.
         </p>
         <div className="grid cols-3">
           <div>
@@ -138,17 +157,28 @@ export function MasterData() {
               {Array.from(new Set([...vendorNames, ...networks.filter((n) => n.toUpperCase() !== 'SELF')])).sort().map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
           </div>
+          <div>
+            <label>Mode / product <span className="muted">(when the file has no mode column)</span></label>
+            <select value={covMode} onChange={(e) => setCovMode(e.target.value)}>
+              <option value="">— from the file —</option>
+              <option value="AIR">AIR</option>
+              <option value="SURFACE">SURFACE</option>
+              <option value="APEX">APEX</option>
+              <option value="DP">DP</option>
+            </select>
+          </div>
         </div>
         <div className="row" style={{ marginTop: 10 }}>
           <button className="secondary" onClick={covTemplate}>⬇ Template</button>
           <label className="secondary" style={{ padding: '10px 16px', borderRadius: 11, cursor: 'pointer', fontWeight: 600, fontSize: 13, border: '1px solid var(--border)' }}>
-            📎 Upload CSV<input type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) f.text().then(setCovText); }} />
+            📎 Upload CSV / Excel<input type="file" accept=".csv,text/csv,.xlsx,.xls" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) onCovFile(f); e.target.value = ''; }} />
           </label>
+          {covFile && <span className="muted" style={{ fontSize: 12.5 }}>{covFile}{covXlsRows ? ` · ${covXlsRows.length} rows` : ''}</span>}
         </div>
         <textarea rows={6} value={covText} onChange={(e) => setCovText(e.target.value)} placeholder={covCols + '\n560001,Bengaluru,Karnataka,SURFACE,1,false'} style={{ width: '100%', font: '13px monospace', padding: 12, border: '1px solid var(--border)', borderRadius: 11, marginTop: 12 }} />
         <div className="row" style={{ marginTop: 12, justifyContent: 'space-between', alignItems: 'center' }}>
-          <div className="muted">Uploading into <strong>{net.trim() || 'SELF'}</strong>{covResult && <span style={{ marginLeft: 12, color: 'var(--ok)', fontWeight: 700 }}>✓ {covResult.imported} imported{covResult.failed > 0 ? `, ${covResult.failed} failed` : ''}</span>}</div>
-          <button onClick={importCoverage} disabled={covBusy || !covText.trim()}>{covBusy ? 'Uploading…' : 'Upload coverage'}</button>
+          <div className="muted">Uploading into <strong>{net.trim() || 'SELF'}</strong>{covMode ? <> · <strong>{covMode}</strong></> : null}{covResult && <span style={{ marginLeft: 12, color: 'var(--ok)', fontWeight: 700 }}>✓ {covResult.imported} imported{covResult.failed > 0 ? `, ${covResult.failed} failed` : ''}</span>}</div>
+          <button onClick={importCoverage} disabled={covBusy || (!covText.trim() && !covXlsRows?.length)}>{covBusy ? 'Uploading…' : 'Upload coverage'}</button>
         </div>
       </div>
 

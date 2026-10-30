@@ -47,6 +47,12 @@ export function TrackDetail() {
   const [multiText, setMultiText] = useState('');
   const [multi, setMulti] = useState<any[] | null>(null);
   const [multiBusy, setMultiBusy] = useState(false);
+  const [podBusy, setPodBusy] = useState(false);
+  const podZip = async (awbs: string[]) => {
+    if (!awbs.length) return;
+    setPodBusy(true); setError('');
+    try { await api.downloadPodZip(awbs); } catch (e: any) { setError(e.message); } finally { setPodBusy(false); }
+  };
   const trackMulti = async () => {
     const awbs = multiText.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean);
     if (!awbs.length) return;
@@ -89,12 +95,22 @@ export function TrackDetail() {
   };
 
   const search = async (val?: string, e?: FormEvent) => {
-    e?.preventDefault(); setError(''); setMsg(''); setD(null);
+    e?.preventDefault(); setError(''); setMsg(''); setD(null); setExt(null);
     const q = (val ?? awb).trim().toUpperCase();
     if (!q) return;
     try { setD(await api.lifecycleDetail(q)); nav(`/tracker/${q}`, { replace: true }); }
-    catch (err: any) { setError(err.message || 'Not found'); }
+    catch (err: any) {
+      // Not booked with us → ask the carriers directly (any BlueDart / DS Cargo / XpressBees / Gati number).
+      if (!isClient) {
+        setExtBusy(true);
+        try { const r = await api.carrierLookup(q); if (r.hits.length) { setExt(r.hits); setExtBusy(false); return; } } catch { /* fall through */ }
+        setExtBusy(false);
+      }
+      setError(err.message || 'Not found');
+    }
   };
+  const [ext, setExt] = useState<Awaited<ReturnType<typeof api.carrierLookup>>['hits'] | null>(null);
+  const [extBusy, setExtBusy] = useState(false);
   useEffect(() => { if (awbParam) search(awbParam); /* eslint-disable-next-line */ }, []);
 
   const dateFmt = (s?: string | null) => (s ? new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
@@ -191,11 +207,39 @@ export function TrackDetail() {
             <button type="submit" style={{ padding: '12px 24px', fontSize: 15 }}>Track</button>
           </form>
           {error && <div className="error" style={{ marginTop: 8, maxWidth: 540, width: '100%' }}>{error}</div>}
+          {extBusy && <div className="muted" style={{ fontSize: 13 }}>Not booked with us — asking the carriers…</div>}
+          {ext && ext.map((h) => (
+            <div key={h.carrier} className="card" style={{ width: '100%', maxWidth: 760, textAlign: 'left', margin: 0 }}>
+              <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
+                <h2 style={{ margin: 0, fontSize: 16 }}>{h.carrier} · {h.number}</h2>
+                <span className="badge AT_HUB">Not booked with us — carrier tracking</span>
+              </div>
+              <div className="grid cols-3" style={{ gap: 10, marginTop: 10, fontSize: 13 }}>
+                <div><div className="muted" style={{ fontSize: 11 }}>STATUS</div><b>{h.status || '—'}</b></div>
+                <div><div className="muted" style={{ fontSize: 11 }}>ROUTE</div>{[h.origin, h.destination].filter(Boolean).join(' → ') || '—'}</div>
+                <div><div className="muted" style={{ fontSize: 11 }}>STATUS AT</div>{h.statusAt || '—'}</div>
+                {h.service && <div><div className="muted" style={{ fontSize: 11 }}>SERVICE</div>{h.service}</div>}
+                {h.expected && <div><div className="muted" style={{ fontSize: 11 }}>EXPECTED</div>{h.expected}</div>}
+                {h.receivedBy && <div><div className="muted" style={{ fontSize: 11 }}>RECEIVED BY</div><b>{h.receivedBy}</b></div>}
+              </div>
+              {h.scans.length > 0 && (
+                <div style={{ overflowX: 'auto', marginTop: 10 }}>
+                  <table style={{ fontSize: 12.5 }}>
+                    <thead><tr><th>Date</th><th>Time</th><th>Status</th><th>Location</th></tr></thead>
+                    <tbody>{h.scans.map((s, i) => <tr key={i}><td style={{ whiteSpace: 'nowrap' }}>{s.date}</td><td>{s.time}</td><td>{s.status}</td><td>{s.location}</td></tr>)}</tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ))}
           <details style={{ width: '100%', maxWidth: 760, marginTop: 6, textAlign: 'left' }}>
             <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--muted)', textAlign: 'center' }}>📋 Track multiple AWBs at once</summary>
             <div style={{ marginTop: 10 }}>
               <textarea value={multiText} onChange={(e) => setMultiText(e.target.value)} placeholder="Paste AWBs — one per line, or comma / space separated" style={{ width: '100%', minHeight: 90, fontFamily: 'monospace', fontSize: 13, padding: 10 }} />
-              <button className="secondary" style={{ marginTop: 8 }} disabled={multiBusy} onClick={trackMulti}>{multiBusy ? 'Tracking…' : 'Track all'}</button>
+              <div className="row" style={{ gap: 8, marginTop: 8 }}>
+                <button className="secondary" disabled={multiBusy} onClick={trackMulti}>{multiBusy ? 'Tracking…' : 'Track all'}</button>
+                <button className="secondary" disabled={podBusy || !multiText.trim()} onClick={() => podZip(multiText.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean))} title="Download the PODs of these AWBs as one ZIP">{podBusy ? 'Preparing…' : '⬇ PODs (zip)'}</button>
+              </div>
               {multi && (
                 <div style={{ overflowX: 'auto', marginTop: 12 }}>
                   <table style={{ fontSize: 13, width: '100%' }}>
@@ -273,9 +317,9 @@ export function TrackDetail() {
               <Field label="Delivery Rider" value={d.deliveryRider} color="var(--brand)" />
               <Field label="Pickup POD" value={d.pickupPod ? <a href={d.pickupPod} target="_blank" rel="noreferrer">🖼 view</a> : '—'} />
               <Field label="Delivery POD" value={d.deliveryPod
-                ? <span>🖼 <a href={d.deliveryPod} target="_blank" rel="noreferrer">view</a>{!isClient && <> · <label style={{ cursor: 'pointer', color: 'var(--brand)' }}>replace<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => uploadPodImg(e.target.files?.[0])} /></label></>}</span>
+                ? <span>🖼 <a href={d.deliveryPod} target="_blank" rel="noreferrer">view</a> · <button type="button" className="link" onClick={() => podZip([d.awb])}>⬇ download</button>{!isClient && <> · <label style={{ cursor: 'pointer', color: 'var(--brand)' }}>replace<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => uploadPodImg(e.target.files?.[0])} /></label></>}</span>
                 : d.currentCode === 'DLD'
-                  ? <span>✓ e-POD{(d as any).podReceivedBy ? <> · received by <b>{(d as any).podReceivedBy}</b></> : ' · delivered (carrier confirmation)'}{!isClient && <> · <label style={{ cursor: 'pointer', color: 'var(--brand)' }}>upload image<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => uploadPodImg(e.target.files?.[0])} /></label></>}</span>
+                  ? <span>✓ e-POD{(d as any).podReceivedBy ? <> · received by <b>{(d as any).podReceivedBy}</b></> : ' · delivered (carrier confirmation)'} · <button type="button" className="link" onClick={() => podZip([d.awb])} title="The carrier gave no signed image — downloads their delivery confirmation">⬇ e-POD</button>{!isClient && <> · <label style={{ cursor: 'pointer', color: 'var(--brand)' }}>upload image<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => uploadPodImg(e.target.files?.[0])} /></label></>}</span>
                   : (isClient ? '—' : <label style={{ cursor: 'pointer', color: 'var(--brand)' }}>⬆ Upload POD<input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => uploadPodImg(e.target.files?.[0])} /></label>)} />
             </div>
             {(d as any).isDod && (() => {

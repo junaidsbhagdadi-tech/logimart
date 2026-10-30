@@ -85,24 +85,25 @@ export class DocumentsService {
   /**
    * Invoice / e-way bill copies on a shipment (taken in the rider app or attached on the AWB page) are only
    * needed until delivery: once an AWB has been DELIVERED for 7 days (grace for CS / accounts queries) they are
-   * deleted — the document row and its stored bytes. Daily 03:15 IST. DOC_PURGE_DAYS overrides the 7.
+   * deleted — the document row and its stored bytes. Hourly. DOC_PURGE_DAYS overrides the 7.
+   * Box pictures go as soon as the AWB is delivered (no grace).
    */
-  @Cron('15 3 * * *', { timeZone: 'Asia/Kolkata' })
+  @Cron('15 * * * *', { timeZone: 'Asia/Kolkata' }) // hourly — box pictures go soon after delivery
   async purgeDeliveredDocs() {
     const days = Number(process.env.DOC_PURGE_DAYS ?? 7);
     if (!(days >= 0)) return { removed: 0 };
     const cutoff = new Date(Date.now() - days * 864e5);
     const docs = await this.prisma.document.findMany({
-      where: { entityType: 'shipment', docType: { in: ['invoice', 'ewaybill'] } },
-      select: { id: true, entityId: true, uploadId: true },
+      where: { entityType: 'shipment', docType: { in: ['invoice', 'ewaybill', 'box'] } },
+      select: { id: true, entityId: true, uploadId: true, docType: true },
     });
     if (!docs.length) return { removed: 0 };
     const delivered = await this.prisma.shipment.findMany({
-      where: { id: { in: [...new Set(docs.map((d) => d.entityId))] }, statusCode: 'DLD', statusAt: { lt: cutoff } },
-      select: { id: true },
+      where: { id: { in: [...new Set(docs.map((d) => d.entityId))] }, statusCode: 'DLD' },
+      select: { id: true, statusAt: true },
     });
-    const ids = new Set(delivered.map((x) => String(x.id)));
-    const gone = docs.filter((d) => ids.has(String(d.entityId)));
+    const at = new Map(delivered.map((x) => [String(x.id), x.statusAt]));
+    const gone = docs.filter((d) => at.has(String(d.entityId)) && (d.docType === 'box' || +(at.get(String(d.entityId)) ?? 0) < +cutoff));
     if (!gone.length) return { removed: 0 };
     await this.prisma.document.deleteMany({ where: { id: { in: gone.map((d) => d.id) } } });
     await this.prisma.upload.deleteMany({ where: { id: { in: gone.map((d) => d.uploadId) } } }).catch(() => {});

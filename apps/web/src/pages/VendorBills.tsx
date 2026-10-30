@@ -1,23 +1,25 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
+import { VendorRegister } from './VendorRegister';
 
 const money = (v: any) => `₹${Number(v ?? 0).toLocaleString('en-IN')}`;
 
 /** Vendor bill (cost) upload + AWB-wise profit/loss (our sell − vendor cost). */
 export function VendorBills() {
-  const [tab, setTab] = useState<'upload' | 'pnl' | 'recon'>('upload');
+  const [tab, setTab] = useState<'upload' | 'pnl' | 'recon' | 'register'>('upload');
   return (
     <>
       <h1>🚚 Vendor Bills &amp; P&amp;L</h1>
       <p className="muted" style={{ marginTop: -14 }}>Upload vendor bill files (cost per AWB) and see profit/loss vs your sell rate, AWB-wise.</p>
-      <div className="card" style={{ padding: 10 }}>
-        <div className="row" style={{ gap: 8 }}>
+      <div className="card no-print" style={{ padding: 10 }}>
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
           <button className={tab === 'upload' ? '' : 'secondary'} onClick={() => setTab('upload')}>⬆ Upload Vendor Bill</button>
           <button className={tab === 'pnl' ? '' : 'secondary'} onClick={() => setTab('pnl')}>📊 Profit / Loss</button>
           <button className={tab === 'recon' ? '' : 'secondary'} onClick={() => setTab('recon')}>🔍 Check vendor P&amp;L sheet</button>
+          <button className={tab === 'register' ? '' : 'secondary'} onClick={() => setTab('register')}>📒 Bill register &amp; payments</button>
         </div>
       </div>
-      {tab === 'upload' ? <UploadTab /> : tab === 'pnl' ? <PnlTab /> : <ReconTab />}
+      {tab === 'upload' ? <UploadTab /> : tab === 'pnl' ? <PnlTab /> : tab === 'register' ? <VendorRegister /> : <ReconTab />}
     </>
   );
 }
@@ -30,8 +32,18 @@ function UploadTab() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
-  const loadRecent = () => { api.listVendorBills().then((r) => setRecent(r.slice(0, 50))).catch(() => {}); };
+  const [uploads, setUploads] = useState<{ vendor: string; day: string; rows: number; total: number; firstPickup: string | null; lastPickup: string | null }[]>([]);
+  const [upVendor, setUpVendor] = useState('');
+  const loadRecent = () => {
+    api.listVendorBills().then((r) => setRecent(r.slice(0, 50))).catch(() => {});
+    api.vendorBillUploads().then(setUploads).catch(() => {});
+  };
   useEffect(loadRecent, [result]);
+  const delUpload = async (vendor: string, day?: string) => {
+    const what = day ? `${vendor}'s bills uploaded on ${day.split('-').reverse().join('-')}` : `ALL uploaded bills of ${vendor}`;
+    if (!confirm(`Delete ${what}? This removes those cost lines (P&L for those AWBs goes back to "no vendor cost").`)) return;
+    try { const r = await api.deleteVendorBillUploads(vendor, day); setErr(''); alert(`Deleted ${r.deleted} row(s).`); loadRecent(); } catch (e: any) { setErr(e.message); }
+  };
 
   const onFile = async (f?: File) => {
     if (!f) return; setErr(''); setRows(null); setResult(null); setFileName(f.name);
@@ -58,6 +70,35 @@ function UploadTab() {
         {err && <div className="error" style={{ marginTop: 8 }}>{err}</div>}
         {result && <div className="card" style={{ borderLeft: '4px solid var(--ok)', marginTop: 8 }}>✓ Imported {result.imported} vendor bills{result.failed ? `, ${result.failed} failed` : ''}.</div>}
         <div className="row" style={{ marginTop: 12 }}><button onClick={upload} disabled={busy || !rows?.length}>{busy ? 'Uploading…' : `Upload ${rows?.length || ''} bills`}</button></div>
+      </div>
+
+      <div className="card">
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <h2 style={{ margin: 0 }}>📁 Uploaded files — vendor &amp; date wise</h2>
+          <div className="row" style={{ gap: 8 }}>
+            <select value={upVendor} onChange={(e) => setUpVendor(e.target.value)} style={{ width: 'auto' }}>
+              <option value="">All vendors</option>
+              {[...new Set(uploads.map((u) => u.vendor))].sort().map((v) => <option key={v} value={v}>{v}</option>)}
+            </select>
+            {upVendor && <button className="secondary" style={{ color: 'var(--bad, #c0392b)' }} onClick={() => delUpload(upVendor)}>🗑 Delete all of {upVendor}</button>}
+          </div>
+        </div>
+        <div style={{ overflowX: 'auto', marginTop: 8 }}>
+          <table style={{ fontSize: 13 }}>
+            <thead><tr><th>Uploaded on</th><th>Vendor</th><th style={{ textAlign: 'right' }}>Rows</th><th>Pickup dates</th><th style={{ textAlign: 'right' }}>Total + GST</th><th /></tr></thead>
+            <tbody>
+              {uploads.filter((u) => !upVendor || u.vendor === upVendor).map((u) => (
+                <tr key={`${u.vendor}|${u.day}`}>
+                  <td>{u.day.split('-').reverse().join('-')}</td><td><strong>{u.vendor}</strong></td><td style={{ textAlign: 'right' }}>{u.rows}</td>
+                  <td>{u.firstPickup ? `${String(u.firstPickup).slice(0, 10).split('-').reverse().join('-')} → ${String(u.lastPickup).slice(0, 10).split('-').reverse().join('-')}` : '—'}</td>
+                  <td style={{ textAlign: 'right' }}>{money(u.total)}</td>
+                  <td><button className="secondary" style={{ padding: '2px 8px', fontSize: 12 }} onClick={() => delUpload(u.vendor, u.day)} title="Delete this upload">🗑</button></td>
+                </tr>
+              ))}
+              {!uploads.length && <tr><td colSpan={6} className="muted">Nothing uploaded yet.</td></tr>}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="card">

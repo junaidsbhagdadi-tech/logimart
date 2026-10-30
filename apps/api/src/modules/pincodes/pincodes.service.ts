@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { regionFromPincode } from '../../common/regions';
+import { isCode, placeName } from '../../common/place-name';
 
 @Injectable()
 export class PincodesService {
@@ -9,9 +10,61 @@ export class PincodesService {
   /** Resolve a pincode → city/state/region/tier. Region always derivable. */
   async lookup(pincode: string) {
     const hit = await this.prisma.pincode.findUnique({ where: { pincode } });
-    if (hit) return { ...hit, known: true };
+    if (hit) return { ...hit, cityName: await this.fullCity(pincode, hit), known: true };
     const region = regionFromPincode(pincode);
     return { pincode, city: null, state: null, tier: null, isOda: false, region, known: false };
+  }
+
+  /**
+   * The city as a NAME — the master's `city` is often a service-centre code (MTN, DEL). Prefer the name the
+   * carriers' coverage lists use most for this pincode (e.g. "Cochin"), else metro name / area name.
+   */
+  private async fullCity(pincode: string, hit: { city: string | null; areaName: string | null }): Promise<string> {
+    if (hit.city && !isCode(hit.city)) return hit.city.toUpperCase();
+    const rows = await this.prisma.serviceablePincode.findMany({ where: { pincode }, select: { city: true } });
+    const count = new Map<string, number>();
+    for (const r of rows) { const c = String(r.city ?? '').trim().toUpperCase(); if (c && !isCode(c)) count.set(c, (count.get(c) ?? 0) + 1); }
+    const best = [...count.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+    return best ?? placeName(null, hit);
+  }
+
+  /**
+   * ODA or normal for ONE vendor at a destination (quick booking, after the carrier is picked). Reads that
+   * vendor's coverage rows — a BlueDart account vendor reads the BDR / BLUEDART-* lists — narrowed to the
+   * product's mode (air vs surface). No vendor = our own network (the pincode master's EDL flag).
+   */
+  async vendorOda(pincode: string, vendor?: string, product?: string) {
+    const pin = String(pincode).trim();
+    const master = await this.prisma.pincode.findUnique({ where: { pincode: pin } });
+    const v = String(vendor ?? '').trim().toUpperCase();
+    if (!v || v === 'SELF') {
+      const oda = !!master && (master.isOda || String(master.edl ?? '').toUpperCase() === 'EDL');
+      return { vendor: 'SELF', known: !!master, serviceable: !!master, isOda: oda, label: !master ? 'Not in pincode master' : oda ? 'ODA' : 'Normal', matches: [] as any[] };
+    }
+    const vrow = await this.prisma.vendor.findFirst({ where: { vendorCode: { equals: v, mode: 'insensitive' } }, select: { vendorCode: true, name: true } });
+    const name = String(vrow?.name ?? '').toUpperCase();
+    const isBd = /^(BDR|BLUE)/.test(v) || /BLUE ?DART|^BDR/.test(name);
+    const nets = isBd ? null : [v, name].filter(Boolean);
+    const rows = await this.prisma.serviceablePincode.findMany({
+      where: { pincode: pin, ...(isBd ? { OR: [{ network: 'BDR' }, { network: { startsWith: 'BLUEDART' } }] } : { network: { in: nets!, mode: 'insensitive' } }) },
+      select: { network: true, mode: true, isOda: true, isActive: true },
+    });
+    let surface: boolean | null = null;
+    if (product) {
+      const pm = await this.prisma.masterEntry.findUnique({ where: { type_code: { type: 'PRODUCT', code: String(product).toUpperCase() } } }).catch(() => null);
+      const g = String((pm?.attrs as any)?.groupType ?? '');
+      if (g) surface = /SURF|ROAD|RAIL|TRAIN/i.test(g);
+    }
+    const isSurfaceRow = (r: { network: string; mode: string }) => /SURF|SFC|DARTPLUS|ROAD/i.test(`${r.mode} ${r.network}`);
+    const fit = surface == null ? rows : rows.filter((r) => (surface ? isSurfaceRow(r) : !isSurfaceRow(r)));
+    const use = fit.length ? fit : rows;
+    const live = use.filter((r) => r.isActive);
+    const oda = live.some((r) => r.isOda);
+    return {
+      vendor: vrow?.vendorCode ?? v, known: rows.length > 0, serviceable: live.length > 0, isOda: oda,
+      label: !rows.length ? 'No coverage list for this vendor' : !live.length ? 'Not serviceable' : oda ? 'ODA' : 'Normal',
+      matches: use.map((r) => ({ network: r.network, mode: r.mode, isOda: r.isOda, active: r.isActive })),
+    };
   }
 
   search(q: string) {
@@ -165,9 +218,11 @@ export class PincodesService {
       where: { pincode: pincode.trim(), isActive: true },
       orderBy: [{ tatDays: 'asc' }],
     });
+    // One option per network × mode (a vendor's AIR and SURFACE coverage are separate rows).
     const byNet = new Map<string, { network: string; mode: string | null; tatDays: number | null; isOda: boolean; city: string | null }>();
     for (const r of rows) {
-      if (!byNet.has(r.network)) byNet.set(r.network, { network: r.network, mode: r.mode, tatDays: r.tatDays, isOda: r.isOda, city: r.city });
+      const k = `${r.network}|${r.mode}`;
+      if (!byNet.has(k)) byNet.set(k, { network: r.network, mode: r.mode || null, tatDays: r.tatDays, isOda: r.isOda, city: r.city });
     }
     let list: any[] = Array.from(byNet.values());
     // Fill any MISSING per-vendor TAT from the ZONE_TAT matrix (code <VENDOR>__<MODE> → SELF__<MODE>
@@ -248,6 +303,7 @@ export class PincodesService {
   async bulkServiceAreas(
     rows: Array<{ pincode?: string; city?: string; state?: string; network?: string; mode?: string; tatDays?: string | number; isOda?: string | boolean }>,
     defaultNetwork = 'SELF',
+    defaultMode = '',
   ) {
     let ok = 0;
     const errors: { pincode: string; error: string }[] = [];
@@ -258,39 +314,56 @@ export class PincodesService {
     // Read a field case-insensitively — the uploaded CSV header may be "Pincode"/"PINCODE"/"pincode",
     // "TatDays"/"tatdays", "isOda"/"ISODA", etc. Keying only on the exact lowercase name silently
     // dropped every row of a capital-header file (0 imported).
+    // Headers are matched ignoring case, spaces, "_", "-", "/" and "." — carrier files say "PIN CODE",
+    // "Pin_Code", "ODA/EDL", "TAT Days" …
+    const hk = (s: string) => String(s).toLowerCase().replace(/[\s_\-/.]/g, '');
     const field = (raw: any, ...names: string[]): any => {
       for (const n of names) for (const k of Object.keys(raw)) {
-        if (k.toLowerCase() === n.toLowerCase()) { const v = raw[k]; if (v != null && String(v).trim() !== '') return v; }
+        if (hk(k) === hk(n)) { const v = raw[k]; if (v != null && String(v).trim() !== '') return v; }
       }
       return undefined;
+    };
+    const yes = (v: any) => v === true || /^(true|1|y|yes|oda|edl)$/i.test(String(v ?? '').trim());
+    const no = (v: any) => v === false || /^(false|0|n|no|non ?serviceable|not ?serviceable)$/i.test(String(v ?? '').trim());
+    // AIR / SURFACE / APEX / DP … — upper-cased; road/rail/sfc = SURFACE, express = AIR.
+    const normMode = (v: any) => {
+      const m = String(v ?? '').trim().toUpperCase();
+      if (!m) return '';
+      if (/^(SFC|SURFACE|ROAD|GROUND|RAIL|TRAIN)/.test(m)) return 'SURFACE';
+      if (/^(AIR|EXPRESS)/.test(m)) return 'AIR';
+      return m;
     };
     const CHUNK = 25;
     // Parse + validate every row up front (cheap, no DB). Only the coverage upsert runs per-row;
     // the base-directory sync is done once as a fast batched createMany afterwards, so a large file
     // (e.g. 21k pincodes) does ~half the DB round-trips and stays well under the gateway timeout.
-    type Clean = { pincode: string; city: string | null; state: string | null; network: string; mode: string | null; tatDays: number | null; isOda: boolean };
+    type Clean = { pincode: string; city: string | null; state: string | null; network: string; mode: string; tatDays: number | null; isOda: boolean; isActive: boolean };
     const clean: Clean[] = [];
+    const seen = new Set<string>();
     for (const raw of rows) {
-      const pincode = String(field(raw, 'pincode') ?? '').trim();
+      const pincode = String(field(raw, 'pincode', 'pin code', 'pin', 'pincodes', 'destination pincode', 'dest pincode', 'postal code') ?? '').trim().replace(/\.0+$/, '');
       if (!/^\d{6}$/.test(pincode)) { errors.push({ pincode: pincode || '(blank)', error: 'pincode must be 6 digits' }); continue; }
       const netRaw = field(raw, 'network');
       const network = String(netRaw || defaultNetwork).trim().toUpperCase() === 'SELF' ? 'SELF' : String(netRaw || defaultNetwork).trim();
-      const isOdaRaw = field(raw, 'isOda', 'oda');
-      const isOda = isOdaRaw === true || String(isOdaRaw ?? '').trim().toLowerCase() === 'true' || String(isOdaRaw ?? '').trim() === '1';
-      const tatRaw = field(raw, 'tatDays', 'tat', 'tatdays');
-      const tatDays = tatRaw != null && String(tatRaw).trim() !== '' ? Number(tatRaw) : null;
-      const city = String(field(raw, 'city') ?? '').trim() || null;
-      const state = String(field(raw, 'state') ?? '').trim() || null;
-      const mode = String(field(raw, 'mode') ?? '').trim() || null;
-      clean.push({ pincode, city, state, network, mode, tatDays, isOda });
+      const isOda = yes(field(raw, 'isOda', 'oda', 'edl', 'oda/edl', 'oda edl', 'extended delivery', 'oda flag'));
+      const tatRaw = field(raw, 'tatDays', 'tat', 'tat days', 'transit days', 'transit time');
+      const tatDays = tatRaw != null && String(tatRaw).trim() !== '' && !isNaN(Number(tatRaw)) ? Number(tatRaw) : null;
+      const city = String(field(raw, 'city', 'city name', 'destination city', 'location', 'area name', 'area') ?? '').trim() || null;
+      const state = String(field(raw, 'state', 'state name') ?? '').trim() || null;
+      const mode = normMode(field(raw, 'mode', 'service', 'service type', 'product') ?? defaultMode);
+      const isActive = !no(field(raw, 'serviceable', 'isActive', 'active', 'status'));
+      const key = `${pincode}|${network}|${mode}`;
+      if (seen.has(key)) continue; // a file listing the same pincode twice → keep the first
+      seen.add(key);
+      clean.push({ pincode, city, state, network, mode, tatDays, isOda, isActive });
     }
 
     const doRow = async (r: Clean) => {
       try {
         await this.prisma.serviceablePincode.upsert({
-          where: { pincode_network: { pincode: r.pincode, network: r.network } },
-          update: { city: r.city, state: r.state, mode: r.mode, tatDays: r.tatDays, isOda: r.isOda, isActive: true },
-          create: { pincode: r.pincode, network: r.network, city: r.city, state: r.state, mode: r.mode, tatDays: r.tatDays, isOda: r.isOda },
+          where: { pincode_network_mode: { pincode: r.pincode, network: r.network, mode: r.mode } },
+          update: { city: r.city, state: r.state, tatDays: r.tatDays, isOda: r.isOda, isActive: r.isActive },
+          create: { pincode: r.pincode, network: r.network, city: r.city, state: r.state, mode: r.mode, tatDays: r.tatDays, isOda: r.isOda, isActive: r.isActive },
         });
         ok++;
       } catch (e: any) { errors.push({ pincode: r.pincode, error: e.message }); }

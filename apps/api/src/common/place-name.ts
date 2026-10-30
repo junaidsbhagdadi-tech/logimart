@@ -18,7 +18,7 @@ const METRO: Record<string, string> = {
 
 type PinRow = { city: string | null; areaName: string | null };
 /** Area codes (BOM, MAA) and zone codes (W1, S2, NE1) are not place names. */
-const isCode = (v: string) => /^[A-Za-z0-9]{1,3}$/.test(v.trim());
+export const isCode = (v: string) => /^[A-Za-z0-9]{1,3}$/.test(v.trim());
 
 export function placeName(typedCity: string | null | undefined, pin: PinRow | undefined | null, fallback?: string | null): string {
   const t = String(typedCity ?? '').trim();
