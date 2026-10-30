@@ -66,6 +66,8 @@ function istDt(d = new Date()) {
   return `${t.getUTCFullYear()}-${p2(t.getUTCMonth() + 1)}-${p2(t.getUTCDate())} ${p2(t.getUTCHours())}:${p2(t.getUTCMinutes())}:${p2(t.getUTCSeconds())}`;
 }
 const cut = (v: any, n: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
+// Only a well-formed 15-char GSTIN is sent — Gati rejects the whole docket on a bad one (the field is optional).
+const gstin = (...vals: any[]) => vals.map((v) => String(v ?? '').trim().toUpperCase()).find((v) => /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(v)) ?? '';
 const mobile = (...vals: any[]) => vals.map((v) => String(v ?? '').replace(/\D/g, '').slice(-10)).find((v) => v.length === 10) ?? '';
 const ok = (r: any) => String(r?.result ?? '').toLowerCase().startsWith('succes');
 const first = (d: any) => (Array.isArray(d) ? d[0] : d) ?? {};
@@ -153,7 +155,7 @@ export class GatiService implements OnModuleInit {
         custVendorCode: code, custVendorName: cut(s.shipperName || c.legalName, 50),
         vendorAdd1: cut(address.slice(0, 50), 50), vendorAdd2: cut(address.slice(50, 100) || city || '.', 50), vendorAdd3: cut(address.slice(100, 150), 50),
         vendorCity: cut(city, 20), vendorPhoneNo: phone, vendorPincode: pin, vendorEmail: cut(String(c.contactEmail || '').split(/[,;]/)[0], 50),
-        vendorReceiverFlag: 'V', vendorTinno: '', addressType: '', uniqueNo: '', vendorGSTNO: s.consignorGstin || c.gstin || '',
+        vendorReceiverFlag: 'V', vendorTinno: '', addressType: '', uniqueNo: '', vendorGSTNO: gstin(s.consignorGstin, c.gstin),
       }],
     });
     const msg = String(first(r?.details)?.errmsg ?? r?.sErrMsg ?? '');
@@ -201,21 +203,21 @@ export class GatiService implements OnModuleInit {
     const dod = !!s.isDod && Number(s.dodAmount) > 0;
     const c = s.client ?? {};
     const body = {
-      custCode: G.cust, shipperCode: G.cust, docketNo: docket, goodsCode, goodsDesc: cut(s.goodsDesc || 'General goods', 200),
+      custCode: G.cust, shipperCode: G.cust, docketNo: docket, goodsCode: Number(goodsCode), goodsDesc: cut(s.goodsDesc || 'General goods', 200),
       declCargoVal: Number(value.toFixed(2)), actualWt: Number(Number(s.totalDeadKg || 0.5).toFixed(2)), chargedWt: Number(Number(s.chargeWeight || s.totalDeadKg || 0.5).toFixed(2)),
       orderNo: cut(s.custInvoiceNo || s.referenceNo || s.awb, 20),
       codAmt: dod ? Number(s.dodAmount).toFixed(2) : '0', codInFavourOf: dod ? 'S' : 'G',
       receiverCode: '99999', receiverName: cut(s.consigneeName, 50),
       receiverAdd1: cut(recvAddr.slice(0, 50), 50), receiverAdd2: cut(recvAddr.slice(50, 100) || recvCity, 50),
-      receiverAdd3: cut(recvAddr.slice(100, 150), 50), receiverAdd4: cut(recvAddr.slice(150, 200), 50),
+      receiverAdd3: cut(recvAddr.slice(100, 150), 50) || cut(recvCity, 50), receiverAdd4: cut(recvAddr.slice(150, 200), 50),
       receiverCity: cut(recvCity, 20), receiverPhoneNo: recvPhone, receiverMobileNo: recvPhone,
-      receiverEmail: 'na@na.com', receiverPinCode: String(s.destPincode), ReceiverGSTINNo: s.consigneeGstin || '',
+      receiverEmail: 'na@na.com', receiverPinCode: String(s.destPincode), ReceiverGSTINNo: gstin(s.consigneeGstin),
       noOfPkgs: String(pieces.length), fromPkgNo: pkgNos[0], toPkgNo: pkgNos[pkgNos.length - 1],
       pkgInfo: pieces.map((pc: any, i: number) => ({ pkgNo: pkgNos[i], pkgLn: Number(pc.lengthCm || 1), pkgBr: Number(pc.widthCm || 1), pkgHt: Number(pc.heightCm || 1), pkgWt: Number(pc.deadKg || 0.5), custPkgNo: '' })),
       prodServCode: /AIR/i.test(String(s.serviceMode)) ? '2' : '1',
       bookingBasis: toPay ? '4' : '2', // 2 = contractual (our account), 4 = FOD (to-pay)
       UOM: 'CC', custVendCode: vendorCode, deliveryStn: '', locationCode, instructions: '', CustDeliveyDate: '',
-      consignorGSTINNo: s.consignorGstin || c.gstin || '',
+      consignorGSTINNo: gstin(s.consignorGstin, c.gstin),
       pickupContactName: cut(s.shipperContact || c.contactName || s.shipperName || c.legalName, 50),
       pickupContactNumber: mobile(s.shipperMobile, s.shipperContact, c.contactPhone, c.tel1),
       pickupRequestDt: istDt(),
