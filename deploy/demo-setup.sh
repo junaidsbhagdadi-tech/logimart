@@ -33,6 +33,7 @@ DOC_PURGE_DAYS=7
 EOF
 fi
 
+if [ "${SKIP_WEB:-}" = "1" ]; then echo "==> SKIP_WEB=1 — not touching nginx / HTTPS"; else
 echo "==> nginx + HTTPS for $HOST"
 cat > /etc/nginx/sites-available/demo-erp <<EOF
 server {
@@ -54,5 +55,6 @@ EOF
 ln -sf /etc/nginx/sites-available/demo-erp /etc/nginx/sites-enabled/demo-erp
 nginx -t && systemctl reload nginx
 certbot --nginx -d "$HOST" --non-interactive --agree-tos --register-unsafely-without-email --redirect || echo "!! HTTPS certificate failed — the demo still works on http://$HOST"
+fi
 
 bash "$DEMO/deploy/demo-deploy.sh" --reseed
