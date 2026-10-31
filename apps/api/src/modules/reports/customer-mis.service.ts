@@ -17,7 +17,8 @@ const STATUS: Record<string, string> = {
   OFD: 'Out for delivery', DLD: 'Delivered', UDL: 'Undelivered', RTO: 'Return to origin', RTD: 'Returned', CAN: 'Cancelled',
 };
 const EMAIL = /^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$/;
-const emails = (...v: (string | null | undefined)[]) => [...new Set(v.flatMap((x) => String(x ?? '').split(/[,;\s]+/)).map((x) => x.trim().toLowerCase()).filter((x) => EMAIL.test(x)))];
+// Cleaned (<x@y>, 'x@y', x@y> → x@y) then de-duplicated — the same person typed two ways used to get two mails.
+const emails = (...v: (string | null | undefined)[]) => [...new Set(v.flatMap((x) => String(x ?? '').split(/[,;\s]+/)).map((x) => NotificationsService.cleanEmail(x)).filter((x) => x && EMAIL.test(x)))];
 const p2 = (n: number) => String(n).padStart(2, '0');
 const ist = (d: Date | null | undefined, time = false) => {
   if (!d) return '';

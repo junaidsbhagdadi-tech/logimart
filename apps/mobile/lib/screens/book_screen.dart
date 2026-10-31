@@ -302,9 +302,37 @@ class _NewBookingState extends State<_NewBooking> {
     });
   }
 
+  /// The VENDORS' volumetric weight for the entered box sizes — every carrier uses 6 CFT on surface and
+  /// ÷5000 on air (never the customer's own CFT). Helps pick the charged weight / carrier.
+  Widget _vendorVol() {
+    double cm3 = 0;
+    for (final b in _lines) {
+      final l = b._n(b.l), w = b._n(b.w), h = b._n(b.h);
+      if (l != null && w != null && h != null) cm3 += l * w * h * b.count;
+    }
+    if (cm3 <= 0) return const SizedBox.shrink();
+    bool surface = false;
+    for (final p in _products) {
+      if (p.code == _product) surface = p.surface;
+    }
+    final vol = surface ? cm3 / 27000 * 6 : cm3 / 5000;
+    final actual = double.tryParse(_kg.text.trim()) ?? 0;
+    final charged = vol > actual ? vol : actual;
+    return Container(
+      margin: const EdgeInsets.only(top: 4, bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(color: const Color(0xFFE8F4F1), borderRadius: BorderRadius.circular(8)),
+      child: Text(
+        'Vendor volumetric: ${vol.toStringAsFixed(2)} kg (${_product == null ? 'pick a product' : surface ? 'surface · 6 CFT' : 'air · ÷5000'})'
+        '${actual > 0 ? '  ·  charged ≈ ${charged.toStringAsFixed(2)} kg' : ''}',
+        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+
   Widget _boxLine(_BoxLine b, int i) {
     Widget n(TextEditingController c, String label) => Expanded(
-          child: TextField(controller: c, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: label)),
+          child: TextField(controller: c, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: label), onChanged: (_) => setState(() {})),
         );
     return Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
       SizedBox(
@@ -437,6 +465,7 @@ class _NewBookingState extends State<_NewBooking> {
             label: const Text('Another box size'),
           ),
         ),
+        _vendorVol(),
         TextField(
             controller: _kg,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),

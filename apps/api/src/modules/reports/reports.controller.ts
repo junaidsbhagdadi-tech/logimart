@@ -1,14 +1,22 @@
-import { Controller, Get, Param, Post, Query, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles } from '../../common/rbac/roles.decorator';
 import { ReportsService } from './reports.service';
 import { CustomerMisService } from './customer-mis.service';
+import { DailySummaryService } from './daily-summary.service';
 
 @Controller('api/v1/reports')
 @UseGuards(RolesGuard)
 export class ReportsController {
-  constructor(private readonly svc: ReportsService, private readonly mis: CustomerMisService) {}
+  constructor(private readonly svc: ReportsService, private readonly mis: CustomerMisService, private readonly summary: DailySummaryService) {}
+
+  /** End-of-day summary mails (DEL / BOM / All-India) — send now, or {dry:true} to preview the numbers. */
+  @Post('daily-summary/send')
+  @Roles(UserRole.SYS_ADMIN)
+  dailySummary(@Body() dto: { scope?: 'DEL' | 'BOM' | 'ALL'; dry?: boolean }) {
+    return this.summary.sendAll({ scope: dto?.scope, dry: !!dto?.dry });
+  }
 
   /** Customer MIS (Excel) for one customer — what tomorrow's 9 AM email will carry. */
   @Get('customer-mis/:clientId.xlsx')

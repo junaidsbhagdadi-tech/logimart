@@ -51,7 +51,11 @@ export function BdLabel() {
   if (!m) return <p style={{ padding: 24 }}>Loading…</p>;
 
   const title = `${carrierName(m)} - ${serviceName(m)}`;
-  const carrierAwb = m.carrierAwb || m.bdWaybill || m.forwardingAwb || '';
+  const isDelhivery = carrierName(m) === 'DELHIVERY';
+  const firstBoxId = (m.boxes ?? []).find((b: any) => b.carrierId)?.carrierId as string | undefined;
+  // Delhivery's scanners read the master waybill (MAWB = the first box's waybill), not the LR number.
+  const lr = isDelhivery && firstBoxId ? (m.forwardingAwb || m.carrierAwb || '') : '';
+  const carrierAwb = (isDelhivery && firstBoxId) || m.carrierAwb || m.bdWaybill || m.forwardingAwb || '';
   const lead = carrierAwb || m.awb; // barcode value
   const isOwn = !m.vendor || m.vendor === 'SELF';
   const org = m.bdRouteOrg || [m.originZone, m.originCity].filter(Boolean).join(' / ') || '—';
@@ -61,7 +65,8 @@ export function BdLabel() {
   const dimGroups = new Map<string, number>();
   boxes.forEach((b) => { if (b.l && b.w && b.h) { const k = `${b.l} x ${b.w} x ${b.h}`; dimGroups.set(k, (dimGroups.get(k) || 0) + 1); } });
   const dims = [...dimGroups.entries()].map(([k, n]) => (dimGroups.size > 1 || n > 1 ? `${k} (${n})` : k)).join(', ') || '—';
-  const sender = `${m.accountCode || ''} - ${m.shipperName || m.consignor.name}`;
+  // On a carrier's label the sender is our account code only — the carrier must never see our customer's name.
+  const sender = isOwn ? `${m.accountCode || ''} - ${m.shipperName || m.consignor.name}` : `LOGIMART ${m.accountCode || ''}`.trim();
   const date = ddmmyyyy(m.createdAt);
   // Page 2 — boxes grouped by identical size, with their weight where each box's weight is known.
   const groupMap = new Map<string, { dims: string; n: number; kg: number }>();
@@ -82,7 +87,7 @@ export function BdLabel() {
       <div className="cl-line cl-big">Wgt: {kg} KGs | MASTER - {m.pieceCount} Boxes | Date:{date}</div>
       <div className="cl-bar">
         <Barcode value={lead} />
-        {carrierAwb && !isOwn && <div className="cl-our">Our AWB: <b>{m.awb}</b></div>}
+        {carrierAwb && !isOwn && <div className="cl-our">{lr ? <>LR: <b>{lr}</b> · </> : null}Our AWB: <b>{m.awb}</b></div>}
       </div>
       <div className="cl-line">Sender: {sender}</div>
       <div className="cl-line">Inv No: {m.invoiceNo || '—'} | Inv Val: {money(m.shipmentValue) || '—'} INR | Dims: {dims}</div>

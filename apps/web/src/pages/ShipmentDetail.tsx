@@ -347,7 +347,17 @@ export function ShipmentDetail() {
     const reason = window.prompt('Void this AWB (wrong entry)? It will be EXCLUDED from billing and cancelled with the carrier if already handed off.\n\nReason:');
     if (reason === null) return;
     setError(''); setMsg('');
-    try { const r: any = await api.cancelShipment(awb!, reason || 'Voided (wrong AWB)'); setMsg(`🚫 ${r.awb} voided — not billable.${r.carrier?.length ? ' ' + r.carrier.join('; ') : ''}`); load(); }
+    try {
+      let r: any;
+      try { r = await api.cancelBooking(awb!, reason || 'Voided (wrong AWB)'); }
+      catch (e: any) {
+        if (!/did not cancel/.test(String(e?.message)) || !window.confirm(`${e.message}
+
+Void it here anyway?`)) throw e;
+        r = await api.cancelBooking(awb!, reason || 'Voided (wrong AWB)', true);
+      }
+      setMsg(`🚫 ${r.awb} voided — not billable.${r.carrierNote ? ' ' + r.carrierNote : ''}`); load();
+    }
     catch (e: any) { setError(e.message); }
   };
 

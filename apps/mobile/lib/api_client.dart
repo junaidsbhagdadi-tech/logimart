@@ -147,6 +147,10 @@ class ApiClient {
 
   /// Mark a pickup request collected. With a destination (and no existing AWB) the server books
   /// the billable shipment and moves it to Picked.
+  /// Not collected — reason, and rebook (back to Requested) or close.
+  Future<Map<String, dynamic>> pickupNotPicked(String id, String reason, bool rebook) async =>
+      await post('/api/v1/pickups/$id/not-picked', {'reason': reason, 'rebook': rebook}) as Map<String, dynamic>;
+
   Future<Map<String, dynamic>> completePickup(String id, Map<String, dynamic> body) async =>
       await post('/api/v1/pickups/$id/complete', body) as Map<String, dynamic>;
 
@@ -184,6 +188,10 @@ class ApiClient {
 
   Future<List<Map<String, dynamic>>> vendors() async =>
       (await get('/api/v1/vendors') as List).cast<Map<String, dynamic>>();
+
+  /// Cancel a booking — with its carrier first when it was handed off.
+  Future<Map<String, dynamic>> cancelBooking(String awb, String reason) async =>
+      await post('/api/v1/carriers/cancel/$awb', {'reason': reason}) as Map<String, dynamic>;
 
   Future<Map<String, dynamic>> pincode(String pin) async =>
       await get('/api/v1/pincodes/$pin') as Map<String, dynamic>;

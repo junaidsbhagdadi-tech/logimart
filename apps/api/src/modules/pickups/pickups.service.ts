@@ -199,6 +199,38 @@ export class PickupsService {
     return { ...updated, shipment, forwardingNo: fwd || null };
   }
 
+  /**
+   * The pickup was NOT collected. Records the reason (kept in the notes history) and either REBOOKS it —
+   * back to Requested for `rebookDate`, the old carrier token cleared so it can be handed off again — or
+   * closes it (Cancelled). A BlueDart token is cancelled with BlueDart where their API allows it.
+   */
+  async notPicked(id: number, dto: { reason: string; rebook?: boolean; rebookDate?: string }, by?: string) {
+    const p = await this.exists(id);
+    const reason = String(dto?.reason ?? '').trim();
+    if (!reason) throw new BadRequestException('Give the reason it was not picked.');
+    if (p.status === PickupStatus.PICKED) throw new BadRequestException('This pickup is already marked picked.');
+    const rebook = dto?.rebook !== false;
+    const day = dto?.rebookDate ? new Date(String(dto.rebookDate).slice(0, 10)) : null;
+    if (rebook && day && isNaN(+day)) throw new BadRequestException('Bad rebook date.');
+    let carrierNote = '';
+    if (p.token && (await this.bluedart.isBlueDartVendor(p.vendor))) {
+      try { await this.bluedart.cancelPickup(p.token, p.handoffAt ? p.handoffAt.toISOString() : undefined); carrierNote = ' · BlueDart token cancelled'; }
+      catch (e: any) { carrierNote = ` · BlueDart token NOT cancelled (${String(e?.message || e).slice(0, 80)}) — cancel it on the BlueDart portal`; }
+    }
+    const stamp = new Date(Date.now() + 330 * 60000).toISOString().slice(0, 16).replace('T', ' ');
+    const line = `[${stamp}${by ? ` ${by}` : ''}] Not picked: ${reason}${p.token ? ` (token ${p.token}${p.vendor ? ` ${p.vendor}` : ''})` : ''}${rebook ? ` → rebooked${day ? ` for ${day.toISOString().slice(0, 10)}` : ''}` : ' → closed'}${carrierNote}`;
+    const updated = await this.prisma.pickupRequest.update({
+      where: { id: p.id },
+      data: {
+        attempts: { increment: 1 }, notPickedReason: reason, notPickedAt: new Date(), notes: [p.notes, line].filter(Boolean).join('\n').slice(-4000),
+        ...(rebook
+          ? { status: PickupStatus.REQUESTED, token: null, handoffAt: null, assignedRiderId: null, rebookDate: day }
+          : { status: PickupStatus.CANCELLED }),
+      },
+    });
+    return { ...updated, carrierNote };
+  }
+
   /** Full detail for one pickup request (+ the customer), for the CS detail popup. */
   async detail(id: number) {
     const p = await this.prisma.pickupRequest.findUnique({ where: { id: BigInt(id) } });
@@ -223,7 +255,8 @@ export class PickupsService {
       // BlueDart's waybill is then typed in as the forwarding no when the pickup is marked picked.
       const client = await this.prisma.b2bClient.findUnique({ where: { id: p.clientId }, select: { accountCode: true } });
       const r = await this.bluedart.scheduleAdhocPickup({
-        pincode: String(p.pincode || ''), name: `LOGIMART ${client?.accountCode ?? ''}`.trim(), phone: p.contactPhone || '', address1: p.pickupAddress,
+        pincode: String(p.pincode || ''), name: `LOGIMART ${client?.accountCode ?? ''}`.trim(), contact: p.contactName || undefined, phone: p.contactPhone || '', address1: p.pickupAddress,
+        product: p.product || p.cargoMode || null, reference: p.refNo || `PU${id}`,
         city: p.city ?? undefined, pieces: p.estPieces, weight: p.weight != null ? Number(p.weight) : undefined, toPay: !!opts.toPay,
         date: opts.date, remarks: `Pickup #${id}${p.refNo ? ` ref ${p.refNo}` : ''}`, vendor: vendor || p.vendor, bdAccountId: p.bdAccountId ?? null,
       });

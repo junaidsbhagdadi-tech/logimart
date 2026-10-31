@@ -525,6 +525,28 @@ export class BluedartService implements OnModuleInit {
     return 'P';
   }
 
+  /** A long pickup address → BlueDart's three 30-character lines, split on word boundaries (they used to get
+   *  only the first 30 characters, e.g. "RELIANCE RETAIL LIMITED(HR) DI", with Address1 "-"). */
+  private addrLines(...parts: (string | null | undefined)[]): [string, string, string] {
+    const words = parts.map((p) => String(p ?? '').replace(/\s+/g, ' ').trim()).filter(Boolean).join(', ').split(' ');
+    const out: string[] = [''];
+    for (const w of words) {
+      const cur = out[out.length - 1];
+      if (!cur) out[out.length - 1] = w.slice(0, 30);
+      else if ((cur + ' ' + w).length <= 30) out[out.length - 1] = cur + ' ' + w;
+      else if (out.length < 3) out.push(w.slice(0, 30));
+      else break;
+    }
+    return [out[0] ?? '', out[1] ?? '', out[2] ?? ''];
+  }
+
+  /** BlueDart's reason for an outbound refusal, in words. */
+  private pickupRefusal(msg: string, pin: string, product: string): string {
+    if (/OutBoundServiceNotAvailable/i.test(msg)) return `BlueDart does not pick up from pincode ${pin} for product ${product} (OutBoundServiceNotAvailable) — use another carrier or a different BlueDart product for this pickup.`;
+    if (/InvalidAreaScNotInRegion|UnauthorizedUser/i.test(msg)) return `BlueDart refused pickup pincode ${pin} for this account (${msg}).`;
+    return msg;
+  }
+
   /** What BlueDart is shown as the shipper: our customer's account code only (e.g. "LOGIMART 111531"). */
   private maskedShipper(s: any): string {
     const code = String(s?.client?.accountCode ?? '').trim();
@@ -545,6 +567,9 @@ export class BluedartService implements OnModuleInit {
     const dims = [...dimGroups.values()];
     // CollactableAmount: the draft value for DOD, the consignee's freight for FOD; to-pay collects nothing.
     const codAmount = s.isDod ? Number(s.dodAmount || 0) : (this.isFod(s) ? Number(s.freightToCollect || 0) : 0);
+    // Full addresses over BlueDart's three 30-character lines (they used to be cut at 30).
+    const shipAddr = this.addrLines(s.shipperAddress1 ?? s.client?.addressLine, s.shipperAddress2, s.shipperCity);
+    const conAddr = this.addrLines(s.consigneeAddress, s.consigneeCity);
 
     return {
       Request: {
@@ -557,8 +582,9 @@ export class BluedartService implements OnModuleInit {
           // BlueDart sees only OUR customer's account code, never the customer's name (address + mobile
           // stay — the pickup needs them).
           CustomerName: this.maskedShipper(s).slice(0, 30),
-          CustomerAddress1: (s.shipperAddress1 ?? s.client?.addressLine ?? '').slice(0, 30),
-          CustomerAddress2: (s.shipperAddress2 ?? '').slice(0, 30),
+          CustomerAddress1: shipAddr[0],
+          CustomerAddress2: shipAddr[1],
+          CustomerAddress3: shipAddr[2],
           CustomerPincode: s.shipperPincode ?? s.client?.pincode ?? '',
           CustomerMobile: this.bdShipperMobile(s),
           CustomerGSTNumber: s.consignorGstin ?? s.client?.gstin ?? '',
@@ -573,8 +599,9 @@ export class BluedartService implements OnModuleInit {
         },
         Consignee: {
           ConsigneeName: (s.consigneeName ?? '').slice(0, 30),
-          ConsigneeAddress1: (s.consigneeAddress ?? '').slice(0, 30),
-          ConsigneeAddress2: (s.consigneeCity ?? '').slice(0, 30),
+          ConsigneeAddress1: conAddr[0],
+          ConsigneeAddress2: conAddr[1],
+          ConsigneeAddress3: conAddr[2],
           ConsigneePincode: s.destPincode ?? '',
           ConsigneeMobile: this.bdMobile(s.consigneePhone),
           ConsigneeAttention: (s.consigneeName ?? '').slice(0, 30),
@@ -584,7 +611,7 @@ export class BluedartService implements OnModuleInit {
           ProductType: String(s.docType ?? '').toUpperCase().includes('DOC') ? 0 : 1, // 0=Docs, 1=Dutiables
           SubProductCode: this.bdSubProduct(s),
           PieceCount: Number(s.pieceCount ?? 1),
-          ActualWeight: Number(Number(s.chargeWeight ?? s.totalDeadKg ?? 0).toFixed(2)),
+          ActualWeight: Number(Number(s.totalDeadKg ?? s.chargeWeight ?? 0).toFixed(2)), // the real dead weight, never our billed weight
           DeclaredValue: Number(Number(s.shipmentValue ?? s.declaredValue ?? 0).toFixed(2)),
           CollactableAmount: Number(codAmount.toFixed(2)),
           CreditReferenceNo: String(s.awb).slice(0, 20), // must be UNIQUE — our AWB
@@ -640,7 +667,9 @@ export class BluedartService implements OnModuleInit {
     const toPay = this.isToPay(s);
     const weight = Number(Number(s.chargeWeight ?? s.totalDeadKg ?? 1).toFixed(2));
     const name = this.maskedShipper(s).slice(0, 30); // account code only — never our customer's name
+    const contact = String(s.shipperContact ?? '').trim().slice(0, 30) || name; // a person to call, not the company
     const addr1 = String(s.shipperAddress1 ?? s.client?.addressLine ?? '').trim();
+    const [a1, a2, a3] = this.addrLines(addr1, s.shipperAddress2, s.shipperCity);
     // Pre-flight: a pickup needs a real pickup address + a reachable contact, else BlueDart rejects it
     // (or books a junk collection). Surface the gap plainly instead of a cryptic carrier error.
     const miss: string[] = [];
@@ -665,10 +694,10 @@ export class BluedartService implements OnModuleInit {
       AWBNo: [''],
       AreaCode: acc.originArea,
       CISDDN: false,
-      ContactPersonName: name,
-      CustomerAddress1: addr1.slice(0, 30),
-      CustomerAddress2: String(s.shipperAddress2 ?? '').slice(0, 30),
-      CustomerAddress3: String(s.shipperCity ?? '').slice(0, 30),
+      ContactPersonName: contact,
+      CustomerAddress1: a1,
+      CustomerAddress2: a2,
+      CustomerAddress3: a3,
       CustomerCode: acc.customerCode,
       CustomerName: name,
       CustomerPincode: pin,
@@ -705,7 +734,7 @@ export class BluedartService implements OnModuleInit {
   /** Register an ad-hoc BlueDart pickup from a PickupRequest (no shipment/AWB). Used by CS to hand a
    *  customer's portal pickup request to BlueDart — returns the pickup token to show the customer.
    *  Outside the account's home area it's registered as an outstation to-pay (FOD) collection. */
-  async scheduleAdhocPickup(p: { pincode: string; name: string; phone: string; address1: string; address2?: string; city?: string; pieces?: number; toPay?: boolean; weight?: number; date?: string; remarks?: string; vendor?: string | null; bdAccountId?: bigint | null }) {
+  async scheduleAdhocPickup(p: { pincode: string; name: string; contact?: string; phone: string; address1: string; address2?: string; city?: string; pieces?: number; toPay?: boolean; weight?: number; date?: string; remarks?: string; vendor?: string | null; bdAccountId?: bigint | null; product?: string | null; reference?: string; docs?: boolean }) {
     this.ensure();
     // Book under the account the pickup's vendor / chosen account points to (else the default).
     const acc = await this.resolveAccount({ vendor: p.vendor ?? null, bdAccountId: p.bdAccountId ?? null });
@@ -726,20 +755,26 @@ export class BluedartService implements OnModuleInit {
     const outstation = !!(home && pickArea && pickArea !== home);
     const isToPayShipper = !!p.toPay || outstation;
     const weight = Number(Number(p.weight ?? 1).toFixed(2));
+    // The pickup is registered under the booking's product — a DP request used to go as Surface ('E'),
+    // so BlueDart issued an SFC "T-token" that their DP counter refused.
+    const productCode = this.bdProductCode({ product: p.product ?? '', serviceMode: '' });
+    const [a1, a2, a3] = this.addrLines(addr1, p.address2, p.city);
     const request = {
-      AWBNo: [''], AreaCode: acc.originArea, CISDDN: false, ContactPersonName: name,
-      CustomerAddress1: addr1.slice(0, 30), CustomerAddress2: String(p.address2 ?? '').slice(0, 30), CustomerAddress3: String(p.city ?? '').slice(0, 30),
+      AWBNo: [''], AreaCode: acc.originArea, CISDDN: false, ContactPersonName: String(p.contact || name).slice(0, 30),
+      CustomerAddress1: a1, CustomerAddress2: a2, CustomerAddress3: a3,
       CustomerCode: acc.customerCode, CustomerName: name, CustomerPincode: pin, CustomerTelephoneNumber: phone,
       DoxNDox: '2', EmailID: '', IsForcePickup: false, IsReversePickup: false, MobileTelNo: phone,
-      NumberofPieces: Number(p.pieces ?? 1), OfficeCloseTime: '18:00', PackType: '', ProductCode: 'E',
-      ReferenceNo: '', Remarks: String(p.remarks ?? 'Portal pickup').slice(0, 60), RouteCode: '',
+      NumberofPieces: Number(p.pieces ?? 1), OfficeCloseTime: '18:00', PackType: '', ProductCode: productCode,
+      ReferenceNo: String(p.reference ?? '').slice(0, 20), Remarks: String(p.remarks ?? 'Portal pickup').slice(0, 60), RouteCode: '',
       ShipmentPickupDate: `/Date(${when.getTime()})/`, ShipmentPickupTime: time, SubProducts: [''],
       VolumeWeight: weight, WeightofShipment: weight, isToPayShipper,
     };
-    const resp = await this.authed('/pickup/v1/RegisterPickup', { method: 'POST', body: JSON.stringify(this.pickupBody(request, acc)) });
+    let resp: any;
+    try { resp = await this.authed('/pickup/v1/RegisterPickup', { method: 'POST', body: JSON.stringify(this.pickupBody(request, acc)) }); }
+    catch (e: any) { throw new BadRequestException(this.pickupRefusal(String(e?.message || e), pin, productCode)); }
     const result = resp?.RegisterPickupResult ?? resp;
     if (result?.IsError === true || result?.isError === true) {
-      throw new BadRequestException(`BlueDart pickup failed: ${this.bdStatusMsg(result) || JSON.stringify(result).slice(0, 300)}`);
+      throw new BadRequestException(this.pickupRefusal(`BlueDart pickup failed: ${this.bdStatusMsg(result) || JSON.stringify(result).slice(0, 300)}`, pin, productCode));
     }
     const token = result?.TokenNumber ?? result?.tokenNumber ?? null;
     return { token: token != null ? String(token) : null, toPay: isToPayShipper, outstation, pickupDate: when, response: resp };
@@ -782,7 +817,7 @@ export class BluedartService implements OnModuleInit {
       take: Math.min(limit, 300),
       select: {
         awb: true, bdPickupToken: true, bdPickupAt: true, bdWaybill: true, bdStatus: true, bdSyncedAt: true,
-        shipperPincode: true, destPincode: true, paymentTerm: true, pieceCount: true,
+        shipperPincode: true, destPincode: true, paymentTerm: true, pieceCount: true, vendor: true,
         client: { select: { legalName: true, accountCode: true } },
       },
     });
@@ -801,6 +836,7 @@ export class BluedartService implements OnModuleInit {
       pieces: s.pieceCount,
       customer: s.client?.legalName ?? null,
       accountCode: s.client?.accountCode ?? null,
+      vendor: s.vendor ?? null,
     }));
   }
 

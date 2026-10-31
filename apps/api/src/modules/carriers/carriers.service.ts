@@ -79,6 +79,39 @@ export class CarriersService implements OnModuleInit {
     return { number: n, hits };
   }
 
+  /**
+   * Cancel a booking that was already handed to a carrier: first with the carrier (BlueDart waybill,
+   * Delhivery LR, XpressBees AWB, Gati docket), then ours. If the carrier refuses, ours stays booked
+   * (so it's never silently shipped) unless `force` — V Express / AR / others have no cancel API, so
+   * those are cancelled here with a note to cancel on the carrier's portal.
+   */
+  async cancelBooking(awbRaw: string, reason: string, userId?: bigint, opts: { force?: boolean; clientId?: number; isSuper?: boolean } = {}) {
+    const awb = String(awbRaw || '').trim().toUpperCase();
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { vendor: true, forwardingAwb: true, bdWaybill: true, statusCode: true, bdPickupToken: true, bdPickupAt: true } });
+    if (!s) throw new BadRequestException(`AWB ${awb} not found`);
+    const k = await this.kind(s.vendor);
+    const handed = !!(s.bdWaybill || s.forwardingAwb || s.bdPickupToken);
+    let carrierNote = '';
+    if (handed && String(s.statusCode || 'MAN').toUpperCase() !== 'CAN') {
+      try {
+        if (k === 'BD') {
+          if (s.bdWaybill) await this.bd.cancelWaybill(awb);
+          else if (s.bdPickupToken) await this.bd.cancelPickup(s.bdPickupToken, s.bdPickupAt?.toISOString());
+          carrierNote = `BlueDart ${s.bdWaybill ? `waybill ${s.bdWaybill}` : `pickup ${s.bdPickupToken}`} cancelled`;
+        } else if (k === 'DLY' && s.forwardingAwb) { await this.del.cancelLr(awb); carrierNote = `Delhivery LR ${s.forwardingAwb} cancelled`; }
+        else if (k === 'XB' && s.forwardingAwb) { await this.xb.cancel(awb); carrierNote = `XpressBees AWB ${s.forwardingAwb} cancelled`; }
+        else if (k === 'GATI' && s.forwardingAwb) { await this.gati.cancel(awb, reason); carrierNote = `Gati docket ${s.forwardingAwb} cancelled`; }
+        else if (s.forwardingAwb) carrierNote = `${NAMES[k]} AWB ${s.forwardingAwb} — no cancel API, cancel it on the ${NAMES[k]} portal`;
+      } catch (e: any) {
+        const why = String(e?.message || e);
+        if (!opts.force) throw new BadRequestException(`${NAMES[k]} did not cancel it: ${why}. Nothing was cancelled — retry, or cancel anyway (then cancel it on the ${NAMES[k]} portal).`);
+        carrierNote = `${NAMES[k]} cancel FAILED (${why.slice(0, 120)}) — cancel it on the ${NAMES[k]} portal`;
+      }
+    }
+    const r = await this.shipments.cancel(awb, userId, opts.clientId, [reason || 'Cancelled', carrierNote].filter(Boolean).join(' · '), { isSuper: opts.isSuper });
+    return { ...r, carrierNote: carrierNote || null };
+  }
+
   async kind(vendor?: string | null): Promise<CarrierKind> {
     const v = String(vendor ?? '').trim().toUpperCase();
     if (!v || v === 'SELF') return 'SELF';

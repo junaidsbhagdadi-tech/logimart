@@ -176,6 +176,46 @@ class _PickupDetailState extends State<PickupDetail> {
     }
   }
 
+  /// Couldn't collect — pick a reason; the pickup is rebooked (CS hands it off again) unless closed.
+  Future<void> _notPicked() async {
+    const reasons = ['Shipment not ready', 'Customer not available', 'Address not found', 'Customer cancelled', 'Paperwork / e-way bill missing'];
+    String? reason = reasons.first;
+    bool rebook = true;
+    final other = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, set) => AlertDialog(
+          title: const Text('Not picked'),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            for (final r in [...reasons, 'Other'])
+              RadioListTile<String>(dense: true, contentPadding: EdgeInsets.zero, title: Text(r), value: r, groupValue: reason, onChanged: (v) => set(() => reason = v)),
+            if (reason == 'Other') TextField(controller: other, decoration: const InputDecoration(labelText: 'Reason')),
+            SwitchListTile(dense: true, contentPadding: EdgeInsets.zero, title: const Text('Rebook the pickup'), value: rebook, onChanged: (v) => set(() => rebook = v)),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Back')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+          ],
+        ),
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final why = reason == 'Other' ? other.text.trim() : (reason ?? '');
+    if (why.isEmpty) return toast(context, 'Give the reason.', error: true);
+    setState(() => _busy = true);
+    try {
+      await ApiClient.instance.pickupNotPicked('${p['id']}', why, rebook);
+      if (!mounted) return;
+      toast(context, rebook ? 'Marked not picked — rebooked.' : 'Marked not picked — closed.');
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (mounted) toast(context, '$e', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final addr = [p['pickupAddress'], p['city'], p['pincode']].where((x) => x != null && '$x'.isNotEmpty).join(', ');
@@ -238,6 +278,13 @@ class _PickupDetailState extends State<PickupDetail> {
             icon: _busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.check),
             label: Text(_busy ? 'Saving…' : 'Mark picked'),
             style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: _busy ? null : _notPicked,
+            icon: const Icon(Icons.close),
+            label: const Text('Not picked'),
+            style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48), foregroundColor: Theme.of(context).colorScheme.error),
           ),
         ],
       ),

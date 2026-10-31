@@ -1,7 +1,7 @@
 name: logimart_scanner
 description: Logimart rider app â€” pickups, deliveries (POD), quick booking and offline scanning.
 publish_to: "none"
-version: 1.4.2+12
+version: 1.4.3+13
 
 environment:
   sdk: ">=3.3.0 <4.0.0"

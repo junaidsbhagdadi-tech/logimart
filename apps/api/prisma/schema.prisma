@@ -739,6 +739,11 @@ model PickupRequest {
   bdAccountId   BigInt?
   createdById   BigInt?      // who booked it (staff or the customer's portal login)
   createdByName String?
+  // "Not picked" — the carrier / rider didn't collect: reason, how many attempts, and the rebook date.
+  attempts        Int       @default(0)
+  notPickedReason String?
+  notPickedAt     DateTime?
+  rebookDate      DateTime? @db.Date
   createdAt     DateTime     @default(now())
 
   @@index([status, createdAt])

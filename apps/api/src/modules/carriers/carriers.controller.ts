@@ -4,19 +4,29 @@ import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles } from '../../common/rbac/roles.decorator';
 import { CarriersService } from './carriers.service';
 import { ExceptionsService } from './exceptions.service';
+import { ShipmentsService } from '../shipments/shipments.service';
 
 const OPS = [UserRole.WAREHOUSE_HANDLER, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN, UserRole.DRIVER];
 
 @Controller('api/v1')
 @UseGuards(RolesGuard)
 export class CarriersController {
-  constructor(private readonly carriers: CarriersService, private readonly exceptions: ExceptionsService) {}
+  constructor(private readonly carriers: CarriersService, private readonly exceptions: ExceptionsService, private readonly shipments: ShipmentsService) {}
 
   /** Hand the AWB to its own carrier (picked from the vendor code). */
   @Post('carriers/handoff/:awb')
   @Roles(...OPS)
   handoff(@Param('awb') awb: string) {
     return this.carriers.handoff(awb);
+  }
+
+  /** Cancel a booking — with its carrier first when it was handed off (BlueDart / Delhivery / XpressBees / Gati). */
+  @Post('carriers/cancel/:awb')
+  @Roles(...OPS, UserRole.FINANCE_EXEC)
+  async cancel(@Param('awb') awb: string, @Body() dto: { reason?: string; force?: boolean }, @Req() req: any) {
+    // A rider may cancel only their own booking that is still Booked (also after the carrier hand-off).
+    if (req.user?.role === UserRole.DRIVER) await this.shipments.assertRiderCanCancel(awb, BigInt(req.user.sub));
+    return this.carriers.cancelBooking(awb, String(dto?.reason || '').trim() || 'Cancelled', req.user?.sub ? BigInt(req.user.sub) : undefined, { force: !!dto?.force, isSuper: req.user?.role === UserRole.SYS_ADMIN });
   }
 
   /** Refresh the AWB's tracking from its carrier. */

@@ -18,7 +18,7 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
   const pickRights = useRights('/pickups');
   const isOps = !isClient && (['HUB_MANAGER', 'SYS_ADMIN', 'ADMIN', 'WAREHOUSE_HANDLER'].includes(user?.role || '') || pickRights.edit);
   const [rows, setRows] = useState<any[]>([]);
-  const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'yesterday'>('all'); // #I — see yesterday's pickups
+  const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'yesterday' | 'pending'>('all'); // #I — see yesterday's pickups; pending = booked, not picked yet
   const [riders, setRiders] = useState<any[]>([]);
   const [form, setForm] = useState({ ...blank });
   const [error, setError] = useState('');
@@ -127,7 +127,9 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
   const todayKey = dayKey(new Date());
   const yesterdayKey = dayKey(new Date(Date.now() - 864e5));
   const [listQ, setListQ] = useState('');
-  const visibleRows = rows.filter((p) => dateFilter === 'all' || (dateFilter === 'today' ? dayKey(p.createdAt) === todayKey : dayKey(p.createdAt) === yesterdayKey))
+  const isPending = (p: any) => p.status === 'REQUESTED' || p.status === 'ASSIGNED';
+  const pendingRows = rows.filter(isPending);
+  const visibleRows = rows.filter((p) => dateFilter === 'all' || (dateFilter === 'pending' ? isPending(p) : dateFilter === 'today' ? dayKey(p.createdAt) === todayKey : dayKey(p.createdAt) === yesterdayKey))
     .filter((p) => !listQ.trim() || [p.id, p.customerCode, p.customerName, p.city, p.pincode, p.vendor, p.token, p.pickedAwb, p.refNo, p.createdByName, p.contactName, p.contactPhone, p.status]
       .some((v) => String(v ?? '').toLowerCase().includes(listQ.trim().toLowerCase())));
   // #13 — tick pickups, then hand them all to one courier.
@@ -226,6 +228,17 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
         : `✓ Handed to ${hVendor || 'carrier'} — pickup token ${r.token ?? '(pending)'}. The customer can see it on their panel.`);
       setHandoffFor(null); setDetail(null); load();
     } catch (e: any) { setError(e.message); } finally { setHandingOff(''); }
+  };
+
+  // Not picked — reason, then rebook (back to Requested for a new hand-off) or close.
+  const [np, setNp] = useState<{ p: any; reason: string; rebook: boolean; date: string } | null>(null);
+  const saveNotPicked = async () => {
+    if (!np || !np.reason.trim()) return;
+    try {
+      const r: any = await api.pickupNotPicked(String(np.p.id), { reason: np.reason.trim(), rebook: np.rebook, rebookDate: np.rebook && np.date ? np.date : undefined });
+      setMsg(`Pickup #${np.p.id} marked not picked${np.rebook ? ' and rebooked — hand it off again for the new date' : ' and closed'}${r?.carrierNote ?? ''}.`);
+      setNp(null); load();
+    } catch (e: any) { setError(e.message); }
   };
 
   // Mark-picked modal (capture AWB / weight / pcs / value).
@@ -341,11 +354,22 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
       {mode === 'book' ? null : (<>
 
 
+      {isOps && pendingRows.length > 0 && (() => {
+        const old = pendingRows.filter((p) => dayKey(p.createdAt) !== todayKey);
+        const unhanded = pendingRows.filter((p) => !p.token);
+        return (
+          <div className="card" style={{ borderLeft: '4px solid #e0a800', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', fontSize: 13 }}>
+            <span>⏰ <b>{pendingRows.length}</b> pickup(s) booked but not marked picked{old.length ? <> — <b style={{ color: 'var(--bad, #c0392b)' }}>{old.length} from earlier days</b></> : null}{unhanded.length ? <> · <b>{unhanded.length}</b> not handed to a carrier yet</> : null}.</span>
+            <button className="secondary" style={{ padding: '4px 12px' }} onClick={() => setDateFilter('pending')}>Show them</button>
+          </div>
+        );
+      })()}
+
       <div className="card">
         <div className="row" style={{ gap: 6, marginBottom: 10, alignItems: 'center' }}>
           <span className="muted" style={{ fontSize: 12 }}>Show:</span>
-          {(['all', 'today', 'yesterday'] as const).map((k) => (
-            <button key={k} className={dateFilter === k ? '' : 'secondary'} style={{ padding: '4px 12px', textTransform: 'capitalize' }} onClick={() => setDateFilter(k)}>{k}</button>
+          {(['all', 'today', 'yesterday', 'pending'] as const).map((k) => (
+            <button key={k} className={dateFilter === k ? '' : 'secondary'} style={{ padding: '4px 12px', textTransform: 'capitalize' }} onClick={() => setDateFilter(k)}>{k === 'pending' ? `Not picked (${pendingRows.length})` : k}</button>
           ))}
           <input value={listQ} onChange={(e) => setListQ(e.target.value)} placeholder="Search customer / city / vendor / token / AWB / booked by…" style={{ maxWidth: 320, marginLeft: 8 }} />
           <span className="muted" style={{ fontSize: 12, marginLeft: 'auto' }}>{visibleRows.length} pickup(s)</span>
@@ -376,7 +400,7 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
                 <td><span className={`badge ${p.status}`}>{p.status}</span></td>
                 <td>{p.vendor ? <b>{p.vendor}</b> : <span className="muted">—</span>}</td>
                 <td>{p.token ? <span title={`${p.vendor || 'Carrier'} pickup token`}><b>{p.token}</b></span> : <span className="muted">—</span>}{p.pickedAwb && <div className="muted" style={{ fontSize: 11 }}>AWB {p.pickedAwb}</div>}</td>
-                <td style={{ fontSize: 12 }}>{p.createdByName ?? <span className="muted">—</span>}</td>
+                <td style={{ fontSize: 12 }}>{p.createdByName ?? <span className="muted">—</span>}{p.attempts > 0 && <div style={{ color: 'var(--bad, #c0392b)', fontSize: 11 }} title={p.notPickedReason ?? ''}>↻ {p.attempts} missed: {p.notPickedReason}{p.rebookDate ? ` · rebooked ${String(p.rebookDate).slice(0, 10).split('-').reverse().join('-')}` : ''}</div>}</td>
                 {isOps && <td>{p.status === 'ASSIGNED' || p.status === 'PICKED' ? riderLabel(p.assignedRiderId) : '—'}</td>}
                 {isOps && (
                   <td className="row" style={{ gap: 6 }}>
@@ -387,6 +411,7 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
                       <button className="secondary" onClick={() => openAssign(p)}>Re-assign</button>
                       <button className="secondary" onClick={() => openPicked(p)}>Mark picked</button>
                     </>}
+                    {isPending(p) && <button className="secondary" style={{ color: 'var(--bad, #c0392b)' }} onClick={() => setNp({ p, reason: '', rebook: true, date: '' })} title="Not collected — give the reason, then rebook or close">✕ Not picked</button>}
                   </td>
                 )}
               </tr>
@@ -407,11 +432,12 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
             auto-discovered by reference once BlueDart collects, and tracking then syncs automatically.
           </p>
           <table>
-            <thead><tr><th>AWB</th><th>Token</th><th>Pickup</th><th>Route</th><th>Pcs</th><th>Pay</th><th>Stage</th><th>Waybill</th><th>Status</th><th>Synced</th><th></th></tr></thead>
+            <thead><tr><th>AWB</th><th>Vendor</th><th>Token</th><th>Pickup</th><th>Route</th><th>Pcs</th><th>Pay</th><th>Stage</th><th>Waybill</th><th>Status</th><th>Synced</th><th></th></tr></thead>
             <tbody>
               {bdPickups.map((p) => (
                 <tr key={p.awb}>
                   <td style={{ whiteSpace: 'nowrap' }}><a href={`/shipments/${p.awb}`}>{p.awb}</a></td>
+                  <td><b>{p.vendor ?? '—'}</b></td>
                   <td>{p.token}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>{p.pickupAt ? fmtDate(p.pickupAt) : '—'}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>{p.origin ?? '—'} → {p.dest ?? '—'}</td>
@@ -509,6 +535,31 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
           <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
             <button className="secondary" onClick={() => setHandoffFor(null)}>Cancel</button>
             <button disabled={!hVendor || handingOff === String(handoffFor.id) || (needsDest(hVendor) && !handoffFor.pickedAwb && !(/^\d{6}$/.test(hd.destPincode) && hd.consigneeName && hd.consigneePhone && hd.consigneeAddress && Number(hd.value) > 0))} onClick={doHandoff}>{handingOff === String(handoffFor.id) ? 'Handing off…' : 'Hand off'}</button>
+          </div>
+        </Modal>
+      )}
+
+      {np && (
+        <Modal title={`Not picked — pickup #${np.p.id}`} width={460} onClose={() => setNp(null)}>
+          <label>Reason *</label>
+          <select value={['Shipment not ready', 'Customer not available', 'Address not found', 'Carrier did not come', 'Customer cancelled', 'Paperwork / e-way bill missing'].includes(np.reason) ? np.reason : (np.reason ? '__other' : '')}
+            onChange={(e) => setNp({ ...np, reason: e.target.value === '__other' ? ' ' : e.target.value })}>
+            <option value="">— pick a reason —</option>
+            {['Shipment not ready', 'Customer not available', 'Address not found', 'Carrier did not come', 'Customer cancelled', 'Paperwork / e-way bill missing'].map((r) => <option key={r}>{r}</option>)}
+            <option value="__other">Other…</option>
+          </select>
+          {!['Shipment not ready', 'Customer not available', 'Address not found', 'Carrier did not come', 'Customer cancelled', 'Paperwork / e-way bill missing', ''].includes(np.reason) && (
+            <input style={{ marginTop: 6 }} autoFocus value={np.reason.trimStart()} onChange={(e) => setNp({ ...np, reason: e.target.value })} placeholder="Type the reason" />
+          )}
+          <div className="row" style={{ gap: 14, marginTop: 12 }}>
+            <label className="row" style={{ gap: 6, fontWeight: 400 }}><input type="radio" style={{ width: 'auto' }} checked={np.rebook} onChange={() => setNp({ ...np, rebook: true })} /> Rebook</label>
+            <label className="row" style={{ gap: 6, fontWeight: 400 }}><input type="radio" style={{ width: 'auto' }} checked={!np.rebook} onChange={() => setNp({ ...np, rebook: false })} /> Close (cancel the pickup)</label>
+          </div>
+          {np.rebook && <div style={{ marginTop: 8 }}><label>New pickup date</label><input type="date" value={np.date} onChange={(e) => setNp({ ...np, date: e.target.value })} /></div>}
+          <p className="muted" style={{ fontSize: 12 }}>{np.p.token ? `The current token ${np.p.token} is dropped${/^(BDR|BLUE)/i.test(np.p.vendor || '') || /^\d{6}$/.test(np.p.vendor || '') ? ' (BlueDart is asked to cancel it)' : ''}; ` : ''}{np.rebook ? 'the pickup goes back to Requested so you can hand it off again.' : 'the pickup is closed.'}</p>
+          <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+            <button className="secondary" onClick={() => setNp(null)}>Cancel</button>
+            <button onClick={saveNotPicked} disabled={!np.reason.trim()}>{np.rebook ? 'Save & rebook' : 'Save & close'}</button>
           </div>
         </Modal>
       )}

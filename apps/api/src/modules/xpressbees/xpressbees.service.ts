@@ -71,7 +71,8 @@ export class XpressBeesService implements OnModuleInit {
         where: {
           createdAt: { gte: new Date(Date.now() - 30 * 864e5) }, forwardingAwb: { not: null },
           vendor: { in: ['XPB', 'XB', 'XPRESSBEES', 'XpressBees'] },
-          OR: [{ statusCode: null }, { statusCode: { notIn: ['DLD', 'RTD', 'CAN'] } }],
+          // open ones, plus delivered ones still waiting for their POD image (podLink comes later)
+          OR: [{ statusCode: null }, { statusCode: { notIn: ['DLD', 'RTD', 'CAN'] } }, { statusCode: 'DLD', podUrl: null, statusAt: { gte: new Date(Date.now() - 10 * 864e5) } }],
         },
         select: { awb: true }, take: 300,
       });
@@ -302,7 +303,7 @@ export class XpressBeesService implements OnModuleInit {
 
   /** Pull the latest XpressBees scan onto the shipment (carrier status text + our milestone). */
   async syncTracking(awb: string) {
-    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { forwardingAwb: true, statusCode: true } });
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { forwardingAwb: true, statusCode: true, podUrl: true } });
     if (!s?.forwardingAwb) throw new BadRequestException(`No XpressBees AWB on ${awb} to track.`);
     const r = await this.track(s.forwardingAwb);
     const parse = (t: string) => { const m = /(\d{2})-(\d{2})-(\d{4}) (\d{2}):(\d{2}):(\d{2})/.exec(t || ''); return m ? Date.UTC(+m[3], +m[2] - 1, +m[1], +m[4], +m[5], +m[6]) : 0; };
@@ -316,7 +317,9 @@ export class XpressBeesService implements OnModuleInit {
     const text = code === 'PKD' && pkdHubs.size > 1 ? 'IN TRANSIT' : XB_TEXT[code];
     const label = `${last.remark || last.status || code}${last.shipmentLocation ? ` — ${last.shipmentLocation}` : ''} (XpressBees)`;
     const derived = text ? deriveStatusFromBd(s.statusCode, text) : null;
-    await this.prisma.shipment.updateMany({ where: { awb }, data: { bdStatus: label, ...(derived ? { statusCode: derived.statusCode, status: derived.status, statusAt: new Date() } : {}) } });
+    // Their POD image rides on the scan (podLink) once XpressBees publishes it — bring it across.
+    const podLink = !s.podUrl ? [...scans].reverse().map((x) => x.podLink).find((u) => typeof u === 'string' && /^https?:\/\//.test(u)) : undefined;
+    await this.prisma.shipment.updateMany({ where: { awb }, data: { bdStatus: label, ...(derived ? { statusCode: derived.statusCode, status: derived.status, statusAt: new Date() } : {}), ...(podLink ? { podUrl: podLink } : {}) } });
     return { awb, xbAwb: s.forwardingAwb, status: label, statusCode: derived?.statusCode ?? s.statusCode, tracking: r };
   }
 

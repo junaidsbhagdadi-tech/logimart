@@ -23,7 +23,27 @@ export class NotificationsService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Clean an email address typed into a customer / contact field: customers' lists hold entries like
+   * "<hemant.arora@x.com>", "'cs2@excelexlog.com'" or "yogesh@x.com>" — Brevo rejects those
+   * ("email is not valid in to"), which is why some daily MIS mails never went. Returns '' if still invalid.
+   */
+  static cleanEmail(raw: string): string {
+    const s = String(raw ?? '').trim();
+    const inner = s.match(/<([^<>\s]+@[^<>\s]+)>/)?.[1] ?? s;
+    const e = inner.replace(/^[\s'"<>(\[;,:]+|[\s'"<>)\];,:.]+$/g, '').toLowerCase();
+    return /^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$/.test(e) ? e : '';
+  }
+
   async notify(input: NotifyInput) {
+    if (input.channel === 'email') {
+      const clean = NotificationsService.cleanEmail(input.recipient);
+      if (!clean) {
+        this.logger.warn(`Not emailing "${input.recipient}" — not a valid email address (fix it on the customer).`);
+        return this.prisma.notification.create({ data: { channel: input.channel, recipient: String(input.recipient).slice(0, 190), kind: input.kind, message: input.message, awb: input.awb, shipmentId: input.shipmentId, status: 'invalid' } });
+      }
+      input = { ...input, recipient: clean };
+    }
     const sent = await this.dispatch(input); // provider stub
     return this.prisma.notification.create({
       data: {

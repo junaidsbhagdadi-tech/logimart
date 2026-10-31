@@ -308,6 +308,20 @@ function NewBooking({ onBooked }: { onBooked: (awb: string) => void }) {
         </div>
       ))}
       <button className="secondary" style={{ padding: '3px 10px', fontSize: 12, marginBottom: 10 }} onClick={() => setLines((ls) => [...ls, blankLine()])}>＋ Another box size</button>
+      {(() => {
+        // The VENDORS' volumetric weight — 6 CFT on surface, ÷5000 on air (never the customer's own CFT).
+        const cm3 = lines.reduce((s, l) => s + (Number(l.l) > 0 && Number(l.w) > 0 && Number(l.h) > 0 ? Number(l.l) * Number(l.w) * Number(l.h) * count(l) : 0), 0);
+        if (!cm3) return null;
+        const surface = !!products.find((p) => p.code === product)?.surface;
+        const vol = surface ? (cm3 / 27000) * 6 : cm3 / 5000;
+        const actual = Number(kg) || 0;
+        return (
+          <div style={{ background: 'var(--bg-soft, #e8f4f1)', borderRadius: 8, padding: '7px 10px', fontSize: 12.5, fontWeight: 600, margin: '-2px 0 10px' }}>
+            Vendor volumetric: {vol.toFixed(2)} kg <span className="muted" style={{ fontWeight: 400 }}>({!product ? 'pick a product' : surface ? 'surface · 6 CFT' : 'air · ÷5000'})</span>
+            {actual > 0 && <> · charged ≈ <b>{Math.max(vol, actual).toFixed(2)} kg</b></>}
+          </div>
+        );
+      })()}
       <Field label="Total weight (kg)"><input type="number" inputMode="decimal" value={kg} onChange={(e) => setKg(e.target.value)} /></Field>
       <Field label="Content / description"><input value={content} onChange={(e) => setContent(e.target.value)} /></Field>
 
@@ -447,7 +461,18 @@ function BookingSummary({ awb, justBooked, onClose }: { awb: string; justBooked:
   const cancel = () => {
     const reason = window.prompt(`Cancel ${awb}? The booking is cancelled and drops off your list. This cannot be undone.\n\nReason:`, 'Booked by mistake');
     if (reason == null) return;
-    run(async () => { await api.cancelShipment(awb, reason.trim() || 'Cancelled at booking desk'); onClose(); });
+    run(async () => {
+      const why = reason.trim() || 'Cancelled at booking desk';
+      try { const r = await api.cancelBooking(awb, why); if (r.carrierNote) alert(r.carrierNote); }
+      catch (e: any) {
+        // The carrier refused — offer to cancel ours anyway (then cancel it on the carrier's portal).
+        if (!/did not cancel/.test(String(e?.message)) || !window.confirm(`${e.message}
+
+Cancel it here anyway?`)) throw e;
+        const r = await api.cancelBooking(awb, why, true); if (r.carrierNote) alert(r.carrierNote);
+      }
+      onClose();
+    });
   };
   const row = (k: string, v: any) => (v == null || String(v) === '' ? null : <div className="row" style={{ gap: 8, padding: '3px 0' }}><span className="muted" style={{ width: 120, flexShrink: 0 }}>{k}</span><strong style={{ fontWeight: 600 }}>{String(v)}</strong></div>);
   const btn: React.CSSProperties = { width: '100%', padding: 12, marginTop: 10 };
@@ -484,7 +509,7 @@ function BookingSummary({ awb, justBooked, onClose }: { awb: string; justBooked:
       </div>
 
       {editable && <Link to={`/shipments/${awb}`}><button className="secondary" style={btn}>✎ Edit booking</button></Link>}
-      {editable && <button className="secondary" style={{ ...btn, color: 'var(--bad, #c0392b)', borderColor: 'var(--bad, #c0392b)' }} disabled={busy} onClick={cancel}>🗑 Cancel booking</button>}
+      {String(s.statusCode || 'MAN') === 'MAN' && <button className="secondary" style={{ ...btn, color: 'var(--bad, #c0392b)', borderColor: 'var(--bad, #c0392b)' }} disabled={busy} onClick={cancel} title="Also cancels it with the carrier if it was handed off">🗑 Cancel booking</button>}
       {carrier !== 'SELF' && !carrierAwb && <button style={btn} disabled={busy} onClick={handoff}>{busy ? 'Working…' : carrier === 'OTHER' ? `Enter ${vend} AWB` : `➤ Hand to ${carrierName} — generate AWB`}</button>}
       <label className="button secondary" style={{ ...btn, display: 'block', textAlign: 'center', cursor: 'pointer', border: '1px solid var(--border, #d0d5dd)', borderRadius: 8, fontWeight: 600 }}>
         📎 Attach invoice copy

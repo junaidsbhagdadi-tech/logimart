@@ -127,6 +127,14 @@ export class PickupsController {
     return this.pickups.assign(Number(id), dto.riderId);
   }
 
+  /** Not collected — reason, then rebook (back to Requested, new hand-off) or close. */
+  @Post(':id/not-picked')
+  @Roles(UserRole.DRIVER, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  async notPicked(@Param('id') id: string, @Body() body: { reason: string; rebook?: boolean; rebookDate?: string }, @Req() req: any) {
+    const by = await this.by(req);
+    return this.pickups.notPicked(Number(id), body, by.createdByName);
+  }
+
   @Post(':id/complete')
   @Roles(UserRole.DRIVER, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
   complete(@Param('id') id: string, @Body() body: CompleteDto, @Req() req: any) {

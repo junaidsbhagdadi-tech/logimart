@@ -84,7 +84,8 @@ export class ReportsService {
    */
   @Cron('0 8 * * *', { timeZone: 'Asia/Kolkata' })
   async scheduledDigest() {
-    if (String(process.env.DIGEST_AUTOSEND ?? 'true').toLowerCase() === 'false') return;
+    // Replaced by the 9 PM branch / All-India summary (DailySummaryService) — on only if DIGEST_AUTOSEND=true.
+    if (String(process.env.DIGEST_AUTOSEND ?? 'false').toLowerCase() !== 'true') return;
     if (!String(process.env.REPORTS_EMAIL || process.env.COMPANY_EMAIL || '').trim()) return;
     try {
       const r = await this.emailDailyDigest();

@@ -615,9 +615,9 @@ export class ShipmentsService {
     if (s.forwardingAwb && vend === 'DELHIVERY') {
       try { await this.delhivery.cancelLr(awb); carrierNotes.push('Delhivery LR cancelled'); }
       catch (e: any) { carrierNotes.push(`Delhivery cancel failed: ${e?.message ?? e}`); }
-    } else if (s.bdWaybill) {
-      // BlueDart has no single waybill-void API; flag for ops to cancel the pickup with BlueDart.
-      carrierNotes.push(`BlueDart waybill ${s.bdWaybill} — cancel the pickup with BlueDart manually`);
+    } else if (s.bdWaybill && !String(reason ?? '').includes('BlueDart')) {
+      // Plain cancel (not via carriers/cancel, which cancels the waybill with BlueDart first).
+      carrierNotes.push(`BlueDart waybill ${s.bdWaybill} — cancel it with BlueDart (use Cancel on the booking to do it automatically)`);
     }
 
     const flag = [reason || 'Voided (wrong AWB)', ...carrierNotes].join(' · ');
@@ -1097,6 +1097,15 @@ export class ShipmentsService {
     const s = await this.prisma.shipment.findUnique({ where: { awb: String(awbRaw || '').trim().toUpperCase() }, select: { createdById: true } });
     if (!s) throw new NotFoundException(`AWB ${awbRaw} not found`);
     if (s.createdById !== userId) throw new ForbiddenException('You can only attach documents to shipments you booked.');
+  }
+
+  /** A rider may cancel their own booking while it's still Booked — also after the carrier hand-off
+   *  (the carrier AWB is cancelled first, see CarriersService.cancelBooking). */
+  async assertRiderCanCancel(awbRaw: string, userId: bigint) {
+    const s = await this.prisma.shipment.findUnique({ where: { awb: String(awbRaw || '').trim().toUpperCase() }, select: { createdById: true, statusCode: true } });
+    if (!s) throw new NotFoundException(`AWB ${awbRaw} not found`);
+    if (s.createdById !== userId) throw new ForbiddenException('You can only cancel shipments you booked. Ask CS.');
+    if (String(s.statusCode || 'MAN') !== 'MAN') throw new ConflictException('Already picked up — ask CS to cancel it.');
   }
 
   async assertRiderCanEdit(awbRaw: string, userId: bigint) {

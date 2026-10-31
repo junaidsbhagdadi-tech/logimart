@@ -479,6 +479,9 @@ export const api = {
   carrierRates: (body: { clientId: number | string; product: string; originPincode?: string; destPincode: string; deadKg?: number; pcs?: number; declaredValue?: number }) =>
     request<{ originZone: string; destZone: string; isOda: boolean; options: { vendor: string; freight: number; subtotal: number; gst: number; total: number; basis?: string }[] }>('/api/v1/shipments/carrier-rates', { method: 'POST', body: JSON.stringify(body) }),
   portalAccounts: () => request<any[]>('/api/v1/portal/accounts'),
+  /** Cancel a booking — with its carrier first when handed off (BlueDart / Delhivery / XpressBees / Gati). */
+  cancelBooking: (awb: string, reason: string, force = false) =>
+    request<{ awb: string; status: string; carrierNote: string | null }>(`/api/v1/carriers/cancel/${awb}`, { method: 'POST', body: JSON.stringify({ reason, force }) }),
   cancelShipment: (awb: string, reason?: string) =>
     request<{ awb: string; status: string }>(`/api/v1/shipments/${awb}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
   bulkChangeAwbs: (rows: Record<string, any>[]) =>
@@ -910,6 +913,8 @@ export const api = {
   completePickup: (id: string, body: { awb?: string; forwardingNo?: string; weight?: number; pieces?: number; value?: number; destPincode?: string; consigneeName?: string; consigneePhone?: string; consigneeAddress?: string } = {}) =>
     request(`/api/v1/pickups/${id}/complete`, { method: 'POST', body: JSON.stringify(body) }),
   pickupDetail: (id: string) => request<any>(`/api/v1/pickups/${id}`),
+  pickupNotPicked: (id: string, body: { reason: string; rebook: boolean; rebookDate?: string }) =>
+    request<any>(`/api/v1/pickups/${id}/not-picked`, { method: 'POST', body: JSON.stringify(body) }),
   pickupHandoff: (id: string, body: { vendor?: string; toPay?: boolean; date?: string; token?: string; destPincode?: string; consigneeName?: string; consigneePhone?: string; consigneeAddress?: string; weight?: number; pieces?: number; value?: number } = {}) =>
     request<{ token: string | null; toPay?: boolean; outstation?: boolean; manual?: boolean }>(`/api/v1/pickups/${id}/handoff`, { method: 'POST', body: JSON.stringify(body) }),
 
