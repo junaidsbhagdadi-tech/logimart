@@ -60,12 +60,15 @@ const MAP = [
   [/DS Cargo/g, 'Dune Cargo'], [/DS CARGO/g, 'DUNE CARGO'], [/DsCargo/g, 'DuneCargo'],
   [/AR Logistics/g, 'Aster Logistics'], [/AR LOGISTICS/g, 'ASTER LOGISTICS'],
   [/DTDC/g, 'PRIME'],
+  // carriers' own web addresses shown on screen
+  [/authorcodesoftware\.in\/dsapi\/tracking\/Tracking\//g, 'tracking.dunecargo.example/'],
+  [/authorcodesoftware\.in/g, 'dunecargo.example'], [/arlogsolutionsindia\.com/g, 'aster.example'],
 ];
 
 // Anything matching these after the rewrite = a leak (case-insensitive). Lower-case module paths / routes
 // (bluedart/, delhivery/, gati/ …) are internal and allowed only in the API bundle's require() paths.
 const LEAKS = [/logimart/i, /excelex/i, /blue ?dart/i, /delhivery/i, /xpress ?bees/i, /allcargo/i, /\bgati\b/i, /velocia/i, /\bv express\b/i, /\bds cargo\b/i,
-  /tuvas/i, /urbanebolt/i, /urbanlogix/i, /07AAIFE6185E1ZC/, /347405000806/, /9967673566/, /71859599/, /mahipalpur/i, /aeroporto/i, /\bdtdc\b/i, /eshipz/i];
+  /tuvas/i, /urbanebolt/i, /urbanlogix/i, /07AAIFE6185E1ZC/, /347405000806/, /9967673566/, /71859599/, /mahipalpur/i, /aeroporto/i, /\bdtdc\b/i, /eshipz/i, /authorcodesoftware/i, /arlogsolutions/i];
 const ALLOWED = [/\b(bluedart|delhivery|xpressbees|dscargo|gati|vexpress|arl)_[a-z_]*\d*\b/g, /require\(["'][^"']*["']\)/g, /["']\.\/[a-z0-9/._-]+["']/g, /api\/v1\/[a-z0-9/_:-]+/g, /["']\/(bluedart|delhivery|gati|xpressbees|dscargo)[a-z0-9/_:-]*["']/g, /\b(bluedart|delhivery|xpressbees|dscargo|gati)[A-Za-z]*\b/g];
 
 const files = [];
