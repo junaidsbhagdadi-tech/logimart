@@ -231,7 +231,8 @@ const tier = (o, d) => (zoneOf(o) === zoneOf(d) ? 0 : region(o) === region(d) ? 
   for (const [ps, pe, kind] of periods) {
     for (const c of clients) {
       try {
-        const inv = await invoices.generate(Number(c.id), ps, `${pe}T23:59:59.999+05:30`);
+        const gen = await invoices.generate(Number(c.id), ps, `${pe}T23:59:59.999+05:30`);
+        const inv = gen.invoice ?? gen;
         const id = Number(inv.id);
         if (kind === 'mixed' && rnd() < 0.25) continue; // a few left as drafts for the demo
         await invoices.lockInvoice(id);
