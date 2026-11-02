@@ -1,4 +1,5 @@
 import { HttpException, HttpStatus } from '@nestjs/common';
+import { opsRecord } from '../../common/ops-hooks';
 
 /**
  * Brute-force protection for the login endpoints (staff email/password and rider ID/PIN). Rider IDs are
@@ -45,6 +46,9 @@ export const LoginGuard = {
   failed(account: string, ip: string) {
     fail(accounts, account, ACCOUNT_MAX);
     fail(ips, ip, IP_MAX);
+    opsRecord({ kind: 'security', level: 'warn', source: 'login', message: `Wrong password for ${account} from ${ip}`, fingerprint: 'login:failed', detail: { account, ip } });
+    if (accounts.get(account)?.lockedUntil) opsRecord({ kind: 'security', level: 'warn', source: 'login', message: `Login ${account} locked for 15 min (too many wrong passwords) — last from ${ip}`, fingerprint: 'login:locked', detail: { account, ip } });
+    if (ips.get(ip)?.lockedUntil && ips.get(ip)!.fails === IP_MAX) opsRecord({ kind: 'security', level: 'error', source: 'login', message: `Network ${ip} blocked — ${IP_MAX} wrong passwords in 15 min (possible attack)`, fingerprint: 'login:ipblock', detail: { ip } });
   },
   succeeded(account: string) {
     accounts.delete(account);

@@ -5,6 +5,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { DELHIVERY, DelAccount, delAccountFor, delAccounts, delConfigured } from './delhivery.config';
 import { deriveStatusFromBd } from '../bluedart/bd-status';
 import { cityName } from '../../common/place-name';
+import { opsJob } from '../../common/ops-hooks';
 
 /** Delhivery's /manifest form fields are parsed as PYTHON literals (their sample: `"master": False`) —
  *  JSON's true/false/null makes the field invalid ("value is not a valid list"). Serialise accordingly. */
@@ -45,7 +46,7 @@ export class DelhiveryService implements OnModuleInit {
   onModuleInit() {
     const mins = Number(process.env.DELHIVERY_SYNC_INTERVAL_MIN ?? 15);
     if (!delConfigured() || !(mins > 0)) return;
-    const t = setInterval(() => this.autoSync().catch((e) => this.log.warn(`auto-sync: ${e?.message || e}`)), mins * 60_000);
+    const t = setInterval(() => opsJob('Delhivery tracking sync', () => this.autoSync()).catch((e) => this.log.warn(`auto-sync: ${e?.message || e}`)), mins * 60_000);
     (t as any).unref?.();
     this.log.log(`Delhivery tracking auto-sync every ${mins} min.`);
   }

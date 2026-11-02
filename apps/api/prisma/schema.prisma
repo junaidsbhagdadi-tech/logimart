@@ -1786,3 +1786,51 @@ model WebhookLog {
   @@index([provider, createdAt])
   @@map("webhook_logs")
 }
+
+// ============================ OWNER CONSOLE (monitoring) ============================
+// Errors / security events / boots / alerts. 30-day retention (OpsService.prune).
+model OpsEvent {
+  id          BigInt   @id @default(autoincrement())
+  at          DateTime @default(now())
+  kind        String   // error | security | boot | alert | info
+  level       String   @default("info") // info | warn | error
+  source      String?  // route / job / module
+  message     String
+  fingerprint String?  // groups repeats of the same problem
+  userId      BigInt?
+  detail      Json?
+
+  @@index([kind, at])
+  @@index([fingerprint, at])
+  @@index([at])
+  @@map("ops_events")
+}
+
+// One row per minute the API was alive: traffic + errors + latency. A gap = downtime.
+model OpsMinute {
+  minute    DateTime @id
+  requests  Int      @default(0)
+  errors5xx Int      @default(0)
+  errors4xx Int      @default(0)
+  totalMs   Int      @default(0)
+  maxMs     Int      @default(0)
+  slowPath  String?
+  extCalls  Int      @default(0) // customer API (/api/ext) calls
+
+  @@map("ops_minutes")
+}
+
+// Background job / cron runs (carrier syncs, MIS, summaries, backups).
+model OpsJobRun {
+  id         BigInt    @id @default(autoincrement())
+  job        String
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  ok         Boolean?
+  summary    String?
+  error      String?
+
+  @@index([job, startedAt])
+  @@index([startedAt])
+  @@map("ops_job_runs")
+}

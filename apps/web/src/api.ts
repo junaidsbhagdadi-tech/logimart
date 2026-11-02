@@ -574,6 +574,13 @@ export const api = {
   // ---- users (admin) ----
   listUsers: () => request<any[]>('/api/v1/users'),
   attendance: (from: string, to: string) => request<any>(`/api/v1/attendance?from=${from}&to=${to}`),
+  // Owner console — needs an owner login + the X-Ops-Token issued after the emailed code.
+  opsRequestCode: () => request<{ ok: boolean; sentTo: string }>('/api/v1/ops/otp/request', { method: 'POST' }),
+  opsVerify: (code: string) => request<{ token: string; expiresAt: string }>('/api/v1/ops/otp/verify', { method: 'POST', body: JSON.stringify({ code }) }),
+  opsOverview: (t: string) => request<any>('/api/v1/ops/overview', { headers: { 'x-ops-token': t } }),
+  opsEvents: (t: string, p: { kind?: string; search?: string; fingerprint?: string; limit?: number }) => request<any[]>(`/api/v1/ops/events${qs(p)}`, { headers: { 'x-ops-token': t } }),
+  opsJob: (t: string, name: string) => request<any[]>(`/api/v1/ops/jobs/${encodeURIComponent(name)}`, { headers: { 'x-ops-token': t } }),
+  opsTestAlert: (t: string) => request<{ ok: boolean; to: string }>('/api/v1/ops/test-alert', { method: 'POST', headers: { 'x-ops-token': t } }),
   logoutEvent: () => request<{ ok: boolean }>('/api/v1/auth/logout', { method: 'POST', body: JSON.stringify({ via: 'web' }) }),
   createUser: (body: unknown) =>
     request('/api/v1/users', { method: 'POST', body: JSON.stringify(body) }),

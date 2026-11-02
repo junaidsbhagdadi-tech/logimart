@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/c
 import { PrismaService } from '../../prisma/prisma.service';
 import { cityName } from '../../common/place-name';
 import { deriveStatusFromBd } from '../bluedart/bd-status';
+import { opsJob } from '../../common/ops-hooks';
 
 /**
  * AR Logistics Pvt Ltd (vendor ARL) — from "AR_Logistics_Pvt_API.pdf":
@@ -41,7 +42,7 @@ export class ArlService implements OnModuleInit {
   onModuleInit() {
     const mins = Number(process.env.ARL_SYNC_INTERVAL_MIN ?? 30);
     if (!(mins > 0)) return;
-    const t = setInterval(() => this.autoSync().catch((e) => this.log.warn(`auto-sync: ${e?.message || e}`)), mins * 60_000);
+    const t = setInterval(() => opsJob('AR Logistics tracking sync', () => this.autoSync()).catch((e) => this.log.warn(`auto-sync: ${e?.message || e}`)), mins * 60_000);
     (t as any).unref?.();
   }
 

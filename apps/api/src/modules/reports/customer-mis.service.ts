@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { pinRows, placeName } from '../../common/place-name';
 import * as XLSX from 'xlsx';
+import { opsJob } from '../../common/ops-hooks';
 
 /**
  * Daily customer MIS — each customer gets EVERY shipment booked in the last 30 days (any status except
@@ -185,6 +186,6 @@ ${summary.ndr ? `<p style="font-size:12px;color:#667">of which NDR / undelivered
     const key = `CUSTOMER_MIS_RUN:${new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10)}`;
     const claimed = await this.prisma.integrationToken.create({ data: { provider: key, token: 'running', expiresAt: new Date(Date.now() + 3 * 864e5) } }).then(() => true).catch(() => false);
     if (!claimed) return;
-    await this.sendAll();
+    await opsJob('Customer MIS', () => this.sendAll(), (r: any) => `${r.sent}/${r.total} customers mailed`).catch(() => undefined);
   }
 }

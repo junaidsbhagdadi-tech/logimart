@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { deriveStatusFromBd } from '../bluedart/bd-status';
 import { XB, xbConfigured, xbTrackConfigured } from './xpressbees.config';
 import { cityName } from '../../common/place-name';
+import { opsJob } from '../../common/ops-hooks';
 
 /**
  * XpressBees B2B cargo API (docs: Push Preship Cargo Manifest v1.2.1, Generate Bulk AWB, Global
@@ -57,7 +58,7 @@ export class XpressBeesService implements OnModuleInit {
   onModuleInit() {
     const mins = Number(process.env.XB_SYNC_INTERVAL_MIN ?? 15);
     if (!xbTrackConfigured() || !(mins > 0)) return;
-    const t = setInterval(() => this.autoSync().catch((e) => this.log.warn(`auto-sync: ${e?.message || e}`)), mins * 60_000);
+    const t = setInterval(() => opsJob('XpressBees tracking sync', () => this.autoSync()).catch((e) => this.log.warn(`auto-sync: ${e?.message || e}`)), mins * 60_000);
     (t as any).unref?.();
     this.log.log(`XpressBees tracking auto-sync every ${mins} min.`);
   }

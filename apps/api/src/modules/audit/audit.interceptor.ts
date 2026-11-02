@@ -2,6 +2,7 @@ import { CallHandler, ExecutionContext, Injectable, Logger, NestInterceptor } fr
 import { Observable } from 'rxjs';
 import { catchError, tap } from 'rxjs/operators';
 import { PrismaService } from '../../prisma/prisma.service';
+import { opsRecord } from '../../common/ops-hooks';
 
 const MUTATING = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
 const ACTION: Record<string, string> = { POST: 'create', PATCH: 'update', PUT: 'update', DELETE: 'delete' };
@@ -50,6 +51,9 @@ export class AuditInterceptor implements NestInterceptor {
           },
         })
         .catch((e) => this.logger.warn(`audit write failed: ${(e as Error).message}`));
+      // Owner console: user / access changes and deletes are security-relevant.
+      if (status < 400 && (entity === 'users' || method === 'DELETE' || /\/(delete|void|purge|reset-password|grants|role)\b/.test(path)))
+        opsRecord({ kind: 'security', level: method === 'DELETE' ? 'warn' : 'info', source: entity ?? 'api', message: `${u.email ?? 'someone'} ${method} ${path}`, fingerprint: `audit:${entity}:${method}`, userId: u.sub ?? null, detail: { ip } });
     };
 
     return next.handle().pipe(

@@ -9,6 +9,7 @@ interface User {
   hubId?: string | null;
   department?: string | null;
   featureGrants?: string[] | Record<string, 'VIEW' | 'EDIT' | 'DELETE'> | null;
+  isOpsOwner?: boolean;
 }
 interface AuthCtx {
   user: User | null;

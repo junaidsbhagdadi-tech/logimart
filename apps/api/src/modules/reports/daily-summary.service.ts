@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RateService } from '../billing/rate.service';
+import { opsJob } from '../../common/ops-hooks';
 
 /**
  * End-of-day summary emails (9 PM IST). Branch mails (DEL / BOM — customers by their Branch) carry the
@@ -30,7 +31,7 @@ export class DailySummaryService {
   @Cron('0 21 * * *', { timeZone: 'Asia/Kolkata' })
   async scheduled() {
     if (String(process.env.DAILY_SUMMARY ?? 'true').toLowerCase() === 'false') return;
-    try { const r = await this.sendAll(); this.log.log(`Daily summary sent: ${r.sent}/${r.total}`); }
+    try { const r = await opsJob('Daily summary', () => this.sendAll(), (x) => `${x.sent}/${x.total} mails sent`); this.log.log(`Daily summary sent: ${r.sent}/${r.total}`); }
     catch (e: any) { this.log.error(`Daily summary failed: ${e?.message || e}`); }
   }
 

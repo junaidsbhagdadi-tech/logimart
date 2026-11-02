@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/c
 import { PrismaService } from '../../prisma/prisma.service';
 import { deriveStatusFromBd } from '../bluedart/bd-status';
 import { cityName } from '../../common/place-name';
+import { opsJob } from '../../common/ops-hooks';
 
 /**
  * Gati / Allcargo — "ACL2CUST" single-endpoint API (SOP "Single Endpoint API Architecture Using Request IDs",
@@ -93,7 +94,7 @@ export class GatiService implements OnModuleInit {
   onModuleInit() {
     const mins = Number(process.env.GATI_SYNC_INTERVAL_MIN ?? 30);
     if (!G.trackToken || !gatiConfigured() || !(mins > 0)) return;
-    const t = setInterval(() => this.autoSync().catch((e) => this.log.warn(`auto-sync: ${e?.message || e}`)), mins * 60_000);
+    const t = setInterval(() => opsJob('Gati tracking sync', () => this.autoSync()).catch((e) => this.log.warn(`auto-sync: ${e?.message || e}`)), mins * 60_000);
     (t as any).unref?.();
   }
 

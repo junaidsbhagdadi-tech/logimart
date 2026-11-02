@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { deriveStatusFromBd } from '../bluedart/bd-status';
+import { opsJob } from '../../common/ops-hooks';
 
 /**
  * DS Cargo — tracking only (no booking API). Open endpoint, no auth:
@@ -21,7 +22,7 @@ export class DsCargoService implements OnModuleInit {
   onModuleInit() {
     const mins = Number(process.env.DSCARGO_SYNC_INTERVAL_MIN ?? 30);
     if (!(mins > 0)) return;
-    const t = setInterval(() => this.autoSync().catch((e) => this.log.warn(`auto-sync: ${e?.message || e}`)), mins * 60_000);
+    const t = setInterval(() => opsJob('DS Cargo tracking sync', () => this.autoSync()).catch((e) => this.log.warn(`auto-sync: ${e?.message || e}`)), mins * 60_000);
     (t as any).unref?.();
   }
 

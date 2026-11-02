@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/c
 import { PrismaService } from '../../prisma/prisma.service';
 import { BLUEDART, bdConfigured } from './bluedart.config';
 import { deriveStatusFromBd, isFinalBdStatus } from './bd-status';
+import { opsJob } from '../../common/ops-hooks';
 
 /** The BlueDart account a shipment books under — its login + licence key + customer code + origin area. */
 interface BdAcc { loginId: string; licKey: string; customerCode: string; originArea: string; }
@@ -21,7 +22,7 @@ export class BluedartService implements OnModuleInit {
     if (!bdConfigured()) return;
     const mins = Number(process.env.BLUEDART_SYNC_INTERVAL_MIN ?? 15);
     if (!(mins > 0)) return;
-    const timer = setInterval(() => this.autoSync().catch((e) => this.logger.warn(`auto-sync: ${e?.message || e}`)), mins * 60_000);
+    const timer = setInterval(() => opsJob('BlueDart tracking sync', () => this.autoSync()).catch((e) => this.logger.warn(`auto-sync: ${e?.message || e}`)), mins * 60_000);
     (timer as any).unref?.();
     setTimeout(() => this.autoSync().catch(() => {}), 60_000); // first pass a minute after boot
     this.logger.log(`BlueDart tracking auto-sync every ${mins} min.`);
@@ -29,7 +30,7 @@ export class BluedartService implements OnModuleInit {
     // anyone clicking. Covers single AND bulk bookings. Set BLUEDART_DISPATCH_INTERVAL_MIN=0 to disable.
     const dmins = Number(process.env.BLUEDART_DISPATCH_INTERVAL_MIN ?? 5);
     if (dmins > 0) {
-      const dtimer = setInterval(() => this.dispatchPending().catch((e) => this.logger.warn(`auto-dispatch: ${e?.message || e}`)), dmins * 60_000);
+      const dtimer = setInterval(() => opsJob('BlueDart auto-dispatch', () => this.dispatchPending()).catch((e) => this.logger.warn(`auto-dispatch: ${e?.message || e}`)), dmins * 60_000);
       (dtimer as any).unref?.();
       setTimeout(() => this.dispatchPending().catch(() => {}), 90_000); // first pass ~1.5 min after boot
       this.logger.log(`BlueDart auto-dispatch every ${dmins} min.`);

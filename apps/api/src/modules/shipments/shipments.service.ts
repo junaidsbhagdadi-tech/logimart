@@ -15,6 +15,7 @@ import { BluedartService } from '../bluedart/bluedart.service';
 import { StorageService } from '../storage/storage.service';
 import { CreateShipmentDto } from './dto/create-shipment.dto';
 import { EWB_PENDING_WHERE, isEwbPending, normaliseEwbNo } from './ewb';
+import { opsJob } from '../../common/ops-hooks';
 
 @Injectable()
 export class ShipmentsService {
@@ -1058,6 +1059,8 @@ export class ShipmentsService {
 
   /** Every 15 min: an RTO whose return AWB has been DELIVERED back to the shipper closes as Returned (RTD). */
   @Cron('*/15 * * * *')
+  async closeDeliveredReturnsJob() { await opsJob('Close delivered RTOs', () => this.closeDeliveredReturns()).catch(() => undefined); }
+
   async closeDeliveredReturns() {
     const open = await this.prisma.shipment.findMany({ where: { rtoAwb: { not: null }, statusCode: 'RTO' }, select: { id: true, awb: true, rtoAwb: true } });
     if (!open.length) return { closed: 0 };

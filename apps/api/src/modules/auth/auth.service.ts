@@ -4,6 +4,7 @@ import { UserRole } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoginGuard } from './login-guard';
+import { isOpsOwnerEmail, opsAlert, opsRecord } from '../../common/ops-hooks';
 
 @Injectable()
 export class AuthService {
@@ -26,8 +27,20 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
     LoginGuard.succeeded(key);
+    if (['SYS_ADMIN', 'ADMIN'].includes(user.role) || isOpsOwnerEmail(user.email)) await this.watchAdminIp(user, ip);
     this.logEvent(user.id, 'IN', ip, 'web');
     return this.issue(user);
+  }
+
+  /** Owner console: an admin signing in from a network never seen for them before is worth an email. */
+  private async watchAdminIp(user: { id: bigint; email: string; fullName: string; role: string }, ip: string) {
+    try {
+      const seen = await this.prisma.loginLog.findFirst({ where: { userId: user.id, ip }, select: { id: true } });
+      const any = await this.prisma.loginLog.findFirst({ where: { userId: user.id }, select: { id: true } });
+      opsRecord({ kind: 'security', level: seen ? 'info' : 'warn', source: 'login', message: `${user.role} login: ${user.fullName} (${user.email}) from ${ip}${seen ? '' : ' — NEW network'}`, fingerprint: seen ? 'login:admin' : 'login:admin-newip', userId: user.id });
+      if (!seen && any) opsAlert(`newip:${user.id}:${ip}`, `${user.role} login from a new network: ${user.fullName}`, `${user.fullName} (${user.email}) signed in from ${ip}, which hasn't been used for this login before.
+If this wasn't expected, change the password and check the console.`);
+    } catch { /* never block a login */ }
   }
 
   /** Attendance trail: one row per sign-in / sign-out (never blocks the login). */
@@ -73,6 +86,7 @@ export class AuthService {
       riderCode: user.riderCode ?? null,
       department: user.department ?? null,
       ...flags,
+      isOpsOwner: isOpsOwnerEmail(user.email),
       featureGrants:
         Array.isArray(user.featureGrants) || (user.featureGrants && typeof user.featureGrants === 'object')
           ? (user.featureGrants as any)
@@ -110,6 +124,7 @@ export class AuthService {
         riderCode: user.riderCode ?? null,
         department: user.department ?? null,
         ...flags,
+        isOpsOwner: isOpsOwnerEmail(user.email),
         // Pass through either grant shape (legacy string[] OR { route: level } map) so a per-user
         // override actually reaches the client; null/other → department/role defaults apply.
         featureGrants:

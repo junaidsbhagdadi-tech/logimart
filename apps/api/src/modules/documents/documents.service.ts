@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
+import { opsJob } from '../../common/ops-hooks';
 
 const MAX_BYTES = 12 * 1024 * 1024; // 12 MB
 const ALLOWED = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/heic'];
@@ -89,6 +90,8 @@ export class DocumentsService {
    * Box pictures go as soon as the AWB is delivered (no grace).
    */
   @Cron('15 * * * *', { timeZone: 'Asia/Kolkata' }) // hourly — box pictures go soon after delivery
+  async purgeDeliveredDocsJob() { await opsJob('Document purge', () => this.purgeDeliveredDocs()).catch(() => undefined); }
+
   async purgeDeliveredDocs() {
     const days = Number(process.env.DOC_PURGE_DAYS ?? 7);
     if (!(days >= 0)) return { removed: 0 };

@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/c
 import { PrismaService } from '../../prisma/prisma.service';
 import { deriveStatusFromBd } from '../bluedart/bd-status';
 import { cityName } from '../../common/place-name';
+import { opsJob } from '../../common/ops-hooks';
 
 /**
  * V Express (Vijayant "ShipX" platform) — Velocia account 223882, from their Postman collection.
@@ -37,7 +38,7 @@ export class VExpressService implements OnModuleInit {
   onModuleInit() {
     const mins = Number(process.env.VXP_SYNC_INTERVAL_MIN ?? 30);
     if (!vxConfigured() || !(mins > 0)) return;
-    const t = setInterval(() => this.autoSync().catch((e) => this.log.warn(`auto-sync: ${e?.message || e}`)), mins * 60_000);
+    const t = setInterval(() => opsJob('V Express tracking sync', () => this.autoSync()).catch((e) => this.log.warn(`auto-sync: ${e?.message || e}`)), mins * 60_000);
     (t as any).unref?.();
   }
 

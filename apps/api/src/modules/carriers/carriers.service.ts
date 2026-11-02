@@ -11,6 +11,7 @@ import { VExpressService, isVExpressVendor, vxConfigured } from '../vexpress/vex
 import { ArlService, arlConfigured } from '../arlogistics/arl.service';
 import { DsCargoService, isDsCargoVendor } from '../dscargo/dscargo.service';
 import { ShipmentsService } from '../shipments/shipments.service';
+import { opsJob } from '../../common/ops-hooks';
 
 export type CarrierKind = 'BD' | 'DLY' | 'XB' | 'GATI' | 'VXP' | 'ARL' | 'DSC' | 'SELF' | 'OTHER';
 const NAMES: Record<CarrierKind, string> = { BD: 'BlueDart', DLY: 'Delhivery', XB: 'XpressBees', GATI: 'Gati', VXP: 'V Express', ARL: 'AR Logistics', DSC: 'DS Cargo', SELF: 'own network', OTHER: 'carrier' };
@@ -224,7 +225,7 @@ export class CarriersService implements OnModuleInit {
    *  auto-dispatch. A failure is kept on the shipment (CS exceptions inbox) and retried after 6 hours. */
   onModuleInit() {
     if (String(process.env.AUTO_HANDOFF ?? 'true').toLowerCase() === 'false') return;
-    const t = setInterval(() => this.autoHandoff().catch((e) => this.log.warn(`auto hand-off: ${e?.message || e}`)), 3 * 60_000);
+    const t = setInterval(() => opsJob('Carrier auto hand-off', () => this.autoHandoff()).catch((e) => this.log.warn(`auto hand-off: ${e?.message || e}`)), 3 * 60_000);
     (t as any).unref?.();
   }
 
