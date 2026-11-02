@@ -32,10 +32,11 @@ const PREFIX = 'db-backups/';
     await prisma.$disconnect();
   };
   try {
-    const { SPACES_ENDPOINT, SPACES_REGION, SPACES_BUCKET, SPACES_KEY, SPACES_SECRET } = process.env;
-    if (!SPACES_ENDPOINT || !SPACES_BUCKET || !SPACES_KEY || !SPACES_SECRET) throw new Error('SPACES_* not configured');
-
+    // local dump first — it still protects us when the off-site upload isn't possible
     execFileSync('bash', ['/root/db-backup.sh'], { stdio: 'inherit' });
+    const { SPACES_ENDPOINT, SPACES_REGION, SPACES_BUCKET, SPACES_KEY, SPACES_SECRET } = process.env;
+    if (!SPACES_ENDPOINT || !SPACES_BUCKET || !SPACES_KEY || !SPACES_SECRET) throw new Error('Local dump OK, but off-site copy NOT made: DO Spaces bucket / key / secret are not set in the server .env');
+
     const latest = fs.readdirSync(DIR).filter((f) => /^logimart-.*\.dump$/.test(f))
       .map((f) => ({ f, st: fs.statSync(path.join(DIR, f)) })).sort((a, b) => b.st.mtimeMs - a.st.mtimeMs)[0];
     if (!latest || Date.now() - latest.st.mtimeMs > 3600_000) throw new Error('no fresh dump was produced');
