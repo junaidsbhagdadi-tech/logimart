@@ -51,7 +51,7 @@ export class OpsService implements OnModuleInit, OnModuleDestroy {
         const b = this.bucket;
         b.requests++; b.totalMs += ms;
         if (status >= 500) b.e5++; else if (status >= 400) b.e4++;
-        if (ms > b.maxMs) { b.maxMs = ms; b.slowPath = `${method} ${p.split('?')[0].replace(/\/\d{3,}/g, '/:id').slice(0, 120)}`; }
+        if (ms > b.maxMs) { b.maxMs = ms; b.slowPath = `${method} ${p.split('?')[0].replace(/(\/webhooks\/[^/]+\/)[^/]+/, '$1:secret').replace(/\/\d{3,}/g, '/:id').slice(0, 120)}`; }
         if (p.startsWith('/api/ext')) b.ext++;
       },
       alert: (key, subject, body) => { this.securityAlert(key, subject, body).catch(() => undefined); },

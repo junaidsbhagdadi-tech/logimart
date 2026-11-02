@@ -14,7 +14,7 @@ export class OpsExceptionFilter extends BaseExceptionFilter {
       const status = exception instanceof HttpException ? exception.getStatus() : 500;
       if (status >= 500 && host.getType() === 'http') {
         const req = host.switchToHttp().getRequest();
-        const p = String(req?.originalUrl || req?.url || '').split('?')[0];
+        const p = String(req?.originalUrl || req?.url || '').split('?')[0].replace(/(\/webhooks\/[^/]+\/)[^/]+/, '$1:secret');
         const route = p.replace(/\/\d{3,}/g, '/:id').replace(/\/[A-Z]{1,4}\d{6,}/g, '/:awb');
         const msg = String(exception?.message || exception).slice(0, 500);
         opsRecord({

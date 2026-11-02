@@ -7,7 +7,7 @@ import { opsRecord } from '../../common/ops-hooks';
 const MUTATING = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
 const ACTION: Record<string, string> = { POST: 'create', PATCH: 'update', PUT: 'update', DELETE: 'delete' };
 // Skip noisy / sensitive paths (auth carries credentials; keep them out of the trail).
-const SKIP = [/\/auth\//, /\/uploads/, /\/documents\/\d+\/file/];
+const SKIP = [/\/webhooks\//, /\/auth\//, /\/uploads/, /\/documents\/\d+\/file/];
 
 /**
  * Append-only audit trail for mutating API calls. Records who (JWT), what (method

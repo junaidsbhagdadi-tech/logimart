@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, HttpCode, NotFoundException, Param, Post, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles } from '../../common/rbac/roles.decorator';
@@ -160,5 +160,23 @@ export class BluedartController {
   @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
   cancelPickup(@Body() body: { tokenNo: number | string; registrationDate?: string }) {
     return this.bd.cancelPickup(body?.tokenNo, body?.registrationDate);
+  }
+}
+
+/**
+ * BlueDart PUSH API receiver (status scans + POD images). Unauthenticated by JWT — the secret in the path is
+ * the key; anything else gets a 404. Give BlueDart:
+ *   https://erp.logimart.co.in/api/v1/webhooks/bluedart/<BD_PUSH_SECRET>
+ */
+@Controller('api/v1/webhooks')
+export class BluedartPushController {
+  constructor(private readonly bd: BluedartService) {}
+
+  @Post('bluedart/:secret')
+  @HttpCode(200)
+  async push(@Param('secret') secret: string, @Body() body: any, @Headers() headers: Record<string, string>) {
+    const want = String(process.env.BD_PUSH_SECRET || '');
+    if (!want || secret !== want) throw new NotFoundException();
+    return this.bd.pushWebhook(body, Object.keys(headers || {}));
   }
 }

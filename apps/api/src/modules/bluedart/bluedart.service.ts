@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { BLUEDART, bdConfigured } from './bluedart.config';
 import { deriveStatusFromBd, isFinalBdStatus } from './bd-status';
 import { opsJob } from '../../common/ops-hooks';
+import { StorageService } from '../storage/storage.service';
 
 /** The BlueDart account a shipment books under — its login + licence key + customer code + origin area. */
 interface BdAcc { loginId: string; licKey: string; customerCode: string; originArea: string; }
@@ -13,7 +14,7 @@ export class BluedartService implements OnModuleInit {
   private autoSyncing = false;
   private backfilling = false;
   private dispatching = false;
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly storage: StorageService) {}
 
   /** Periodically pull BlueDart tracking for open (handed-off, not-yet-delivered) shipments,
    *  so the tracking timeline stays live without anyone clicking. Interval-based (single pm2 instance);
@@ -992,5 +993,89 @@ export class BluedartService implements OnModuleInit {
       updated++;
     }
     return { scanned: rows.length, updated };
+  }
+
+  /**
+   * BlueDart PUSH API ("Advanced" status tracking): BlueDart posts { statustracking: [{ Shipment: { WaybillNo,
+   * RefNo, Scans: { ScanDetail: [...], DeliveryDetails, PODDCImages: { PODImage: [base64] } } } }] } to us.
+   * Each shipment is matched by its BD waybill (or our AWB, sent as the reference), the scans are merged into
+   * the timeline, the status moves forward like a tracking sync, and on delivery the receiver name + the POD
+   * image are kept (stored as our own copy). Images are stripped from the raw log.
+   */
+  async pushWebhook(body: any, headerNames: string[] = []) {
+    const pick = (o: any, k: string) => (o && typeof o === 'object' ? o[Object.keys(o).find((x) => x.toLowerCase() === k.toLowerCase()) ?? k] : undefined);
+    const arr = (v: any) => (Array.isArray(v) ? v : v ? [v] : []);
+    const items = arr(pick(body, 'statustracking') ?? (pick(body, 'Shipment') ? body : null));
+    const out: { waybill: string | null; awb: string | null; result: string }[] = [];
+    for (const it of items) {
+      const sh = pick(it, 'Shipment') ?? it;
+      const waybill = String(pick(sh, 'WaybillNo') ?? '').trim() || null;
+      const ref = String(pick(sh, 'RefNo') ?? '').trim() || null;
+      try { out.push({ waybill, ...(await this.applyPush(sh, waybill, ref, pick, arr)) }); }
+      catch (e: any) { out.push({ waybill, awb: null, result: `error: ${String(e?.message || e).slice(0, 200)}` }); }
+    }
+    // keep the raw call for support — without the (large) base64 images
+    const lean = JSON.parse(JSON.stringify(body ?? {}, (k, v) => (typeof v === 'string' && v.length > 2000 ? `[${v.length} chars]` : v)));
+    await this.prisma.webhookLog.create({ data: { provider: 'BDR_PUSH', payload: { ...lean, _headerNames: headerNames }, result: JSON.stringify(out).slice(0, 2000) } }).catch(() => undefined);
+    return { status: 'success', received: items.length, results: out };
+  }
+
+  private async applyPush(sh: any, waybill: string | null, ref: string | null, pick: (o: any, k: string) => any, arr: (v: any) => any[]) {
+    const or: any[] = [];
+    if (waybill) or.push({ bdWaybill: waybill }, { forwardingAwb: waybill });
+    if (ref) or.push({ awb: ref });
+    if (!or.length) return { awb: null, result: 'no waybill / reference' };
+    const s = await this.prisma.shipment.findFirst({ where: { OR: or }, select: { id: true, awb: true, statusCode: true, bdScans: true, bdWaybill: true, forwardingAwb: true, podUrl: true } });
+    if (!s) return { awb: null, result: 'not our shipment' };
+
+    const scansNode = pick(sh, 'Scans') ?? {};
+    const fresh = arr(pick(scansNode, 'ScanDetail') ?? pick(sh, 'ScanDetail')).map((x: any) => ({
+      scan: String(pick(x, 'Scan') ?? '').replace(/\s*\|\s*$/, '').trim() || null,
+      type: pick(x, 'ScanType') ?? null,
+      date: pick(x, 'ScanDate') ?? null, time: pick(x, 'ScanTime') ?? null,
+      location: pick(x, 'ScannedLocation') ?? null, locationCode: pick(x, 'ScannedLocationCode') ?? null,
+    }));
+    // dd-mm-yyyy + hhmm (IST) → Date
+    const when = (d?: string | null, t?: string | null) => {
+      const m = String(d ?? '').match(/^(\d{2})-(\d{2})-(\d{4})$/);
+      if (!m) return null;
+      const hh = String(t ?? '0000').padStart(4, '0');
+      const v = new Date(`${m[3]}-${m[2]}-${m[1]}T${hh.slice(0, 2)}:${hh.slice(2, 4)}:00+05:30`);
+      return isNaN(+v) ? null : v;
+    };
+    let old: any[] = [];
+    try { old = s.bdScans ? JSON.parse(s.bdScans) : []; } catch { old = []; }
+    const key = (x: any) => `${x.date}|${x.time}|${x.scan}`;
+    const seen = new Set(old.map(key));
+    const merged = [...old, ...fresh.filter((x) => !seen.has(key(x)))]
+      .sort((a, b) => (+(when(b.date, b.time) ?? 0)) - (+(when(a.date, a.time) ?? 0))); // newest first, like the pull
+    const top = merged[0];
+    const bdStatus = top?.scan ?? null;
+    const derived = bdStatus ? deriveStatusFromBd(s.statusCode, bdStatus) : null;
+
+    const dd = pick(scansNode, 'DeliveryDetails') ?? pick(sh, 'DeliveryDetails') ?? {};
+    const receivedBy = String(pick(dd, 'ReceivedBy') ?? pick(dd, 'ReceviedBy') ?? '').trim() || null;
+    const imgs = pick(scansNode, 'PODDCImages') ?? pick(sh, 'PODDCImages') ?? {};
+    const pod = [...arr(pick(imgs, 'PODImage')), ...arr(pick(imgs, 'DCImage'))].map((x) => String(x ?? '').trim()).find((x) => x.length > 200 && !x.startsWith('{'));
+    let podUrl: string | null | undefined;
+    if (pod && !s.podUrl) {
+      const b64 = pod.replace(/^data:[^;]+;base64,/, '');
+      const mime = b64.startsWith('/9j/') ? 'image/jpeg' : b64.startsWith('iVBOR') ? 'image/png' : b64.startsWith('JVBER') ? 'application/pdf' : 'image/jpeg';
+      podUrl = await this.storage.store(`data:${mime};base64,${b64}`, 'pod');
+    }
+
+    await this.prisma.shipment.update({
+      where: { id: s.id },
+      data: {
+        ...(waybill && !s.bdWaybill ? { bdWaybill: waybill, forwardingAwb: s.forwardingAwb ?? waybill } : {}),
+        ...(merged.length ? { bdScans: JSON.stringify(merged) } : {}),
+        ...(bdStatus ? { bdStatus } : {}),
+        ...(derived ? { statusCode: derived.statusCode, status: derived.status, statusAt: when(top?.date, top?.time) ?? new Date() } : {}),
+        ...(receivedBy ? { podReceivedBy: receivedBy.slice(0, 120) } : {}),
+        ...(podUrl ? { podUrl } : {}),
+        bdSyncedAt: new Date(),
+      },
+    });
+    return { awb: s.awb, result: `${fresh.length} scan(s)${derived ? ` → ${derived.statusCode}` : ''}${podUrl ? ' + POD image' : ''}` };
   }
 }
