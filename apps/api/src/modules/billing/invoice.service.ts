@@ -403,7 +403,7 @@ export class InvoiceService {
     const [ships, lineItems, payAgg] = await Promise.all([
       this.prisma.shipment.findMany({
         where: { createdAt: { gte, lte }, ...(scope ? { clientId: { in: scope } } : {}) },
-        include: { pieces: { select: { status: true, deadKg: true, volKg: true, lengthCm: true, widthCm: true, heightCm: true } },
+        select: { id: true, clientId: true, pieceCount: true, totalDeadKg: true, totalVolKg: true, chargeWeight: true, statusCode: true,
           client: { select: { legalName: true, accountCode: true, outstandingBal: true } } },
       }),
       this.prisma.invoiceLineItem.findMany({
@@ -434,13 +434,18 @@ export class InvoiceService {
     }
     // Not yet invoiced (the current month, before the billing run) → priced live by the rate engine, so the
     // MIS shows sales every day instead of ₹0 until month-end. Cancelled AWBs are never sales.
-    const unbilled = ships.filter((s) => !billedIds.has(s.id.toString()) && String(s.statusCode || '') !== 'CAN');
+    // Loaded and priced in pages of 300 (a month is ~14k AWBs — all of them with their boxes at once ran the
+    // process out of memory).
+    const unbilledIds = ships.filter((s) => !billedIds.has(s.id.toString()) && String(s.statusCode || '') !== 'CAN').map((s) => s.id);
     const priceOne = async (s: any) => {
       const b: any = await this.rates.chargesForShipment(s, s.pieces).catch(() => null);
       const r = M.get(String(s.clientId)); if (!r || !b) return;
       const amt = Number(b.subtotal || 0); r.totalSales += amt; r.fuel += Number(b.fuel || 0); r.tax += amt * 0.18; r.estimated = (r.estimated || 0) + 1;
     };
-    for (let i = 0; i < unbilled.length; i += 12) await Promise.all(unbilled.slice(i, i + 12).map(priceOne));
+    for (let p = 0; p < unbilledIds.length; p += 300) {
+      const page = await this.prisma.shipment.findMany({ where: { id: { in: unbilledIds.slice(p, p + 300) } }, include: { pieces: { select: { status: true, deadKg: true, volKg: true, lengthCm: true, widthCm: true, heightCm: true } } } });
+      for (let i = 0; i < page.length; i += 12) await Promise.all(page.slice(i, i + 12).map(priceOne));
+    }
     const rows = [...M.values()].map((r) => ({ ...r, actlKg: n2(r.actlKg), chrgKg: n2(r.chrgKg), totalSales: n2(r.totalSales), fuel: n2(r.fuel), tax: n2(r.tax), netSales: n2(r.totalSales), cashReceived: n2(r.cashReceived), outstanding: n2(r.outstanding) }))
       .sort((a, b) => b.totalSales - a.totalSales);
     const totals: any = {};

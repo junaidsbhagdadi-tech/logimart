@@ -90,17 +90,21 @@ export class DailySummaryService {
 
   /** Sales (pre-GST): the invoiced amount where billed, else the rate engine's price — today and month-to-date. */
   private async sales(month: Date, today: Date) {
-    const ships = await this.prisma.shipment.findMany({
-      where: { createdAt: { gte: month }, NOT: { statusCode: 'CAN' }, client: { isCash: false } },
-      include: { pieces: { select: { status: true, deadKg: true, volKg: true, lengthCm: true, widthCm: true, heightCm: true } }, invoiceLines: { select: { amount: true }, take: 1 } },
-    });
+    // ids first, then pages of 300 with their boxes — a whole month loaded at once can exhaust the API's memory
+    const ids = (await this.prisma.shipment.findMany({ where: { createdAt: { gte: month }, NOT: { statusCode: 'CAN' }, client: { isCash: false } }, select: { id: true } })).map((x) => x.id);
     let mtd = 0, td = 0, estimated = 0;
     const one = async (s: any) => {
       let amt = s.invoiceLines?.[0] ? Number(s.invoiceLines[0].amount) : NaN;
       if (isNaN(amt)) { const b: any = await this.rates.chargesForShipment(s, s.pieces).catch(() => null); amt = Number(b?.subtotal ?? 0); estimated++; }
       mtd += amt; if (+s.createdAt >= +today) td += amt;
     };
-    for (let i = 0; i < ships.length; i += 12) await Promise.all(ships.slice(i, i + 12).map(one));
+    for (let p = 0; p < ids.length; p += 300) {
+      const ships = await this.prisma.shipment.findMany({
+        where: { id: { in: ids.slice(p, p + 300) } },
+        include: { pieces: { select: { status: true, deadKg: true, volKg: true, lengthCm: true, widthCm: true, heightCm: true } }, invoiceLines: { select: { amount: true }, take: 1 } },
+      });
+      for (let i = 0; i < ships.length; i += 12) await Promise.all(ships.slice(i, i + 12).map(one));
+    }
     return { today: +td.toFixed(2), mtd: +mtd.toFixed(2), estimated };
   }
 
