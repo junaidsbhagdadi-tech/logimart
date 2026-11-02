@@ -182,6 +182,14 @@ export class ShipmentsService {
     // Volumetric config for this customer × product × vendor (divisor + surface CFT), so the stored
     // volumetric matches the engine's billing basis (surface uses CFT, not ÷5000).
     const vc = await this.rates.volConfigFor(dto.clientId, String(dto.product ?? ''), (dto as any).vendor).catch(() => ({ divisor: VOLUMETRIC_DIVISOR, cft: 0 }));
+    // Weights / sizes must be positive on EVERY path (bulk upload and the API skip the form's checks —
+    // a -8 kg box once got booked).
+    dto.pieces.forEach((p, i) => {
+      if (!(Number(p.deadKg) > 0)) throw new BadRequestException(`Box ${i + 1}: weight must be more than 0 kg (got ${p.deadKg}).`);
+      for (const [k, v] of [['length', p.lengthCm], ['width', p.widthCm], ['height', p.heightCm]] as const) {
+        if (v != null && Number(v) < 0) throw new BadRequestException(`Box ${i + 1}: ${k} can't be negative.`);
+      }
+    });
     const pieces = dto.pieces.map((p, i) => {
       const sequenceNo = i + 1;
       const childId = `${awb}-${String(sequenceNo).padStart(3, '0')}`;
@@ -419,7 +427,8 @@ export class ShipmentsService {
     const date = dto.date ? new Date(dto.date) : null;
     await this.prisma.shipment.update({
       where: { id: s.id },
-      data: { apptDelivery: date != null, apptDate: date, customerRemark: dto.remark?.trim() || null, customerRemarkAt: new Date() },
+      // A new note from the customer must light the CS bell again (clear the earlier "done").
+      data: { apptDelivery: date != null, apptDate: date, customerRemark: dto.remark?.trim() || null, customerRemarkAt: new Date(), customerRemarkAckAt: null },
     });
     return { ok: true };
   }
@@ -1472,6 +1481,8 @@ export class ShipmentsService {
   ) {
     const shipment = await this.prisma.shipment.findUnique({ where: { awb }, include: { pieces: true } });
     if (!shipment) throw new NotFoundException(`AWB ${awb} not found`);
+    const bad = lines.find((l) => !(Number(l.actualKg) > 0));
+    if (bad) throw new BadRequestException(`Box ${bad.sequenceNo}: weight must be more than 0 kg.`);
 
     const bySeq = new Map(lines.map((l) => [l.sequenceNo, l]));
     const now = new Date();

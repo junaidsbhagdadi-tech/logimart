@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { DELHIVERY, DelAccount, delAccountFor, delAccounts, delConfigured } from './delhivery.config';
 import { deriveStatusFromBd } from '../bluedart/bd-status';
@@ -31,7 +32,7 @@ export class DelhiveryService implements OnModuleInit {
   private syncing = false;
   /** The Delhivery account (vendor code) the current operation runs under — set by withAccount(). */
   private readonly acctCtx = new AsyncLocalStorage<DelAccount>();
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly storage: StorageService) {}
 
   private acct(): DelAccount { return this.acctCtx.getStore() ?? delAccounts()[0]; }
   /** Run fn under the account that matches this shipment's vendor code. */
@@ -66,6 +67,7 @@ export class DelhiveryService implements OnModuleInit {
         },
         select: { awb: true }, orderBy: { createdAt: 'desc' }, take: 300,
       });
+      await this.backfillPods(50).catch(() => null);
       for (const r of rows) {
         try { await this.syncTracking(r.awb); } catch { /* not an LR / not found — keep going */ }
         await new Promise((res) => setTimeout(res, 400));
@@ -446,7 +448,44 @@ export class DelhiveryService implements OnModuleInit {
     // Write the carrier status through to our milestone (same mapper as BlueDart) so lists/dashboards are right.
     const derived = status ? deriveStatusFromBd(s?.statusCode, String(status)) : null;
     if (status) await this.prisma.shipment.updateMany({ where: { awb }, data: { bdStatus: String(status), ...(derived ? { statusCode: derived.statusCode, status: derived.status, statusAt: new Date() } : {}) } });
+    if ((derived?.statusCode ?? s?.statusCode) === 'DLD') await this.fetchPod(awb, lrn).catch(() => null);
     return { awb, lrn, status, location: scan?.location ?? scan?.current_location ?? null, tracking: r };
+  }
+
+  /**
+   * Delhivery's signed last-mile POD (GET /document/download?doc_type=LM_POD&lrn=) — a short-lived S3 link to a
+   * PDF. Downloaded once and kept as OUR copy (Spaces / inline) on shipment.podUrl, so it shows on the tracker
+   * and in the POD zip long after Delhivery's link expires. Runs inside the shipment's account context.
+   */
+  private async fetchPod(awb: string, lrn: string) {
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, podUrl: true } });
+    if (!s || s.podUrl) return null;
+    const r: any = await this.req(`/document/download?doc_type=LM_POD&lrn=${encodeURIComponent(lrn)}`, { method: 'GET' });
+    const url = r?.data?.files?.[0]?.url;
+    if (!url) return null;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const mime = (res.headers.get('content-type') || 'application/pdf').split(';')[0];
+    const data = Buffer.from(await res.arrayBuffer());
+    if (!data.length) return null;
+    const stored = await this.storage.store(`data:${mime};base64,${data.toString('base64')}`, 'pod');
+    await this.prisma.shipment.update({ where: { id: s.id }, data: { podUrl: stored } });
+    return stored;
+  }
+
+  /** Bring across the POD for delivered Delhivery shipments that don't have one yet (also the backfill). */
+  async backfillPods(limit = 300) {
+    const rows = await this.prisma.shipment.findMany({
+      where: { statusCode: 'DLD', podUrl: null, forwardingAwb: { not: null }, OR: [{ vendor: { startsWith: 'DLY', mode: 'insensitive' } }, { vendor: { contains: 'DELHIVERY', mode: 'insensitive' } }] },
+      select: { awb: true, forwardingAwb: true, vendor: true }, orderBy: { statusAt: 'desc' }, take: limit,
+    });
+    let got = 0;
+    for (const x of rows) {
+      const ok = await this.withAccount(x.vendor, () => this.fetchPod(x.awb, x.forwardingAwb!)).catch(() => null);
+      if (ok) got++;
+      await new Promise((res) => setTimeout(res, 300));
+    }
+    return { checked: rows.length, fetched: got };
   }
 
   /** Signed URL(s) for the shipping label of an LR. */

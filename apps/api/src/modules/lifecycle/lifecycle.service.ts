@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundEx
 import { ShipmentStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { resolveScannedAwb } from '../../common/resolve-awb';
-import { cityName } from '../../common/place-name';
+import { cityName, pinRows, placeName } from '../../common/place-name';
 import { effectiveCode } from '../bluedart/bd-status';
 import { RateService } from '../billing/rate.service';
 import { StorageService } from '../storage/storage.service';
@@ -95,11 +95,21 @@ export class LifecycleService {
     // #15 — flag the contact(s) at the shipment's CURRENT branch so CS knows exactly who to call now.
     const curLocs = [s.currentLocation, s.destHub?.code, s.destHub?.name].filter(Boolean).map((x: string) => String(x).toUpperCase());
     const isCurrent = (c: any) => { const cl = c.location.toUpperCase(); return curLocs.some((l) => l.includes(cl) || cl.includes(l)); };
-    // Prefer route-matched contacts; if none match a location, show all so the team still has someone to call.
-    // Current-branch contacts sort first.
-    const out = (matched.length ? matched : contacts)
+    // Only the route-matched contacts are listed (current branch first); the rest of the carrier's branches
+    // are reachable through the search box on the tracker, not dumped in full.
+    const out = matched
       .map((c) => ({ location: c.location, product: c.product, name: c.personName, phone: c.phone, email: c.email, role: c.role, current: isCurrent(c) }));
     return out.sort((a, b) => Number(b.current) - Number(a.current));
+  }
+
+  /** The carrier's whole branch directory — searched on the tracker ("who do I call in Agra?"). */
+  private async vendorDirectoryFor(s: any) {
+    const code = s?.vendor;
+    if (!code) return [];
+    const vendor = await this.prisma.vendor.findFirst({ where: { OR: [{ vendorCode: code }, { name: code }] }, select: { id: true } });
+    if (!vendor) return [];
+    const contacts = await this.prisma.vendorContact.findMany({ where: { vendorId: vendor.id, isActive: true }, orderBy: { location: 'asc' }, take: 1000 });
+    return contacts.map((c) => ({ location: c.location, product: c.product, name: c.personName, phone: c.phone, email: c.email, role: c.role, current: false }));
   }
 
   /** Record a milestone scan for one or more AWBs. DLD requires a POD image. Terminal states
@@ -342,6 +352,7 @@ export class LifecycleService {
       deliveryPod: await this.storage.resolve(s.podUrl),
       pickupPod: await this.storage.resolve(s.pickupPodUrl),
       vendorContacts: await this.vendorContactsFor(s),
+      vendorDirectory: clientId == null ? await this.vendorDirectoryFor(s) : [],
       consignee: {
         name: s.consigneeName, phone: s.consigneePhone, contact: (s as any).consigneeContact ?? null,
         address: s.consigneeAddress, city: s.consigneeCity, state: (s as any).consigneeState ?? null,
@@ -408,20 +419,21 @@ export class LifecycleService {
   /** #16 — Customer-left remarks awaiting CS attention (unacknowledged, not yet closed). Feeds the CS
    *  prompt bell so a note (contact number, instruction, next-day appt) reaches CS, not just tracking. */
   async customerRequests(scope?: bigint[] | null) {
-    const rows = await this.prisma.shipment.findMany({
+    const candidates = await this.prisma.shipment.findMany({
       where: {
         ...(scope ? { clientId: { in: scope } } : {}),
         customerRemark: { not: null },
-        customerRemarkAckAt: null,
-        statusCode: { notIn: ['DLD', 'RTD', 'CAN'] },
+        customerRemarkAt: { gte: new Date(Date.now() - 30 * 864e5) },
       },
-      orderBy: { customerRemarkAt: 'desc' }, take: 200,
+      orderBy: { customerRemarkAt: 'desc' }, take: 400,
       select: {
-        awb: true, customerRemark: true, customerRemarkAt: true, apptDate: true, apptDelivery: true,
+        awb: true, customerRemark: true, customerRemarkAt: true, customerRemarkAckAt: true, apptDate: true, apptDelivery: true,
         consigneeName: true, consigneeCity: true, destZone: true, statusCode: true,
         client: { select: { legalName: true, accountCode: true } },
       },
     });
+    // Unhandled = never marked done, or the customer wrote again after it was marked done.
+    const rows = candidates.filter((r) => !r.customerRemarkAckAt || (r.customerRemarkAt && +r.customerRemarkAt > +r.customerRemarkAckAt)).slice(0, 200);
     return rows.map((r) => ({
       awb: r.awb, remark: r.customerRemark, remarkAt: r.customerRemarkAt,
       apptDate: r.apptDelivery ? r.apptDate : null,
@@ -451,6 +463,7 @@ export class LifecycleService {
   }
 
   async csDashboard(from?: string, to?: string, f: DashFilter = {}) {
+    const awbs0 = (list: { awb: string }[]) => list.map((x) => x.awb);
     // Whole IST days (the end date used to stop at 23:59 UTC = 05:29 IST next day / start at 05:30 IST).
     const gte = from ? new Date(`${from}T00:00:00+05:30`) : new Date(Date.now() - 30 * 86400000);
     const lte = to ? new Date(`${to}T23:59:59.999+05:30`) : new Date();
@@ -458,8 +471,21 @@ export class LifecycleService {
     const ships = await this.prisma.shipment.findMany({
       where: { createdAt: { gte, lte }, statusCode: { notIn: ['DLD', 'RTD', 'CAN'] }, ...this.dashWhere(f) },
       orderBy: { createdAt: 'asc' }, take: 5000,
-      select: { awb: true, statusCode: true, statusAt: true, createdAt: true, vendor: true, forwardingAwb: true, consigneeName: true, consigneePhone: true, consigneeCity: true, destZone: true, expectedDelivery: true, exceptionFlag: true, bdScans: true, client: { select: { legalName: true, accountCode: true } } },
+      select: { awb: true, statusCode: true, statusAt: true, createdAt: true, vendor: true, forwardingAwb: true, consigneeName: true, consigneePhone: true, consigneeCity: true, destZone: true, destPincode: true, shipperCity: true, shipperPincode: true, originZone: true, originLocation: true, currentLocation: true, bdStatus: true, bdSyncedAt: true, expectedDelivery: true, exceptionFlag: true, bdScans: true, client: { select: { legalName: true, accountCode: true } } },
     });
+    // Full place names (pincode master → city / area), not the 3-letter codes the cities are stored as.
+    const pins = await pinRows(this.prisma, ships.flatMap((s) => [s.shipperPincode, s.destPincode]));
+    // Latest scan we hold per AWB (our own scan log) — the carrier's own latest text wins when newer.
+    const lastScan = new Map<string, { code: string; at: Date; where: string | null }>();
+    for (let i = 0; i < awbs0(ships).length; i += 2000) {
+      const chunk = awbs0(ships).slice(i, i + 2000);
+      const latest = await this.prisma.scanLog.groupBy({ by: ['awb'], where: { awb: { in: chunk } }, _max: { scanAt: true } });
+      const keys = latest.filter((r) => r._max.scanAt).map((r) => ({ awb: r.awb, scanAt: r._max.scanAt! }));
+      if (keys.length) {
+        const rows = await this.prisma.scanLog.findMany({ where: { OR: keys }, select: { awb: true, eventType: true, scanAt: true, serviceCenter: true } });
+        for (const r of rows) lastScan.set(r.awb, { code: r.eventType, at: r.scanAt, where: r.serviceCenter });
+      }
+    }
     // Pickup date: our own PKD scan (earliest), else the carrier's "picked up" scan from the BlueDart history.
     const pickedAt = new Map<string, Date>();
     const awbs = ships.map((s) => s.awb);
@@ -488,8 +514,18 @@ export class LifecycleService {
         awb: s.awb, customer: s.client?.legalName ?? '', code: s.client?.accountCode ?? '',
         vendor: s.vendor ?? '', forwardingAwb: s.forwardingAwb ?? '', bookedAt: s.createdAt,
         pickedAt: pickedAt.get(s.awb) ?? bdPicked(s.bdScans) ?? null,
-        consignee: s.consigneeName ?? '', phone: s.consigneePhone ?? '', destination: s.consigneeCity ?? s.destZone ?? '',
+        consignee: s.consigneeName ?? '', phone: s.consigneePhone ?? '',
+        origin: placeName(s.shipperCity ?? s.originLocation, pins.get(String(s.shipperPincode || '')), s.originZone),
+        destination: placeName(s.consigneeCity, pins.get(String(s.destPincode || '')), s.destZone),
         statusCode: code, status: labelOf(code),
+        // what last happened: the carrier's latest scan text when synced after our last scan, else ours
+        lastScan: (() => {
+          const ours = lastScan.get(s.awb);
+          const carrierNewer = s.bdStatus && (!ours || (s.bdSyncedAt && +s.bdSyncedAt > +ours.at));
+          if (carrierNewer) return { text: String(s.bdStatus), at: s.bdSyncedAt ?? s.statusAt ?? null, where: s.currentLocation ?? null };
+          if (ours) return { text: labelOf(ours.code), at: ours.at, where: ours.where ?? s.currentLocation ?? null };
+          return { text: labelOf(code), at: s.statusAt ?? s.createdAt, where: s.currentLocation ?? null };
+        })(),
         ageDays: Math.floor((now - new Date(s.createdAt).getTime()) / 86400000),
         edd: s.expectedDelivery ?? null, overdue: !!edd && now > edd,
         ndr: code === 'UDL', remark: s.exceptionFlag ?? null,

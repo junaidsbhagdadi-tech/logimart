@@ -61,7 +61,7 @@ export function SalesMis() {
           <button onClick={load} disabled={busy}>{busy ? 'Loading…' : '🔍 Search'}</button>
           <button className="secondary" onClick={exportXls} disabled={!data?.rows.length}>⬇ Excel</button>
         </div>
-        <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>Per-customer sales, weights, status and receivables for the period. Sales come from billed AWBs; outstanding is the live balance.</p>
+        <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>Per-customer sales, weights, status and receivables for the period. Sales = the invoiced amount for billed AWBs, and the rate-card price for AWBs not invoiced yet{data?.totals?.estimated ? ` (${data.totals.estimated} priced live)` : ''}; outstanding is the live balance.</p>
       </div>
       {error && <div className="error">{error}</div>}
       {data && (

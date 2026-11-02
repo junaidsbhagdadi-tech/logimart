@@ -316,7 +316,7 @@ function NewBooking({ onBooked }: { onBooked: (awb: string) => void }) {
         const vol = surface ? (cm3 / 27000) * 6 : cm3 / 5000;
         const actual = Number(kg) || 0;
         return (
-          <div style={{ background: 'var(--bg-soft, #e8f4f1)', borderRadius: 8, padding: '7px 10px', fontSize: 12.5, fontWeight: 600, margin: '-2px 0 10px' }}>
+          <div style={{ background: 'var(--surface-2, #e8f4f1)', color: 'var(--text, #1d2a2a)', border: '1px solid var(--border, #cfe3dd)', borderRadius: 8, padding: '7px 10px', fontSize: 12.5, fontWeight: 600, margin: '-2px 0 10px' }}>
             Vendor volumetric: {vol.toFixed(2)} kg <span className="muted" style={{ fontWeight: 400 }}>({!product ? 'pick a product' : surface ? 'surface · 6 CFT' : 'air · ÷5000'})</span>
             {actual > 0 && <> · charged ≈ <b>{Math.max(vol, actual).toFixed(2)} kg</b></>}
           </div>

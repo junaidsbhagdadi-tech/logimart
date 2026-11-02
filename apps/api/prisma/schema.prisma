@@ -744,6 +744,7 @@ model PickupRequest {
   notPickedReason String?
   notPickedAt     DateTime?
   rebookDate      DateTime? @db.Date
+  csActionedAt    DateTime? // CS marked the request "done" on the pickup-requests popup (drops off it)
   createdAt     DateTime     @default(now())
 
   @@index([status, createdAt])
@@ -1772,4 +1773,16 @@ model VendorPaymentAllocation {
 
   @@index([invoiceId])
   @@map("vendor_bill_payment_allocations")
+}
+
+/// Raw inbound carrier webhooks (XpressBees status / POD pushes) — kept for checking what they send.
+model WebhookLog {
+  id        BigInt   @id @default(autoincrement())
+  provider  String
+  payload   Json
+  result    String?
+  createdAt DateTime @default(now())
+
+  @@index([provider, createdAt])
+  @@map("webhook_logs")
 }

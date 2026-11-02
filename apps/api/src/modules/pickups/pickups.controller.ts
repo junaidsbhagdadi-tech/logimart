@@ -34,6 +34,8 @@ class CompleteDto {
   @IsOptional() @IsString() awb?: string;
   // the vendor's AWB — our internal AWB is generated and this is stored as the forwarding no
   @IsOptional() @IsString() forwardingNo?: string;
+  // when it was really picked (YYYY-MM-DD or ISO); default = the hand-off day
+  @IsOptional() @IsString() pickedAt?: string;
   @IsOptional() @IsNumber() weight?: number;
   @IsOptional() @IsInt() pieces?: number;
   @IsOptional() @IsNumber() value?: number;
@@ -125,6 +127,19 @@ export class PickupsController {
   @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
   assign(@Param('id') id: string, @Body() dto: AssignDto) {
     return this.pickups.assign(Number(id), dto.riderId);
+  }
+
+  /** CS actioned the request → it drops off the pickup-requests popup. */
+  @Post(':id/actioned')
+  @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  actioned(@Param('id') id: string) { return this.pickups.markActioned(Number(id)); }
+
+  /** CS cancels a pickup request (with a reason). */
+  @Post(':id/cancel')
+  @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
+  async cancel(@Param('id') id: string, @Body() body: { reason?: string }, @Req() req: any) {
+    const by = await this.by(req);
+    return this.pickups.cancel(Number(id), String(body?.reason ?? ''), by.createdByName);
   }
 
   /** Not collected — reason, then rebook (back to Requested, new hand-off) or close. */

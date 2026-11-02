@@ -76,12 +76,12 @@ export class LifecycleController {
 
   /** #16 — customer remarks awaiting CS attention (feeds the CS prompt bell). */
   @Get('customer-requests')
-  @Roles(...OPS, UserRole.SALES)
+  @Roles(...OPS, UserRole.SALES, UserRole.ADMIN)
   async customerRequests(@Req() req: any) { return this.svc.customerRequests(await this.scope(req)); }
 
   /** #16 — CS acknowledges a customer remark (clears it from the prompt). */
   @Post('customer-requests/:awb/ack')
-  @Roles(...OPS, UserRole.SALES)
+  @Roles(...OPS, UserRole.SALES, UserRole.ADMIN)
   ackCustomerRemark(@Param('awb') awb: string) { return this.svc.ackCustomerRemark(awb); }
 
   /** Customer-Service dashboard — pending/stuck shipments + NDR. */

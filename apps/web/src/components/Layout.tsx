@@ -106,7 +106,8 @@ export function Layout() {
   // Customer pickup requests awaiting CS hand-off (not yet handed to a vendor).
   const [pendPickups, setPendPickups] = useState<any[]>([]);
   const [pickOpen, setPickOpen] = useState(false);
-  const loadPendPickups = () => api.listPickups().then((ps: any[]) => setPendPickups(ps.filter((p) => p.status === 'REQUESTED' && !p.token))).catch(() => {});
+  const loadPendPickups = () => api.listPickups().then((ps: any[]) => setPendPickups(ps.filter((p) => p.status === 'REQUESTED' && !p.token && !p.csActionedAt))).catch(() => {});
+  const pickupDone = async (id: string) => { try { await api.pickupActioned(id); setPendPickups((ps) => ps.filter((p) => String(p.id) !== id)); } catch { /* keep it */ } };
   useEffect(() => {
     if (!user || user.role === 'CLIENT_ADMIN') return;
     api.upcomingAppointments().then(setAppts).catch(() => {});
@@ -390,7 +391,10 @@ export function Layout() {
               </div>
               {pendPickups.map((p: any) => (
                 <div key={p.id} style={{ padding: '8px 10px', borderRadius: 8, marginBottom: 4, borderLeft: '3px solid var(--brand, #0e7490)', background: 'var(--surface-2, #f1f3f6)', cursor: 'pointer' }} onClick={() => { setPickOpen(false); nav('/pickups'); }}>
-                  <div style={{ fontWeight: 700, fontSize: 13 }}>#{p.id} <span className="muted" style={{ fontWeight: 500 }}>· {p.estPieces} box{p.estPieces > 1 ? 'es' : ''}{p.cargoMode ? ` · ${p.cargoMode}` : ''}</span></div>
+                  <div className="row" style={{ justifyContent: 'space-between', gap: 8 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13 }}>#{p.id} <span className="muted" style={{ fontWeight: 500 }}>· {p.estPieces} box{p.estPieces > 1 ? 'es' : ''}{p.cargoMode ? ` · ${p.cargoMode}` : ''}</span></div>
+                    <button className="secondary" style={{ padding: '2px 8px', fontSize: 11, whiteSpace: 'nowrap' }} title="Actioned — remove from this list" onClick={(e) => { e.stopPropagation(); pickupDone(String(p.id)); }}>✓ Done</button>
+                  </div>
                   <div style={{ fontSize: 12.5, margin: '2px 0' }}>{p.pickupAddress}{p.city ? `, ${p.city}` : ''}{p.pincode ? ` - ${p.pincode}` : ''}</div>
                   <div className="muted" style={{ fontSize: 11 }}>{p.contactName ?? ''}{p.contactPhone ? ` · ${p.contactPhone}` : ''}{p.createdAt ? ` · ${fmtDateTime(p.createdAt)}` : ''}</div>
                 </div>

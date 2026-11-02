@@ -321,11 +321,12 @@ class _NewBookingState extends State<_NewBooking> {
     return Container(
       margin: const EdgeInsets.only(top: 4, bottom: 6),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(color: const Color(0xFFE8F4F1), borderRadius: BorderRadius.circular(8)),
+      // theme colours, so it stays readable in dark mode (a fixed light fill + white dark-mode text was invisible)
+      decoration: BoxDecoration(color: Theme.of(context).colorScheme.secondaryContainer, borderRadius: BorderRadius.circular(8)),
       child: Text(
         'Vendor volumetric: ${vol.toStringAsFixed(2)} kg (${_product == null ? 'pick a product' : surface ? 'surface · 6 CFT' : 'air · ÷5000'})'
         '${actual > 0 ? '  ·  charged ≈ ${charged.toStringAsFixed(2)} kg' : ''}',
-        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSecondaryContainer),
       ),
     );
   }

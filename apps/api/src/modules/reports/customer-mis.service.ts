@@ -41,16 +41,24 @@ export class CustomerMisService {
     return { from: new Date(today - 864e5), to: new Date(today) };
   }
 
-  /** One customer's MIS rows: open shipments + delivered yesterday. */
-  async rows(clientId: bigint) {
+  /** One customer's MIS rows (see data()). */
+  async rows(clientId: bigint) { return (await this.data(clientId)).mis; }
+
+  /**
+   * The MIS: every shipment booked in the last month, PLUS every older one still not delivered (it stays on
+   * the sheet until it's delivered / returned) — limited to 120 days and to ones that actually moved
+   * (picked or later), because old bulk uploads carry stale "Booked" statuses. The NDR / pending sheet is
+   * every not-yet-delivered shipment with its current carrier status.
+   */
+  async data(clientId: bigint) {
     const y = this.yesterday();
+    const monthAgo = new Date(y.to.getTime() - 30 * 864e5);
     const list = await this.prisma.shipment.findMany({
       where: {
         clientId,
         OR: [
-          // Everything booked in the last 30 days, delivered or not (customers count their shipments and
-          // expect all of them); older bulk-uploaded ones with stale statuses stay out.
-          { createdAt: { gte: new Date(y.to.getTime() - 30 * 864e5) }, OR: [{ statusCode: null }, { statusCode: { not: 'CAN' } }] },
+          { createdAt: { gte: monthAgo }, OR: [{ statusCode: null }, { statusCode: { not: 'CAN' } }] },
+          { createdAt: { gte: new Date(y.to.getTime() - 120 * 864e5), lt: monthAgo }, statusCode: { in: ['PKD', 'ORD', 'DPD', 'DRD', 'OFD', 'UDL', 'RTO'] } },
           { statusCode: 'DLD', statusAt: { gte: y.from, lt: y.to } },
         ],
       },
@@ -63,7 +71,8 @@ export class CustomerMisService {
       },
     });
     const pins = await pinRows(this.prisma, list.flatMap((s) => [s.shipperPincode, s.destPincode]));
-    return list.map((s) => {
+    const carrierNow = (s: any) => (s.bdStatus && !/^(Booked|Manifested|Docket created)/i.test(s.bdStatus) ? String(s.bdStatus) : '');
+    const mis = list.map((s) => {
       const code = String(s.statusCode || 'MAN');
       return {
         'AWB': s.awb, 'Booking Date': ist(s.createdAt), 'Reference': s.referenceNo || s.custInvoiceNo || '',
@@ -71,9 +80,25 @@ export class CustomerMisService {
         'Consignee': s.consigneeName || '', 'Pcs': s.pieceCount,
         'Carrier': s.vendor || 'SELF', 'Carrier AWB': s.forwardingAwb || s.bdWaybill || '',
         'Status': STATUS[code] ?? code, 'Status Date': ist(s.statusAt, true), 'Expected Delivery': s.expectedDelivery && s.expectedDelivery >= s.createdAt ? ist(s.expectedDelivery) : '', // upload data has EDDs before booking
-        'Delivered On': code === 'DLD' ? ist(s.statusAt, true) : '', 'Remarks': s.exceptionFlag || (s.bdStatus && !/^(Booked|Manifested|Docket created)/i.test(s.bdStatus) ? s.bdStatus : '') || '',
+        'Delivered On': code === 'DLD' ? ist(s.statusAt, true) : '', 'Current Status (Carrier)': carrierNow(s), 'Remarks': s.exceptionFlag || '',
       };
     });
+    const isOpen = (s: any) => !['DLD', 'RTD', 'CAN'].includes(String(s.statusCode || 'MAN'));
+    const ndr = list.filter(isOpen).map((s) => {
+      const code = String(s.statusCode || 'MAN');
+      const age = Math.floor((Date.now() - +s.createdAt) / 864e5);
+      return {
+        'AWB': s.awb, 'Booking Date': ist(s.createdAt), 'Reference': s.referenceNo || s.custInvoiceNo || '',
+        'Destination': placeName(s.consigneeCity, pins.get(String(s.destPincode || '')), s.destZone), 'Consignee': s.consigneeName || '',
+        'Carrier': s.vendor || 'SELF', 'Carrier AWB': s.forwardingAwb || s.bdWaybill || '',
+        'Status': STATUS[code] ?? code, 'Current Status (Carrier)': carrierNow(s) || (STATUS[code] ?? code), 'Status Date': ist(s.statusAt, true),
+        'NDR': code === 'UDL' ? 'YES' : '', 'Age (days)': age, 'Expected Delivery': s.expectedDelivery && s.expectedDelivery >= s.createdAt ? ist(s.expectedDelivery) : '',
+        'Remark': s.exceptionFlag || (code === 'UDL' ? 'Undelivered — awaiting re-attempt' : ''),
+      };
+    });
+    const count = (codes: string[]) => list.filter((s) => codes.includes(String(s.statusCode || 'MAN'))).length;
+    const summary = { delivered: count(['DLD']), returned: count(['RTO', 'RTD']), ndr: count(['UDL']), total: list.length };
+    return { mis, ndr, summary: { ...summary, undelivered: summary.total - summary.delivered - summary.returned } };
   }
 
   csv(rows: Record<string, any>[]): Buffer {
@@ -83,15 +108,19 @@ export class CustomerMisService {
     return Buffer.from('﻿' + body, 'utf8'); // BOM → Excel opens it as UTF-8
   }
 
-  xlsx(rows: Record<string, any>[]): Buffer {
-    const ws = rows.length ? XLSX.utils.json_to_sheet(rows) : XLSX.utils.aoa_to_sheet([['No shipments']]);
-    if (rows.length) {
-      const head = Object.keys(rows[0]);
-      ws['!cols'] = head.map((h) => ({ wch: Math.min(40, Math.max(h.length, ...rows.map((r) => String(r[h] ?? '').length)) + 2) }));
-      ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length, c: head.length - 1 } }) };
-    }
+  xlsx(rows: Record<string, any>[], ndr?: Record<string, any>[]): Buffer {
+    const sheet = (list: Record<string, any>[], empty: string) => {
+      const ws = list.length ? XLSX.utils.json_to_sheet(list) : XLSX.utils.aoa_to_sheet([[empty]]);
+      if (list.length) {
+        const head = Object.keys(list[0]);
+        ws['!cols'] = head.map((h) => ({ wch: Math.min(40, Math.max(h.length, ...list.map((r) => String(r[h] ?? '').length)) + 2) }));
+        ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: list.length, c: head.length - 1 } }) };
+      }
+      return ws;
+    };
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'DAILY MIS REPORT');
+    XLSX.utils.book_append_sheet(wb, sheet(rows, 'No shipments'), 'MIS REPORT');
+    if (ndr) XLSX.utils.book_append_sheet(wb, sheet(ndr, 'Nothing pending — all delivered'), 'NDR & PENDING');
     return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
   }
 
@@ -102,31 +131,36 @@ export class CustomerMisService {
     const to = overrideTo ? emails(overrideTo) : emails(c.contactEmail, c.email2);
     const cc = overrideTo ? [] : emails(c.salesPersonEmail, c.csPersonEmail).filter((e) => !to.includes(e));
     if (!to.length) return { clientId: String(clientId), code: c.accountCode, sent: false, reason: 'no customer email' };
-    const rows = await this.rows(clientId);
+    const { mis: rows, ndr, summary } = await this.data(clientId);
     if (!rows.length) return { clientId: String(clientId), code: c.accountCode, sent: false, reason: 'nothing open or delivered yesterday' };
     const now = new Date(Date.now() + 330 * 60000);
-    const asOn = `${p2(now.getUTCDate())}/${p2(now.getUTCMonth() + 1)}/${now.getUTCFullYear()}`;
-    const stamp = `${p2(now.getUTCDate())}_${p2(now.getUTCMonth() + 1)}_${now.getUTCFullYear()}_${p2(now.getUTCHours())}${p2(now.getUTCMinutes())}`;
-    const name = String(c.legalName || c.accountCode).toUpperCase();
+    const day = `${now.getUTCFullYear()}-${p2(now.getUTCMonth() + 1)}-${p2(now.getUTCDate())}`;
+    const asOn = `${p2(now.getUTCDate())}-${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][now.getUTCMonth()]}-${now.getUTCFullYear()}`;
+    const name = String(c.legalName || c.accountCode);
+    const subject = `MIS Report (${day}) for ${name}`;
+    const counts: [string, number, string][] = [['Delivered', summary.delivered, '#1e7d32'], ['Undelivered', summary.undelivered, '#c77700'], ['Returned', summary.returned, '#c62828'], ['Total', summary.total, '#0d47a1']];
     const lines = [
-      'Dear Customer,', '',
-      'Please find details of DAILY MIS REPORT',
-      `Customer Name : ${name}`, '',
-      'Please find attached the DAILY MIS REPORT. We hope this helps you keep track of all your consignments.',
+      `Report as on ${asOn}`, '', 'Hello,', '',
+      'Please find your MIS Report attached. We hope this helps you keep track of all your consignments.',
+      'The NDR & PENDING sheet lists every shipment not yet delivered with its current carrier status.',
       'You may get in touch with your SPOC for any further assistance.', '',
+      ...counts.map(([k, v]) => `${k}: ${v}`), summary.ndr ? `(of which NDR / undelivered attempts: ${summary.ndr})` : '', '',
       'Thanks & Regards', BRAND,
-    ];
-    const html = `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5">
-<p>Dear Customer,</p>
-<p><b>Please find details of DAILY MIS REPORT</b><br><b>Customer Name : ${esc(name)}</b></p>
-<p><b>Please find attached the DAILY MIS REPORT. We hope this helps you keep track of all your consignments.<br>
-You may get in touch with your SPOC for any further assistance.</b></p>
+    ].filter((x, i, a) => x !== '' || a[i - 1] !== '');
+    const html = `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5;color:#1d2a2a">
+<div style="color:#8aa;font-size:12px">Report as on ${asOn}</div>
+<p>Hello,</p>
+<p>Please find your <b>MIS Report</b> attached. We hope this helps you keep track of all your consignments.<br>
+The <b>NDR &amp; PENDING</b> sheet lists every shipment not yet delivered with its current carrier status.<br>
+You may get in touch with your SPOC for any further assistance.</p>
+<table style="border-collapse:collapse;min-width:320px;border:1px solid #e3e8e8">${counts.map(([k, v, col], i) => `<tr style="background:${i % 2 ? '#f7f9f9' : '#fff'}${k === 'Total' ? ';background:#eef4fb' : ''}"><td style="padding:10px 14px;color:${col};font-weight:700">${k}</td><td style="padding:10px 14px;text-align:right;font-weight:700">${v}</td></tr>`).join('')}</table>
+${summary.ndr ? `<p style="font-size:12px;color:#667">of which NDR / undelivered attempts: <b>${summary.ndr}</b></p>` : ''}
 <p><b>Thanks &amp; Regards</b><br><b>${BRAND}</b></p></div>`;
     const ok = await this.notify.sendMail({
-      to, cc, subject: `DAILY MIS REPORT As on Date ${asOn} - ${name}`, text: lines.join('\n'), html,
-      attachments: [{ filename: `${c.accountCode}_DAILY MIS REPORT_${stamp}.xlsx`, content: this.xlsx(rows), contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }],
+      to, cc, subject, text: lines.join('\n'), html,
+      attachments: [{ filename: `MIS Report (${day}) - ${c.accountCode}.xlsx`, content: this.xlsx(rows, ndr), contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }],
     });
-    return { clientId: String(clientId), code: c.accountCode, sent: ok, to, cc, rows: rows.length };
+    return { clientId: String(clientId), code: c.accountCode, sent: ok, to, cc, rows: rows.length, pending: ndr.length, summary };
   }
 
   /** Every active customer with an email. */

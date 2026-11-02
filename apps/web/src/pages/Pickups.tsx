@@ -230,6 +230,13 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
     } catch (e: any) { setError(e.message); } finally { setHandingOff(''); }
   };
 
+  const cancelPickup = async (p: any) => {
+    const reason = window.prompt(`Cancel pickup #${p.id} (${p.customerName ?? ''})? Reason:`, 'Customer cancelled');
+    if (reason === null) return;
+    try { const r: any = await api.pickupCancel(String(p.id), reason); setMsg(`Pickup #${p.id} cancelled${r?.carrierNote ?? ''}.`); load(); }
+    catch (e: any) { setError(e.message); }
+  };
+
   // Not picked — reason, then rebook (back to Requested for a new hand-off) or close.
   const [np, setNp] = useState<{ p: any; reason: string; rebook: boolean; date: string } | null>(null);
   const saveNotPicked = async () => {
@@ -243,12 +250,12 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
 
   // Mark-picked modal (capture AWB / weight / pcs / value).
   const [pickedFor, setPickedFor] = useState<any | null>(null);
-  const [pk, setPk] = useState({ awb: '', weight: '', pieces: '', value: '', destPincode: '', consigneeName: '', consigneePhone: '' });
-  const openPicked = (p: any) => { setPickedFor(p); setPk({ awb: '', weight: p.pickedWeight || p.weight || '', pieces: String(p.estPieces || ''), value: p.pickedValue || p.invoiceValue || '', destPincode: '', consigneeName: '', consigneePhone: '' }); setError(''); };
+  const [pk, setPk] = useState({ awb: '', pickedAt: '', weight: '', pieces: '', value: '', destPincode: '', consigneeName: '', consigneePhone: '' });
+  const openPicked = (p: any) => { setPickedFor(p); setPk({ awb: '', pickedAt: String(p.handoffAt || new Date().toISOString()).slice(0, 10), weight: p.pickedWeight || p.weight || '', pieces: String(p.estPieces || ''), value: p.pickedValue || p.invoiceValue || '', destPincode: '', consigneeName: '', consigneePhone: '' }); setError(''); };
   const doPicked = async () => {
     if (!pickedFor) return;
     try {
-      const r: any = await api.completePickup(String(pickedFor.id), { forwardingNo: pk.awb.trim() || undefined, weight: pk.weight ? +pk.weight : undefined, pieces: pk.pieces ? +pk.pieces : undefined, value: pk.value ? +pk.value : undefined,
+      const r: any = await api.completePickup(String(pickedFor.id), { forwardingNo: pk.awb.trim() || undefined, pickedAt: pk.pickedAt || undefined, weight: pk.weight ? +pk.weight : undefined, pieces: pk.pieces ? +pk.pieces : undefined, value: pk.value ? +pk.value : undefined,
         destPincode: pk.destPincode || undefined, consigneeName: pk.consigneeName || undefined, consigneePhone: pk.consigneePhone || undefined });
       setMsg(r?.shipment ? `✓ Picked — our AWB ${r.shipment.awb}${r.forwardingNo ? ` · forwarding no ${r.forwardingNo}` : ''}${r.shipment.booked ? ' (booked to the customer, it will be billed)' : ''}.`
         : pk.awb ? `✓ Picked — forwarding no ${pk.awb.trim()} recorded. Add the destination pincode to generate our AWB for billing.` : '✓ Marked picked.');
@@ -394,7 +401,7 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
                 <td>{p.id}</td><td style={{ whiteSpace: 'nowrap' }}>{p.createdAt ? fmtDate(p.createdAt) : '—'}</td>
                 {isOps && <td><button className="link" style={{ textAlign: 'left' }} onClick={() => openDetail(p)} title="View full pickup detail">{p.customerName ?? '—'}{p.customerCode ? <span className="muted" style={{ fontSize: 11 }}> ({p.customerCode})</span> : null}</button></td>}
                 <td>{p.product ?? p.cargoMode ?? '—'}</td>
-                <td style={{ whiteSpace: 'nowrap' }} title={p.pickupAddress}>{[p.city, p.pincode].filter(Boolean).join(' · ') || '—'}</td>
+                <td style={{ whiteSpace: 'nowrap' }} title={p.pickupAddress}>{[p.cityName || p.city, p.pincode].filter(Boolean).join(' · ') || '—'}</td>
                 <td>{p.estPieces}</td>
                 <td>{p.weight ? Number(p.weight) : '—'}</td>
                 <td><span className={`badge ${p.status}`}>{p.status}</span></td>
@@ -412,6 +419,7 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
                       <button className="secondary" onClick={() => openPicked(p)}>Mark picked</button>
                     </>}
                     {isPending(p) && <button className="secondary" style={{ color: 'var(--bad, #c0392b)' }} onClick={() => setNp({ p, reason: '', rebook: true, date: '' })} title="Not collected — give the reason, then rebook or close">✕ Not picked</button>}
+                    {isPending(p) && <button className="secondary" onClick={() => cancelPickup(p)} title="Cancel this pickup request (customer called it off / duplicate)">🗑 Cancel</button>}
                   </td>
                 )}
               </tr>
@@ -569,7 +577,8 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
           <p className="muted" style={{ marginTop: 0, fontSize: 12.5 }}>Capture the actuals at pickup. Our internal AWB is generated automatically{pickedFor.pickedAwb ? ` (already booked: ${pickedFor.pickedAwb})` : ''} — type only the vendor's number.</p>
           <div className="grid cols-2" style={{ gap: 10 }}>
             <div style={{ gridColumn: 'span 2' }}><label>Forwarding no. <span className="muted" style={{ fontSize: 11 }}>(vendor's AWB{pickedFor.vendor ? ` — ${pickedFor.vendor}` : ''})</span></label><input value={pk.awb} onChange={(e) => setPk((s) => ({ ...s, awb: e.target.value }))} placeholder="e.g. BlueDart waybill" /></div>
-            <div><label>Weight (kg)</label><input type="number" value={pk.weight} onChange={(e) => setPk((s) => ({ ...s, weight: e.target.value }))} /></div>
+            <div style={{ gridColumn: 'span 2' }}><label>Picked on <span className="muted" style={{ fontSize: 11 }}>(the day it was actually collected — the booking keeps the request's date)</span></label><input type="date" value={pk.pickedAt} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setPk((s) => ({ ...s, pickedAt: e.target.value }))} /></div>
+            <div><label>Weight (kg)</label><input type="number" min="0.01" step="0.01" value={pk.weight} onChange={(e) => setPk((s) => ({ ...s, weight: e.target.value }))} /></div>
             <div><label>Pieces</label><input type="number" value={pk.pieces} onChange={(e) => setPk((s) => ({ ...s, pieces: e.target.value }))} /></div>
             <div style={{ gridColumn: 'span 2' }}><label>Invoice value ₹</label><input type="number" value={pk.value} onChange={(e) => setPk((s) => ({ ...s, value: e.target.value }))} /></div>
             <div style={{ gridColumn: 'span 2', borderTop: '1px solid var(--border)', paddingTop: 8 }}>

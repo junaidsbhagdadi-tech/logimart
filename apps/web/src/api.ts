@@ -910,9 +910,11 @@ export const api = {
     request<{ total: number; created: number; results: { row: string; ok: boolean; error?: string }[] }>('/api/v1/pickups/bulk', { method: 'POST', body: JSON.stringify({ rows, vendor: vendor || undefined }) }),
   assignPickup: (id: string, riderId: number) =>
     request(`/api/v1/pickups/${id}/assign`, { method: 'POST', body: JSON.stringify({ riderId }) }),
-  completePickup: (id: string, body: { awb?: string; forwardingNo?: string; weight?: number; pieces?: number; value?: number; destPincode?: string; consigneeName?: string; consigneePhone?: string; consigneeAddress?: string } = {}) =>
+  completePickup: (id: string, body: { awb?: string; forwardingNo?: string; pickedAt?: string; weight?: number; pieces?: number; value?: number; destPincode?: string; consigneeName?: string; consigneePhone?: string; consigneeAddress?: string } = {}) =>
     request(`/api/v1/pickups/${id}/complete`, { method: 'POST', body: JSON.stringify(body) }),
   pickupDetail: (id: string) => request<any>(`/api/v1/pickups/${id}`),
+  pickupActioned: (id: string) => request<any>(`/api/v1/pickups/${id}/actioned`, { method: 'POST' }),
+  pickupCancel: (id: string, reason: string) => request<any>(`/api/v1/pickups/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
   pickupNotPicked: (id: string, body: { reason: string; rebook: boolean; rebookDate?: string }) =>
     request<any>(`/api/v1/pickups/${id}/not-picked`, { method: 'POST', body: JSON.stringify(body) }),
   pickupHandoff: (id: string, body: { vendor?: string; toPay?: boolean; date?: string; token?: string; destPincode?: string; consigneeName?: string; consigneePhone?: string; consigneeAddress?: string; weight?: number; pieces?: number; value?: number } = {}) =>

@@ -22,10 +22,10 @@ export class ReportsController {
   @Get('customer-mis/:clientId.xlsx')
   @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN, UserRole.WAREHOUSE_HANDLER)
   async misXlsx(@Param('clientId') clientId: string, @Res() res: any) {
-    const rows = await this.mis.rows(BigInt(clientId));
+    const { mis: rows, ndr } = await this.mis.data(BigInt(clientId));
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="MIS_${clientId}.xlsx"`);
-    res.send(this.mis.xlsx(rows));
+    res.send(this.mis.xlsx(rows, ndr));
   }
 
   @Get('customer-mis/:clientId.csv')

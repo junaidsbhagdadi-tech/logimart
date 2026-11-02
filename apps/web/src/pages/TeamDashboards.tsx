@@ -89,12 +89,16 @@ function CS({ opts }: { opts: { customers: Opt[]; vendors: Opt[] } }) {
   const [error, setError] = useState('');
   const load = () => { setBusy(true); setError(''); api.csDashboard(from, to, f).then(setData).catch((e) => setError(e.message)).finally(() => setBusy(false)); };
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const rows = (data?.rows ?? []).filter((r) => filter === 'all' || (filter === 'ndr' ? r.ndr : r.overdue));
+  const [q, setQ] = useState('');
+  const rows = (data?.rows ?? []).filter((r) => filter === 'all' || (filter === 'ndr' ? r.ndr : r.overdue))
+    .filter((r: any) => !q.trim() || [r.awb, r.forwardingAwb, r.customer, r.code, r.consignee, r.phone, r.origin, r.destination, r.status, r.vendor, r.lastScan?.text, r.remark]
+      .some((v) => String(v ?? '').toLowerCase().includes(q.trim().toLowerCase())));
+  const scanAt = (v: any) => (v ? new Date(v).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
   const exportXls = () => downloadXlsx(
     `cs-pending-${from}_${to}${f.vendor ? '-' + f.vendor : ''}.xlsx`,
     `NDR / Pending report ${from} → ${to}${filtLabel(f, opts) ? ' · ' + filtLabel(f, opts) : ''}`,
-    ['AWB', 'Booked', 'Picked', 'Customer', 'Code', 'Vendor', 'Forwarding No', 'Consignee', 'Phone', 'Destination', 'Status', 'Age (days)', 'EDD', 'Overdue', 'NDR', 'Remark'],
-    rows.map((r) => [r.awb, d10(r.bookedAt), d10(r.pickedAt), r.customer, r.code, r.vendor || 'SELF', r.forwardingAwb, r.consignee, r.phone, r.destination, r.status, r.ageDays, d10(r.edd), r.overdue ? 'YES' : '', r.ndr ? 'YES' : '', r.remark ?? '']),
+    ['AWB', 'Booked', 'Picked', 'Customer', 'Code', 'Vendor', 'Forwarding No', 'Consignee', 'Phone', 'Origin', 'Destination', 'Status', 'Last scan', 'Last scan at', 'Age (days)', 'EDD', 'Overdue', 'NDR', 'Remark'],
+    rows.map((r: any) => [r.awb, d10(r.bookedAt), d10(r.pickedAt), r.customer, r.code, r.vendor || 'SELF', r.forwardingAwb, r.consignee, r.phone, r.origin ?? '', r.destination, r.status, r.lastScan?.text ?? '', scanAt(r.lastScan?.at), r.ageDays, d10(r.edd), r.overdue ? 'YES' : '', r.ndr ? 'YES' : '', r.remark ?? '']),
   );
   return (
     <>
@@ -114,10 +118,12 @@ function CS({ opts }: { opts: { customers: Opt[]; vendors: Opt[] } }) {
             {([['all', `Pending: ${data.count}`], ['ndr', `NDR: ${data.ndrCount}`], ['overdue', `Overdue: ${data.overdueCount}`]] as const).map(([k, label]) => (
               <button key={k} className={filter === k ? '' : 'secondary'} style={{ padding: '6px 12px', ...(k === 'ndr' && data.ndrCount ? { color: 'var(--danger,#c0392b)' } : {}) }} onClick={() => setFilter(k)}>{label}</button>
             ))}
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search AWB / customer / consignee / city / status…" style={{ maxWidth: 320, marginLeft: 8 }} />
+            {q && <span className="muted" style={{ fontSize: 12, alignSelf: 'center' }}>{rows.length} match</span>}
           </div>
           <div className="card" style={{ overflowX: 'auto' }}>
             <table style={{ minWidth: 1350, fontSize: 12.5 }}>
-              <thead><tr><th>AWB</th><th>Customer</th><th>Vendor</th><th>Booked</th><th>Picked</th><th>Consignee</th><th>Phone</th><th>Destination</th><th>Status</th><th style={{ textAlign: 'right' }}>Age</th><th>EDD</th><th>Remark</th></tr></thead>
+              <thead><tr><th>AWB</th><th>Customer</th><th>Vendor</th><th>Booked</th><th>Picked</th><th>Consignee</th><th>Last scan</th><th>Phone</th><th>Origin</th><th>Destination</th><th>Status</th><th style={{ textAlign: 'right' }}>Age</th><th>EDD</th><th>Remark</th></tr></thead>
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.awb} style={r.ndr ? { background: '#fdecea' } : r.overdue ? { background: '#fff6e6' } : undefined}>
@@ -127,7 +133,9 @@ function CS({ opts }: { opts: { customers: Opt[]; vendors: Opt[] } }) {
                     <td>{d10(r.bookedAt)}</td>
                     <td>{r.pickedAt ? d10(r.pickedAt) : <span className="muted">not yet</span>}</td>
                     <td>{r.consignee || '—'}</td>
+                    <td style={{ maxWidth: 240 }}>{(r as any).lastScan ? <>{(r as any).lastScan.text}<div className="muted" style={{ fontSize: 11 }}>{[(r as any).lastScan.where, scanAt((r as any).lastScan.at)].filter(Boolean).join(' · ')}</div></> : '—'}</td>
                     <td>{r.phone ? <a href={`tel:${r.phone}`}>{r.phone}</a> : '—'}</td>
+                    <td>{(r as any).origin || '—'}</td>
                     <td>{r.destination}</td>
                     <td>{r.status}{r.ndr ? ' · NDR' : ''}</td>
                     <td style={{ textAlign: 'right', fontWeight: r.ageDays > 5 ? 800 : 400, color: r.ageDays > 5 ? 'var(--danger,#c0392b)' : undefined }}>{r.ageDays}d</td>
@@ -135,7 +143,7 @@ function CS({ opts }: { opts: { customers: Opt[]; vendors: Opt[] } }) {
                     <td>{r.remark || '—'}</td>
                   </tr>
                 ))}
-                {rows.length === 0 && <tr><td colSpan={12} className="muted" style={{ textAlign: 'center', padding: 18 }}>Nothing pending in this range 🎉</td></tr>}
+                {rows.length === 0 && <tr><td colSpan={14} className="muted" style={{ textAlign: 'center', padding: 18 }}>{q ? 'Nothing matches the search.' : 'Nothing pending in this range 🎉'}</td></tr>}
               </tbody>
             </table>
           </div>

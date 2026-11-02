@@ -48,6 +48,7 @@ export function TrackDetail() {
   const [multi, setMulti] = useState<any[] | null>(null);
   const [multiBusy, setMultiBusy] = useState(false);
   const [podBusy, setPodBusy] = useState(false);
+  const [contactQ, setContactQ] = useState('');
   const podZip = async (awbs: string[]) => {
     if (!awbs.length) return;
     setPodBusy(true); setError('');
@@ -345,14 +346,23 @@ export function TrackDetail() {
                 </div>
               );
             })()}
-            {(d as any).vendorContacts?.length > 0 && (
+            {((d as any).vendorContacts?.length > 0 || (d as any).vendorDirectory?.length > 0) && (() => {
+              const q = contactQ.trim().toLowerCase();
+              const list: any[] = q
+                ? ((d as any).vendorDirectory ?? []).filter((c: any) => `${c.location} ${c.name} ${c.role ?? ''} ${c.phone ?? ''} ${c.product ?? ''}`.toLowerCase().includes(q)).slice(0, 50)
+                : ((d as any).vendorContacts ?? []);
+              return (
               <div className="card" style={{ borderLeft: '4px solid var(--brand)', marginTop: 12 }}>
-                <h3 style={{ margin: '0 0 6px' }}>🏢 Carrier branch contacts <span className="muted" style={{ fontSize: 12, fontWeight: 400 }}>— who to call for this route (📍 = current branch)</span></h3>
+                <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
+                  <h3 style={{ margin: 0 }}>🏢 Carrier branch contacts <span className="muted" style={{ fontSize: 12, fontWeight: 400 }}>— {q ? 'search results' : 'this route (📍 = current branch)'}</span></h3>
+                  {(d as any).vendorDirectory?.length > 0 && <input value={contactQ} onChange={(e) => setContactQ(e.target.value)} placeholder={`Search ${(d as any).vendorCode ?? 'carrier'} branches — city, name…`} style={{ maxWidth: 300 }} />}
+                </div>
+                {!list.length ? <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>{q ? 'No branch matches.' : 'No contact on file for this route — search the carrier’s branches above.'}</p> : (
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ fontSize: 13 }}>
                     <thead><tr><th>Location</th><th>Contact</th><th>Role</th><th>Phone</th><th>Email</th></tr></thead>
                     <tbody>
-                      {(d as any).vendorContacts.map((c: any, i: number) => (
+                      {list.map((c: any, i: number) => (
                         <tr key={i} style={c.current ? { background: 'var(--surface-2, #fff7ed)', borderLeft: '3px solid var(--warn, #d97706)' } : undefined}>
                           <td>{c.current ? '📍 ' : ''}<strong>{c.location}</strong>{c.product ? <span className="muted"> · {c.product}</span> : ''}{c.current ? <span className="badge PARTIAL" style={{ marginLeft: 6 }}>current branch</span> : ''}</td>
                           <td>{c.name}</td><td>{c.role || '—'}</td>
@@ -363,8 +373,10 @@ export function TrackDetail() {
                     </tbody>
                   </table>
                 </div>
+                )}
               </div>
-            )}
+              );
+            })()}
             <div className="row" style={{ gap: 8, marginTop: 16 }}>
               <a href={`/shipments/${d.awb}/awb-print`} target="_blank" rel="noreferrer"><button className="secondary">🖨 Shipping label</button></a>
               {d.consignee.phone && <a href={`tel:${d.consignee.phone}`}><button>📞 Call Consignee</button></a>}

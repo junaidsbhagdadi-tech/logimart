@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, NotFoundException, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles } from '../../common/rbac/roles.decorator';
@@ -40,5 +40,22 @@ export class XpressBeesController {
   @Roles(UserRole.HUB_MANAGER, UserRole.SYS_ADMIN)
   cancel(@Param('awb') awb: string, @Req() req: any) {
     return this.xb.cancel(awb, req.user?.email || 'Logimart');
+  }
+}
+
+/**
+ * Public webhook XpressBees calls on every status change (and with the POD link on delivery). Unauthenticated
+ * by design — guarded by the secret in the URL (XB_WEBHOOK_SECRET); the URL to give XpressBees is
+ *   https://erp.logimart.co.in/api/v1/webhooks/xpressbees/<XB_WEBHOOK_SECRET>
+ */
+@Controller('api/v1/webhooks')
+export class XpressBeesWebhookController {
+  constructor(private readonly xb: XpressBeesService) {}
+
+  @Post('xpressbees/:secret')
+  async hook(@Param('secret') secret: string, @Body() body: any) {
+    const want = String(process.env.XB_WEBHOOK_SECRET || '');
+    if (!want || secret !== want) throw new NotFoundException();
+    return this.xb.webhook(body);
   }
 }

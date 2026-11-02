@@ -302,6 +302,43 @@ export class XpressBeesService implements OnModuleInit {
   }
 
   /** Pull the latest XpressBees scan onto the shipment (carrier status text + our milestone). */
+  /**
+   * XpressBees webhook (they push status — and the POD link on DLVD — instead of offering a POD API). The
+   * payload shape isn't documented to us, so fields are read defensively; every call is kept in
+   * webhook_logs for checking. Matches our shipment by their AWB (forwarding no) or a box (MPS) id.
+   */
+  async webhook(body: any) {
+    const flat: Record<string, any> = {};
+    const walk = (o: any, depth = 0) => { if (!o || typeof o !== 'object' || depth > 4) return; for (const [k, v] of Object.entries(o)) { if (v && typeof v === 'object') walk(v, depth + 1); else if (flat[k.toLowerCase()] == null) flat[k.toLowerCase()] = v; } };
+    walk(body);
+    const pick = (...keys: string[]) => { for (const k of keys) { const v = flat[k.toLowerCase()]; if (v != null && String(v).trim() !== '') return String(v).trim(); } return ''; };
+    const xbAwb = pick('awbno', 'awb_number', 'awbnumber', 'awb', 'waybill', 'awbmpsgroupidnumber');
+    const mps = pick('mpsno', 'mps', 'childawb');
+    const code = pick('statuscode', 'status_code', 'shipment_status_code').toUpperCase();
+    const text = pick('status', 'remark', 'current_status', 'shipment_status');
+    const pod = pick('podlink', 'pod_link', 'podurl', 'pod_url', 'pod_image', 'pod');
+    const s = await this.prisma.shipment.findFirst({
+      where: { OR: [...(xbAwb ? [{ forwardingAwb: xbAwb }] : []), ...(mps ? [{ pieces: { some: { carrierChildId: mps } } }] : [])] },
+      select: { awb: true, statusCode: true, podUrl: true },
+    });
+    let result = 'no matching shipment';
+    if (s) {
+      const xbText = XB_TEXT[code];
+      const derived = xbText ? deriveStatusFromBd(s.statusCode, xbText) : null;
+      await this.prisma.shipment.update({
+        where: { awb: s.awb },
+        data: {
+          ...(text || code ? { bdStatus: `${text || code} (XpressBees)` } : {}),
+          ...(derived ? { statusCode: derived.statusCode, status: derived.status, statusAt: new Date() } : {}),
+          ...(pod && /^https?:\/\//.test(pod) && !s.podUrl ? { podUrl: pod } : {}),
+        },
+      });
+      result = `updated ${s.awb}${derived ? ` → ${derived.statusCode}` : ''}${pod ? ' + POD' : ''}`;
+    }
+    await this.prisma.webhookLog.create({ data: { provider: 'XPB', payload: body ?? {}, result } }).catch(() => undefined);
+    return { ok: true, result };
+  }
+
   async syncTracking(awb: string) {
     const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { forwardingAwb: true, statusCode: true, podUrl: true } });
     if (!s?.forwardingAwb) throw new BadRequestException(`No XpressBees AWB on ${awb} to track.`);

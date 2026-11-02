@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { pinRows, placeName } from '../../common/place-name';
 import { PickupStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BluedartService } from '../bluedart/bluedart.service';
@@ -107,7 +108,11 @@ export class PickupsService {
     const ids = [...new Set(rows.map((r) => r.clientId))];
     const clients = ids.length ? await this.prisma.b2bClient.findMany({ where: { id: { in: ids } }, select: { id: true, accountCode: true, legalName: true } }) : [];
     const byId = new Map(clients.map((c) => [String(c.id), c]));
-    return rows.map((r) => ({ ...r, customerCode: byId.get(String(r.clientId))?.accountCode ?? null, customerName: byId.get(String(r.clientId))?.legalName ?? null }));
+    const pins = await pinRows(this.prisma, rows.map((r) => r.pincode));
+    return rows.map((r) => ({
+      ...r, customerCode: byId.get(String(r.clientId))?.accountCode ?? null, customerName: byId.get(String(r.clientId))?.legalName ?? null,
+      cityName: placeName(r.city, pins.get(String(r.pincode || '')), r.city), // "SHIMLA", not the "MTA" area code
+    }));
   }
 
   async assign(id: number, riderId: number) {
@@ -147,9 +152,21 @@ export class PickupsService {
    *  `forwardingNo` (the vendor's AWB): our internal AWB is GENERATED and the vendor number is stored as
    * the forwarding no — ops only type the carrier's number.
    */
-  async complete(id: number, captured: { awb?: string; forwardingNo?: string; weight?: number; pieces?: number; value?: number; destPincode?: string; consigneeName?: string; consigneePhone?: string; consigneeAddress?: string } = {}, userId?: bigint) {
+  async complete(id: number, captured: { awb?: string; forwardingNo?: string; pickedAt?: string; weight?: number; pieces?: number; value?: number; destPincode?: string; consigneeName?: string; consigneePhone?: string; consigneeAddress?: string } = {}, userId?: bigint) {
     const p = await this.exists(id);
     let shipment: { awb: string; booked: boolean } | null = null;
+    // When it was really picked: the date given, else the hand-off day (mark-picked is often done a day later),
+    // never before the request nor in the future. A booking made here is dated the PICKUP REQUEST's day —
+    // it used to carry the mark-picked moment, i.e. after the carrier's own pickup scans.
+    const now = new Date();
+    const given = captured.pickedAt ? new Date(/T/.test(captured.pickedAt) ? captured.pickedAt : `${String(captured.pickedAt).slice(0, 10)}T12:00:00+05:30`) : null;
+    let pickedAt = given && !isNaN(+given) ? given : (p.handoffAt ?? now);
+    if (+pickedAt > +now) pickedAt = now;
+    if (+pickedAt < +p.createdAt) pickedAt = p.createdAt;
+    const dateBooking = async (bookedAwb: string) => {
+      await this.prisma.shipment.update({ where: { awb: bookedAwb }, data: { createdAt: p.createdAt } });
+      await this.prisma.scanLog.updateMany({ where: { awb: bookedAwb, eventType: 'MAN' }, data: { scanAt: p.createdAt } });
+    };
     const fwd = String(captured.forwardingNo ?? '').trim().toUpperCase();
     if (fwd && !captured.awb) {
       const existing = await this.prisma.shipment.findFirst({ where: { OR: [{ awb: fwd }, { forwardingAwb: { equals: fwd, mode: 'insensitive' } }, { bdWaybill: fwd }] }, select: { awb: true, clientId: true, statusCode: true } });
@@ -163,6 +180,7 @@ export class PickupsService {
         const isBd = await this.bluedart.isBlueDartVendor(p.vendor);
         const created: any = await this.bookFromPickup(p, { destPincode: String(captured.destPincode), consigneeName: captured.consigneeName, consigneePhone: captured.consigneePhone, consigneeAddress: captured.consigneeAddress, weight: captured.weight, pieces: captured.pieces, value: captured.value });
         await this.prisma.shipment.update({ where: { awb: created.awb }, data: { forwardingAwb: fwd, ...(isBd ? { bdWaybill: fwd } : {}) } });
+        await dateBooking(created.awb);
         captured = { ...captured, awb: created.awb };
       }
     }
@@ -174,15 +192,16 @@ export class PickupsService {
         if (String(existing.clientId) !== String(p.clientId)) throw new BadRequestException(`AWB ${awb} is already booked under another customer — check the number.`);
         // Physically collected → move a still-Booked shipment to Picked.
         if (String(existing.statusCode || 'MAN') === 'MAN') {
-          await this.prisma.shipment.update({ where: { awb: existing.awb }, data: { statusCode: 'PKD', status: 'PICKED_UP' as any, statusAt: new Date() } });
-          await this.prisma.scanLog.create({ data: { awb: existing.awb, eventType: 'PKD', remark: `Picked — pickup request #${id}`, scannedById: userId ?? null } });
+          await this.prisma.shipment.update({ where: { awb: existing.awb }, data: { statusCode: 'PKD', status: 'PICKED_UP' as any, statusAt: pickedAt } });
+          await this.prisma.scanLog.create({ data: { awb: existing.awb, eventType: 'PKD', remark: `Picked — pickup request #${id}`, scannedById: userId ?? null, scanAt: pickedAt } });
         }
         shipment = { awb: existing.awb, booked: false };
       } else if (captured.destPincode && String(captured.destPincode).trim()) {
         const created: any = await this.bookFromPickup(p, { awb, destPincode: String(captured.destPincode), consigneeName: captured.consigneeName, consigneePhone: captured.consigneePhone, consigneeAddress: captured.consigneeAddress, weight: captured.weight, pieces: captured.pieces, value: captured.value });
         // It's physically collected → Picked, and carry the carrier pickup token so tracking finds the waybill.
-        await this.prisma.shipment.update({ where: { awb: created.awb }, data: { statusCode: 'PKD', status: 'PICKED_UP' as any, statusAt: new Date(), ...(p.token ? { bdPickupToken: p.token, bdPickupAt: p.handoffAt ?? new Date() } : {}) } });
-        await this.prisma.scanLog.create({ data: { awb: created.awb, eventType: 'PKD', remark: `Picked — pickup request #${id}`, scannedById: userId ?? null } });
+        await this.prisma.shipment.update({ where: { awb: created.awb }, data: { statusCode: 'PKD', status: 'PICKED_UP' as any, statusAt: pickedAt, ...(p.token ? { bdPickupToken: p.token, bdPickupAt: p.handoffAt ?? new Date() } : {}) } });
+        await this.prisma.scanLog.create({ data: { awb: created.awb, eventType: 'PKD', remark: `Picked — pickup request #${id}`, scannedById: userId ?? null, scanAt: pickedAt } });
+        await dateBooking(created.awb);
         shipment = { awb: created.awb, booked: true };
       }
     }
@@ -229,6 +248,31 @@ export class PickupsService {
       },
     });
     return { ...updated, carrierNote };
+  }
+
+  /** CS has actioned the request (called the customer / arranged it) — it leaves the pickup-requests popup. */
+  async markActioned(id: number) {
+    await this.exists(id);
+    return this.prisma.pickupRequest.update({ where: { id: BigInt(id) }, data: { csActionedAt: new Date() } });
+  }
+
+  /** CS cancels a pickup (customer called it off / duplicate). A BlueDart token is cancelled with BlueDart where allowed. */
+  async cancel(id: number, reason: string, by?: string) {
+    const p = await this.exists(id);
+    if (p.status === PickupStatus.PICKED) throw new BadRequestException('Already picked — cancel the shipment instead.');
+    if (p.status === PickupStatus.CANCELLED) return p;
+    const why = String(reason ?? '').trim() || 'Cancelled by CS';
+    let note = '';
+    if (p.token && (await this.bluedart.isBlueDartVendor(p.vendor))) {
+      try { await this.bluedart.cancelPickup(p.token, p.handoffAt ? p.handoffAt.toISOString() : undefined); note = ' · BlueDart token cancelled'; }
+      catch (e: any) { note = ` · BlueDart token NOT cancelled (${String(e?.message || e).slice(0, 80)}) — cancel it on the BlueDart portal`; }
+    }
+    const stamp = new Date(Date.now() + 330 * 60000).toISOString().slice(0, 16).replace('T', ' ');
+    const updated = await this.prisma.pickupRequest.update({
+      where: { id: p.id },
+      data: { status: PickupStatus.CANCELLED, csActionedAt: new Date(), notes: [p.notes, `[${stamp}${by ? ` ${by}` : ''}] Cancelled: ${why}${note}`].filter(Boolean).join('\n').slice(-4000) },
+    });
+    return { ...updated, carrierNote: note || null };
   }
 
   /** Full detail for one pickup request (+ the customer), for the CS detail popup. */
