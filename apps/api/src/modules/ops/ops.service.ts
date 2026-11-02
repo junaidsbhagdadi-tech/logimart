@@ -123,7 +123,13 @@ export class OpsService implements OnModuleInit, OnModuleDestroy {
       update: { token: JSON.stringify({ h: this.hash(code), tries: 0 }), expiresAt: new Date(Date.now() + 10 * MIN) },
       create: { provider: key, token: JSON.stringify({ h: this.hash(code), tries: 0 }), expiresAt: new Date(Date.now() + 10 * MIN) },
     });
-    const sent = await this.mail.sendMail({ to: [to], subject: 'Owner console sign-in code', text: `Your owner-console sign-in code is ${code}. It expires in 10 minutes.\nIf you didn't request it, someone has your ERP password — change it now.` });
+    const credits = await this.emailCredits(true);
+    if (credits && credits.left <= 0) throw new BadRequestException(`The email service (Brevo, ${credits.plan} plan) has no sending credits left, so the code can't be delivered. Top up / upgrade Brevo, then try again.`);
+    const sent = await this.mail.sendMail({
+      to: [to], subject: 'Logimart ERP sign-in code',
+      text: `Your Logimart owner-console sign-in code is ${code}. It expires in 10 minutes.\nIf you didn't request it, someone has your ERP password — change it now.`,
+      html: `<div style="font:15px Arial,sans-serif;color:#12262b"><p>Your Logimart owner-console sign-in code:</p><p style="font-size:30px;font-weight:700;letter-spacing:6px;margin:8px 0">${code}</p><p style="color:#4d6a70">It expires in 10 minutes. If you didn't request it, someone has your ERP password — change it now.</p></div>`,
+    });
     this.record({ kind: 'security', level: 'info', source: 'ops', message: 'Owner console code requested', userId: String(userId) });
     if (!sent) throw new BadRequestException('Could not send the code — check the email service.');
     return { ok: true, sentTo: to.replace(/^(.).*(@.*)$/, '$1•••$2') };
@@ -153,6 +159,22 @@ export class OpsService implements OnModuleInit, OnModuleDestroy {
     if (!uid || !exp || !sig || uid !== String(userId) || +exp < Date.now()) throw new ForbiddenException('OPS_SESSION: Owner console session expired — sign in with a new code.');
     const want = Buffer.from(this.sign(`${uid}.${exp}`)); const got = Buffer.from(sig);
     if (want.length !== got.length || !timingSafeEqual(want, got)) throw new ForbiddenException('OPS_SESSION: Owner console session expired — sign in with a new code.');
+  }
+
+  /** Brevo sending credits left (its API accepts mail even at 0 credits and drops it later, so check). */
+  private creditsCache: { at: number; v: { plan: string; left: number } | null } | null = null;
+  async emailCredits(fresh = false): Promise<{ plan: string; left: number } | null> {
+    if (!process.env.BREVO_API_KEY) return null;
+    if (!fresh && this.creditsCache && Date.now() - this.creditsCache.at < 10 * MIN) return this.creditsCache.v;
+    let v: { plan: string; left: number } | null = null;
+    try {
+      const r = await fetch('https://api.brevo.com/v3/account', { headers: { 'api-key': process.env.BREVO_API_KEY, accept: 'application/json' }, signal: AbortSignal.timeout(6000) });
+      const plans: any[] = r.ok ? ((await r.json()) as any)?.plan ?? [] : [];
+      const p = plans.find((x) => x.creditsType === 'sendLimit') ?? plans[0];
+      if (p) v = { plan: String(p.type), left: Number(p.credits ?? 0) };
+    } catch { v = null; }
+    this.creditsCache = { at: Date.now(), v };
+    return v;
   }
 
   private hash(s: string) { return createHash('sha256').update(`${secret()}:${s}`).digest('hex'); }
@@ -195,7 +217,7 @@ export class OpsService implements OnModuleInit, OnModuleDestroy {
       errors: { count24h: errors, groups: errorsByFp },
       security: { failedLogins24h: failedLogins, deletes24h: auditDeletes, recent: security.map((s) => ({ at: s.at, level: s.level, message: s.message, source: s.source })) },
       jobs: jobs.map((j) => ({ ...j, runs24h: statsBy.get(j.job)?.runs ?? 0, ok24h: statsBy.get(j.job)?.ok ?? 0, avgSecs: statsBy.get(j.job)?.secs ? +Number(statsBy.get(j.job).secs).toFixed(1) : null })),
-      email: Object.fromEntries(notif.map((n) => [n.status, n._count._all])),
+      email: { ...Object.fromEntries(notif.map((n) => [n.status, n._count._all])), credits: await this.emailCredits() },
       server: this.server(),
       db: dbStats,
       boots: boots.map((b) => b.at),
@@ -311,6 +333,8 @@ export class OpsService implements OnModuleInit, OnModuleDestroy {
     const srv = this.server();
     if (srv.memPct >= 88) await this.alert('mem', `Server memory at ${srv.memPct}%`, 'The app may crash or slow down.');
     if ((srv.diskPct ?? 0) >= 85) await this.alert('disk', `Server disk at ${srv.diskPct}%`, `Only ${srv.diskFreeGb} GB free.`);
+    const cr = await this.emailCredits();
+    if (cr && cr.left < 60) await this.alert('brevo-credits', `Email credits almost gone: ${cr.left} left (Brevo ${cr.plan} plan)`, 'When they run out, MIS, summaries, codes and alerts silently stop going out. Upgrade / top up Brevo.', 12);
     const db = await this.db().catch(() => null);
     if (db && db.connections >= db.maxConnections - 4) await this.alert('dbconn', `Database connections ${db.connections}/${db.maxConnections}`, 'Requests will start waiting / failing.', 2);
     // jobs failing again and again

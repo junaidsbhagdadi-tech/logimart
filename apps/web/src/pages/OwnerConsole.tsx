@@ -128,6 +128,7 @@ export function OwnerConsole() {
     if (db.connections >= db.maxConnections - 4) problems.push(`DB connections ${db.connections}/${db.maxConnections}`);
     if (failingJobs.length) problems.push(`${failingJobs.length} job(s) failing`);
     if (certLow.length) problems.push(`certificate: ${certLow.map((c: any) => c.host).join(', ')}`);
+    if (data.email.credits && data.email.credits.left <= 0) problems.push('email credits used up — nothing is being delivered');
     if (backupAge == null || backupAge > 30 || data.backups?.offsite?.ok === false) problems.push('off-site backup not current');
     return { failingJobs, certLow, backupAge, problems };
   }, [data]);
@@ -168,6 +169,7 @@ export function OwnerConsole() {
                 <Tile label="Failed logins · 24 h" value={n(data.security.failedLogins24h)} sub={`${n(data.security.deletes24h)} deletes / cancels`} t={data.security.failedLogins24h > 30 ? 'bad' : data.security.failedLogins24h > 5 ? 'warn' : 'ok'} />
                 <Tile label="Server" value={`${data.server.memPct}% mem`} sub={`CPU ${data.server.cpuPct}% · disk ${data.server.diskPct ?? '?'}% (${data.server.diskFreeGb ?? '?'} GB free) · app ${data.server.processMb} MB`} t={data.server.memPct >= 88 || (data.server.diskPct ?? 0) >= 85 ? 'bad' : data.server.memPct >= 75 ? 'warn' : 'ok'} />
                 <Tile label="Database" value={`${n(data.db.sizeMb)} MB`} sub={`${data.db.connections}/${data.db.maxConnections} connections`} t={data.db.connections >= data.db.maxConnections - 4 ? 'bad' : data.db.connections >= data.db.maxConnections - 8 ? 'warn' : 'ok'} />
+                <Tile label="Email credits left" value={data.email.credits ? n(data.email.credits.left) : '—'} sub={data.email.credits ? `Brevo ${data.email.credits.plan} plan — at 0, emails silently stop` : 'could not read Brevo'} t={!data.email.credits ? 'idle' : data.email.credits.left <= 0 ? 'bad' : data.email.credits.left < 60 ? 'warn' : 'ok'} />
                 <Tile label="Emails · 24 h" value={n(data.email.sent)} sub={`${n((data.email.failed || 0) + (data.email.queued || 0))} not delivered · ${n(data.email.invalid)} bad addresses`} t={(data.email.failed || 0) + (data.email.queued || 0) > 5 ? 'warn' : 'ok'} />
                 <Tile label="Customer API · 24 h" value={n(data.traffic.extCalls24h)} sub="calls to /api/ext" t="ok" />
               </div>

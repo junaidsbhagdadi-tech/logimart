@@ -36,11 +36,13 @@ export class NotificationsService {
   }
 
   async notify(input: NotifyInput) {
+    // The log keeps the message text — never a password (welcome / reset mails carry a temporary one).
+    const logged = (m: string) => String(m ?? '').replace(/(password:\s*)\S+/gi, '$1••••••');
     if (input.channel === 'email') {
       const clean = NotificationsService.cleanEmail(input.recipient);
       if (!clean) {
         this.logger.warn(`Not emailing "${input.recipient}" — not a valid email address (fix it on the customer).`);
-        return this.prisma.notification.create({ data: { channel: input.channel, recipient: String(input.recipient).slice(0, 190), kind: input.kind, message: input.message, awb: input.awb, shipmentId: input.shipmentId, status: 'invalid' } });
+        return this.prisma.notification.create({ data: { channel: input.channel, recipient: String(input.recipient).slice(0, 190), kind: input.kind, message: logged(input.message), awb: input.awb, shipmentId: input.shipmentId, status: 'invalid' } });
       }
       input = { ...input, recipient: clean };
     }
@@ -50,7 +52,7 @@ export class NotificationsService {
         channel: input.channel,
         recipient: input.recipient,
         kind: input.kind,
-        message: input.message,
+        message: logged(input.message),
         awb: input.awb,
         shipmentId: input.shipmentId,
         status: sent ? 'sent' : 'queued',
