@@ -125,8 +125,8 @@ export class RateCalculatorService {
   /**
    * Trusted deliveries of the last 90 days: carrier, product, lane zones (from the pincodes, per mode) and the
    * days taken. BlueDart's delivered date is BlueDart's own scan date, so all of it counts; other carriers record
-   * "delivered" when our sync sees it, which is only true for live-tracked bookings — so only their recent
-   * bookings delivered within 20 days count (older back-filled imports are left out). Cached 30 min.
+   * "delivered" when our sync sees it, which is only true for live-tracked bookings — so only shipments booked or
+   * handed off through the ERP count (bulk-imported ones got their status from a later back-fill). Cached 30 min.
    */
   private async history() {
     if (this.statsCache && Date.now() - this.statsCache.at < 30 * 60_000) return this.statsCache.rows;
@@ -135,7 +135,7 @@ export class RateCalculatorService {
              replace(upper(coalesce(o."surfaceZone",'')),' ','') AS osz, replace(upper(coalesce(d."surfaceZone",'')),' ','') AS dsz,
              replace(upper(coalesce(o."apexZone",'')),' ','') AS oaz, replace(upper(coalesce(d."apexZone",'')),' ','') AS daz,
              (date(s."statusAt" + interval '330 minutes') - date(s."createdAt" + interval '330 minutes'))::int AS days,
-             (s."createdAt" >= now() - interval '45 days') AS recent
+             (s.awb LIKE 'L%' OR s."bdHandedAt" IS NOT NULL) AS live
       FROM shipments s
       LEFT JOIN pincodes o ON o.pincode = s."shipperPincode"
       LEFT JOIN pincodes d ON d.pincode = s."destPincode"
@@ -144,7 +144,8 @@ export class RateCalculatorService {
     for (const r of raw) {
       if (r.days == null || r.days < 0 || r.days > 45) continue;
       const key = await this.carrierKey(r.vendor);
-      const trusted = key === 'BDR' ? true : r.recent && r.days <= 20;
+      // BlueDart: its own scan dates. Others: only bookings we made / handed off (live-tracked from day one).
+      const trusted = key === 'BDR' ? true : r.live;
       if (!trusted) continue;
       const surface = ['SFC', 'TOSFC', 'SURFACE', 'HUB', 'FTL'].includes(r.product);
       const oz = (surface ? r.osz : r.oaz) || null, dz = (surface ? r.dsz : r.daz) || null;
