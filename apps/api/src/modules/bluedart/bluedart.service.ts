@@ -453,6 +453,9 @@ export class BluedartService implements OnModuleInit {
     return { awb, bdWaybill: bd, cancelled: true, message };
   }
 
+  /** BlueDart free-text fields allow letters, digits and spaces only. */
+  private bdText(v: any, max: number): string { return String(v ?? '').toUpperCase().replace(/[^A-Z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max); }
+
   /** A clean 10-digit Indian mobile for BlueDart (strips +91 / spaces / dashes, keeps the last 10). */
   private bdMobile(v: any): string { return String(v ?? '').replace(/\D/g, '').slice(-10); }
 
@@ -485,6 +488,7 @@ export class BluedartService implements OnModuleInit {
     // DOD goes as SubProductCode D with the draft amount as CollactableAmount — BlueDart rejects ₹0
     // ("InvalidCollectableAmount"). Catch it here with a plain message.
     if (s.isDod && this.bdProductCode(s) === 'D') miss.push('DOD is not offered on BlueDart Domestic Priority (DP) — book it as Apex or Surface');
+    if (s.isDod && !(s.dodPayableAt || s.shipperCity || s.client?.city)) miss.push('DOD "payable at" city (or the shipper city)');
     if (s.isDod && !(Number(s.dodAmount) > 0)) miss.push('DOD amount (cheque/DD value to collect) — or untick DOD if this is not a DOD shipment');
     return miss;
   }
@@ -620,7 +624,16 @@ export class BluedartService implements OnModuleInit {
           PieceCount: Number(s.pieceCount ?? 1),
           ActualWeight: Number(Number(s.totalDeadKg ?? s.chargeWeight ?? 0).toFixed(2)), // the real dead weight, never our billed weight
           DeclaredValue: Number(Number(s.shipmentValue ?? s.declaredValue ?? 0).toFixed(2)),
+          // The gateway reads "CollectableAmount"; the spec's "CollactableAmount" is silently ignored (verified live
+          // 2026-11-03: DOD refused "Collectable Amount can not be zero" until the correct spelling was sent). Both go.
           CollactableAmount: Number(codAmount.toFixed(2)),
+          CollectableAmount: Number(codAmount.toFixed(2)),
+          // DOD needs the draft details (verified live: "Cheque/DD is Mandatory for DOD Product" without them).
+          ...(s.isDod ? {
+            IsChequeDD: String(s.dodInstrument ?? '').toUpperCase() === 'DD' ? 'D' : 'Q',
+            FavouringName: this.bdText(s.dodFavouring || s.client?.legalName || s.shipperName, 50),
+            PayableAt: this.bdText(s.dodPayableAt || s.shipperCity || s.client?.city || '', 20),
+          } : {}),
           CreditReferenceNo: String(s.awb).slice(0, 20), // must be UNIQUE — our AWB
           Dimensions: dims,
           PickupDate: `/Date(${Date.now()})/`, // BlueDart wants the .NET epoch STRING, not a raw number (verified live — raw number → HTTP 500)

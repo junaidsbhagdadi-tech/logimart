@@ -83,6 +83,8 @@ function NewBooking({ onBooked }: { onBooked: (awb: string) => void }) {
   const [dod, setDod] = useState(false);
   const [dodAmt, setDodAmt] = useState('');
   const [dodInst, setDodInst] = useState<'CHEQUE' | 'DD'>('CHEQUE');
+  const [dodFav, setDodFav] = useState('');
+  const [dodAt, setDodAt] = useState('');
   useEffect(() => { if (product.toUpperCase() === 'DOD') setDod(true); }, [product]);
   const [invDoc, setInvDoc] = useState<{ name: string; url: string } | null>(null);
   const [ewbDoc, setEwbDoc] = useState<{ name: string; url: string } | null>(null);
@@ -176,6 +178,7 @@ function NewBooking({ onBooked }: { onBooked: (awb: string) => void }) {
         shipmentValue: inv, declaredValue: inv, invoiceNo: opt(invNo), ewbNo: opt(ewb),
         paymentTerm: 'PREPAID',
         isDod: dod, dodAmount: dod ? Number(dodAmt) : undefined, dodInstrument: dod ? dodInst : undefined,
+        dodFavouring: dod ? opt(dodFav) : undefined, dodPayableAt: dod ? opt(dodAt) : undefined,
         // One piece per box, each carrying its line's size (volumetric weight is worked out server-side).
         pieces: lines.flatMap((l) => Array.from({ length: count(l) }, () => ({ deadKg: perBox, lengthCm: Number(l.l) > 0 ? +l.l : undefined, widthCm: Number(l.w) > 0 ? +l.w : undefined, heightCm: Number(l.h) > 0 ? +l.h : undefined }))),
       } as any);
@@ -353,6 +356,12 @@ function NewBooking({ onBooked }: { onBooked: (awb: string) => void }) {
             <select value={dodInst} onChange={(e) => setDodInst(e.target.value as 'CHEQUE' | 'DD')}><option value="CHEQUE">Cheque</option><option value="DD">Demand Draft</option></select>
           </Field>
           <Field label="DOD amount ₹"><input type="number" inputMode="decimal" value={dodAmt} onChange={(e) => setDodAmt(e.target.value)} placeholder="draft value" /></Field>
+        </div>
+      )}
+      {dod && (
+        <div className="row" style={{ gap: 12 }}>
+          <Field label="In favour of"><input value={dodFav} onChange={(e) => setDodFav(e.target.value)} placeholder={cust?.legalName || 'customer name'} /></Field>
+          <Field label="Payable at (city)"><input value={dodAt} onChange={(e) => setDodAt(e.target.value)} placeholder={(pickupElsewhere ? '' : cust?.city) || 'city'} /></Field>
         </div>
       )}
 

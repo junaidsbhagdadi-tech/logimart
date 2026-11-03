@@ -119,6 +119,8 @@ export class CreateShipmentDto {
   @IsOptional() @IsBoolean() fmPickup?: boolean;
   @IsOptional() @IsNumber() dodAmount?: number;
   @IsOptional() @IsEnum(DodInstrument) dodInstrument?: DodInstrument; // CHEQUE | DD
+  @IsOptional() @IsString() dodFavouring?: string; // draft "in favour of" — blank = the customer's name
+  @IsOptional() @IsString() dodPayableAt?: string; // draft payable at (city) — blank = the shipper's city
 
   /** Finance override to book despite a credit hold. */
   @IsOptional() @IsBoolean() overrideCreditHold?: boolean;

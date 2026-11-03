@@ -586,6 +586,8 @@ model Shipment {
   isDod            Boolean        @default(false)
   dodAmount        Decimal?       @db.Decimal(14, 2)
   dodInstrument    DodInstrument?
+  dodFavouring     String?        // cheque / DD "in favour of" (blank = the customer's name) — BlueDart FavouringName
+  dodPayableAt     String?        // cheque / DD payable at (city; blank = the shipper's city) — BlueDart PayableAt
   dodReference     String?        // cheque / DD number
   dodBankName      String?
   dodCollectedAt   DateTime?      // set when the draft is collected (delivery gate)

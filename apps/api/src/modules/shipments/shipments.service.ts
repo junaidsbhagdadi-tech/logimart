@@ -310,6 +310,8 @@ export class ShipmentsService {
         fmPickup: (dto as any).fmPickup ?? null,
         dodAmount: dto.isDod && dto.dodAmount != null ? new Prisma.Decimal(dto.dodAmount) : null,
         dodInstrument: dto.isDod ? dto.dodInstrument ?? null : null,
+        dodFavouring: dto.isDod ? (dto.dodFavouring?.trim() || null) : null,
+        dodPayableAt: dto.isDod ? (dto.dodPayableAt?.trim() || null) : null,
         pieces: { create: pieces },
       },
       include: { pieces: { orderBy: { sequenceNo: 'asc' } } },

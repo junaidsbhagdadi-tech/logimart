@@ -159,6 +159,8 @@ export function CreateShipment() {
   const [isDod, setIsDod] = useState(false);
   const [dodInstrument, setDodInstrument] = useState<'CHEQUE' | 'DD'>('CHEQUE');
   const [dodAmount, setDodAmount] = useState('');
+  const [dodFavouring, setDodFavouring] = useState('');
+  const [dodPayableAt, setDodPayableAt] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [vendors, setVendors] = useState<any[]>([]);
@@ -474,6 +476,8 @@ export function CreateShipment() {
         isDod,
         dodInstrument: isDod ? dodInstrument : undefined,
         dodAmount: isDod && dodAmount ? +dodAmount : undefined,
+        dodFavouring: isDod && dodFavouring.trim() ? dodFavouring.trim() : undefined,
+        dodPayableAt: isDod && dodPayableAt.trim() ? dodPayableAt.trim() : undefined,
         // Expand each row into its Pcs identical boxes; the row's kg is the TOTAL for those boxes, split evenly
         // (it used to be taken as per-box and multiplied by Pcs — 2 boxes × "25 kg" went to BlueDart as 50 kg).
         pieces: pieces.flatMap((p) => {
@@ -1065,6 +1069,14 @@ export function CreateShipment() {
               <div>
                 <label>DOD amount ₹</label>
                 <input type="number" value={dodAmount} onChange={(e) => setDodAmount(e.target.value)} placeholder="draft value" />
+              </div>
+              <div>
+                <label>In favour of</label>
+                <input value={dodFavouring} onChange={(e) => setDodFavouring(e.target.value)} placeholder="blank = customer name" />
+              </div>
+              <div>
+                <label>Payable at (city)</label>
+                <input value={dodPayableAt} onChange={(e) => setDodPayableAt(e.target.value)} placeholder="blank = shipper city" />
               </div>
             </>
           )}
