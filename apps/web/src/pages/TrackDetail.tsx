@@ -159,12 +159,12 @@ export function TrackDetail() {
 
   // #1 — add-on / expense charges CS logs from the tracker (billed to the customer on the next invoice).
   const [addons, setAddons] = useState<any[]>([]);
-  const [addForm, setAddForm] = useState({ amount: '', reason: '', serviceCentre: '', mode: '', toBill: true });
+  const [addForm, setAddForm] = useState({ amount: '', reason: '', serviceCentre: '', mode: '', toBill: true, noBillReason: '' });
   useEffect(() => { if (d && canScan) api.listAddons(d.awb).then(setAddons).catch(() => setAddons([])); }, [d, canScan]);
   const addAddon = async () => {
     if (!d || !(Number(addForm.amount) > 0) || !addForm.reason.trim()) { setError('Enter an amount and a reason for the charge.'); return; }
     setError(''); setMsg('');
-    try { await api.addAddon(d.awb, { ...addForm, amount: Number(addForm.amount) }); setAddForm({ amount: '', reason: '', serviceCentre: '', mode: '', toBill: true }); setMsg('✓ Add-on charge added.'); api.listAddons(d.awb).then(setAddons); }
+    try { await api.addAddon(d.awb, { ...addForm, amount: Number(addForm.amount) }); setAddForm({ amount: '', reason: '', serviceCentre: '', mode: '', toBill: true, noBillReason: '' }); setMsg('✓ Add-on charge added.'); api.listAddons(d.awb).then(setAddons); }
     catch (e: any) { setError(e.message); }
   };
   const delAddon = async (id: string) => { if (!confirm('Delete this charge?')) return; try { await api.deleteAddon(id); if (d) api.listAddons(d.awb).then(setAddons); } catch (e: any) { setError(e.message); } };
@@ -450,6 +450,7 @@ export function TrackDetail() {
                 </div>
                 <div className="row" style={{ gap: 12, marginTop: 8, alignItems: 'center' }}>
                   <label className="row" style={{ gap: 6, fontSize: 13, margin: 0 }}><input type="checkbox" checked={addForm.toBill} onChange={(e) => setAddForm((f) => ({ ...f, toBill: e.target.checked }))} style={{ width: 'auto' }} /> Bill to customer</label>
+                  {!addForm.toBill && <input value={addForm.noBillReason} onChange={(e) => setAddForm((f) => ({ ...f, noBillReason: e.target.value }))} placeholder="Why not billed? (required)" style={{ maxWidth: 220 }} />}
                   <button onClick={addAddon} disabled={!(Number(addForm.amount) > 0) || !addForm.reason.trim()}>➕ Add charge</button>
                 </div>
                 {addons.length > 0 && (
@@ -459,7 +460,7 @@ export function TrackDetail() {
                       {addons.map((a) => (
                         <tr key={a.id}>
                           <td>{a.reason}</td><td style={{ textAlign: 'right' }}>₹{Number(a.amount).toLocaleString('en-IN')}</td>
-                          <td>{a.toBill ? 'Yes' : 'No'}</td><td>{a.serviceCentre || '—'}</td>
+                          <td>{a.billedInvoiceId ? 'Billed' : a.toBill ? 'Yes' : `No — ${a.noBillReason || 'no reason'}`}</td><td>{a.serviceCentre || '—'}</td>
                           <td>{a.billedInvoiceId ? <span className="badge DELIVERED">billed</span> : <span className="badge CREATED">pending</span>}</td>
                           <td>{!a.billedInvoiceId && <button className="secondary" style={{ padding: '3px 8px', fontSize: 12 }} onClick={() => delAddon(a.id)}>🗑</button>}</td>
                         </tr>

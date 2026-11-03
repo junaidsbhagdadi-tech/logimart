@@ -503,7 +503,7 @@ export const api = {
   bulkDeleteShipments: (awbs: string[]) => request<{ ok: boolean; deleted: number; detail: Record<string, number>; invoiced?: string[]; notFound?: string[] }>('/api/v1/shipments/bulk-delete', { method: 'POST', body: JSON.stringify({ awbs }) }),
   bulkDeleteCustomers: (ids: (string | number)[]) => request<{ ok: boolean; deleted: number; detail: Record<string, number> }>('/api/v1/clients/bulk-delete', { method: 'POST', body: JSON.stringify({ ids: ids.map(Number) }) }),
   misSales: (from?: string, to?: string) =>
-    request<{ from: string; to: string; count: number; totals: any; rows: { code: string; customer: string; shipments: number; pcs: number; actlKg: number; chrgKg: number; totalSales: number; fuel: number; tax: number; netSales: number; billed: number; unbilled: number; delivered: number; rto: number; undelivered: number; pending: number; cashReceived: number; outstanding: number }[] }>(
+    request<{ from: string; to: string; count: number; totals: any; rows: { code: string; customer: string; shipments: number; pcs: number; actlKg: number; chrgKg: number; totalSales: number; vendorAmount: number; vendorPriced: number; margin: number; fuel: number; tax: number; netSales: number; billed: number; unbilled: number; delivered: number; rto: number; undelivered: number; pending: number; cashReceived: number; outstanding: number }[] }>(
       `/api/v1/billing/mis/sales${from || to ? `?${from ? 'from=' + from : ''}${from && to ? '&' : ''}${to ? 'to=' + to : ''}` : ''}`),
   generateInvoice: (clientId: number, periodStart: string, periodEnd: string) =>
     request<{ invoice: Invoice; creditHold: boolean; newBalance: number; creditLimit: string }>(
@@ -760,12 +760,13 @@ export const api = {
   delPickup: (body: { warehouse?: string; date: string; startTime?: string; packages?: number }) => request<any>('/api/v1/delhivery/pickup', { method: 'POST', body: JSON.stringify(body) }),
 
   // ---- reports ----
-  runReport: (type: string, from?: string, to?: string) => {
+  runReport: (type: string, from?: string, to?: string, extra: { clientId?: string; vendor?: string; status?: string } = {}) => {
     const q = new URLSearchParams();
     if (from) q.set('from', from);
     if (to) q.set('to', to);
+    for (const [k, v] of Object.entries(extra)) if (v) q.set(k, v);
     const s = q.toString();
-    return request<{ columns: { key: string; label: string }[]; rows: any[] }>(`/api/v1/reports/${type}${s ? '?' + s : ''}`);
+    return request<{ columns: { key: string; label: string }[]; rows: any[]; note?: string; title?: string }>(`/api/v1/reports/${type}${s ? '?' + s : ''}`);
   },
   dailyDigestPreview: () => request<{ summary: any; message: string }>('/api/v1/reports/daily-digest/preview'),
   emailDailyDigest: () => request<{ ok: boolean; sentTo: string[]; message: string; note: string }>('/api/v1/reports/daily-digest', { method: 'POST' }),

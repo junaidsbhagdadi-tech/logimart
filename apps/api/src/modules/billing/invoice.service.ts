@@ -3,6 +3,7 @@ import { InvoiceStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RateService } from './rate.service';
+import { PriceCacheService } from './price-cache.service';
 import { COMPANY } from '../../config/company';
 import { cityName, pinRows, placeName } from '../../common/place-name';
 
@@ -35,6 +36,7 @@ export class InvoiceService {
     private readonly prisma: PrismaService,
     private readonly rates: RateService,
     private readonly notifications: NotificationsService,
+    private readonly prices: PriceCacheService,
   ) {}
 
   /**
@@ -394,62 +396,48 @@ export class InvoiceService {
 
   /**
    * Sales MIS — per-customer summary over a date range: shipments, pieces, weights, status split
-   * (delivered/RTO/undelivered/pending), billed vs unbilled, billed sales/fuel/tax, cash received &
-   * outstanding. Sales come from invoiced lines (fast, no live re-rating); outstanding is the live balance.
+   * (delivered/RTO/undelivered/pending), billed vs unbilled, sales/fuel/tax, vendor amount + margin, cash
+   * received & outstanding. Prices come from the report price cache (invoice line once billed, else the rate
+   * card; vendor = vendor bill, else vendor card); outstanding is the live balance.
    */
   async misSalesSummary(from?: string, to?: string, scope?: bigint[] | null) {
     const gte = from ? new Date(from) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     const lte = to ? new Date(`${to}T23:59:59`) : new Date();
-    const [ships, lineItems, payAgg] = await Promise.all([
+    const [ships, payAgg] = await Promise.all([
       this.prisma.shipment.findMany({
         where: { createdAt: { gte, lte }, ...(scope ? { clientId: { in: scope } } : {}) },
         select: { id: true, clientId: true, pieceCount: true, totalDeadKg: true, totalVolKg: true, chargeWeight: true, statusCode: true,
           client: { select: { legalName: true, accountCode: true, outstandingBal: true } } },
       }),
-      this.prisma.invoiceLineItem.findMany({
-        where: { shipment: { createdAt: { gte, lte }, ...(scope ? { clientId: { in: scope } } : {}) } },
-        select: { shipmentId: true, amount: true, fuel: true, shipment: { select: { clientId: true } } },
-      }),
       this.prisma.ledgerEntry.groupBy({ by: ['clientId'], where: { createdAt: { gte, lte }, amount: { lt: 0 }, ...(scope ? { clientId: { in: scope } } : {}) }, _sum: { amount: true } }),
     ]);
+    // Sales + vendor amount per AWB from the report price cache: the invoice line once billed, else the rate
+    // engine (so the MIS shows sales every day, not ₹0 until month-end); vendor = vendor bill, else vendor card.
+    const { prices, pending } = await this.prices.ensure(ships.map((s) => s.id));
     const cashBy = new Map(payAgg.map((p) => [String(p.clientId), -Number(p._sum.amount || 0)]));
-    const billedIds = new Set(lineItems.map((l) => l.shipmentId.toString()));
     const M = new Map<string, any>();
     const n2 = (x: number) => +Number(x || 0).toFixed(2);
     for (const s of ships) {
       const k = String(s.clientId);
-      if (!M.has(k)) M.set(k, { code: s.client?.accountCode ?? '', customer: s.client?.legalName ?? '', shipments: 0, pcs: 0, actlKg: 0, chrgKg: 0, totalSales: 0, fuel: 0, tax: 0, netSales: 0, billed: 0, unbilled: 0, delivered: 0, rto: 0, undelivered: 0, pending: 0, cashReceived: cashBy.get(k) || 0, outstanding: Number(s.client?.outstandingBal || 0) });
+      if (!M.has(k)) M.set(k, { code: s.client?.accountCode ?? '', customer: s.client?.legalName ?? '', shipments: 0, pcs: 0, actlKg: 0, chrgKg: 0, vendorAmount: 0, vendorPriced: 0, fuel: 0, tax: 0, netSales: 0, billed: 0, unbilled: 0, delivered: 0, rto: 0, undelivered: 0, pending: 0, cashReceived: cashBy.get(k) || 0, outstanding: Number(s.client?.outstandingBal || 0), estimated: 0 });
       const r = M.get(k);
       r.shipments++; r.pcs += s.pieceCount || 0;
       r.actlKg += Number(s.totalDeadKg || 0);
       r.chrgKg += s.chargeWeight != null ? Number(s.chargeWeight) : Math.max(Number(s.totalDeadKg || 0), Number(s.totalVolKg || 0));
       const sc = String(s.statusCode || 'MAN');
       if (sc === 'DLD') r.delivered++; else if (['RTO', 'RTD'].includes(sc)) r.rto++; else if (sc === 'UDL') r.undelivered++; else r.pending++;
-      if (billedIds.has(s.id.toString())) r.billed++; else r.unbilled++;
+      const p = prices.get(s.id.toString());
+      if (p?.basis === 'INVOICE') r.billed++; else r.unbilled++;
+      if (p && sc !== 'CAN') {
+        r.netSales += p.subtotal; r.fuel += p.fuel; r.tax += p.subtotal * GST_RATE;
+        if (p.basis === 'RATE') r.estimated++;
+        if (p.vendorCost != null) { r.vendorAmount += p.vendorCost; r.vendorPriced++; }
+      }
     }
-    for (const l of lineItems) {
-      const cid = l.shipment?.clientId; if (cid == null) continue;
-      const r = M.get(String(cid)); if (!r) continue;
-      const amt = Number(l.amount || 0); r.totalSales += amt; r.fuel += Number(l.fuel || 0); r.tax += amt * 0.18;
-    }
-    // Not yet invoiced (the current month, before the billing run) → priced live by the rate engine, so the
-    // MIS shows sales every day instead of ₹0 until month-end. Cancelled AWBs are never sales.
-    // Loaded and priced in pages of 300 (a month is ~14k AWBs — all of them with their boxes at once ran the
-    // process out of memory).
-    const unbilledIds = ships.filter((s) => !billedIds.has(s.id.toString()) && String(s.statusCode || '') !== 'CAN').map((s) => s.id);
-    const priceOne = async (s: any) => {
-      const b: any = await this.rates.chargesForShipment(s, s.pieces).catch(() => null);
-      const r = M.get(String(s.clientId)); if (!r || !b) return;
-      const amt = Number(b.subtotal || 0); r.totalSales += amt; r.fuel += Number(b.fuel || 0); r.tax += amt * 0.18; r.estimated = (r.estimated || 0) + 1;
-    };
-    for (let p = 0; p < unbilledIds.length; p += 300) {
-      const page = await this.prisma.shipment.findMany({ where: { id: { in: unbilledIds.slice(p, p + 300) } }, include: { pieces: { select: { status: true, deadKg: true, volKg: true, lengthCm: true, widthCm: true, heightCm: true } } } });
-      for (let i = 0; i < page.length; i += 12) await Promise.all(page.slice(i, i + 12).map(priceOne));
-    }
-    const rows = [...M.values()].map((r) => ({ ...r, actlKg: n2(r.actlKg), chrgKg: n2(r.chrgKg), totalSales: n2(r.totalSales), fuel: n2(r.fuel), tax: n2(r.tax), netSales: n2(r.totalSales), cashReceived: n2(r.cashReceived), outstanding: n2(r.outstanding) }))
-      .sort((a, b) => b.totalSales - a.totalSales);
-    const totals: any = {};
-    for (const k of ['shipments', 'pcs', 'actlKg', 'chrgKg', 'totalSales', 'fuel', 'tax', 'netSales', 'billed', 'unbilled', 'delivered', 'rto', 'undelivered', 'pending', 'cashReceived', 'outstanding', 'estimated']) totals[k] = n2(rows.reduce((t, r) => t + ((r as any)[k] || 0), 0));
+    const rows = [...M.values()].map((r) => ({ ...r, actlKg: n2(r.actlKg), chrgKg: n2(r.chrgKg), vendorAmount: n2(r.vendorAmount), fuel: n2(r.fuel), tax: n2(r.tax), netSales: n2(r.netSales), totalSales: n2(r.netSales), margin: n2(r.netSales - r.vendorAmount), cashReceived: n2(r.cashReceived), outstanding: n2(r.outstanding) }))
+      .sort((a, b) => b.netSales - a.netSales);
+    const totals: any = { pricingPending: pending };
+    for (const k of ['shipments', 'pcs', 'actlKg', 'chrgKg', 'vendorAmount', 'vendorPriced', 'totalSales', 'fuel', 'tax', 'netSales', 'margin', 'billed', 'unbilled', 'delivered', 'rto', 'undelivered', 'pending', 'cashReceived', 'outstanding', 'estimated']) totals[k] = n2(rows.reduce((t, r) => t + ((r as any)[k] || 0), 0));
     return { from: gte, to: lte, count: rows.length, rows, totals };
   }
 

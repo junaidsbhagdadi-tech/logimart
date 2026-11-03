@@ -46,7 +46,7 @@ export function ShipmentDetail() {
   const [fwd, setFwd] = useState({ vendor: '', forwardingAwb: '' });
   const [track, setTrack] = useState<{ code: string; label: string; at: string; remark?: string | null }[]>([]);
   const [addons, setAddons] = useState<any[]>([]);
-  const [addForm, setAddForm] = useState({ amount: '', reason: '', serviceCentre: '', fromLoc: '', toLoc: '', mode: '', toBill: true });
+  const [addForm, setAddForm] = useState({ amount: '', reason: '', serviceCentre: '', fromLoc: '', toLoc: '', mode: '', toBill: true, noBillReason: '' });
   const isSysAdmin = user?.role === 'SYS_ADMIN';
   const [transferOpen, setTransferOpen] = useState(false);
   const [transferId, setTransferId] = useState('');
@@ -154,7 +154,7 @@ export function ShipmentDetail() {
   const addAddon = async () => {
     if (!awb || !(Number(addForm.amount) > 0)) { setError('Enter an add-on amount greater than zero.'); return; }
     setError('');
-    try { await api.addAddon(awb, { ...addForm, amount: Number(addForm.amount) }); setAddForm({ amount: '', reason: '', serviceCentre: '', fromLoc: '', toLoc: '', mode: '', toBill: true }); load(); }
+    try { await api.addAddon(awb, { ...addForm, amount: Number(addForm.amount) }); setAddForm({ amount: '', reason: '', serviceCentre: '', fromLoc: '', toLoc: '', mode: '', toBill: true, noBillReason: '' }); load(); }
     catch (e: any) { setError(e.message); }
   };
   const removeAddon = async (id: string) => { if (!confirm('Delete this add-on charge?')) return; try { await api.deleteAddon(id); load(); } catch (e: any) { setError(e.message); } };
@@ -655,7 +655,7 @@ Void it here anyway?`)) throw e;
                     <tr key={a.id}>
                       <td>{a.reason}</td>
                       <td style={{ textAlign: 'right', fontWeight: 600 }}>₹{Number(a.amount).toFixed(2)}</td>
-                      <td>{a.toBill ? 'Yes' : 'No'}</td>
+                      <td>{a.billedInvoiceId ? 'Billed' : a.toBill ? 'Yes' : `No — ${a.noBillReason || 'no reason'}`}</td>
                       <td>{a.serviceCentre || '—'}</td>
                       <td>{a.fromLoc || a.toLoc ? `${a.fromLoc || ''}→${a.toLoc || ''}` : '—'}</td>
                       <td>{a.mode || '—'}</td>
@@ -675,6 +675,7 @@ Void it here anyway?`)) throw e;
             <div><label>To</label><input value={addForm.toLoc} onChange={(e) => setAddForm({ ...addForm, toLoc: e.target.value })} /></div>
             <div><label>Mode (how we paid)</label><input value={addForm.mode} onChange={(e) => setAddForm({ ...addForm, mode: e.target.value })} placeholder="GPAY / CASH" /></div>
             <div><label>&nbsp;</label><label className="row" style={{ gap: 6 }}><input type="checkbox" checked={addForm.toBill} onChange={(e) => setAddForm({ ...addForm, toBill: e.target.checked })} style={{ width: 'auto' }} /> Bill to customer</label></div>
+            {!addForm.toBill && <div><label>Why not billed? *</label><input value={addForm.noBillReason} onChange={(e) => setAddForm({ ...addForm, noBillReason: e.target.value })} placeholder="e.g. our mistake, goodwill" /></div>}
           </div>
           <button className="secondary" style={{ marginTop: 10 }} disabled={!(Number(addForm.amount) > 0) || !addForm.reason.trim()} onClick={addAddon}>➕ Add charge</button>
         </div>

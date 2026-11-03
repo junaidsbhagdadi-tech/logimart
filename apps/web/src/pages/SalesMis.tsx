@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import { fmtDate } from '../format';
 
@@ -9,10 +9,11 @@ const COLS: { key: string; label: string; num?: boolean; money?: boolean }[] = [
   { key: 'pcs', label: 'PCS', num: true },
   { key: 'actlKg', label: 'Actl Wt', num: true },
   { key: 'chrgKg', label: 'Chrg Wt', num: true },
-  { key: 'totalSales', label: 'Total Sales', money: true },
+  { key: 'vendorAmount', label: 'Vendor Amt', money: true },
   { key: 'fuel', label: 'Fuel', money: true },
   { key: 'tax', label: 'Tax', money: true },
   { key: 'netSales', label: 'Net Sales', money: true },
+  { key: 'margin', label: 'Margin', money: true },
   { key: 'billed', label: 'Billed', num: true },
   { key: 'unbilled', label: 'UnBilled', num: true },
   { key: 'delivered', label: 'Delivered', num: true },
@@ -31,6 +32,14 @@ export function SalesMis() {
   const [data, setData] = useState<Awaited<ReturnType<typeof api.misSales>> | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [q, setQ] = useState('');
+  const [sort, setSort] = useState<{ key: string; dir: 1 | -1 }>({ key: 'netSales', dir: -1 });
+  const rows = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    const list = (data?.rows ?? []).filter((r) => !term || `${r.code} ${r.customer}`.toLowerCase().includes(term));
+    const c = COLS.find((x) => x.key === sort.key);
+    return [...list].sort((a: any, b: any) => (c?.money || c?.num ? Number(a[sort.key] || 0) - Number(b[sort.key] || 0) : String(a[sort.key] ?? '').localeCompare(String(b[sort.key] ?? ''))) * sort.dir);
+  }, [data, q, sort]);
 
   const load = () => {
     setBusy(true); setError('');
@@ -44,7 +53,7 @@ export function SalesMis() {
     if (!data) return;
     const XLSX = await import('xlsx');
     const head = COLS.map((c) => c.label);
-    const body = data.rows.map((r) => COLS.map((c) => (c.money || c.num ? Number((r as any)[c.key] || 0) : (r as any)[c.key] ?? '')));
+    const body = rows.map((r) => COLS.map((c) => (c.money || c.num ? Number((r as any)[c.key] || 0) : (r as any)[c.key] ?? '')));
     const totalRow = COLS.map((c) => (c.key === 'code' ? 'TOTAL' : c.money || c.num ? Number((data.totals as any)[c.key] || 0) : ''));
     const ws = XLSX.utils.aoa_to_sheet([[`Sales MIS ${from} → ${to}`], head, ...body, totalRow]);
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Sales MIS');
@@ -60,17 +69,18 @@ export function SalesMis() {
           <div><label>To</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
           <button onClick={load} disabled={busy}>{busy ? 'Loading…' : '🔍 Search'}</button>
           <button className="secondary" onClick={exportXls} disabled={!data?.rows.length}>⬇ Excel</button>
+          <div style={{ marginLeft: 'auto' }}><label>Search customer</label><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="code or name" style={{ width: 200 }} /></div>
         </div>
-        <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>Per-customer sales, weights, status and receivables for the period. Sales = the invoiced amount for billed AWBs, and the rate-card price for AWBs not invoiced yet{data?.totals?.estimated ? ` (${data.totals.estimated} priced live)` : ''}; outstanding is the live balance.</p>
+        <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>Per-customer sales, weights, status and receivables for the period. Net sales (excl. GST) = the invoiced amount for billed AWBs, and the rate-card price for AWBs not invoiced yet{data?.totals?.estimated ? ` (${data.totals.estimated} priced from the rate card)` : ''}. Vendor amt = the uploaded vendor bill, else the vendor's rate card in the system{data?.totals ? ` (${Number(data.totals.vendorPriced || 0).toLocaleString('en-IN')} of ${Number(data.totals.shipments || 0).toLocaleString('en-IN')} AWBs have one)` : ''}. Click a column to sort. Outstanding is the live balance.{data?.totals?.pricingPending ? ` ${data.totals.pricingPending} AWBs are still being priced — search again in a minute.` : ''}</p>
       </div>
       {error && <div className="error">{error}</div>}
       {data && (
         <div className="card" style={{ overflowX: 'auto' }}>
           <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>{data.count} customer(s) · {fmtDate(data.from)} → {fmtDate(data.to)}</div>
           <table style={{ minWidth: 1500, fontSize: 12.5 }}>
-            <thead><tr>{COLS.map((c) => <th key={c.key} style={{ whiteSpace: 'nowrap', textAlign: c.money || c.num ? 'right' : 'left' }}>{c.label}</th>)}</tr></thead>
+            <thead><tr>{COLS.map((c) => <th key={c.key} onClick={() => setSort((s) => ({ key: c.key, dir: s.key === c.key ? (s.dir === 1 ? -1 : 1) : (c.money || c.num ? -1 : 1) }))} style={{ whiteSpace: 'nowrap', textAlign: c.money || c.num ? 'right' : 'left', cursor: 'pointer' }}>{c.label}{sort.key === c.key ? (sort.dir === 1 ? ' ▲' : ' ▼') : ''}</th>)}</tr></thead>
             <tbody>
-              {data.rows.map((r) => (
+              {rows.map((r) => (
                 <tr key={r.code || r.customer}>
                   {COLS.map((c) => <td key={c.key} style={{ whiteSpace: 'nowrap', textAlign: c.money || c.num ? 'right' : 'left' }}>{cell(r, c)}</td>)}
                 </tr>

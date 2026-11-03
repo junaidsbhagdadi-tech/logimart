@@ -79,6 +79,11 @@ function NewBooking({ onBooked }: { onBooked: (awb: string) => void }) {
   const [invNo, setInvNo] = useState('');
   const [invAmt, setInvAmt] = useState('');
   const [ewb, setEwb] = useState('');
+  // DOD (cheque / DD collected before delivery) — on by itself for the DOD product
+  const [dod, setDod] = useState(false);
+  const [dodAmt, setDodAmt] = useState('');
+  const [dodInst, setDodInst] = useState<'CHEQUE' | 'DD'>('CHEQUE');
+  useEffect(() => { if (product.toUpperCase() === 'DOD') setDod(true); }, [product]);
   const [invDoc, setInvDoc] = useState<{ name: string; url: string } | null>(null);
   const [ewbDoc, setEwbDoc] = useState<{ name: string; url: string } | null>(null);
   const [boxDoc, setBoxDoc] = useState<{ name: string; url: string } | null>(null); // deleted once delivered
@@ -144,7 +149,8 @@ function NewBooking({ onBooked }: { onBooked: (awb: string) => void }) {
   const missing = useMemo(() => [
     !cust && 'customer', !product && 'product', !/^\d{6}$/.test(con.pincode.trim()) && 'consignee pincode', !con.name.trim() && 'consignee name',
     !(Number(kg) > 0) && 'weight', pickupElsewhere && !pick.address.trim() && 'pickup address', pickupElsewhere && !/^\d{6}$/.test(pick.pincode.trim()) && 'pickup pincode',
-  ].filter(Boolean) as string[], [cust, product, con, kg, pickupElsewhere, pick]);
+    dod && !(Number(dodAmt) > 0) && 'DOD amount',
+  ].filter(Boolean) as string[], [cust, product, con, kg, pickupElsewhere, pick, dod, dodAmt]);
 
   const book = async () => {
     if (missing.length) { setErr(`Missing: ${missing.join(', ')}`); return; }
@@ -169,6 +175,7 @@ function NewBooking({ onBooked }: { onBooked: (awb: string) => void }) {
         forwardingAwb: opt(fwd)?.toUpperCase(), manualAwb: opt(awb)?.toUpperCase(), referenceNo: opt(ref), goodsDesc: opt(content),
         shipmentValue: inv, declaredValue: inv, invoiceNo: opt(invNo), ewbNo: opt(ewb),
         paymentTerm: 'PREPAID',
+        isDod: dod, dodAmount: dod ? Number(dodAmt) : undefined, dodInstrument: dod ? dodInst : undefined,
         // One piece per box, each carrying its line's size (volumetric weight is worked out server-side).
         pieces: lines.flatMap((l) => Array.from({ length: count(l) }, () => ({ deadKg: perBox, lengthCm: Number(l.l) > 0 ? +l.l : undefined, widthCm: Number(l.w) > 0 ? +l.w : undefined, heightCm: Number(l.h) > 0 ? +l.h : undefined }))),
       } as any);
@@ -190,6 +197,7 @@ function NewBooking({ onBooked }: { onBooked: (awb: string) => void }) {
     setCon({ name: '', pincode: '', phone: st.prefillPhone ? '0000000000' : '', address: '', gst: '' }); setDestCity('');
     setKg(''); setAwb(''); setFwd(''); setRef(st.autoRef ? `R${Date.now().toString().slice(-8)}` : ''); setInvNo(''); setInvAmt(''); setEwb('');
     setLines([blankLine()]); setInvDoc(null); setEwbDoc(null); setBoxDoc(null);
+    setDod(product.toUpperCase() === 'DOD'); setDodAmt('');
   };
 
   const scan = (value: string, set: (v: string) => void, placeholder: string, title: string) => (
@@ -334,6 +342,19 @@ function NewBooking({ onBooked }: { onBooked: (awb: string) => void }) {
         <Field label="Invoice ₹"><input type="number" inputMode="decimal" value={invAmt} onChange={(e) => setInvAmt(e.target.value)} /></Field>
       </div>
       <Field label={needEway ? 'E-way bill no. (needed: ₹50,000+)' : 'E-way bill no. (optional)'}>{scan(ewb, setEwb, '', 'Scan the e-way bill barcode')}</Field>
+
+      <label className="row" style={{ justifyContent: 'space-between', alignItems: 'center', fontWeight: 400, padding: '4px 0' }}>
+        <span><span style={{ fontWeight: 600 }}>DOD — collect a cheque / DD before delivery</span><br /><span className="muted" style={{ fontSize: 12 }}>Delivery is blocked until the draft is collected and recorded.</span></span>
+        <input type="checkbox" checked={dod} onChange={(e) => setDod(e.target.checked)} style={{ width: 'auto' }} />
+      </label>
+      {dod && (
+        <div className="row" style={{ gap: 12 }}>
+          <Field label="Instrument">
+            <select value={dodInst} onChange={(e) => setDodInst(e.target.value as 'CHEQUE' | 'DD')}><option value="CHEQUE">Cheque</option><option value="DD">Demand Draft</option></select>
+          </Field>
+          <Field label="DOD amount ₹"><input type="number" inputMode="decimal" value={dodAmt} onChange={(e) => setDodAmt(e.target.value)} placeholder="draft value" /></Field>
+        </div>
+      )}
 
       <Section>Photos (optional)</Section>
       <div className="row" style={{ gap: 10 }}>

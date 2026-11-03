@@ -1424,6 +1424,7 @@ model ShipmentAddon {
   toLoc         String?
   mode          String? // how WE paid the underlying expense (GPAY/CASH/…)
   toBill        Boolean   @default(true) // bill to the customer?
+  noBillReason  String?   // why it is NOT billed to the customer (required when toBill = false)
   pickupDate    DateTime?
   billedInvoiceId BigInt? // set once it has been included on an invoice
   createdById   BigInt?
@@ -1833,4 +1834,22 @@ model OpsJobRun {
   @@index([job, startedAt])
   @@index([startedAt])
   @@map("ops_job_runs")
+}
+
+// Per-shipment price cache for the reports (Sales MIS, billing, product / vendor summaries, zero report):
+// what we sell it for (the invoice line once billed, else the rate engine) and what the vendor costs us
+// (the uploaded vendor bill, else the vendor's own rate card). Refreshed in the background (PriceCacheService).
+model ShipmentPrice {
+  shipmentId  BigInt   @id
+  freight     Decimal  @default(0) @db.Decimal(14, 2)
+  fuel        Decimal  @default(0) @db.Decimal(14, 2)
+  other       Decimal  @default(0) @db.Decimal(14, 2)
+  subtotal    Decimal  @default(0) @db.Decimal(14, 2) // pre-GST sell
+  basis       String   // INVOICE | RATE | NONE (no rate found / cancelled)
+  vendorCost  Decimal? @db.Decimal(14, 2)             // pre-GST vendor amount
+  vendorBasis String?  // BILL | CARD
+  computedAt  DateTime @default(now())
+
+  @@index([computedAt])
+  @@map("shipment_prices")
 }

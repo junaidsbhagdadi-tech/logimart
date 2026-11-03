@@ -2,8 +2,17 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PriceCacheService } from '../billing/price-cache.service';
 
-type Report = { columns: { key: string; label: string }[]; rows: any[] };
+type Report = { columns: { key: string; label: string }[]; rows: any[]; note?: string; title?: string };
+/** Optional report filters (customer / vendor / status drill-down). */
+export type Filters = { clientId?: bigint; vendor?: string; status?: string };
+
+// Status code → plain words (reports show these instead of codes).
+const STATUS_LABEL: Record<string, string> = {
+  MAN: 'Booked (manifested)', PKD: 'Picked up', ORD: 'In transit (origin)', DPD: 'In transit', DRD: 'Reached destination', OFD: 'Out for delivery',
+  DLD: 'Delivered', UDL: 'Undelivered (NDR)', RTO: 'Return to origin', RTD: 'Returned to shipper', CAN: 'Cancelled',
+};
 
 // Plain-English transport-mode labels — the raw enum (ROAD_PTL, AIR_EXPRESS…) is internal and
 // confuses users, so report exports show the friendly label too (mirrors the web modeLabel).
@@ -16,7 +25,20 @@ const modeLabel = (m: any) => MODE_LABEL[String(m ?? '').toUpperCase()] ?? (m ??
 @Injectable()
 export class ReportsService {
   private readonly logger = new Logger(ReportsService.name);
-  constructor(private readonly prisma: PrismaService, private readonly notifications: NotificationsService) {}
+  constructor(private readonly prisma: PrismaService, private readonly notifications: NotificationsService, private readonly prices: PriceCacheService) {}
+
+  // ---- shared report helpers ----
+  private shipWhere(range: any, f: Filters = {}) {
+    return { createdAt: range, ...(f.clientId ? { clientId: f.clientId } : {}), ...(f.vendor ? { vendor: { equals: f.vendor, mode: 'insensitive' as const } } : {}) };
+  }
+  private chargeKg(s: any) { return s.chargeWeight != null ? Number(s.chargeWeight) : Math.max(Number(s.totalDeadKg || 0), Number(s.totalVolKg || 0)); }
+  private totalRow(rows: any[], labelKey: string, keys: string[]) {
+    const t: any = { [labelKey]: 'TOTAL' };
+    for (const k of keys) t[k] = rows.reduce((a, r) => a + Number(r[k] || 0), 0);
+    return t;
+  }
+  private fmt(rows: any[], keys: string[]) { return rows.map((r) => { const o = { ...r }; for (const k of keys) if (o[k] !== '' && o[k] != null) o[k] = Number(o[k]).toFixed(2); return o; }); }
+  private pendingNote(n: number) { return n > 0 ? `${n.toLocaleString('en-IN')} AWB(s) are still being priced in the background — run the report again in a minute for complete totals.` : ''; }
 
   /**
    * Data-completeness check — surfaces the master-data gaps that silently break booking/pricing:
@@ -140,21 +162,24 @@ export class ReportsService {
     return { ok: true, sentTo: recipients, sent, summary, message, note };
   }
 
-  async run(type: string, from?: string, to?: string): Promise<Report> {
-    const gte = from ? new Date(from) : new Date(Date.now() - 30 * 86400000);
-    const lte = to ? new Date(new Date(to).getTime() + 86400000) : new Date();
+  async run(type: string, from?: string, to?: string, f: Filters = {}): Promise<Report> {
+    // whole IST days
+    const gte = from ? new Date(`${from}T00:00:00+05:30`) : new Date(Date.now() - 30 * 86400000);
+    const lte = to ? new Date(`${to}T23:59:59.999+05:30`) : new Date();
     const range = { gte, lte };
     switch (type.toUpperCase()) {
+      case 'STATUS_AWBS': return this.statusAwbs(range, f);
+      case 'AWB_GAPS': return this.awbGaps(range);
       case 'MIS': return this.mis(range);
       case 'DAILY': return this.daily(range);
       case 'CUSTOMER_SUMMARY': return this.customerSummary(range);
-      case 'PRODUCT_SUMMARY': return this.productSummary(range);
+      case 'PRODUCT_SUMMARY': return this.productSummary(range, f);
       case 'DESTINATION_SUMMARY': return this.destinationSummary(range);
-      case 'DELIVERY_STATUS': return this.deliveryStatus(range);
+      case 'DELIVERY_STATUS': return this.deliveryStatus(range, f);
       case 'SCAN': return this.scanReport(range);
       case 'RECEIVABLES': return this.receivables();
       case 'INVOICE': return this.invoiceReport();
-      case 'VENDOR': return this.vendorReport();
+      case 'VENDOR': return this.vendorReport(range, f);
       case 'MANIFEST': return this.manifestReport(range);
       case 'PICKUP': return this.pickupReport(range);
       case 'DRS': return this.drsReport(range);
@@ -162,20 +187,20 @@ export class ReportsService {
       case 'INSCAN': return this.inscan(range);
       case 'VOLUMETRIC': return this.volumetric(range);
       case 'VOID': return this.voidReport(range);
-      case 'ZERO': return this.zeroReport(range);
+      case 'ZERO': return this.zeroReport(range, f);
       case 'LEDGER_AGING': return this.ledgerAging();
       case 'TARIFF': return this.tariff();
       case 'LOCATION_SUMMARY': return this.locationSummary(range);
       case 'NOT_INSCAN': return this.notInscan(range);
       case 'RUNSHEET_NOT_POD': return this.runsheetNotPod(range);
-      case 'BILLING': return this.billing(range);
-      case 'EXTRA_EXPENSE': return this.extraExpense(range);
+      case 'BILLING': return this.billing(range, f);
+      case 'EXTRA_EXPENSE': return this.extraExpense(range, f);
       case 'ACTION_LOG': return this.actionLog(range);
       case 'LOGIN_LOG': return this.loginLog(range);
-      case 'MISSING_AWB': return this.missingAwb(range);
+      case 'MISSING_AWB': return this.missingAwb(range, f);
       case 'CUSTOMER_REGISTER': return this.customerRegister(range);
-      case 'SLA': return this.slaSummary(range);
-      case 'SLA_DETAIL': return this.slaDetail(range);
+      case 'SLA': return this.slaSummary(range, f);
+      case 'SLA_DETAIL': return this.slaDetail(range, f);
       default: return { columns: [{ key: 'msg', label: 'Info' }], rows: [{ msg: `Report '${type}' is not implemented yet.` }] };
     }
   }
@@ -194,35 +219,41 @@ export class ReportsService {
     return { columns: [{ key: 'metric', label: 'Metric' }, { key: 'value', label: 'Value' }], rows };
   }
 
-  /** AWB-wise extra expenses (ShipmentAddon add-on charges captured on the shipment screen). */
-  private async extraExpense(range: any): Promise<Report> {
+  /** AWB-wise extra expenses with their billing status — billed (invoice no), to be billed, or not to be
+   *  billed (with the reason) — and a summary of each. */
+  private async extraExpense(range: any, f: Filters = {}): Promise<Report> {
     const rows: any[] = await this.prisma.shipmentAddon.findMany({
-      where: { createdAt: range },
+      where: { createdAt: range, ...(f.clientId ? { shipment: { clientId: f.clientId } } : {}) },
       include: { shipment: { select: { awb: true, client: { select: { legalName: true, accountCode: true } } } } },
       orderBy: { createdAt: 'desc' }, take: 5000,
     });
-    let total = 0;
+    const invIds = [...new Set(rows.map((r) => r.billedInvoiceId).filter(Boolean))];
+    const invNo = new Map((invIds.length ? await this.prisma.invoice.findMany({ where: { id: { in: invIds } }, select: { id: true, invoiceNo: true } }) : []).map((i) => [i.id.toString(), i.invoiceNo]));
+    const sum = { billed: 0, toBill: 0, notBilled: 0 };
+    const reasons = new Map<string, number>();
     const out = rows.map((r) => {
-      const amt = Number(r.amount) || 0; total += amt;
+      const amt = Number(r.amount) || 0;
+      let status: string;
+      if (r.billedInvoiceId) { status = `Billed — ${invNo.get(r.billedInvoiceId.toString()) ?? 'invoice'}`; sum.billed += amt; }
+      else if (r.toBill) { status = 'To be billed (next invoice)'; sum.toBill += amt; }
+      else { const why = r.noBillReason || 'no reason given'; status = `Not to be billed — ${why}`; sum.notBilled += amt; reasons.set(why, (reasons.get(why) ?? 0) + amt); }
       return {
-        date: r.createdAt.toISOString().slice(0, 10),
-        awb: r.shipment?.awb ?? '—',
-        customer: r.shipment?.client?.legalName ?? '—',
-        reason: r.reason ?? '',
-        serviceCentre: r.serviceCentre ?? '',
-        route: [r.fromLoc, r.toLoc].filter(Boolean).join(' → '),
-        mode: r.mode ?? '',
-        amount: amt.toFixed(2),
-        toBill: r.toBill ? 'Yes' : 'No',
+        date: new Date(+r.createdAt + 330 * 60000).toISOString().slice(0, 10), awb: r.shipment?.awb ?? '—', customer: r.shipment?.client?.legalName ?? '—',
+        reason: r.reason ?? '', serviceCentre: r.serviceCentre ?? '', route: [r.fromLoc, r.toLoc].filter(Boolean).join(' → '), mode: r.mode ?? '',
+        amount: amt.toFixed(2), status,
       };
     });
-    out.push({ date: '', awb: '', customer: '', reason: '', serviceCentre: '', route: '', mode: 'TOTAL', amount: total.toFixed(2), toBill: '' });
+    const total = sum.billed + sum.toBill + sum.notBilled;
+    const s = (label: string, v: number) => ({ date: '', awb: '', customer: '', reason: '', serviceCentre: '', route: '', mode: label, amount: v.toFixed(2), status: '', _summary: true });
+    out.push(s('SUMMARY — Billed', sum.billed), s('To be billed', sum.toBill), s('Not to be billed', sum.notBilled));
+    for (const [why, v] of reasons) out.push({ ...s(`   · ${why}`, v) });
+    out.push(s('TOTAL', total));
     return {
       columns: [
         { key: 'date', label: 'Date' }, { key: 'awb', label: 'AWB' }, { key: 'customer', label: 'Customer' },
-        { key: 'reason', label: 'Reason' }, { key: 'serviceCentre', label: 'Service centre' },
-        { key: 'route', label: 'From → To' }, { key: 'mode', label: 'Mode' },
-        { key: 'amount', label: 'Amount ₹' }, { key: 'toBill', label: 'Bill to customer' },
+        { key: 'reason', label: 'Expense' }, { key: 'serviceCentre', label: 'Service centre' },
+        { key: 'route', label: 'From → To' }, { key: 'mode', label: 'Paid by' },
+        { key: 'amount', label: 'Amount ₹' }, { key: 'status', label: 'Billing' },
       ],
       rows: out,
     };
@@ -251,12 +282,24 @@ export class ReportsService {
     return { columns: [{ key: 'customer', label: 'Customer' }, { key: 'shipments', label: 'Shipments' }, { key: 'deadKg', label: 'Dead kg' }], rows };
   }
 
-  private async productSummary(range: any): Promise<Report> {
-    const g = await this.prisma.shipment.groupBy({ by: ['product'], where: { createdAt: range }, _count: { _all: true }, _sum: { totalDeadKg: true } });
-    const rows = g
-      .map((x) => ({ product: x.product || '—', shipments: x._count._all, deadKg: Number(x._sum.totalDeadKg || 0).toFixed(2) }))
-      .sort((a, b) => b.shipments - a.shipments);
-    return { columns: [{ key: 'product', label: 'Product' }, { key: 'shipments', label: 'Shipments' }, { key: 'deadKg', label: 'Dead kg' }], rows };
+  /** Product-wise volume + sales (pre-GST: the invoice line once billed, else the rate card). */
+  private async productSummary(range: any, f: Filters = {}): Promise<Report> {
+    const ships = await this.prisma.shipment.findMany({ where: this.shipWhere(range, f), select: { id: true, product: true, totalDeadKg: true, totalVolKg: true, chargeWeight: true, statusCode: true } });
+    const { prices, pending } = await this.prices.ensure(ships.map((s) => s.id));
+    const m = new Map<string, any>();
+    for (const s of ships) {
+      const k = s.product || '—';
+      const r = m.get(k) ?? { product: k, shipments: 0, deadKg: 0, chargeKg: 0, sales: 0 };
+      r.shipments++; r.deadKg += Number(s.totalDeadKg || 0); r.chargeKg += this.chargeKg(s);
+      if (s.statusCode !== 'CAN') r.sales += prices.get(s.id.toString())?.subtotal ?? 0;
+      m.set(k, r);
+    }
+    const rows = [...m.values()].sort((a, b) => b.shipments - a.shipments);
+    rows.push(this.totalRow(rows, 'product', ['shipments', 'deadKg', 'chargeKg', 'sales']));
+    return {
+      columns: [{ key: 'product', label: 'Product' }, { key: 'shipments', label: 'Shipments' }, { key: 'deadKg', label: 'Dead kg' }, { key: 'chargeKg', label: 'Charge kg' }, { key: 'sales', label: 'Sales ₹ (excl. GST)' }],
+      rows: this.fmt(rows, ['deadKg', 'chargeKg', 'sales']), note: this.pendingNote(pending),
+    };
   }
 
   private async destinationSummary(range: any): Promise<Report> {
@@ -267,10 +310,34 @@ export class ReportsService {
     return { columns: [{ key: 'destination', label: 'Destination zone' }, { key: 'shipments', label: 'Shipments' }, { key: 'deadKg', label: 'Dead kg' }], rows };
   }
 
-  private async deliveryStatus(range: any): Promise<Report> {
-    const g = await this.prisma.shipment.groupBy({ by: ['status'], where: { createdAt: range }, _count: { _all: true } });
-    const rows = g.map((x) => ({ status: x.status, count: x._count._all })).sort((a, b) => b.count - a.count);
-    return { columns: [{ key: 'status', label: 'Status' }, { key: 'count', label: 'Count' }], rows };
+  /** Status-wise count; each row opens the AWB list for that status. */
+  private async deliveryStatus(range: any, f: Filters = {}): Promise<Report> {
+    const g = await this.prisma.shipment.groupBy({ by: ['statusCode'], where: this.shipWhere(range, f), _count: { _all: true } });
+    const rows = g.map((x) => ({ status: STATUS_LABEL[String(x.statusCode || 'MAN')] ?? x.statusCode, count: x._count._all, _drill: { type: 'STATUS_AWBS', status: x.statusCode || 'MAN' } }))
+      .sort((a, b) => b.count - a.count);
+    rows.push({ status: 'TOTAL', count: rows.reduce((t, r) => t + r.count, 0), _drill: undefined as any });
+    return { columns: [{ key: 'status', label: 'Status' }, { key: 'count', label: 'AWBs' }], rows, note: 'Click a status to see its AWBs.' };
+  }
+
+  /** AWBs in one status (drill-down from Delivery Status). */
+  private async statusAwbs(range: any, f: Filters = {}): Promise<Report> {
+    const st = String(f.status || 'MAN').toUpperCase();
+    const s = await this.prisma.shipment.findMany({
+      where: { ...this.shipWhere(range, f), ...(st === 'MAN' ? { OR: [{ statusCode: 'MAN' }, { statusCode: null }] } : { statusCode: st }) },
+      select: { awb: true, createdAt: true, statusAt: true, product: true, vendor: true, forwardingAwb: true, consigneeName: true, consigneeCity: true, destPincode: true, bdStatus: true, client: { select: { accountCode: true, legalName: true } } },
+      orderBy: { createdAt: 'asc' }, take: 5000,
+    });
+    const d = (v: any) => (v ? new Date(+new Date(v) + 330 * 60000).toISOString().slice(0, 10) : '—');
+    const rows = s.map((x) => ({
+      awb: x.awb, booked: d(x.createdAt), customer: `${x.client?.accountCode ?? ''} ${x.client?.legalName ?? ''}`.trim(), product: x.product || '—', vendor: x.vendor || '—',
+      forwarding: x.forwardingAwb || '—', consignee: x.consigneeName || '—', destination: [x.consigneeCity, x.destPincode].filter(Boolean).join(' ') || '—',
+      carrierStatus: x.bdStatus || '—', since: d(x.statusAt),
+    }));
+    return {
+      title: `${STATUS_LABEL[st] ?? st} — AWBs`,
+      columns: [{ key: 'awb', label: 'AWB' }, { key: 'booked', label: 'Booked' }, { key: 'customer', label: 'Customer' }, { key: 'product', label: 'Product' }, { key: 'vendor', label: 'Vendor' }, { key: 'forwarding', label: 'Forwarding no' }, { key: 'consignee', label: 'Consignee' }, { key: 'destination', label: 'Destination' }, { key: 'carrierStatus', label: 'Carrier status' }, { key: 'since', label: 'Status date' }],
+      rows,
+    };
   }
 
   private async scanReport(range: any): Promise<Report> {
@@ -289,10 +356,29 @@ export class ReportsService {
     return { columns: [{ key: 'invoiceNo', label: 'Invoice No' }, { key: 'customer', label: 'Customer' }, { key: 'total', label: 'Total ₹' }, { key: 'status', label: 'Status' }, { key: 'dueDate', label: 'Due date' }], rows };
   }
 
-  private async vendorReport(): Promise<Report> {
-    const v = await this.prisma.vendor.findMany({ orderBy: { name: 'asc' } });
-    const rows = v.map((x) => ({ name: x.name, modes: x.modes, city: x.city || '—', gstin: x.gstin || '—', active: x.isActive ? 'Yes' : 'No' }));
-    return { columns: [{ key: 'name', label: 'Vendor' }, { key: 'modes', label: 'Modes' }, { key: 'city', label: 'City' }, { key: 'gstin', label: 'GSTIN' }, { key: 'active', label: 'Active' }], rows };
+  /** Vendor × product: volume, weight, our sales and the vendor amount, for the date range. */
+  private async vendorReport(range: any, f: Filters = {}): Promise<Report> {
+    const ships = await this.prisma.shipment.findMany({ where: { ...this.shipWhere(range, f), NOT: { statusCode: 'CAN' } }, select: { id: true, vendor: true, product: true, totalDeadKg: true, totalVolKg: true, chargeWeight: true } });
+    const { prices, pending } = await this.prices.ensure(ships.map((s) => s.id));
+    const names = new Map((await this.prisma.vendor.findMany({ select: { vendorCode: true, name: true } })).map((v) => [String(v.vendorCode).toUpperCase(), v.name]));
+    const m = new Map<string, any>();
+    for (const s of ships) {
+      const v = String(s.vendor || '—').toUpperCase();
+      const k = `${v}|${s.product || '—'}`;
+      const r = m.get(k) ?? { vendor: v, vendorName: names.get(v) ?? '', product: s.product || '—', shipments: 0, deadKg: 0, chargeKg: 0, sales: 0, vendorAmount: 0, vendorPriced: 0 };
+      const p = prices.get(s.id.toString());
+      r.shipments++; r.deadKg += Number(s.totalDeadKg || 0); r.chargeKg += this.chargeKg(s); r.sales += p?.subtotal ?? 0;
+      if (p?.vendorCost != null) { r.vendorAmount += p.vendorCost; r.vendorPriced++; }
+      m.set(k, r);
+    }
+    const rows = [...m.values()].sort((a, b) => a.vendor.localeCompare(b.vendor) || b.shipments - a.shipments)
+      .map((r) => ({ ...r, vendorPriced: `${r.vendorPriced}/${r.shipments}` }));
+    rows.push({ ...this.totalRow(rows, 'vendor', ['shipments', 'deadKg', 'chargeKg', 'sales', 'vendorAmount']), vendorName: '', product: '', vendorPriced: '' });
+    return {
+      columns: [{ key: 'vendor', label: 'Vendor' }, { key: 'vendorName', label: 'Name' }, { key: 'product', label: 'Product' }, { key: 'shipments', label: 'Shipments' }, { key: 'deadKg', label: 'Dead kg' }, { key: 'chargeKg', label: 'Charge kg' }, { key: 'sales', label: 'Sales ₹ (excl. GST)' }, { key: 'vendorAmount', label: 'Vendor amount ₹' }, { key: 'vendorPriced', label: 'Vendor-priced AWBs' }],
+      rows: this.fmt(rows, ['deadKg', 'chargeKg', 'sales', 'vendorAmount']),
+      note: [this.pendingNote(pending), 'Vendor amount = the uploaded vendor bill, else the vendor\'s rate card in the system; AWBs with neither are not counted (see "Vendor-priced AWBs").'].filter(Boolean).join(' '),
+    };
   }
 
   private async manifestReport(range: any): Promise<Report> {
@@ -347,10 +433,26 @@ export class ReportsService {
     return { columns: [{ key: 'awb', label: 'AWB' }, { key: 'customer', label: 'Customer' }, { key: 'consignee', label: 'Consignee' }, { key: 'booked', label: 'Booked' }, { key: 'voided', label: 'Voided' }, { key: 'reason', label: 'Reason' }], rows };
   }
 
-  private async zeroReport(range: any): Promise<Report> {
-    const s = await this.prisma.shipment.findMany({ where: { createdAt: range, totalDeadKg: 0 }, select: { awb: true, product: true, pieceCount: true }, orderBy: { id: 'desc' }, take: 1000 });
-    const rows = s.map((x) => ({ awb: x.awb, product: x.product || '—', pieces: x.pieceCount }));
-    return { columns: [{ key: 'awb', label: 'AWB' }, { key: 'product', label: 'Product' }, { key: 'pieces', label: 'Pcs' }], rows };
+  /** AWBs whose FREIGHT is ₹0 (freight only — not fuel / other / total): missing rate card, weight or zone. */
+  private async zeroReport(range: any, f: Filters = {}): Promise<Report> {
+    const ships = await this.prisma.shipment.findMany({
+      where: { ...this.shipWhere(range, f), NOT: { statusCode: 'CAN' } },
+      select: { id: true, awb: true, createdAt: true, product: true, vendor: true, destPincode: true, destZone: true, totalDeadKg: true, totalVolKg: true, chargeWeight: true, client: { select: { accountCode: true, legalName: true } } },
+    });
+    const { prices, pending } = await this.prices.ensure(ships.map((s) => s.id));
+    const rows = ships.filter((s) => (prices.get(s.id.toString())?.freight ?? 0) <= 0 && prices.has(s.id.toString())).map((s) => {
+      const p = prices.get(s.id.toString())!;
+      return {
+        awb: s.awb, booked: new Date(+s.createdAt + 330 * 60000).toISOString().slice(0, 10), customer: `${s.client?.accountCode ?? ''} ${s.client?.legalName ?? ''}`.trim(),
+        product: s.product || '—', vendor: s.vendor || '—', destination: [s.destPincode, s.destZone].filter(Boolean).join(' / ') || '—',
+        chargeKg: this.chargeKg(s).toFixed(2), freight: '0.00',
+        why: p.basis === 'INVOICE' ? 'Billed at ₹0 freight' : this.chargeKg(s) <= 0 ? 'No weight' : !s.destZone ? 'No destination zone' : 'No rate card / lane for this customer × product',
+      };
+    });
+    return {
+      columns: [{ key: 'awb', label: 'AWB' }, { key: 'booked', label: 'Booked' }, { key: 'customer', label: 'Customer' }, { key: 'product', label: 'Product' }, { key: 'vendor', label: 'Vendor' }, { key: 'destination', label: 'Destination (pin / zone)' }, { key: 'chargeKg', label: 'Charge kg' }, { key: 'freight', label: 'Freight ₹' }, { key: 'why', label: 'Likely reason' }],
+      rows, note: this.pendingNote(pending),
+    };
   }
 
   private async ledgerAging(): Promise<Report> {
@@ -364,11 +466,13 @@ export class ReportsService {
     return { columns: [{ key: 'invoiceNo', label: 'Invoice' }, { key: 'customer', label: 'Customer' }, { key: 'total', label: 'Total ₹' }, { key: 'dueDate', label: 'Due date' }, { key: 'daysOverdue', label: 'Days overdue' }, { key: 'bucket', label: 'Bucket' }], rows };
   }
 
-  /** Classify a delivered shipment against its promised EDD. Appointment deliveries are excluded
-   *  (the date was customer-chosen); shipments with no promise date can't be measured. */
-  private slaClassify(s: any): 'ONTIME' | 'DELAYED' | 'EXCLUDED' | 'NO_PROMISE' {
+  /** Classify a delivered shipment against its promised EDD. Appointment deliveries are excluded (the date
+   *  was customer-chosen); no promise date can't be measured; and a promise EARLIER than the booking is a
+   *  legacy import whose booking date was reset on migration (~5.7k AWBs) — its dates can't be trusted. */
+  private slaClassify(s: any): 'ONTIME' | 'DELAYED' | 'EXCLUDED' | 'NO_PROMISE' | 'LEGACY' {
     if (!s.expectedDelivery || !s.statusAt) return 'NO_PROMISE';
     if (s.apptDelivery) return 'EXCLUDED';
+    if (+new Date(s.expectedDelivery) < +new Date(s.createdAt) - 864e5) return 'LEGACY';
     const promised = new Date(s.expectedDelivery); promised.setHours(23, 59, 59, 999);
     return new Date(s.statusAt) <= promised ? 'ONTIME' : 'DELAYED';
   }
@@ -378,52 +482,59 @@ export class ReportsService {
     const p = new Date(s.expectedDelivery); p.setHours(0, 0, 0, 0);
     return Math.max(0, Math.round((d.getTime() - p.getTime()) / 86400000));
   }
-  private async slaDelivered(range: any) {
+
+  private async slaDelivered(range: any, f: Filters = {}) {
     return this.prisma.shipment.findMany({
-      where: { statusCode: 'DLD', statusAt: range },
-      select: { awb: true, clientId: true, consigneeCity: true, destZone: true, serviceMode: true, createdAt: true, expectedDelivery: true, statusAt: true, apptDelivery: true },
+      where: { statusCode: 'DLD', statusAt: range, ...(f.clientId ? { clientId: f.clientId } : {}), ...(f.vendor ? { vendor: { equals: f.vendor, mode: 'insensitive' as const } } : {}) },
+      select: { awb: true, clientId: true, vendor: true, product: true, consigneeCity: true, destZone: true, serviceMode: true, createdAt: true, expectedDelivery: true, statusAt: true, apptDelivery: true },
     });
   }
 
-  /** On-time vs delay SLA summary — delivered shipments measured against their promised EDD,
-   *  excluding appointment (customer-scheduled) deliveries and those with no promise date. */
-  private async slaSummary(range: any): Promise<Report> {
-    const ships = await this.slaDelivered(range);
-    let ontime = 0, delayed = 0, excluded = 0, noPromise = 0, delaySum = 0;
+  /** On-time vs delay — overall, then vendor × product. Measured against the promised EDD; appointment
+   *  deliveries, AWBs with no promise and legacy imports whose EDD predates the booking are not measured. */
+  private async slaSummary(range: any, f: Filters = {}): Promise<Report> {
+    const ships = await this.slaDelivered(range, f);
+    const blank = () => ({ delivered: 0, ontime: 0, delayed: 0, delaySum: 0, excluded: 0 });
+    const all = blank();
+    const by = new Map<string, any>();
     for (const s of ships) {
       const c = this.slaClassify(s);
-      if (c === 'ONTIME') ontime++;
-      else if (c === 'DELAYED') { delayed++; delaySum += this.slaDaysLate(s); }
-      else if (c === 'EXCLUDED') excluded++;
-      else noPromise++;
+      const k = `${String(s.vendor || '—').toUpperCase()}|${s.product || '—'}`;
+      const g = by.get(k) ?? { vendor: String(s.vendor || '—').toUpperCase(), product: s.product || '—', ...blank() };
+      for (const t of [all, g]) {
+        t.delivered++;
+        if (c === 'ONTIME') t.ontime++;
+        else if (c === 'DELAYED') { t.delayed++; t.delaySum += this.slaDaysLate(s); }
+        else t.excluded++;
+      }
+      by.set(k, g);
     }
-    const measured = ontime + delayed;
-    const pct = (n: number) => (measured ? ((n / measured) * 100).toFixed(1) + '%' : '—');
-    const rows = [
-      { metric: 'Delivered in range', value: ships.length, note: '' },
-      { metric: 'Measured against promise (EDD)', value: measured, note: 'excludes appointment & no-promise' },
-      { metric: '✅ On-time', value: ontime, note: pct(ontime) },
-      { metric: '🔴 Delayed', value: delayed, note: pct(delayed) },
-      { metric: 'Avg delay on delayed (days)', value: delayed ? (delaySum / delayed).toFixed(1) : '0', note: '' },
-      { metric: '⏸ Excluded — appointment / customer-scheduled', value: excluded, note: '' },
-      { metric: 'No promise date (unmeasured)', value: noPromise, note: '' },
-    ];
-    return { columns: [{ key: 'metric', label: 'Metric' }, { key: 'value', label: 'Value' }, { key: 'note', label: 'Note' }], rows };
+    const line = (label: string, t: any, vendor = '', product = '') => {
+      const measured = t.ontime + t.delayed;
+      return { group: label, vendor, product, delivered: t.delivered, measured, ontime: t.ontime, delayed: t.delayed, ontimePct: measured ? `${((t.ontime / measured) * 100).toFixed(1)}%` : '—', avgDelay: t.delayed ? (t.delaySum / t.delayed).toFixed(1) : '0', excluded: t.excluded };
+    };
+    const rows = [line('ALL', all), ...[...by.values()].sort((a, b) => a.vendor.localeCompare(b.vendor) || b.delivered - a.delivered).map((g) => line('', g, g.vendor, g.product))];
+    return {
+      columns: [{ key: 'group', label: '' }, { key: 'vendor', label: 'Vendor' }, { key: 'product', label: 'Product' }, { key: 'delivered', label: 'Delivered' }, { key: 'measured', label: 'Measured' }, { key: 'ontime', label: 'On-time' }, { key: 'delayed', label: 'Delayed' }, { key: 'ontimePct', label: 'On-time %' }, { key: 'avgDelay', label: 'Avg delay (days)' }, { key: 'excluded', label: 'Not measured' }],
+      rows,
+      note: 'Not measured = appointment deliveries, AWBs with no promise date, and legacy imports whose promise date is earlier than the booking date (their dates are unreliable).',
+    };
   }
 
   /** Per-AWB SLA detail — every delivered AWB with its promise vs actual and result, worst delays first. */
-  private async slaDetail(range: any): Promise<Report> {
-    const ships = await this.slaDelivered(range);
+  private async slaDetail(range: any, f: Filters = {}): Promise<Report> {
+    const ships = await this.slaDelivered(range, f);
     const clients = await this.prisma.b2bClient.findMany({ select: { id: true, legalName: true } });
     const nm = new Map(clients.map((c) => [c.id.toString(), c.legalName]));
     const d10 = (v: any) => (v ? new Date(v).toLocaleDateString('en-GB') : '—');
-    const label: Record<string, string> = { ONTIME: '✅ On-time', DELAYED: '🔴 Delayed', EXCLUDED: '⏸ Appt-excluded', NO_PROMISE: '— no promise' };
+    const label: Record<string, string> = { ONTIME: '✅ On-time', DELAYED: '🔴 Delayed', EXCLUDED: '⏸ Appt-excluded', NO_PROMISE: '— no promise', LEGACY: '— legacy import (dates unreliable)' };
     const rows = ships.map((s) => {
       const cls = this.slaClassify(s);
       const late = this.slaDaysLate(s);
       return {
         awb: s.awb,
         customer: nm.get(s.clientId.toString()) || s.clientId.toString(),
+        vendor: s.vendor || '—', product: s.product || '—',
         dest: s.consigneeCity || s.destZone || '—',
         mode: modeLabel(s.serviceMode),
         booked: d10(s.createdAt),
@@ -435,7 +546,7 @@ export class ReportsService {
       };
     }).sort((a, b) => b._sort - a._sort).map(({ _sort, ...r }) => r);
     return { columns: [
-      { key: 'awb', label: 'AWB' }, { key: 'customer', label: 'Customer' }, { key: 'dest', label: 'Destination' },
+      { key: 'awb', label: 'AWB' }, { key: 'customer', label: 'Customer' }, { key: 'vendor', label: 'Vendor' }, { key: 'product', label: 'Product' }, { key: 'dest', label: 'Destination' },
       { key: 'mode', label: 'Mode' }, { key: 'booked', label: 'Booked' }, { key: 'promised', label: 'Promised (EDD)' },
       { key: 'delivered', label: 'Delivered' }, { key: 'daysLate', label: 'Days late' }, { key: 'result', label: 'Result' },
     ], rows };
@@ -471,33 +582,36 @@ export class ReportsService {
     return { columns: [{ key: 'awb', label: 'AWB' }, { key: 'rider', label: 'Field exec' }, { key: 'status', label: 'Status' }], rows };
   }
 
-  /** AWB-wise billing — every shipment booked in the range with what it was billed (invoice line: freight,
-   *  fuel, other, total) or "Unbilled". (It used to read a per-shipment charges field that is almost always
-   *  empty, so it showed 0 rows.) */
-  private async billing(range: any): Promise<Report> {
+  /** AWB-wise billing — every shipment booked in the range with freight / fuel / other / total (pre-GST):
+   *  the invoice line once billed, otherwise the rate-card estimate (marked "Estimate"). */
+  private async billing(range: any, f: Filters = {}): Promise<Report> {
     const s = await this.prisma.shipment.findMany({
-      where: { createdAt: range, OR: [{ statusCode: null }, { statusCode: { not: 'CAN' } }] },
+      where: { ...this.shipWhere(range, f), OR: [{ statusCode: null }, { statusCode: { not: 'CAN' } }] },
       select: {
-        awb: true, createdAt: true, product: true, chargeWeight: true, totalDeadKg: true, statusCode: true,
+        id: true, awb: true, createdAt: true, product: true, vendor: true, chargeWeight: true, totalDeadKg: true, totalVolKg: true, statusCode: true,
         client: { select: { accountCode: true, legalName: true } },
-        invoiceLines: { select: { chargeableKg: true, freight: true, fuel: true, otherCharges: true, amount: true, invoice: { select: { invoiceNo: true } } } },
+        invoiceLines: { select: { chargeableKg: true, invoice: { select: { invoiceNo: true } } }, take: 1 },
       },
       orderBy: { createdAt: 'asc' }, take: 20000,
     });
-    const f = (v: any) => Number(v || 0).toFixed(2);
+    const { prices, pending } = await this.prices.ensure(s.map((x) => x.id));
+    const f2 = (v: any) => Number(v || 0).toFixed(2);
     const rows = s.map((x) => {
       const l: any = x.invoiceLines[0];
+      const p = prices.get(x.id.toString());
       return {
-        date: x.createdAt.toISOString().slice(0, 10), awb: x.awb, customer: `${x.client?.accountCode ?? ''} ${x.client?.legalName ?? ''}`.trim(),
-        product: x.product || '—', status: x.statusCode || 'MAN',
-        chargeKg: l ? Number(l.chargeableKg).toFixed(2) : Number(x.chargeWeight ?? x.totalDeadKg ?? 0).toFixed(2),
-        freight: l ? f(l.freight) : '', fuel: l ? f(l.fuel) : '', other: l ? f(l.otherCharges) : '', total: l ? f(l.amount) : '',
-        invoiceNo: l?.invoice?.invoiceNo ?? 'Unbilled',
+        date: new Date(+x.createdAt + 330 * 60000).toISOString().slice(0, 10), awb: x.awb, customer: `${x.client?.accountCode ?? ''} ${x.client?.legalName ?? ''}`.trim(),
+        product: x.product || '—', vendor: x.vendor || '—', status: x.statusCode || 'MAN',
+        chargeKg: l ? Number(l.chargeableKg).toFixed(2) : this.chargeKg(x).toFixed(2),
+        freight: p ? f2(p.freight) : '', fuel: p ? f2(p.fuel) : '', other: p ? f2(p.other) : '', total: p ? f2(p.subtotal) : '',
+        invoiceNo: l?.invoice?.invoiceNo ?? (p?.basis === 'NONE' ? 'Unbilled — no rate' : 'Unbilled — estimate'),
       };
     });
+    const tot = (k: string) => rows.reduce((t, r: any) => t + Number(r[k] || 0), 0).toFixed(2);
+    rows.push({ date: '', awb: 'TOTAL', customer: `${rows.length} AWBs`, product: '', vendor: '', status: '', chargeKg: tot('chargeKg'), freight: tot('freight'), fuel: tot('fuel'), other: tot('other'), total: tot('total'), invoiceNo: '' });
     return {
-      columns: [{ key: 'date', label: 'Booked' }, { key: 'awb', label: 'AWB' }, { key: 'customer', label: 'Customer' }, { key: 'product', label: 'Product' }, { key: 'status', label: 'Status' }, { key: 'chargeKg', label: 'Charge kg' }, { key: 'freight', label: 'Freight ₹' }, { key: 'fuel', label: 'Fuel ₹' }, { key: 'other', label: 'Other ₹' }, { key: 'total', label: 'Total ₹ (pre-GST)' }, { key: 'invoiceNo', label: 'Invoice' }],
-      rows,
+      columns: [{ key: 'date', label: 'Booked' }, { key: 'awb', label: 'AWB' }, { key: 'customer', label: 'Customer' }, { key: 'product', label: 'Product' }, { key: 'vendor', label: 'Vendor' }, { key: 'status', label: 'Status' }, { key: 'chargeKg', label: 'Charge kg' }, { key: 'freight', label: 'Freight ₹' }, { key: 'fuel', label: 'Fuel ₹' }, { key: 'other', label: 'Other ₹' }, { key: 'total', label: 'Total ₹ (pre-GST)' }, { key: 'invoiceNo', label: 'Invoice' }],
+      rows, note: this.pendingNote(pending),
     };
   }
 
@@ -513,17 +627,42 @@ export class ReportsService {
     return { columns: [{ key: 'user', label: 'User' }, { key: 'status', label: 'HTTP' }, { key: 'ip', label: 'IP' }, { key: 'at', label: 'At' }], rows };
   }
 
-  private async missingAwb(range: any): Promise<Report> {
-    // Only OUR AWB series (letter prefix, e.g. L1000000138) — uploaded carrier waybills are not a sequence.
+  /** AWBs still without a forwarding (carrier) number — with the vendor they were assigned at pickup. */
+  private async missingAwb(range: any, f: Filters = {}): Promise<Report> {
+    const s = await this.prisma.shipment.findMany({
+      where: { ...this.shipWhere(range, f), forwardingAwb: null, bdWaybill: null, NOT: [{ statusCode: 'CAN' }, { vendor: 'LOGM' }] },
+      select: { awb: true, createdAt: true, vendor: true, product: true, statusCode: true, consigneeName: true, destPincode: true, createdById: true, client: { select: { accountCode: true, legalName: true } } },
+      orderBy: { createdAt: 'asc' }, take: 5000,
+    });
+    const picks = s.length ? await this.prisma.pickupRequest.findMany({ where: { pickedAwb: { in: s.map((x) => x.awb) } }, select: { pickedAwb: true, vendor: true, createdByName: true } }) : [];
+    const pickBy = new Map(picks.map((p) => [p.pickedAwb, p]));
+    const uids = [...new Set(s.map((x) => x.createdById).filter((v): v is bigint => v != null))];
+    const uname = new Map((uids.length ? await this.prisma.user.findMany({ where: { id: { in: uids } }, select: { id: true, fullName: true } }) : []).map((u) => [u.id.toString(), u.fullName]));
+    const rows = s.map((x) => {
+      const pk = pickBy.get(x.awb);
+      return {
+        awb: x.awb, booked: new Date(+x.createdAt + 330 * 60000).toISOString().slice(0, 10), customer: `${x.client?.accountCode ?? ''} ${x.client?.legalName ?? ''}`.trim(),
+        product: x.product || '—', vendor: pk?.vendor || x.vendor || '— not assigned', bookedBy: pk?.createdByName || (x.createdById != null ? uname.get(x.createdById.toString()) : null) || '—',
+        status: STATUS_LABEL[String(x.statusCode || 'MAN')] ?? x.statusCode, consignee: x.consigneeName || '—', pincode: x.destPincode || '—',
+      };
+    });
+    return {
+      columns: [{ key: 'awb', label: 'AWB' }, { key: 'booked', label: 'Booked' }, { key: 'customer', label: 'Customer' }, { key: 'product', label: 'Product' }, { key: 'vendor', label: 'Vendor (assigned at pickup)' }, { key: 'bookedBy', label: 'Booked by' }, { key: 'status', label: 'Status' }, { key: 'consignee', label: 'Consignee' }, { key: 'pincode', label: 'Pincode' }],
+      rows, note: 'Own-network (LOGM) and cancelled AWBs are left out.',
+    };
+  }
+
+  /** Gaps in OUR AWB series (L…) — numbers that were never booked. */
+  private async awbGaps(range: any): Promise<Report> {
     const s = await this.prisma.shipment.findMany({ where: { createdAt: range, awb: { startsWith: 'L' } }, select: { awb: true }, take: 20000 });
     const nums = s.map((x) => { const m = x.awb.match(/^L(\d+)$/); return m ? Number(m[1]) : NaN; }).filter((n) => !Number.isNaN(n)).sort((a, b) => a - b);
     if (nums.length < 2) return { columns: [{ key: 'msg', label: 'Info' }], rows: [{ msg: 'Not enough AWBs to detect gaps.' }] };
     const min = nums[0], max = nums[nums.length - 1];
     if (max - min > 5000) return { columns: [{ key: 'msg', label: 'Info' }], rows: [{ msg: 'AWB range too large to enumerate — narrow the date range.' }] };
     const present = new Set(nums);
-    const rows: { missing: number }[] = [];
-    for (let i = min; i <= max; i++) if (!present.has(i)) rows.push({ missing: `L${i}` as any });
-    return { columns: [{ key: 'missing', label: 'Missing AWB number' }], rows: rows.length ? rows : [{ missing: 'None — sequence is complete' as any }] };
+    const rows: { missing: string }[] = [];
+    for (let i = min; i <= max; i++) if (!present.has(i)) rows.push({ missing: `L${i}` });
+    return { columns: [{ key: 'missing', label: 'Missing AWB number' }], rows: rows.length ? rows : [{ missing: 'None — sequence is complete' }] };
   }
 
   private async customerRegister(range: any): Promise<Report> {

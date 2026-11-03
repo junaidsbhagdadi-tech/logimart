@@ -4,12 +4,13 @@ import { PerBoxController } from './per-box.controller';
 import { RateService } from './rate.service';
 import { PerBoxService } from './per-box.service';
 import { InvoiceService } from './invoice.service';
+import { PriceCacheService } from './price-cache.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [NotificationsModule],
   controllers: [BillingController, PerBoxController],
-  providers: [RateService, PerBoxService, InvoiceService],
-  exports: [RateService],
+  providers: [RateService, PerBoxService, InvoiceService, PriceCacheService],
+  exports: [RateService, PriceCacheService],
 })
 export class BillingModule {}

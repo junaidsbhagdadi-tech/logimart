@@ -179,10 +179,11 @@ export class RateService {
    *  for the lane — so carrier comparison shows ALL vendors, not just the customer's carded networks. */
   async vendorCostOptions(opts: { product: string; originZone: string; destZone: string; kg: number; bookedAt?: Date }) {
     const now = new Date();
-    const cards = await this.prisma.customerRateCard.findMany({
+    // briefly memoised — the report price cache asks this once per shipment
+    const cards = await this.cached(`vcards:${String(opts.product).toUpperCase()}`, () => this.prisma.customerRateCard.findMany({
       where: { ownerVendorId: { not: null }, isActive: true, product: { equals: opts.product, mode: 'insensitive' }, validFrom: { lte: now }, OR: [{ validTo: null }, { validTo: { gte: now } }] },
       include: { slabs: true, ownerVendor: { select: { vendorCode: true, name: true } } },
-    });
+    }), 5 * 60_000);
     const norm = (x: any) => String(x ?? '').replace(/[^a-z0-9]/gi, '').toUpperCase();
     const eq = (a: any, b: any) => !a || (b != null && norm(a) === norm(b));
     const out: { vendor: string; freight: number; subtotal: number; gst: number; total: number; basis?: string }[] = [];

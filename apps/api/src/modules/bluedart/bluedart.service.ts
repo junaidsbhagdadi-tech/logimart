@@ -484,6 +484,7 @@ export class BluedartService implements OnModuleInit {
     if (!(Number(s.shipmentValue ?? s.declaredValue) > 0)) miss.push('Declared/shipment value'); // BlueDart requires DeclaredValue > 0
     // DOD goes as SubProductCode D with the draft amount as CollactableAmount — BlueDart rejects ₹0
     // ("InvalidCollectableAmount"). Catch it here with a plain message.
+    if (s.isDod && this.bdProductCode(s) === 'D') miss.push('DOD is not offered on BlueDart Domestic Priority (DP) — book it as Apex or Surface');
     if (s.isDod && !(Number(s.dodAmount) > 0)) miss.push('DOD amount (cheque/DD value to collect) — or untick DOD if this is not a DOD shipment');
     return miss;
   }
@@ -521,6 +522,10 @@ export class BluedartService implements OnModuleInit {
   /** SubProductCode (TSD): P=Prepaid, C=COD, A=FOD (consignee pays freight), D=DOD, B=DOD+FOD.
    *  To-pay is NOT a sub-product — it's the isToPayCustomer flag on a prepaid (P) waybill. */
   private bdSubProduct(s: any): string {
+    // Domestic Priority (D) has no P/C/A/D sub-products — BlueDart's pack master lists D alone = "Domestic
+    // Priority", D+T = TDD 10:30, D+N = TDD 12:00, D+C = DP Critical Express. Sending "P" made BlueDart book
+    // it as a different service (Dart Plus).
+    if (this.bdProductCode(s) === 'D') return String(s.product ?? '').toUpperCase() === 'TDD' ? 'T' : '';
     if (s.isDod && this.isFod(s)) return 'B';
     if (s.isDod) return 'D';
     if (this.isFod(s)) return 'A';

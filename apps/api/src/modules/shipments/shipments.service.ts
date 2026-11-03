@@ -157,6 +157,9 @@ export class ShipmentsService {
       if (!(dto.vendor && String(dto.vendor).trim()))
         throw new BadRequestException(`Forwarding no ${fwd} needs a vendor — set the carrier so it isn't billed at SELF-network rates.`);
     }
+    // The DOD product ("CHQ/DD ON DELIVERY") IS a DOD shipment — a booking that picks it without ticking DOD
+    // went out as an ordinary prepaid shipment (no cheque collected), so treat it as DOD.
+    if (String(dto.product ?? '').toUpperCase() === 'DOD') dto.isDod = true;
     // DOD = a cheque/DD collected before release — it needs the amount (BlueDart also rejects ₹0 DOD).
     if (dto.isDod && !(Number(dto.dodAmount) > 0)) throw new BadRequestException('DOD is ticked but the DOD amount is empty — enter the cheque/DD value to collect, or untick DOD.');
     const awb = manualAwb || (await this.nextAwb());
@@ -390,6 +393,9 @@ export class ShipmentsService {
     const s = await this.shipmentByAwb(awb);
     const amount = Number(dto.amount) || 0;
     if (!(amount > 0)) throw new BadRequestException('Enter an amount greater than zero.');
+    const toBill = dto.toBill !== false;
+    const noBillReason = String(dto.noBillReason ?? '').trim();
+    if (!toBill && !noBillReason) throw new BadRequestException('Not billing this to the customer — enter the reason (it shows in the Extra Expense report).');
     return this.prisma.shipmentAddon.create({
       data: {
         shipmentId: s.id,
@@ -399,7 +405,8 @@ export class ShipmentsService {
         fromLoc: dto.fromLoc?.trim() || null,
         toLoc: dto.toLoc?.trim() || null,
         mode: dto.mode?.trim() || null,
-        toBill: dto.toBill !== false,
+        toBill,
+        noBillReason: toBill ? null : noBillReason.slice(0, 200),
         pickupDate: dto.pickupDate ? new Date(dto.pickupDate) : null,
         createdById: userId != null ? BigInt(userId) : null,
       },

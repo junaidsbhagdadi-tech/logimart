@@ -67,7 +67,8 @@ export class ReportsController {
 
   @Get(':type')
   @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
-  run(@Param('type') type: string, @Query('from') from?: string, @Query('to') to?: string) {
-    return this.svc.run(type, from, to);
+  run(@Param('type') type: string, @Query('from') from?: string, @Query('to') to?: string,
+    @Query('clientId') clientId?: string, @Query('vendor') vendor?: string, @Query('status') status?: string) {
+    return this.svc.run(type, from, to, { clientId: clientId && /^\d+$/.test(clientId) ? BigInt(clientId) : undefined, vendor: vendor?.trim() || undefined, status: status?.trim() || undefined });
   }
 }
