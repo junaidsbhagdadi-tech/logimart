@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RateService } from '../billing/rate.service';
 import { ShipmentsService } from '../shipments/shipments.service';
 import { PincodesService } from '../pincodes/pincodes.service';
+import { LaneTat } from '../../common/lane-tat';
 
 const GST = 0.18;
 const HISTORY_DAYS = 90;
@@ -92,35 +93,9 @@ export class RateCalculatorService {
 
   // ------------------------------------------------------------------ history: on-time % + transit days
 
-  private vendorsCache: { at: number; rows: { vendorCode: string | null; name: string }[] } | null = null;
-  private async vendorList() {
-    if (!this.vendorsCache || Date.now() - this.vendorsCache.at > 10 * 60_000) this.vendorsCache = { at: Date.now(), rows: await this.prisma.vendor.findMany({ select: { vendorCode: true, name: true } }) };
-    return this.vendorsCache!.rows;
-  }
-  private static isBd(c?: string | null, n?: string | null) { return /^BDR$/i.test(c ?? '') || /^(BDR|BD )|BLUE ?DART/i.test(n ?? ''); }
-
-  /** Carrier key for history + transit tables: every BlueDart account code (and BDR) is one carrier "BDR". */
-  private async carrierKey(code: string): Promise<string> {
-    const c = String(code ?? '').toUpperCase();
-    if (!c || c === 'SELF' || c === 'LOGM') return 'SELF';
-    const v = (await this.vendorList()).find((x) => String(x.vendorCode).toUpperCase() === c);
-    return RateCalculatorService.isBd(v?.vendorCode ?? c, v?.name) ? 'BDR' : c;
-  }
-
-  /** The carrier's STANDARD transit days for a lane — the ZONE_TAT matrix <CARRIER>__<MODE>, else SELF__<MODE>. */
-  private tatMatrices: { at: number; m: Map<string, any> } | null = null;
-  private async standardTat(carrier: string, mode: string, oz?: string | null, dz?: string | null): Promise<number | null> {
-    if (!oz || !dz) return null;
-    if (!this.tatMatrices || Date.now() - this.tatMatrices.at > 30 * 60_000) {
-      const rows = await this.prisma.masterEntry.findMany({ where: { type: 'ZONE_TAT' }, select: { code: true, attrs: true } });
-      this.tatMatrices = { at: Date.now(), m: new Map(rows.map((r) => [r.code.toUpperCase(), (r.attrs as any)?.matrix ?? {}])) };
-    }
-    for (const code of [`${carrier}__${mode}`, `SELF__${mode}`, mode]) {
-      const d = Number(this.tatMatrices.m.get(code)?.[oz]?.[dz]);
-      if (d > 0) return d;
-    }
-    return null;
-  }
+  private get tat() { return new LaneTat(this.prisma); } // caches are static
+  private carrierKey(code: string) { return this.tat.carrierKey(code); }
+  private standardTat(carrier: string, mode: string, oz?: string | null, dz?: string | null) { return this.tat.standardTat(carrier, mode, oz, dz); }
 
   /**
    * Trusted deliveries of the last 90 days: carrier, product, lane zones (from the pincodes, per mode) and the
@@ -145,7 +120,7 @@ export class RateCalculatorService {
       if (r.days == null || r.days < 0 || r.days > 45) continue;
       const key = await this.carrierKey(r.vendor);
       // BlueDart: its own scan dates. Others: only bookings we made / handed off (live-tracked from day one).
-      const trusted = key === 'BDR' ? true : r.live;
+      const trusted = LaneTat.measurable(key, { awb: r.live ? 'L' : '', bdHandedAt: null });
       if (!trusted) continue;
       const surface = ['SFC', 'TOSFC', 'SURFACE', 'HUB', 'FTL'].includes(r.product);
       const oz = (surface ? r.osz : r.oaz) || null, dz = (surface ? r.dsz : r.daz) || null;

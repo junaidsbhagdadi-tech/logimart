@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PriceCacheService } from '../billing/price-cache.service';
+import { LaneTat } from '../../common/lane-tat';
 
 type Report = { columns: { key: string; label: string }[]; rows: any[]; note?: string; title?: string };
 /** Optional report filters (customer / vendor / status drill-down). */
@@ -466,90 +467,92 @@ export class ReportsService {
     return { columns: [{ key: 'invoiceNo', label: 'Invoice' }, { key: 'customer', label: 'Customer' }, { key: 'total', label: 'Total ₹' }, { key: 'dueDate', label: 'Due date' }, { key: 'daysOverdue', label: 'Days overdue' }, { key: 'bucket', label: 'Bucket' }], rows };
   }
 
-  /** Classify a delivered shipment against its promised EDD. Appointment deliveries are excluded (the date
-   *  was customer-chosen); no promise date can't be measured; and a promise EARLIER than the booking is a
-   *  legacy import whose booking date was reset on migration (~5.7k AWBs) — its dates can't be trusted. */
-  private slaClassify(s: any): 'ONTIME' | 'DELAYED' | 'EXCLUDED' | 'NO_PROMISE' | 'LEGACY' {
-    if (!s.expectedDelivery || !s.statusAt) return 'NO_PROMISE';
-    if (s.apptDelivery) return 'EXCLUDED';
-    if (+new Date(s.expectedDelivery) < +new Date(s.createdAt) - 864e5) return 'LEGACY';
-    const promised = new Date(s.expectedDelivery); promised.setHours(23, 59, 59, 999);
-    return new Date(s.statusAt) <= promised ? 'ONTIME' : 'DELAYED';
-  }
-  private slaDaysLate(s: any): number {
-    if (!s.expectedDelivery || !s.statusAt) return 0;
-    const d = new Date(s.statusAt); d.setHours(0, 0, 0, 0);
-    const p = new Date(s.expectedDelivery); p.setHours(0, 0, 0, 0);
-    return Math.max(0, Math.round((d.getTime() - p.getTime()) / 86400000));
-  }
-
-  private async slaDelivered(range: any, f: Filters = {}) {
-    return this.prisma.shipment.findMany({
+  /**
+   * SLA classification against the CARRIER'S STANDARD transit for the lane (ZONE_TAT), not the stored EDD —
+   * imported shipments carry ~3-week EDDs that made everything look on time. Measured only when the
+   * delivered date is real (BlueDart scan dates, or booked / handed off through the ERP); appointment
+   * deliveries are excluded; lanes without a standard can't be measured.
+   */
+  private async slaRows(range: any, f: Filters = {}) {
+    const ships = await this.prisma.shipment.findMany({
       where: { statusCode: 'DLD', statusAt: range, ...(f.clientId ? { clientId: f.clientId } : {}), ...(f.vendor ? { vendor: { equals: f.vendor, mode: 'insensitive' as const } } : {}) },
-      select: { awb: true, clientId: true, vendor: true, product: true, consigneeCity: true, destZone: true, serviceMode: true, createdAt: true, expectedDelivery: true, statusAt: true, apptDelivery: true },
+      select: { awb: true, clientId: true, vendor: true, product: true, consigneeCity: true, destZone: true, serviceMode: true, createdAt: true, statusAt: true, apptDelivery: true, shipperPincode: true, destPincode: true, bdHandedAt: true },
     });
+    const tat = new LaneTat(this.prisma);
+    const zones = await tat.pinZones(ships.flatMap((s) => [s.shipperPincode, s.destPincode]));
+    const out: { s: any; key: string; cls: 'ONTIME' | 'DELAYED' | 'EXCLUDED' | 'NO_STANDARD' | 'UNTRACKED'; std: number | null; days: number | null; late: number }[] = [];
+    for (const s of ships) {
+      const key = await tat.carrierKey(s.vendor);
+      const surface = LaneTat.isSurfaceProduct(s.product) || /ROAD|RAIL|SURFACE/i.test(String(s.serviceMode ?? ''));
+      const std = await tat.standardTat(key, surface ? 'SURFACE' : 'APEX', LaneTat.zone(zones.get(String(s.shipperPincode)), surface), LaneTat.zone(zones.get(String(s.destPincode)), surface));
+      const days = s.statusAt ? LaneTat.days(s.createdAt, s.statusAt) : null;
+      let cls: (typeof out)[number]['cls'];
+      if (s.apptDelivery) cls = 'EXCLUDED';
+      else if (!LaneTat.measurable(key, s) || days == null || days < 0) cls = 'UNTRACKED';
+      else if (!std) cls = 'NO_STANDARD';
+      else cls = days <= std ? 'ONTIME' : 'DELAYED';
+      out.push({ s, key, cls, std, days, late: cls === 'DELAYED' ? (days as number) - (std as number) : 0 });
+    }
+    return out;
   }
 
-  /** On-time vs delay — overall, then vendor × product. Measured against the promised EDD; appointment
-   *  deliveries, AWBs with no promise and legacy imports whose EDD predates the booking are not measured. */
+  /** On-time vs delay — overall, then carrier × product. */
   private async slaSummary(range: any, f: Filters = {}): Promise<Report> {
-    const ships = await this.slaDelivered(range, f);
-    const blank = () => ({ delivered: 0, ontime: 0, delayed: 0, delaySum: 0, excluded: 0 });
+    const rows = await this.slaRows(range, f);
+    const blank = () => ({ delivered: 0, ontime: 0, delayed: 0, delaySum: 0, excluded: 0, untracked: 0, noStd: 0 });
     const all = blank();
     const by = new Map<string, any>();
-    for (const s of ships) {
-      const c = this.slaClassify(s);
-      const k = `${String(s.vendor || '—').toUpperCase()}|${s.product || '—'}`;
-      const g = by.get(k) ?? { vendor: String(s.vendor || '—').toUpperCase(), product: s.product || '—', ...blank() };
+    for (const r of rows) {
+      const k = `${r.key}|${r.s.product || '—'}`;
+      const g = by.get(k) ?? { vendor: r.key === 'BDR' ? 'BlueDart (all accounts)' : r.key, product: r.s.product || '—', ...blank() };
       for (const t of [all, g]) {
         t.delivered++;
-        if (c === 'ONTIME') t.ontime++;
-        else if (c === 'DELAYED') { t.delayed++; t.delaySum += this.slaDaysLate(s); }
-        else t.excluded++;
+        if (r.cls === 'ONTIME') t.ontime++;
+        else if (r.cls === 'DELAYED') { t.delayed++; t.delaySum += r.late; }
+        else if (r.cls === 'EXCLUDED') t.excluded++;
+        else if (r.cls === 'UNTRACKED') t.untracked++;
+        else t.noStd++;
       }
       by.set(k, g);
     }
     const line = (label: string, t: any, vendor = '', product = '') => {
       const measured = t.ontime + t.delayed;
-      return { group: label, vendor, product, delivered: t.delivered, measured, ontime: t.ontime, delayed: t.delayed, ontimePct: measured ? `${((t.ontime / measured) * 100).toFixed(1)}%` : '—', avgDelay: t.delayed ? (t.delaySum / t.delayed).toFixed(1) : '0', excluded: t.excluded };
+      return { group: label, vendor, product, delivered: t.delivered, measured, ontime: t.ontime, delayed: t.delayed, ontimePct: measured ? `${((t.ontime / measured) * 100).toFixed(1)}%` : '—', avgDelay: t.delayed ? (t.delaySum / t.delayed).toFixed(1) : '0', notMeasured: t.excluded + t.untracked + t.noStd };
     };
-    const rows = [line('ALL', all), ...[...by.values()].sort((a, b) => a.vendor.localeCompare(b.vendor) || b.delivered - a.delivered).map((g) => line('', g, g.vendor, g.product))];
+    const rowsOut = [line('ALL', all), ...[...by.values()].sort((a, b) => a.vendor.localeCompare(b.vendor) || b.delivered - a.delivered).map((g) => line('', g, g.vendor, g.product))];
     return {
-      columns: [{ key: 'group', label: '' }, { key: 'vendor', label: 'Vendor' }, { key: 'product', label: 'Product' }, { key: 'delivered', label: 'Delivered' }, { key: 'measured', label: 'Measured' }, { key: 'ontime', label: 'On-time' }, { key: 'delayed', label: 'Delayed' }, { key: 'ontimePct', label: 'On-time %' }, { key: 'avgDelay', label: 'Avg delay (days)' }, { key: 'excluded', label: 'Not measured' }],
-      rows,
-      note: 'Not measured = appointment deliveries, AWBs with no promise date, and legacy imports whose promise date is earlier than the booking date (their dates are unreliable).',
+      columns: [{ key: 'group', label: '' }, { key: 'vendor', label: 'Carrier' }, { key: 'product', label: 'Product' }, { key: 'delivered', label: 'Delivered' }, { key: 'measured', label: 'Measured' }, { key: 'ontime', label: 'On-time' }, { key: 'delayed', label: 'Delayed' }, { key: 'ontimePct', label: 'On-time %' }, { key: 'avgDelay', label: 'Avg delay (days)' }, { key: 'notMeasured', label: 'Not measured' }],
+      rows: rowsOut,
+      note: `On time = delivered within the carrier's standard transit days for the lane (zone transit tables). Measured: BlueDart (its own scan dates) and shipments booked / handed off through the ERP. Not measured: ${all.untracked} bulk-imported with no reliable delivered date, ${all.noStd} lanes without a standard, ${all.excluded} appointment deliveries.`,
     };
   }
 
-  /** Per-AWB SLA detail — every delivered AWB with its promise vs actual and result, worst delays first. */
+  /** Per-AWB SLA detail — standard vs actual days and the result, worst delays first. */
   private async slaDetail(range: any, f: Filters = {}): Promise<Report> {
-    const ships = await this.slaDelivered(range, f);
+    const rows = await this.slaRows(range, f);
     const clients = await this.prisma.b2bClient.findMany({ select: { id: true, legalName: true } });
     const nm = new Map(clients.map((c) => [c.id.toString(), c.legalName]));
-    const d10 = (v: any) => (v ? new Date(v).toLocaleDateString('en-GB') : '—');
-    const label: Record<string, string> = { ONTIME: '✅ On-time', DELAYED: '🔴 Delayed', EXCLUDED: '⏸ Appt-excluded', NO_PROMISE: '— no promise', LEGACY: '— legacy import (dates unreliable)' };
-    const rows = ships.map((s) => {
-      const cls = this.slaClassify(s);
-      const late = this.slaDaysLate(s);
-      return {
-        awb: s.awb,
-        customer: nm.get(s.clientId.toString()) || s.clientId.toString(),
-        vendor: s.vendor || '—', product: s.product || '—',
-        dest: s.consigneeCity || s.destZone || '—',
-        mode: modeLabel(s.serviceMode),
-        booked: d10(s.createdAt),
-        promised: d10(s.expectedDelivery),
-        delivered: d10(s.statusAt),
-        daysLate: cls === 'DELAYED' ? late : 0,
-        result: cls === 'DELAYED' ? `${label[cls]} (${late}d)` : label[cls],
-        _sort: cls === 'DELAYED' ? late : -1,
-      };
-    }).sort((a, b) => b._sort - a._sort).map(({ _sort, ...r }) => r);
+    const d10 = (v: any) => (v ? new Date(+new Date(v) + 330 * 60000).toISOString().slice(0, 10).split('-').reverse().join('/') : '—');
+    const label: Record<string, string> = { ONTIME: '✅ On-time', DELAYED: '🔴 Delayed', EXCLUDED: '⏸ Appointment', NO_STANDARD: '— no standard for lane', UNTRACKED: '— not measured (imported)' };
+    const out = rows.map((r) => ({
+      awb: r.s.awb,
+      customer: nm.get(r.s.clientId.toString()) || r.s.clientId.toString(),
+      vendor: r.s.vendor || '—', product: r.s.product || '—',
+      dest: r.s.consigneeCity || r.s.destZone || '—',
+      mode: modeLabel(r.s.serviceMode),
+      booked: d10(r.s.createdAt),
+      dueBy: r.std ? d10(+new Date(r.s.createdAt) + r.std * 864e5) : '—',
+      delivered: d10(r.s.statusAt),
+      standard: r.std ?? '—', actual: r.days ?? '—',
+      daysLate: r.late,
+      result: r.cls === 'DELAYED' ? `${label[r.cls]} (${r.late}d)` : label[r.cls],
+      _sort: r.cls === 'DELAYED' ? r.late : r.cls === 'ONTIME' ? -1 : -2,
+    })).sort((a, b) => b._sort - a._sort).map(({ _sort, ...x }) => x);
     return { columns: [
       { key: 'awb', label: 'AWB' }, { key: 'customer', label: 'Customer' }, { key: 'vendor', label: 'Vendor' }, { key: 'product', label: 'Product' }, { key: 'dest', label: 'Destination' },
-      { key: 'mode', label: 'Mode' }, { key: 'booked', label: 'Booked' }, { key: 'promised', label: 'Promised (EDD)' },
-      { key: 'delivered', label: 'Delivered' }, { key: 'daysLate', label: 'Days late' }, { key: 'result', label: 'Result' },
-    ], rows };
+      { key: 'mode', label: 'Mode' }, { key: 'booked', label: 'Booked' }, { key: 'standard', label: 'Standard days' }, { key: 'dueBy', label: 'Due by' },
+      { key: 'delivered', label: 'Delivered' }, { key: 'actual', label: 'Actual days' }, { key: 'daysLate', label: 'Days late' }, { key: 'result', label: 'Result' },
+    ], rows: out };
   }
 
   private async tariff(): Promise<Report> {
