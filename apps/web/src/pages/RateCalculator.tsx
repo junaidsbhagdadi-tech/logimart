@@ -136,7 +136,7 @@ export function RateCalculator() {
                       <td><b>{r.vendor}</b> <span className="muted">{r.name !== r.vendor ? r.name : ''}</span>{r.oda && <span className="badge" style={{ marginLeft: 6, background: 'var(--st-ofd-bg)', color: 'var(--st-ofd-fg)' }}>ODA</span>}{r.tags.map((t: string) => <span key={t} className="badge" style={{ marginLeft: 6, ...tagStyle(t) }}>{t}</span>)}</td>
                       <td style={{ textAlign: 'right' }}>{r.cost ? inr(r.cost.subtotal) : <span className="muted">{r.status}</span>}</td>
                       <td style={{ textAlign: 'right' }}>{r.cost ? inr(r.cost.total) : ''}</td>
-                      <td>{r.transitDays ? `${r.transitDays} day${r.transitDays === 1 ? '' : 's'}` : '—'}{r.transitSource === 'pincode master' && <span className="muted" style={{ fontSize: 11.5 }}> (master)</span>}</td>
+                      <td>{r.transitDays ? `${r.transitDays} day${r.transitDays === 1 ? '' : 's'}` : '—'}{r.transitSource === 'pincode master' && <span className="muted" style={{ fontSize: 11.5 }}> (master)</span>}{r.actualDays && <div className="muted" style={{ fontSize: 11.5 }}>usually {r.actualDays}d</div>}</td>
                       <td>{onTime(r)}</td>
                       {res.rows.some((x: any) => x.customer) && <>
                         <td style={{ textAlign: 'right' }}>{r.customer ? inr(r.customer.subtotal) : <span className="muted">no contract rate</span>}</td>
@@ -158,7 +158,7 @@ export function RateCalculator() {
             </table>
           </div>
           {res.rows.length === 0 && <p className="muted">No vendor has a rate card or recent deliveries for {res.product}.</p>}
-          <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>Click a priced row for the full breakdown. On time = delivered by the promised date, last 90 days, same vendor · product · destination zone (all lanes when fewer than 20). "No rate card" = upload that vendor's cost card to price it.</p>
+          <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>Click a priced row for the full breakdown. Transit = the carrier's standard days for this lane; "usually" = typical actual days. On time = delivered within that standard, last 90 days, same carrier · product · lane (all lanes when fewer than 20). "No rate card" = upload that vendor's cost card to price it.</p>
         </div>
       )}
 
@@ -169,7 +169,7 @@ export function RateCalculator() {
             <>
               <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 12 }}>
                 <div className="card" style={{ margin: 0 }}><div className="muted" style={{ fontSize: 12 }}>Total (incl. GST)</div><div style={{ fontSize: 24, fontWeight: 800 }}>{inr(res.price.total)}</div></div>
-                <div className="card" style={{ margin: 0 }}><div className="muted" style={{ fontSize: 12 }}>Transit time</div><div style={{ fontSize: 24, fontWeight: 800 }}>{res.transitDays ? `${res.transitDays} days` : '—'}</div></div>
+                <div className="card" style={{ margin: 0 }}><div className="muted" style={{ fontSize: 12 }}>Transit time</div><div style={{ fontSize: 24, fontWeight: 800 }}>{res.transitDays ? `${res.transitDays} days` : '—'}</div>{res.actualDays && <div className="muted" style={{ fontSize: 12 }}>usually {res.actualDays} days</div>}</div>
                 <div className="card" style={{ margin: 0 }}><div className="muted" style={{ fontSize: 12 }}>Delivered on time</div><div style={{ fontSize: 24, fontWeight: 800 }}>{res.onTimePct != null ? `${res.onTimePct}%` : '—'}</div></div>
               </div>
               <Breakup p={res.price} />

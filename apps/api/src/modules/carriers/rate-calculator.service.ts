@@ -92,46 +92,95 @@ export class RateCalculatorService {
 
   // ------------------------------------------------------------------ history: on-time % + transit days
 
-  /** Vendor "family": every BlueDart account code + BDR count as one carrier for history. */
-  private async familyOf(code: string): Promise<string[]> {
-    const vendors = await this.prisma.vendor.findMany({ select: { vendorCode: true, name: true } });
-    const isBd = (c: string | null, n: string | null) => /^BDR$/i.test(c ?? '') || /^(BDR|BD )|BLUE ?DART/i.test(n ?? '');
-    const me = vendors.find((v) => String(v.vendorCode).toUpperCase() === code.toUpperCase());
-    if (me ? isBd(me.vendorCode, me.name) : code.toUpperCase() === 'BDR') return vendors.filter((v) => isBd(v.vendorCode, v.name)).map((v) => String(v.vendorCode).toUpperCase());
-    return [code.toUpperCase()];
+  private vendorsCache: { at: number; rows: { vendorCode: string | null; name: string }[] } | null = null;
+  private async vendorList() {
+    if (!this.vendorsCache || Date.now() - this.vendorsCache.at > 10 * 60_000) this.vendorsCache = { at: Date.now(), rows: await this.prisma.vendor.findMany({ select: { vendorCode: true, name: true } }) };
+    return this.vendorsCache!.rows;
+  }
+  private static isBd(c?: string | null, n?: string | null) { return /^BDR$/i.test(c ?? '') || /^(BDR|BD )|BLUE ?DART/i.test(n ?? ''); }
+
+  /** Carrier key for history + transit tables: every BlueDart account code (and BDR) is one carrier "BDR". */
+  private async carrierKey(code: string): Promise<string> {
+    const c = String(code ?? '').toUpperCase();
+    if (!c || c === 'SELF' || c === 'LOGM') return 'SELF';
+    const v = (await this.vendorList()).find((x) => String(x.vendorCode).toUpperCase() === c);
+    return RateCalculatorService.isBd(v?.vendorCode ?? c, v?.name) ? 'BDR' : c;
   }
 
-  /** Delivered shipments of the last 90 days, grouped vendor × product × destination zone (cached 30 min). */
+  /** The carrier's STANDARD transit days for a lane — the ZONE_TAT matrix <CARRIER>__<MODE>, else SELF__<MODE>. */
+  private tatMatrices: { at: number; m: Map<string, any> } | null = null;
+  private async standardTat(carrier: string, mode: string, oz?: string | null, dz?: string | null): Promise<number | null> {
+    if (!oz || !dz) return null;
+    if (!this.tatMatrices || Date.now() - this.tatMatrices.at > 30 * 60_000) {
+      const rows = await this.prisma.masterEntry.findMany({ where: { type: 'ZONE_TAT' }, select: { code: true, attrs: true } });
+      this.tatMatrices = { at: Date.now(), m: new Map(rows.map((r) => [r.code.toUpperCase(), (r.attrs as any)?.matrix ?? {}])) };
+    }
+    for (const code of [`${carrier}__${mode}`, `SELF__${mode}`, mode]) {
+      const d = Number(this.tatMatrices.m.get(code)?.[oz]?.[dz]);
+      if (d > 0) return d;
+    }
+    return null;
+  }
+
+  /**
+   * Trusted deliveries of the last 90 days: carrier, product, lane zones (from the pincodes, per mode) and the
+   * days taken. BlueDart's delivered date is BlueDart's own scan date, so all of it counts; other carriers record
+   * "delivered" when our sync sees it, which is only true for live-tracked bookings — so only their recent
+   * bookings delivered within 20 days count (older back-filled imports are left out). Cached 30 min.
+   */
   private async history() {
     if (this.statsCache && Date.now() - this.statsCache.at < 30 * 60_000) return this.statsCache.rows;
-    const rows = await this.prisma.$queryRawUnsafe<any[]>(`
-      SELECT upper(coalesce(vendor,'')) AS vendor, upper(coalesce(product,'')) AS product, upper(coalesce("destZone",'')) AS zone,
-             count(*)::int AS measured,
-             sum(CASE WHEN "statusAt" <= date_trunc('day', "expectedDelivery") + interval '1 day' THEN 1 ELSE 0 END)::int AS ontime,
-             percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM ("statusAt" - "createdAt")) / 86400.0) AS median_days
-      FROM shipments
-      WHERE "statusCode" = 'DLD' AND "statusAt" >= now() - interval '${HISTORY_DAYS} days'
-        AND "expectedDelivery" IS NOT NULL AND "expectedDelivery" >= "createdAt" - interval '1 day'
-        AND coalesce("apptDelivery", false) = false
-      GROUP BY 1, 2, 3`);
+    const raw = await this.prisma.$queryRawUnsafe<any[]>(`
+      SELECT upper(coalesce(s.vendor,'')) AS vendor, upper(coalesce(s.product,'')) AS product,
+             replace(upper(coalesce(o."surfaceZone",'')),' ','') AS osz, replace(upper(coalesce(d."surfaceZone",'')),' ','') AS dsz,
+             replace(upper(coalesce(o."apexZone",'')),' ','') AS oaz, replace(upper(coalesce(d."apexZone",'')),' ','') AS daz,
+             (date(s."statusAt" + interval '330 minutes') - date(s."createdAt" + interval '330 minutes'))::int AS days,
+             (s."createdAt" >= now() - interval '45 days') AS recent
+      FROM shipments s
+      LEFT JOIN pincodes o ON o.pincode = s."shipperPincode"
+      LEFT JOIN pincodes d ON d.pincode = s."destPincode"
+      WHERE s."statusCode" = 'DLD' AND s."statusAt" >= now() - interval '${HISTORY_DAYS} days' AND coalesce(s."apptDelivery", false) = false`);
+    const rows: any[] = [];
+    for (const r of raw) {
+      if (r.days == null || r.days < 0 || r.days > 45) continue;
+      const key = await this.carrierKey(r.vendor);
+      const trusted = key === 'BDR' ? true : r.recent && r.days <= 20;
+      if (!trusted) continue;
+      const surface = ['SFC', 'TOSFC', 'SURFACE', 'HUB', 'FTL'].includes(r.product);
+      const oz = (surface ? r.osz : r.oaz) || null, dz = (surface ? r.dsz : r.daz) || null;
+      const std = await this.standardTat(key, surface ? 'SURFACE' : 'APEX', oz, dz);
+      rows.push({ key, product: r.product, oz, dz, days: Math.max(1, r.days), std });
+    }
     this.statsCache = { at: Date.now(), rows };
     return rows;
   }
 
-  private async stat(code: string, product: string, zone: string): Promise<Stat> {
-    const fam = new Set(await this.familyOf(code));
-    const rows = (await this.history()).filter((r) => fam.has(r.vendor) && r.product === product);
+  /** On-time % (delivered within the carrier's standard days for that lane) + typical actual days. Lane first;
+   *  under 20 deliveries it widens to the carrier × product on all lanes. Carrier 'SELF' = every carrier. */
+  private async stat(code: string, product: string, oz: string | null, dz: string | null): Promise<Stat & { actualDays: number | null }> {
+    const key = await this.carrierKey(code);
+    const all = (await this.history()).filter((r) => (key === 'SELF' || r.key === key) && r.product === product);
     const agg = (list: any[]) => {
-      const measured = list.reduce((s, r) => s + r.measured, 0);
-      const ontime = list.reduce((s, r) => s + r.ontime, 0);
-      const days = measured ? list.reduce((s, r) => s + Number(r.median_days || 0) * r.measured, 0) / measured : null;
-      return { measured, onTimePct: measured ? Math.round((ontime / measured) * 1000) / 10 : null, transitDays: days != null ? Math.max(1, Math.ceil(days)) : null };
+      const withStd = list.filter((r) => r.std);
+      const sorted = list.map((r) => r.days).sort((x, y) => x - y);
+      return {
+        measured: withStd.length,
+        onTimePct: withStd.length ? Math.round((withStd.filter((r) => r.days <= r.std).length / withStd.length) * 1000) / 10 : null,
+        actualDays: sorted.length ? sorted[Math.floor(sorted.length / 2)] : null,
+      };
     };
-    const lane = agg(rows.filter((r) => r.zone === String(zone).toUpperCase()));
-    if (lane.measured >= MIN_SAMPLE) return { ...lane, scope: 'lane' };
-    const all = agg(rows);
-    if (all.measured > 0) return { ...all, scope: 'vendor' };
-    return { onTimePct: null, measured: 0, transitDays: null, scope: null };
+    const lane = agg(all.filter((r) => r.oz === oz && r.dz === dz));
+    if (lane.measured >= MIN_SAMPLE) return { ...lane, transitDays: null, scope: 'lane' };
+    const wide = agg(all);
+    if (wide.measured > 0) return { ...wide, transitDays: null, scope: 'vendor' };
+    return { onTimePct: null, measured: 0, transitDays: null, actualDays: lane.actualDays ?? wide.actualDays, scope: null };
+  }
+
+  /** Lane zones for the TAT tables (surface → surfaceZone, else apexZone). */
+  private async laneZones(o: string, d: string, surface: boolean) {
+    const [po, pd] = await Promise.all([this.prisma.pincode.findUnique({ where: { pincode: o } }), this.prisma.pincode.findUnique({ where: { pincode: d } })]);
+    const z = (p: any) => { const v = surface ? p?.surfaceZone : p?.apexZone; return v ? String(v).replace(/\s+/g, '').toUpperCase() : null; };
+    return { oz: z(po), dz: z(pd) };
   }
 
   // ------------------------------------------------------------------ internal
@@ -143,9 +192,12 @@ export class RateCalculatorService {
     const carded = await this.rates.vendorsWithCostCard(p.product);
     // also list carriers that carried this product recently but have no cost card, so the gap is visible
     const hist = await this.history();
-    const recent = [...new Set(hist.filter((r) => r.product === p.product && r.measured >= 5 && r.vendor).map((r) => r.vendor))];
+    const counts = new Map<string, number>();
+    for (const r of hist) if (r.product === p.product && r.key !== 'SELF') counts.set(r.key, (counts.get(r.key) ?? 0) + 1);
+    const recent = [...counts].filter(([, n]) => n >= 5).map(([k]) => k);
     const codes = [...new Set([...carded.map((c) => c.code), ...recent])].filter((c) => c && c !== 'SELF' && c !== 'LOGM');
     const clientId = dto.clientId != null && /^\d+$/.test(String(dto.clientId)) ? BigInt(String(dto.clientId)) : null;
+    const lz = await this.laneZones(p.base.originPincode, p.base.destPincode, p.surface);
 
     const rows = await Promise.all(codes.map(async (code) => {
       const cov = await this.pincodes.vendorOda(p.base.destPincode, code, p.product).catch(() => null);
@@ -153,7 +205,9 @@ export class RateCalculatorService {
       const ship = { ...p.base, vendor: code, clientId: null, isOda: cov?.known ? cov.isOda : p.base.isOda };
       const card = await this.rates.vendorCostCard(code, p.product);
       const cost = card && !notServiceable ? await this.rates.priceWithCard(card, ship, p.pieces).catch(() => null) : null;
-      const st = await this.stat(code, p.product, p.base.destZone);
+      const key = await this.carrierKey(code);
+      const std = await this.standardTat(key, p.surface ? 'SURFACE' : 'APEX', lz.oz, lz.dz);
+      const st = await this.stat(code, p.product, lz.oz, lz.dz);
       let customer: any = null;
       if (clientId && !notServiceable) {
         const sell = await this.rates.chargesForShipment({ ...ship, clientId }, p.pieces).catch(() => null);
@@ -163,7 +217,7 @@ export class RateCalculatorService {
         vendor: code, name: nameOf(code), serviceable: notServiceable ? false : cov?.known ? true : null, oda: cov?.known ? cov.isOda : p.base.isOda,
         cost: cost ? this.money(cost) : null,
         status: notServiceable ? 'Not serviceable' : !card ? 'No rate card' : !cost ? 'No rate for this lane' : 'ok',
-        transitDays: st.transitDays ?? p.masterTatDays, transitSource: st.transitDays ? 'history' : p.masterTatDays ? 'pincode master' : null,
+        transitDays: std ?? p.masterTatDays, transitSource: std ? 'carrier standard' : p.masterTatDays ? 'pincode master' : null, actualDays: st.actualDays,
         onTimePct: st.onTimePct, measured: st.measured, statScope: st.scope, customer,
       };
     }));
@@ -216,10 +270,13 @@ export class RateCalculatorService {
     if (cov?.known && !cov.serviceable) return { route: p.route, weight: p.weight, carrier: vendor, serviceable: false, message: 'This carrier does not deliver to that pincode.' };
     const sell = await this.rates.chargesForShipment({ ...p.base, clientId, vendor, isOda: cov?.known ? cov.isOda : p.base.isOda }, p.pieces).catch(() => null);
     if (!sell) return { route: p.route, weight: p.weight, carrier: vendor, serviceable: true, message: 'No contract rate for this route — please contact us for a quote.' };
-    const st = await this.stat(vendor === 'SELF' ? 'LOGM' : vendor, p.product, p.base.destZone);
+    const lz = await this.laneZones(p.base.originPincode, p.base.destPincode, p.surface);
+    const key = await this.carrierKey(vendor);
+    const std = await this.standardTat(key, p.surface ? 'SURFACE' : 'APEX', lz.oz, lz.dz);
+    const st = await this.stat(vendor, p.product, lz.oz, lz.dz);
     return {
       route: p.route, weight: p.weight, carrier: vendor, serviceable: true, oda: cov?.known ? cov.isOda : p.base.isOda,
-      price: this.money(sell), transitDays: st.transitDays ?? p.masterTatDays, onTimePct: st.onTimePct, measured: st.measured,
+      price: this.money(sell), transitDays: std ?? p.masterTatDays, actualDays: st.actualDays, onTimePct: st.onTimePct, measured: st.measured,
     };
   }
 }
