@@ -101,6 +101,12 @@ class _NewBookingState extends State<_NewBooking> {
   final _invNo = TextEditingController();
   final _invAmt = TextEditingController();
   final _ewb = TextEditingController();
+  // DOD — a cheque / DD collected before delivery (on by itself for the DOD product)
+  bool _dod = false;
+  String _dodInst = 'CHEQUE';
+  final _dodAmt = TextEditingController();
+  final _dodFav = TextEditingController();
+  final _dodAt = TextEditingController();
   final _pickAddr = TextEditingController();
   final _pickPin = TextEditingController();
   final _pickPhone = TextEditingController();
@@ -193,6 +199,7 @@ class _NewBookingState extends State<_NewBooking> {
         if ((double.tryParse(_kg.text.trim()) ?? 0) <= 0) 'weight',
         if (_pickupElsewhere && _pickAddr.text.trim().isEmpty) 'pickup address',
         if (_pickupElsewhere && !RegExp(r'^\d{6}$').hasMatch(_pickPin.text.trim())) 'pickup pincode',
+        if (_dod && (double.tryParse(_dodAmt.text.trim()) ?? 0) <= 0) 'DOD amount',
       ];
 
   Future<void> _book() async {
@@ -237,6 +244,11 @@ class _NewBookingState extends State<_NewBooking> {
         'invoiceNo': opt(_invNo),
         'ewbNo': opt(_ewb),
         'paymentTerm': 'PREPAID',
+        if (_dod) 'isDod': true,
+        if (_dod) 'dodAmount': double.tryParse(_dodAmt.text.trim()),
+        if (_dod) 'dodInstrument': _dodInst,
+        if (_dod) 'dodFavouring': opt(_dodFav),
+        if (_dod) 'dodPayableAt': opt(_dodAt),
         // One piece per box, each carrying its line's size (volumetric weight is worked out server-side).
         'pieces': [
           for (final line in _lines)
@@ -289,7 +301,7 @@ class _NewBookingState extends State<_NewBooking> {
 
   /// Book the next one for the same customer / product / carrier — clear the per-shipment fields.
   void _next() {
-    for (final t in [_conName, _conPhone, _conAddr, _conPin, _conGst, _kg, _awb, _fwd, _ref, _invNo, _invAmt, _ewb]) {
+    for (final t in [_conName, _conPhone, _conAddr, _conPin, _conGst, _kg, _awb, _fwd, _ref, _invNo, _invAmt, _ewb, _dodAmt, _dodFav, _dodAt]) {
       t.clear();
     }
     setState(() {
@@ -299,6 +311,7 @@ class _NewBookingState extends State<_NewBooking> {
       _ewbDoc = null;
       _boxDoc = null;
       _oda = '';
+      _dod = (_product ?? '').toUpperCase() == 'DOD';
     });
   }
 
@@ -380,7 +393,7 @@ class _NewBookingState extends State<_NewBooking> {
           isExpanded: true,
           decoration: const InputDecoration(labelText: 'Product'),
           items: _products.map((p) => DropdownMenuItem(value: p.code, child: Text('${p.code} — ${p.name}', overflow: TextOverflow.ellipsis))).toList(),
-          onChanged: (v) { setState(() => _product = v); _refreshOda(); },
+          onChanged: (v) { setState(() { _product = v; if ((v ?? '').toUpperCase() == 'DOD') _dod = true; }); _refreshOda(); },
         ),
         DropdownButtonFormField<String?>(
           key: ValueKey('v$_vendor'), // re-seeded when the customer's default carrier fills it in
@@ -488,6 +501,34 @@ class _NewBookingState extends State<_NewBooking> {
                   decoration: const InputDecoration(labelText: 'Invoice ₹'))),
         ]),
         ScanField(controller: _ewb, label: needEway ? 'E-way bill no. (needed: ₹50,000+)' : 'E-way bill no. (optional)'),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('DOD — collect a cheque / DD'),
+          subtitle: const Text('Delivery is blocked until the draft is collected'),
+          value: _dod,
+          onChanged: (v) => setState(() => _dod = v),
+        ),
+        if (_dod) ...[
+          Row(children: [
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                value: _dodInst,
+                decoration: const InputDecoration(labelText: 'Instrument'),
+                items: const [DropdownMenuItem(value: 'CHEQUE', child: Text('Cheque')), DropdownMenuItem(value: 'DD', child: Text('Demand Draft'))],
+                onChanged: (v) => setState(() => _dodInst = v ?? 'CHEQUE'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+                child: TextField(
+                    controller: _dodAmt,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    onChanged: (_) => setState(() {}),
+                    decoration: const InputDecoration(labelText: 'DOD amount ₹'))),
+          ]),
+          TextField(controller: _dodFav, decoration: InputDecoration(labelText: 'In favour of', hintText: '${_cust?['legalName'] ?? 'customer name'}')),
+          TextField(controller: _dodAt, decoration: InputDecoration(labelText: 'Payable at (city)', hintText: _pickupElsewhere ? 'city' : '${_cust?['city'] ?? 'city'}')),
+        ],
         const SectionLabel('Photos (optional)'),
         Row(children: [
           Expanded(child: _docButton('Invoice', _invDoc, (v) => setState(() => _invDoc = v))),
