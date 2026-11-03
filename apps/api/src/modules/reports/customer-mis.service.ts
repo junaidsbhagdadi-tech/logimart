@@ -28,7 +28,7 @@ const ist = (d: Date | null | undefined, time = false) => {
 };
 const csvCell = (v: any) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-const BRAND = 'ExcelEx Group';
+const BRAND = 'ExcelEx';
 
 @Injectable()
 export class CustomerMisService {
@@ -139,24 +139,22 @@ export class CustomerMisService {
     const asOn = `${p2(now.getUTCDate())}-${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][now.getUTCMonth()]}-${now.getUTCFullYear()}`;
     const name = String(c.legalName || c.accountCode);
     const subject = `MIS Report (${day}) for ${name}`;
-    const counts: [string, number, string][] = [['Delivered', summary.delivered, '#1e7d32'], ['Undelivered', summary.undelivered, '#c77700'], ['Returned', summary.returned, '#c62828'], ['Total', summary.total, '#0d47a1']];
+    // Same layout as Delhivery's MIS mail: light "Report as on", greeting, two lines, then a wide status table.
+    const counts: [string, number, string][] = [['Delivered', summary.delivered, '#2e7d32'], ['Undelivered', summary.undelivered, '#e8a11c'], ['Returned', summary.returned, '#d32f2f'], ['Total', summary.total, '#1d2a2a']];
     const lines = [
       `Report as on ${asOn}`, '', 'Hello,', '',
-      'Please find your MIS Report attached. We hope this helps you keep track of all your consignments.',
-      'The NDR & PENDING sheet lists every shipment not yet delivered with its current carrier status.',
+      `Greetings from ${BRAND}. Please find your MIS Report attached below. We hope this helps you keep track of all your consignments.`, '',
       'You may get in touch with your SPOC for any further assistance.', '',
-      ...counts.map(([k, v]) => `${k}: ${v}`), summary.ndr ? `(of which NDR / undelivered attempts: ${summary.ndr})` : '', '',
+      ...counts.map(([k, v]) => `${k}: ${v}`), '',
       'Thanks & Regards', BRAND,
-    ].filter((x, i, a) => x !== '' || a[i - 1] !== '');
-    const html = `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5;color:#1d2a2a">
-<div style="color:#8aa;font-size:12px">Report as on ${asOn}</div>
-<p>Hello,</p>
-<p>Please find your <b>MIS Report</b> attached. We hope this helps you keep track of all your consignments.<br>
-The <b>NDR &amp; PENDING</b> sheet lists every shipment not yet delivered with its current carrier status.<br>
-You may get in touch with your SPOC for any further assistance.</p>
-<table style="border-collapse:collapse;min-width:320px;border:1px solid #e3e8e8">${counts.map(([k, v, col], i) => `<tr style="background:${i % 2 ? '#f7f9f9' : '#fff'}${k === 'Total' ? ';background:#eef4fb' : ''}"><td style="padding:10px 14px;color:${col};font-weight:700">${k}</td><td style="padding:10px 14px;text-align:right;font-weight:700">${v}</td></tr>`).join('')}</table>
-${summary.ndr ? `<p style="font-size:12px;color:#667">of which NDR / undelivered attempts: <b>${summary.ndr}</b></p>` : ''}
-<p><b>Thanks &amp; Regards</b><br><b>${BRAND}</b></p></div>`;
+    ];
+    const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#3c4043;max-width:680px;margin:0 auto;padding:24px 28px">
+<div style="color:#9fc1e8;font-size:14px;margin-bottom:28px">Report as on ${asOn}</div>
+<p style="margin:0 0 18px">Hello,</p>
+<p style="margin:0 0 14px">Greetings from ${BRAND}. Please find your MIS Report attached below. We hope this helps you keep track of all your consignments.</p>
+<p style="margin:0 0 24px">You may get in touch with your SPOC for any further assistance.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;border:1px solid #edf0f2">${counts.map(([k, v, col], i) => `<tr style="background:${i % 2 ? '#f5f8fc' : '#ffffff'}"><td style="padding:20px 20px;color:${col};font-weight:700;font-size:15px">${k}</td><td style="padding:20px 20px;text-align:right;color:#3c4043;font-size:15px">${v}</td></tr>`).join('')}</table>
+<p style="margin:28px 0 0">Thanks &amp; Regards,<br><b>${BRAND}</b></p></div>`;
     const ok = await this.notify.sendMail({
       to, cc, subject, text: lines.join('\n'), html,
       attachments: [{ filename: `MIS Report (${day}) - ${c.accountCode}.xlsx`, content: this.xlsx(rows, ndr), contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }],
