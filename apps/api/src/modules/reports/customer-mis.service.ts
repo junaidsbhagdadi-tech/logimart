@@ -29,6 +29,7 @@ const ist = (d: Date | null | undefined, time = false) => {
 const csvCell = (v: any) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const BRAND = 'ExcelEx';
+const SIGNOFF = 'ExcelEx Group'; // "Thanks & Regards" line
 
 @Injectable()
 export class CustomerMisService {
@@ -146,7 +147,7 @@ export class CustomerMisService {
       `Greetings from ${BRAND}. Please find your MIS Report attached below. We hope this helps you keep track of all your consignments.`, '',
       'You may get in touch with your SPOC for any further assistance.', '',
       ...counts.map(([k, v]) => `${k}: ${v}`), '',
-      'Thanks & Regards', BRAND,
+      'Thanks & Regards,', SIGNOFF,
     ];
     const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#3c4043;max-width:680px;margin:0 auto;padding:24px 28px">
 <div style="color:#9fc1e8;font-size:14px;margin-bottom:28px">Report as on ${asOn}</div>
@@ -154,7 +155,7 @@ export class CustomerMisService {
 <p style="margin:0 0 14px">Greetings from ${BRAND}. Please find your MIS Report attached below. We hope this helps you keep track of all your consignments.</p>
 <p style="margin:0 0 24px">You may get in touch with your SPOC for any further assistance.</p>
 <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;border:1px solid #edf0f2">${counts.map(([k, v, col], i) => `<tr style="background:${i % 2 ? '#f5f8fc' : '#ffffff'}"><td style="padding:20px 20px;color:${col};font-weight:700;font-size:15px">${k}</td><td style="padding:20px 20px;text-align:right;color:#3c4043;font-size:15px">${v}</td></tr>`).join('')}</table>
-<p style="margin:28px 0 0">Thanks &amp; Regards,<br><b>${BRAND}</b></p></div>`;
+<p style="margin:28px 0 0">Thanks &amp; Regards,<br><b>${SIGNOFF}</b></p></div>`;
     const ok = await this.notify.sendMail({
       to, cc, subject, text: lines.join('\n'), html,
       attachments: [{ filename: `MIS Report (${day}) - ${c.accountCode}.xlsx`, content: this.xlsx(rows, ndr), contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }],
