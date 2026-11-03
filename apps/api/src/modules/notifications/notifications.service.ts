@@ -1,5 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
+import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const MailComposer = require('nodemailer/lib/mail-composer');
 import { PrismaService } from '../../prisma/prisma.service';
 
 export interface NotifyInput {
@@ -22,6 +25,31 @@ export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
 
   constructor(private readonly prisma: PrismaService) {}
+
+  /** Amazon SES (HTTPS API — DigitalOcean blocks outbound SMTP ports) is used first once its keys are set:
+   *  SES_ACCESS_KEY_ID · SES_SECRET_ACCESS_KEY · SES_REGION (default ap-south-1, Mumbai). MAIL_PROVIDER=brevo
+   *  forces Brevo back. The From address is SMTP_FROM and must be on a domain verified in SES. */
+  static sesEnabled() {
+    return !!(process.env.SES_ACCESS_KEY_ID && process.env.SES_SECRET_ACCESS_KEY) && String(process.env.MAIL_PROVIDER || '').toLowerCase() !== 'brevo';
+  }
+  private ses: SESv2Client | null = null;
+  private async sendViaSes(m: { to: string[]; cc?: string[]; subject: string; text: string; html?: string; attachments?: { filename: string; content: Buffer; contentType?: string }[] }) {
+    this.ses ??= new SESv2Client({ region: process.env.SES_REGION || 'ap-south-1', credentials: { accessKeyId: process.env.SES_ACCESS_KEY_ID!, secretAccessKey: process.env.SES_SECRET_ACCESS_KEY! } });
+    const s = this.emailSender();
+    // A raw MIME message carries HTML + attachments (the MIS Excel) the same way SMTP would.
+    const raw: Buffer = await new MailComposer({
+      from: `"${s.name}" <${s.email}>`, to: m.to, cc: m.cc?.length ? m.cc : undefined, subject: m.subject, text: m.text, html: m.html,
+      attachments: m.attachments?.map((a) => ({ filename: a.filename, content: a.content, contentType: a.contentType })),
+    }).compile().build();
+    const r = await this.ses.send(new SendEmailCommand({
+      FromEmailAddress: s.email,
+      Destination: { ToAddresses: m.to, ...(m.cc?.length ? { CcAddresses: m.cc } : {}) },
+      Content: { Raw: { Data: raw } },
+      ...(process.env.SES_CONFIG_SET ? { ConfigurationSetName: process.env.SES_CONFIG_SET } : {}),
+    }));
+    this.logger.log(`[email->${m.to.join(', ')}] sent via SES id=${r.MessageId}`);
+    return true;
+  }
 
   /**
    * Clean an email address typed into a customer / contact field: customers' lists hold entries like
@@ -118,6 +146,7 @@ export class NotificationsService {
    *  else SMTP (nodemailer). Returns true only when the provider actually accepted the message. */
   private async sendEmail(input: NotifyInput): Promise<boolean> {
     const subject = input.awb ? `${this.emailSubject(input.kind)} · AWB ${input.awb}` : this.emailSubject(input.kind);
+    if (NotificationsService.sesEnabled()) return this.sendViaSes({ to: [input.recipient], subject, text: input.message });
     if (process.env.BREVO_API_KEY) return this.sendEmailViaBrevo(input, subject);
     const t = this.getMailer();
     if (!t) { this.logger.log(`[email->${input.recipient}] (no email provider configured) ${input.message}`); return false; }
@@ -142,7 +171,7 @@ export class NotificationsService {
 
   /**
    * A full email (several To / CC, optional HTML and attachments) — for reports such as the customer MIS.
-   * Same providers as notify(): Brevo API if BREVO_API_KEY, else SMTP. Logged as one notification per To.
+   * Same providers as notify(): Amazon SES if configured, else Brevo API if BREVO_API_KEY, else SMTP. Logged as one notification per To.
    */
   async sendMail(m: { to: string[]; cc?: string[]; subject: string; text: string; html?: string; attachments?: { filename: string; content: Buffer; contentType?: string }[] }): Promise<boolean> {
     const to = [...new Set(m.to.map((x) => x.trim()).filter(Boolean))];
@@ -150,7 +179,9 @@ export class NotificationsService {
     if (!to.length) return false;
     let ok = false;
     try {
-      if (process.env.BREVO_API_KEY) {
+      if (NotificationsService.sesEnabled()) {
+        ok = await this.sendViaSes({ ...m, to, cc });
+      } else if (process.env.BREVO_API_KEY) {
         const res = await fetch('https://api.brevo.com/v3/smtp/email', {
           method: 'POST',
           headers: { 'api-key': process.env.BREVO_API_KEY as string, 'content-type': 'application/json', accept: 'application/json' },
