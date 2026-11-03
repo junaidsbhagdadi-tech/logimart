@@ -30,3 +30,5 @@ npm-debug.log*
 
 # Vendor API docs (contain live tokens/keys) — keep out of git
 API Dox/
+dist-next/
+dist-old/
