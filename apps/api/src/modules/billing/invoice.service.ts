@@ -419,7 +419,7 @@ export class InvoiceService {
     const n2 = (x: number) => +Number(x || 0).toFixed(2);
     for (const s of ships) {
       const k = String(s.clientId);
-      if (!M.has(k)) M.set(k, { code: s.client?.accountCode ?? '', customer: s.client?.legalName ?? '', shipments: 0, pcs: 0, actlKg: 0, chrgKg: 0, vendorAmount: 0, vendorPriced: 0, fuel: 0, tax: 0, netSales: 0, billed: 0, unbilled: 0, delivered: 0, rto: 0, undelivered: 0, pending: 0, cashReceived: cashBy.get(k) || 0, outstanding: Number(s.client?.outstandingBal || 0), estimated: 0 });
+      if (!M.has(k)) M.set(k, { code: s.client?.accountCode ?? '', customer: s.client?.legalName ?? '', shipments: 0, pcs: 0, actlKg: 0, chrgKg: 0, vendorAmount: 0, vendorPriced: 0, margin: 0, fuel: 0, tax: 0, netSales: 0, billed: 0, unbilled: 0, delivered: 0, rto: 0, undelivered: 0, pending: 0, cashReceived: cashBy.get(k) || 0, outstanding: Number(s.client?.outstandingBal || 0), estimated: 0 });
       const r = M.get(k);
       r.shipments++; r.pcs += s.pieceCount || 0;
       r.actlKg += Number(s.totalDeadKg || 0);
@@ -431,10 +431,10 @@ export class InvoiceService {
       if (p && sc !== 'CAN') {
         r.netSales += p.subtotal; r.fuel += p.fuel; r.tax += p.subtotal * GST_RATE;
         if (p.basis === 'RATE') r.estimated++;
-        if (p.vendorCost != null) { r.vendorAmount += p.vendorCost; r.vendorPriced++; }
+        if (p.vendorCost != null) { r.vendorAmount += p.vendorCost; r.vendorPriced++; r.margin += p.subtotal - p.vendorCost; } // margin only where the vendor amount is known
       }
     }
-    const rows = [...M.values()].map((r) => ({ ...r, actlKg: n2(r.actlKg), chrgKg: n2(r.chrgKg), vendorAmount: n2(r.vendorAmount), fuel: n2(r.fuel), tax: n2(r.tax), netSales: n2(r.netSales), totalSales: n2(r.netSales), margin: n2(r.netSales - r.vendorAmount), cashReceived: n2(r.cashReceived), outstanding: n2(r.outstanding) }))
+    const rows = [...M.values()].map((r) => ({ ...r, actlKg: n2(r.actlKg), chrgKg: n2(r.chrgKg), vendorAmount: n2(r.vendorAmount), fuel: n2(r.fuel), tax: n2(r.tax), netSales: n2(r.netSales), totalSales: n2(r.netSales), margin: n2(r.margin), cashReceived: n2(r.cashReceived), outstanding: n2(r.outstanding) }))
       .sort((a, b) => b.netSales - a.netSales);
     const totals: any = { pricingPending: pending };
     for (const k of ['shipments', 'pcs', 'actlKg', 'chrgKg', 'vendorAmount', 'vendorPriced', 'totalSales', 'fuel', 'tax', 'netSales', 'margin', 'billed', 'unbilled', 'delivered', 'rto', 'undelivered', 'pending', 'cashReceived', 'outstanding', 'estimated']) totals[k] = n2(rows.reduce((t, r) => t + ((r as any)[k] || 0), 0));
