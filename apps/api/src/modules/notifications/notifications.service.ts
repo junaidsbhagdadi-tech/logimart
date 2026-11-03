@@ -138,8 +138,8 @@ export class NotificationsService {
   private emailSender(): { email: string; name: string } {
     const raw = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@logimart.co.in';
     const m = raw.match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
-    if (m) return { name: (m[1] || 'ExcelEx Group').replace(/^"|"$/g, ''), email: m[2].trim() };
-    return { name: 'ExcelEx Group', email: raw.trim() };
+    if (m) return { name: (m[1] || 'ExcelEx').replace(/^"|"$/g, ''), email: m[2].trim() };
+    return { name: 'ExcelEx', email: raw.trim() };
   }
 
   /** Email — Brevo HTTPS API first (works where outbound SMTP ports are blocked, e.g. DO droplets),

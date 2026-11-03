@@ -126,12 +126,12 @@ export class DailySummaryService {
       ['Pickups booked, not marked picked', String(n.pickupsNotPicked)],
       ...(n.scope === 'ALL' ? [['Total outstanding', inr(n.outstanding)] as [string, string], ["Today's collection", inr(n.collectionToday)] as [string, string]] : []),
     ];
-    const text = [`Logimart daily summary — ${title} — ${date}`, '', ...rows.map(([k, v]) => `${k}: ${v}`), '', n.scope === 'ALL' && n.salesEstimated ? `Sales of not-yet-invoiced AWBs (${n.salesEstimated}) are at the rate-card price.` : ''].join('\n').trim();
+    const text = [`ExcelEx daily summary — ${title} — ${date}`, '', ...rows.map(([k, v]) => `${k}: ${v}`), '', n.scope === 'ALL' && n.salesEstimated ? `Sales of not-yet-invoiced AWBs (${n.salesEstimated}) are at the rate-card price.` : ''].join('\n').trim();
     const html = `<div style="font:14px Arial,sans-serif;color:#1d2a2a"><h2 style="margin:0 0 4px;font-size:18px">Daily summary — ${title}</h2><div style="color:#667;margin-bottom:12px">${date}</div>
 <table style="border-collapse:collapse;min-width:340px">${rows.map(([k, v]) => `<tr><td style="padding:6px 14px 6px 0;border-bottom:1px solid #e3e8e8;color:#556">${k}</td><td style="padding:6px 0;border-bottom:1px solid #e3e8e8;font-weight:700;text-align:right">${v}</td></tr>`).join('')}</table>
 ${n.scope === 'ALL' && n.salesEstimated ? `<p style="color:#889;font-size:12px">Sales of not-yet-invoiced AWBs (${n.salesEstimated}) are at the rate-card price.</p>` : ''}
 <p style="color:#889;font-size:12px">In transit / NDR / delayed / RTO count shipments booked in the last ${OPEN_WINDOW_DAYS} days.</p></div>`;
-    return { subject: `Logimart daily summary — ${title} — ${date}`, text, html };
+    return { subject: `ExcelEx daily summary — ${title} — ${date}`, text, html };
   }
 
   /** Send every route (or only `scope`, or a dry run that returns the numbers without mailing). */

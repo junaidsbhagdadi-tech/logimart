@@ -126,9 +126,9 @@ export class OpsService implements OnModuleInit, OnModuleDestroy {
     const credits = await this.emailCredits(true);
     if (credits && credits.left <= 0) throw new BadRequestException(`The email service (Brevo, ${credits.plan} plan) has no sending credits left, so the code can't be delivered. Top up / upgrade Brevo, then try again.`);
     const sent = await this.mail.sendMail({
-      to: [to], subject: 'Logimart ERP sign-in code',
-      text: `Your Logimart owner-console sign-in code is ${code}. It expires in 10 minutes.\nIf you didn't request it, someone has your ERP password — change it now.`,
-      html: `<div style="font:15px Arial,sans-serif;color:#12262b"><p>Your Logimart owner-console sign-in code:</p><p style="font-size:30px;font-weight:700;letter-spacing:6px;margin:8px 0">${code}</p><p style="color:#4d6a70">It expires in 10 minutes. If you didn't request it, someone has your ERP password — change it now.</p></div>`,
+      to: [to], subject: 'ExcelEx ERP sign-in code',
+      text: `Your ExcelEx owner-console sign-in code is ${code}. It expires in 10 minutes.\nIf you didn't request it, someone has your ERP password — change it now.`,
+      html: `<div style="font:15px Arial,sans-serif;color:#12262b"><p>Your ExcelEx owner-console sign-in code:</p><p style="font-size:30px;font-weight:700;letter-spacing:6px;margin:8px 0">${code}</p><p style="color:#4d6a70">It expires in 10 minutes. If you didn't request it, someone has your ERP password — change it now.</p></div>`,
     });
     this.record({ kind: 'security', level: 'info', source: 'ops', message: 'Owner console code requested', userId: String(userId) });
     if (!sent) throw new BadRequestException('Could not send the code — check the email service.');

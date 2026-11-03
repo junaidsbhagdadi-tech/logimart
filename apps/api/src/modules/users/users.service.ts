@@ -67,7 +67,7 @@ export class UsersService {
       if (realEmail) {
         await this.notifications.notify({
           channel: 'email', recipient: u.email, kind: 'account',
-          message: `Welcome to LogiMart, ${u.fullName}. Your account is ready.\nLogin: ${url}\nUsername: ${loginId}\nTemporary password: ${password}\nPlease sign in and change your password.`,
+          message: `Welcome to ExcelEx, ${u.fullName}. Your account is ready.\nLogin: ${url}\nUsername: ${loginId}\nTemporary password: ${password}\nPlease sign in and change your password.`,
         }).catch(() => {});
       }
       // Return the temp password to the admin ONLY when auto-generated, so it can be relayed until email is live.
@@ -114,7 +114,7 @@ export class UsersService {
     if (UsersService.isPlaceholder(u.email)) return { tempPassword: password, email: u.username ?? u.email, loginUrl };
     await this.notifications.notify({
       channel: 'email', recipient: u.email, kind: 'account',
-      message: `Your LogiMart password was reset, ${u.fullName}.\nLogin: ${loginUrl}\nEmail: ${u.email}\nTemporary password: ${password}\nPlease sign in and change your password.`,
+      message: `Your ExcelEx password was reset, ${u.fullName}.\nLogin: ${loginUrl}\nEmail: ${u.email}\nTemporary password: ${password}\nPlease sign in and change your password.`,
     }).catch(() => {});
     return { tempPassword: password, email: u.email, loginUrl };
   }
