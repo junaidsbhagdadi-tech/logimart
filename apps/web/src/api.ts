@@ -759,6 +759,11 @@ export const api = {
   delCancel: (awb: string) => request<{ awb: string; lrn: string | null; response: any }>(`/api/v1/delhivery/cancel/${awb}`, { method: 'POST' }),
   delPickup: (body: { warehouse?: string; date: string; startTime?: string; packages?: number }) => request<any>('/api/v1/delhivery/pickup', { method: 'POST', body: JSON.stringify(body) }),
 
+  // ---- rate calculator ----
+  rateCalc: (body: any) => request<any>('/api/v1/rate-calculator', { method: 'POST', body: JSON.stringify(body) }),
+  portalRateOptions: () => request<{ customer: string; products: { code: string; name: string }[]; carriers: { code: string; name: string }[] }>('/api/v1/portal/rate-calculator/options'),
+  portalRateCalc: (body: any) => request<any>('/api/v1/portal/rate-calculator', { method: 'POST', body: JSON.stringify(body) }),
+
   // ---- reports ----
   runReport: (type: string, from?: string, to?: string, extra: { clientId?: string; vendor?: string; status?: string } = {}) => {
     const q = new URLSearchParams();

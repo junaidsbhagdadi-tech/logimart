@@ -59,6 +59,7 @@ import { Receivables } from './pages/Receivables';
 import { AuditLog } from './pages/AuditLog';
 import { Attendance } from './pages/Attendance';
 import { OwnerConsole } from './pages/OwnerConsole';
+import { RateCalculator } from './pages/RateCalculator';
 import { Pincodes } from './pages/Pincodes';
 import { Masters } from './pages/Masters';
 import { Customer360 } from './pages/Customer360';
@@ -122,6 +123,7 @@ export function App() {
             book-a-shipment-at-pickup (AWB) form stays reachable at /pickup-book/awb. */}
         <Route path="/pickup-book" element={<Pickups mode="book" />} />
         <Route path="/quick-book" element={<QuickBook />} />
+        <Route path="/rate-calculator" element={user?.role === 'CLIENT_ADMIN' ? ((user as any)?.canCheckRates ? <RateCalculator /> : <Navigate to="/" replace />) : user?.role === 'DRIVER' ? <Navigate to="/" replace /> : <RateCalculator />} />
         <Route path="/handover" element={<Handover />} />
         <Route path="/exceptions" element={<Exceptions />} />
         <Route path="/pickup-book/awb" element={<PickupBook />} />

@@ -8,13 +8,16 @@ import { VExpressModule } from '../vexpress/vexpress.module';
 import { ArlModule } from '../arlogistics/arl.module';
 import { DsCargoModule } from '../dscargo/dscargo.module';
 import { ShipmentsModule } from '../shipments/shipments.module';
+import { BillingModule } from '../billing/billing.module';
+import { PincodesModule } from '../pincodes/pincodes.module';
+import { RateCalculatorService } from './rate-calculator.service';
 import { CarriersController } from './carriers.controller';
 import { CarriersService } from './carriers.service';
 import { ExceptionsService } from './exceptions.service';
 
 @Module({
-  imports: [PrismaModule, BluedartModule, DelhiveryModule, XpressBeesModule, GatiModule, VExpressModule, ArlModule, DsCargoModule, ShipmentsModule],
+  imports: [PrismaModule, BluedartModule, DelhiveryModule, XpressBeesModule, GatiModule, VExpressModule, ArlModule, DsCargoModule, ShipmentsModule, BillingModule, PincodesModule],
   controllers: [CarriersController],
-  providers: [CarriersService, ExceptionsService],
+  providers: [CarriersService, ExceptionsService, RateCalculatorService],
 })
 export class CarriersModule {}

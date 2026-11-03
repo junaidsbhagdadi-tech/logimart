@@ -44,7 +44,7 @@ export class ShipmentsService {
    * ECOM uses the e-com grid; every OTHER product (Apex + all other air/express products) shares the air
    * (apex) grid. Falls back to broad region → region-from-pincode → the supplied fallback zone.
    */
-  private productZone(pin: any, product?: string, serviceMode?: string, pincode?: string, fallback?: string): string | undefined {
+  productZone(pin: any, product?: string, serviceMode?: string, pincode?: string, fallback?: string): string | undefined {
     const fam = String(product ?? '').toUpperCase();
     const isCourier = ['DP', 'TDD', 'NDD'].includes(fam);
     const isEcom = ['ECOM', 'ECOMM', 'ECOMMERCE'].includes(fam);

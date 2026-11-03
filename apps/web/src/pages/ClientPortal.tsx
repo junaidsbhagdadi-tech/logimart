@@ -100,43 +100,10 @@ export function ClientPortal() {
         </div>
       )}
       {d.client?.canCheckRates && (
-        <details className="card">
-          <summary style={{ cursor: 'pointer', fontWeight: 700 }}>💹 Check rates — estimate a shipment cost</summary>
-          <div className="grid cols-4" style={{ gap: 10, marginTop: 12 }}>
-            <div><label>Product</label><select value={est.product} onChange={(e) => setEst({ ...est, product: e.target.value })}><option value="">— select —</option>{products.map((p: any) => <option key={p.code} value={p.code}>{p.code} — {p.name}</option>)}</select></div>
-            <div><label>Origin pincode <span className="muted">(opt)</span></label><input value={est.originPincode} maxLength={6} onChange={(e) => setEst({ ...est, originPincode: e.target.value })} /></div>
-            <div><label>Destination pincode *</label><input value={est.destPincode} maxLength={6} onChange={(e) => setEst({ ...est, destPincode: e.target.value })} /></div>
-            <div><label>Weight (kg)</label><input type="number" value={est.deadKg} onChange={(e) => setEst({ ...est, deadKg: e.target.value })} /></div>
-            <div><label>No. of boxes</label><input type="number" value={est.pcs} onChange={(e) => setEst({ ...est, pcs: e.target.value })} /></div>
-            <div><label>Invoice value ₹ <span className="muted">(for FOV)</span></label><input type="number" value={est.declaredValue} onChange={(e) => setEst({ ...est, declaredValue: e.target.value })} /></div>
-            <div><label>Length cm <span className="muted">(opt)</span></label><input type="number" value={est.lengthCm} onChange={(e) => setEst({ ...est, lengthCm: e.target.value })} /></div>
-            <div><label>Width cm <span className="muted">(opt)</span></label><input type="number" value={est.widthCm} onChange={(e) => setEst({ ...est, widthCm: e.target.value })} /></div>
-            <div><label>Height cm <span className="muted">(opt)</span></label><input type="number" value={est.heightCm} onChange={(e) => setEst({ ...est, heightCm: e.target.value })} /></div>
-          </div>
-          <button style={{ marginTop: 10 }} onClick={runEstimate} disabled={!est.product || !est.destPincode}>Estimate cost</button>
-          {estResult && estResult.rates && (
-            <div className="card" style={{ marginTop: 10 }}>
-              <div className="muted" style={{ fontSize: 12.5, marginBottom: 6 }}>Rates for your assigned courier partners{estResult.isOda ? ' · ODA location' : ''}:</div>
-              <table style={{ fontSize: 13 }}>
-                <thead><tr><th>Courier partner</th><th style={{ textAlign: 'right' }}>Chargeable</th><th style={{ textAlign: 'right' }}>Freight+charges</th><th style={{ textAlign: 'right' }}>GST</th><th style={{ textAlign: 'right' }}>Total</th></tr></thead>
-                <tbody>
-                  {estResult.rates.map((r: any) => (
-                    <tr key={r.vendor}>
-                      <td><strong>{r.name}</strong></td>
-                      {r.ok ? <>
-                        <td style={{ textAlign: 'right' }}>{r.chargeableKg} kg</td>
-                        <td style={{ textAlign: 'right' }}>₹{Number(r.subtotal).toLocaleString('en-IN')}</td>
-                        <td style={{ textAlign: 'right' }}>₹{Number(r.gst).toLocaleString('en-IN')}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 800 }}>₹{Number(r.total).toLocaleString('en-IN')}</td>
-                      </> : <td colSpan={4} className="muted">{r.message || 'No rate configured'}</td>}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>Indicative estimate — final billing may vary with actual weight, ODA and applicable charges.</div>
-            </div>
-          )}
-        </details>
+        <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div><strong>💹 Rate calculator</strong><div className="muted" style={{ fontSize: 12.5 }}>Your contract rate for any route — choose the carrier, enter the boxes, see the full price, transit time and on-time record.</div></div>
+          <Link to="/rate-calculator"><button>Open rate calculator</button></Link>
+        </div>
       )}
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>

@@ -637,6 +637,34 @@ export class RateService {
         card = merged;
       }
     }
+    return this.priceWithCard(card, shipment, pieces);
+  }
+
+  /** Every active vendor COST card (ownerVendorId) with its slabs — what each carrier charges US. */
+  private allVendorCostCards(): Promise<any[]> {
+    const now = new Date();
+    return this.cached('vcostcards', () => this.prisma.customerRateCard.findMany({
+      where: { ownerVendorId: { not: null }, isActive: true, validFrom: { lte: now }, OR: [{ validTo: null }, { validTo: { gte: now } }] },
+      include: { slabs: true, ownerVendor: { select: { vendorCode: true, name: true } } },
+    }), 5 * 60_000);
+  }
+
+  /** A vendor's cost card for one product (exact product; must have a freight grid). */
+  async vendorCostCard(vendorCode: string, product: string) {
+    const v = String(vendorCode).toUpperCase(), p = String(product).toUpperCase();
+    return (await this.allVendorCostCards()).find((c) => String(c.ownerVendor?.vendorCode ?? '').toUpperCase() === v && String(c.product).toUpperCase() === p && (c.slabs?.length ?? 0) > 0) ?? null;
+  }
+
+  /** Vendors that have a usable cost card for this product. */
+  async vendorsWithCostCard(product: string): Promise<{ code: string; name: string }[]> {
+    const p = String(product).toUpperCase();
+    const out = new Map<string, string>();
+    for (const c of await this.allVendorCostCards()) if (String(c.product).toUpperCase() === p && (c.slabs?.length ?? 0) > 0 && c.ownerVendor?.vendorCode) out.set(String(c.ownerVendor.vendorCode).toUpperCase(), c.ownerVendor.name ?? '');
+    return [...out].map(([code, name]) => ({ code, name }));
+  }
+
+  /** Full price (freight + every accessorial on the card) from a given card — customer contract or vendor cost card. */
+  async priceWithCard(card: any, shipment: any, pieces: any[]): Promise<ChargeBreakup | null> {
     const chargeableKg = this.cardChargeableKg(shipment, pieces, card);
     // Zone match strips ALL non-alphanumerics (not just spaces) so "NE 1" / "NE-1" / "ne1" all match
     // the rate-card "NE1". A blank slab zone/origin is a wildcard (single-origin or flat cards).

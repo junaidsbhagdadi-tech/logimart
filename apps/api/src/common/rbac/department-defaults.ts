@@ -14,7 +14,7 @@ export type DeptLevel = 'VIEW' | 'EDIT' | 'DELETE';
 export const DEPARTMENT_DEFAULTS: Record<string, Record<string, DeptLevel>> = {
   OPERATIONS: {
     '/': 'VIEW', '/tracker': 'VIEW', '/pincode-search': 'VIEW', '/exceptions': 'EDIT',
-    '/create': 'EDIT', '/awb-list': 'EDIT', '/bulk': 'EDIT', '/deliver': 'EDIT', '/pickups': 'EDIT', '/pickup-book': 'EDIT', '/quick-book': 'EDIT', '/handover': 'EDIT', '/walk-in': 'EDIT',
+    '/create': 'EDIT', '/awb-list': 'EDIT', '/bulk': 'EDIT', '/deliver': 'EDIT', '/pickups': 'EDIT', '/pickup-book': 'EDIT', '/quick-book': 'EDIT', '/handover': 'EDIT', '/walk-in': 'EDIT', '/rate-calculator': 'VIEW',
     '/fm': 'VIEW', '/fm/pickup-outscan': 'EDIT', '/fm/bulk-pickup-outscan': 'EDIT', '/fm/update-pickup': 'EDIT',
     '/mm': 'VIEW', '/mm/inscan-shipment': 'EDIT', '/mm/bagging': 'EDIT', '/mm/trips': 'EDIT', '/mm/inscan-trip': 'EDIT',
     '/lm': 'VIEW', '/lm/inscan-shipment': 'EDIT', '/lm/inscan-trip': 'EDIT', '/lm/delivery-outscan': 'EDIT',
@@ -23,7 +23,7 @@ export const DEPARTMENT_DEFAULTS: Record<string, Record<string, DeptLevel>> = {
   },
   CUSTOMER_SERVICE: {
     '/': 'VIEW', '/team-dashboards': 'VIEW', '/tracker': 'VIEW', '/pincode-search': 'VIEW', '/exceptions': 'EDIT',
-    '/create': 'EDIT', '/awb-list': 'EDIT', '/bulk': 'EDIT', '/pickups': 'EDIT', '/pickup-book': 'EDIT', '/quick-book': 'EDIT', '/handover': 'EDIT',
+    '/create': 'EDIT', '/awb-list': 'EDIT', '/bulk': 'EDIT', '/pickups': 'EDIT', '/pickup-book': 'EDIT', '/quick-book': 'EDIT', '/handover': 'EDIT', '/rate-calculator': 'VIEW',
     '/customers': 'EDIT', '/claims': 'EDIT', '/documents': 'EDIT', '/notes': 'VIEW', '/invoices': 'VIEW',
     '/reports': 'VIEW', '/contact-directory': 'EDIT',
   },
@@ -32,12 +32,12 @@ export const DEPARTMENT_DEFAULTS: Record<string, Record<string, DeptLevel>> = {
     '/invoices': 'DELETE', '/bill-worksheet': 'EDIT', '/sales-mis': 'VIEW', '/receivables': 'EDIT',
     '/notes': 'DELETE', '/claims': 'EDIT', '/customers': 'EDIT', '/vendors': 'EDIT', '/vehicles': 'EDIT',
     '/vendor-bills': 'EDIT', '/documents': 'EDIT', '/expenses': 'EDIT', '/expenses-report': 'DELETE', '/sales': 'VIEW',
-    '/ftl-rates': 'VIEW', '/per-box-rates': 'VIEW', '/tax': 'EDIT', '/reports': 'VIEW',
+    '/ftl-rates': 'VIEW', '/per-box-rates': 'VIEW', '/tax': 'EDIT', '/reports': 'VIEW', '/rate-calculator': 'VIEW',
   },
   SALES: {
     '/': 'VIEW', '/team-dashboards': 'VIEW', '/tracker': 'VIEW', '/pincode-search': 'VIEW',
     '/create': 'EDIT', '/awb-list': 'VIEW', '/invoices': 'VIEW',
-    '/customers': 'EDIT', '/sales': 'EDIT', '/sales-mis': 'VIEW',
+    '/customers': 'EDIT', '/sales': 'EDIT', '/sales-mis': 'VIEW', '/rate-calculator': 'VIEW',
     '/ftl-rates': 'VIEW', '/per-box-rates': 'VIEW', '/service-mapping': 'VIEW', '/pincodes': 'VIEW',
     '/reports': 'VIEW',
   },

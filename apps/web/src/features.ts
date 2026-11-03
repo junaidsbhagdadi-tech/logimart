@@ -14,6 +14,7 @@ export const FEATURE_CATALOG: FeatureSection[] = [
   { section: 'Operations', features: [
     { to: '/create', label: 'New Shipment' },
     { to: '/quick-book', label: 'Quick Booking (mobile)' },
+    { to: '/rate-calculator', label: 'Rate Calculator' },
     { to: '/pickup-book', label: 'Pickup Booking' },
     { to: '/handover', label: 'Handover Manifest' },
     { to: '/exceptions', label: 'Exceptions' },

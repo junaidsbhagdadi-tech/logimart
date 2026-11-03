@@ -34,7 +34,7 @@ const NAV_ICON: Record<string, LucideIcon> = {
   '/claims': ShieldCheck, '/customers': Users, '/companies': Building2, '/vendors': Handshake, '/vehicles': Car,
   '/vendor-bills': Wallet, '/expenses': Banknote, '/documents': FolderOpen, '/contact-directory': Contact, '/sales': LineChart,
   '/ftl-rates': Container, '/per-box-rates': Boxes, '/service-mapping': Shuffle, '/pincodes': MapIcon, '/masters': Database,
-  '/bulk-rate-upload': Upload, '/tax': Calculator, '/reports': PieChart, '/data-health': Stethoscope, '/riders': Bike,
+  '/bulk-rate-upload': Upload, '/tax': Calculator, '/rate-calculator': Calculator, '/reports': PieChart, '/data-health': Stethoscope, '/riders': Bike,
   '/users': UserCog, '/bluedart': Plug, '/audit': History, '/feedback': MessageSquare, '/archive': Archive,
 };
 const NavIcon = ({ to, fallback }: { to: string; fallback: string }) => { const Ic = NAV_ICON[to]; return Ic ? <Ic aria-hidden /> : <>{fallback}</>; };
@@ -59,6 +59,8 @@ export function Layout() {
     { title: 'Overview', items: [
       { to: '/', icon: '📊', label: 'My Dashboard', end: true },
       { to: '/pincode-search', icon: '📍', label: 'Pincode Search' },
+      // Only for customers switched on for rate checks (off by default).
+      { to: '/rate-calculator', icon: '💹', label: 'Rate Calculator', show: !!(user as any)?.canCheckRates },
     ] },
     { title: 'My Shipments', items: [
       { to: '/create', icon: '➕', label: 'Book Shipment' },
@@ -171,6 +173,7 @@ export function Layout() {
       { to: '/exceptions', icon: '⚠️', label: 'Exceptions' },
       { to: '/create', icon: '➕', label: 'New Shipment' },
       { to: '/quick-book', icon: '⚡', label: 'Quick Booking' },
+      { to: '/rate-calculator', icon: '💹', label: 'Rate Calculator' },
       { to: '/pickup-book', icon: '📦', label: 'Pickup Booking' },
       { to: '/handover', icon: '📋', label: 'Handover Manifest' },
       { to: '/awb-list', icon: '📝', label: 'Shipment List' },

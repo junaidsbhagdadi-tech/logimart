@@ -5,13 +5,34 @@ import { Roles } from '../../common/rbac/roles.decorator';
 import { CarriersService } from './carriers.service';
 import { ExceptionsService } from './exceptions.service';
 import { ShipmentsService } from '../shipments/shipments.service';
+import { CalcInput, RateCalculatorService } from './rate-calculator.service';
 
 const OPS = [UserRole.WAREHOUSE_HANDLER, UserRole.HUB_MANAGER, UserRole.SYS_ADMIN, UserRole.DRIVER];
 
 @Controller('api/v1')
 @UseGuards(RolesGuard)
 export class CarriersController {
-  constructor(private readonly carriers: CarriersService, private readonly exceptions: ExceptionsService, private readonly shipments: ShipmentsService) {}
+  constructor(private readonly carriers: CarriersService, private readonly exceptions: ExceptionsService, private readonly shipments: ShipmentsService, private readonly calc: RateCalculatorService) {}
+
+  /** Rate calculator (staff) — every vendor's cost, lowest first, with transit time + on-time %; optional customer price. */
+  @Post('rate-calculator')
+  @Roles(UserRole.WAREHOUSE_HANDLER, UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SALES, UserRole.ADMIN, UserRole.SYS_ADMIN)
+  rateCalc(@Body() dto: CalcInput) {
+    return this.calc.internal(dto);
+  }
+
+  /** Rate calculator (customer portal) — only for customers switched on; their contract carriers + products. */
+  @Get('portal/rate-calculator/options')
+  @Roles(UserRole.CLIENT_ADMIN)
+  portalRateOptions(@Req() req: any) {
+    return this.calc.portalOptions(BigInt(req.user.clientId));
+  }
+
+  @Post('portal/rate-calculator')
+  @Roles(UserRole.CLIENT_ADMIN)
+  portalRateCalc(@Req() req: any, @Body() dto: CalcInput) {
+    return this.calc.portal(BigInt(req.user.clientId), dto);
+  }
 
   /** Hand the AWB to its own carrier (picked from the vendor code). */
   @Post('carriers/handoff/:awb')

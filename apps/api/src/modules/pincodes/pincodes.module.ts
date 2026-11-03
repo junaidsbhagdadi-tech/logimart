@@ -5,5 +5,6 @@ import { PincodesService } from './pincodes.service';
 @Module({
   controllers: [PincodesController],
   providers: [PincodesService],
+  exports: [PincodesService],
 })
 export class PincodesModule {}
