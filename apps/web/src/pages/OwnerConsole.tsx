@@ -113,6 +113,15 @@ export function OwnerConsole() {
     try { setDetail({ title: `${name} — last 100 runs`, rows: (await api.opsJob(tok, name)).map((r) => ({ at: r.startedAt, level: r.ok === false ? 'error' : r.ok ? 'info' : 'warn', message: r.ok === false ? r.error : r.summary ?? (r.finishedAt ? 'ok' : 'running / never finished'), detail: { seconds: r.finishedAt ? ((+new Date(r.finishedAt) - +new Date(r.startedAt)) / 1000).toFixed(1) : null } })) }); } catch (e: any) { if (!expired(e)) setErr(e.message); }
   };
   const searchLog = async () => { try { setLog(await api.opsEvents(tok, { kind: kind || undefined, search: q || undefined, limit: 300 })); } catch (e: any) { if (!expired(e)) setErr(e.message); } };
+  const act = async (label: string, fn: () => Promise<any>, after?: string) => {
+    setNote(''); setErr('');
+    try { const r = await fn(); setNote(after ?? r?.message ?? `${label} — done.`); setTimeout(() => load(), 4000); } catch (e: any) { if (!expired(e)) setErr(e.message); }
+  };
+  const runJob = (job: string) => act(job, () => api.opsRun(tok, job), `${job} started — the result shows in "Jobs & carriers" in a minute.`);
+  const unlock = (key: string) => act('Unlock', () => api.opsUnlock(tok, key), `${key.replace(/^(email|rider):/, '')} unlocked — they can sign in again.`);
+  const mute = (id: string) => act('Mute', () => api.opsMute(tok, id, 24), 'Hidden for 24 hours (and no alert e-mails for it).');
+  const restart = () => { if (window.confirm('Restart the ERP now? Everyone is offline for about 20 seconds.')) act('Restart', () => api.opsRestart(tok)); };
+  const copy = (text: string) => { navigator.clipboard?.writeText(text).then(() => setNote('Details copied — paste them to the developer.')).catch(() => window.prompt('Copy these details:', text)); };
   const testAlert = async () => { try { const r = await api.opsTestAlert(tok); setNote(r.ok ? `Test alert sent to ${r.to}` : 'Test alert could not be sent — check the email service.'); } catch (e: any) { if (!expired(e)) setErr(e.message); } };
 
   const health = useMemo(() => {
@@ -143,18 +152,46 @@ export function OwnerConsole() {
         <div className="row" style={{ gap: 8, alignItems: 'center' }}>
           <span className="muted" style={{ fontSize: 12.5 }}>{data ? `Updated ${ist(data.at)} · refreshes every minute` : ''}</span>
           <button className="secondary" onClick={() => load()} disabled={busy}>{busy ? '…' : '↻'}</button>
-          <button className="secondary" onClick={testAlert}>Send test alert</button>
-          <button className="secondary" onClick={() => { setTok(''); setTokState(''); }}>Lock</button>
+          <button className="secondary" onClick={testAlert} title="E-mails you a sample alert, to prove alerts reach your inbox. Changes nothing.">Send test alert</button>
+          <button className="secondary" onClick={() => { setTok(''); setTokState(''); }} title="Signs you out of the Tech Console only (your ERP login stays). Next time needs a new e-mailed code.">Lock console</button>
         </div>
       </div>
       {err && <div className="error">{err}</div>}
       {note && <div className="card" style={{ padding: '8px 14px' }}>{note}</div>}
       {!data ? <p className="muted">Loading…</p> : (
         <>
-          <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderLeft: `5px solid ${health!.problems.length ? 'var(--warn)' : 'var(--ok)'}` }}>
-            <Dot t={health!.problems.length ? 'warn' : 'ok'} />
-            <div style={{ fontWeight: 700 }}>{health!.problems.length ? `Needs a look: ${health!.problems.join(' · ')}` : 'All systems normal'}</div>
-          </div>
+          {(data.issues?.list ?? []).length === 0 ? (
+            <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderLeft: '5px solid var(--ok)', borderRadius: 0 }}>
+              <Dot t="ok" /><div style={{ fontWeight: 700 }}>All systems normal{data.issues?.muted ? ` · ${data.issues.muted} muted` : ''}</div>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gap: 10 }}>
+              <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <b style={{ fontSize: 15 }}>Needs attention ({data.issues.list.length})</b>
+                <span className="muted" style={{ fontSize: 12 }}>{data.issues.muted ? `${data.issues.muted} muted · ` : ''}each card says what happened, whether it matters and what to do</span>
+              </div>
+              {data.issues.list.map((i: any) => (
+                <div key={i.id} className="card" style={{ margin: 0, padding: '12px 16px', borderLeft: `5px solid ${toneColor[i.severity as Tone] ?? 'var(--warn)'}`, borderRadius: 0 }}>
+                  <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
+                    <div style={{ fontWeight: 700 }}><Dot t={i.severity === 'bad' ? 'bad' : 'warn'} />{i.title}</div>
+                    <Pill t={i.owner === 'you' ? 'warn' : i.owner === 'developer' ? 'bad' : 'ok'}>{i.owner === 'you' ? 'You can fix this' : i.owner === 'developer' ? 'Needs developer' : 'No action'}</Pill>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', gap: '3px 10px', fontSize: 13.5, marginTop: 8 }}>
+                    <span className="muted">What happened</span><span>{i.what}</span>
+                    <span className="muted">Why it matters</span><span>{i.matters}</span>
+                    <span className="muted">What to do</span><span style={{ fontWeight: 600 }}>{i.todo}</span>
+                  </div>
+                  <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                    {i.actions.map((a: any) => (
+                      <button key={a.kind + (a.arg ?? '')} onClick={() => (a.kind === 'run' ? runJob(a.arg) : a.kind === 'unlock' ? unlock(a.arg) : a.kind === 'restart' ? restart() : undefined)}>{a.label}</button>
+                    ))}
+                    <button className="secondary" onClick={() => copy(i.copy)} title="Copies a summary to paste to the developer">Copy details</button>
+                    <button className="secondary" onClick={() => mute(i.id)} title="Hide this for 24 hours and stop its alert e-mails">Mute 24 h</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="row" style={{ gap: 6, margin: '12px 0', flexWrap: 'wrap' }}>
             {tabs.map(([k, l]) => <button key={k} className={tab === k ? '' : 'secondary'} onClick={() => setTab(k)}>{l}</button>)}
@@ -240,6 +277,19 @@ export function OwnerConsole() {
 
           {tab === 'security' && (
             <div className="card">
+              {(data.locks ?? []).length > 0 && (
+                <div style={{ marginBottom: 14 }}>
+                  <b>Locked right now</b>
+                  <div style={{ marginTop: 6, display: 'grid', gap: 6, fontSize: 13.5 }}>
+                    {data.locks.map((l: any) => (
+                      <div key={l.key} className="row" style={{ gap: 10, alignItems: 'center' }}>
+                        <Dot t="warn" /><span style={{ flex: 1 }}>{l.kind === 'account' ? 'Login' : 'Network'} <b>{l.key.replace(/^(email|rider):/, '')}</b> — {l.fails} wrong passwords, locked until {ist(l.until)}</span>
+                        <button className="secondary" style={{ padding: '3px 10px', fontSize: 12 }} onClick={() => unlock(l.key)}>Unlock</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <b>Security · 24 h</b> <span className="muted" style={{ fontSize: 12.5 }}>— wrong passwords, lock-outs, admin sign-ins (new networks flagged), user / access changes, deletes</span>
               <div style={{ marginTop: 10, fontSize: 13.5, display: 'grid', gap: 6 }}>
                 {data.security.recent.length ? data.security.recent.map((s: any, i: number) => (
@@ -254,7 +304,7 @@ export function OwnerConsole() {
               <b>Background jobs</b> <span className="muted" style={{ fontSize: 12.5 }}>— carrier tracking syncs, auto hand-off, MIS, summaries, backups. Click a row for its history.</span>
               <div className="table-wrap" style={{ overflowX: 'auto', marginTop: 10 }}>
                 <table>
-                  <thead><tr><th>Job</th><th>Last run</th><th>Result</th><th>Runs 24 h</th><th>Avg time</th></tr></thead>
+                  <thead><tr><th>Job</th><th>Last run</th><th>Result</th><th>Runs 24 h</th><th>Avg time</th><th></th></tr></thead>
                   <tbody>
                     {data.jobs.length ? data.jobs.map((j: any) => (
                       <tr key={j.job} style={{ cursor: 'pointer' }} onClick={() => openJob(j.job)}>
@@ -263,8 +313,11 @@ export function OwnerConsole() {
                         <td style={{ maxWidth: 420, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={j.error ?? j.summary ?? ''}>{j.ok === false ? <span style={{ color: 'var(--bad)' }}>{j.error}</span> : j.summary ?? (j.finishedAt ? 'ok' : 'running…')}</td>
                         <td style={{ fontVariantNumeric: 'tabular-nums' }}>{j.ok24h}/{j.runs24h}</td>
                         <td>{j.avgSecs != null ? `${j.avgSecs} s` : '—'}</td>
+                        <td onClick={(e) => e.stopPropagation()}>{(data.runnable ?? []).includes(j.job)
+                          ? <button className="secondary" style={{ padding: '3px 10px', fontSize: 12 }} onClick={() => runJob(j.job)}>Run now</button>
+                          : <span className="muted" style={{ fontSize: 11.5 }} title="Re-running would e-mail every recipient again">automatic only</span>}</td>
                       </tr>
-                    )) : <tr><td colSpan={5} className="muted">No runs recorded yet — they appear within a few minutes of the deploy.</td></tr>}
+                    )) : <tr><td colSpan={6} className="muted">No runs recorded yet — they appear within a few minutes of the deploy.</td></tr>}
                   </tbody>
                 </table>
               </div>

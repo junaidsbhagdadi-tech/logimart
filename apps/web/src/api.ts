@@ -580,6 +580,10 @@ export const api = {
   opsOverview: (t: string) => request<any>('/api/v1/ops/overview', { headers: { 'x-ops-token': t } }),
   opsEvents: (t: string, p: { kind?: string; search?: string; fingerprint?: string; limit?: number }) => request<any[]>(`/api/v1/ops/events${qs(p)}`, { headers: { 'x-ops-token': t } }),
   opsJob: (t: string, name: string) => request<any[]>(`/api/v1/ops/jobs/${encodeURIComponent(name)}`, { headers: { 'x-ops-token': t } }),
+  opsRun: (t: string, job: string) => request<{ ok: boolean; started: string }>('/api/v1/ops/actions/run', { method: 'POST', headers: { 'x-ops-token': t }, body: JSON.stringify({ job }) }),
+  opsUnlock: (t: string, key: string) => request<{ ok: boolean }>('/api/v1/ops/actions/unlock', { method: 'POST', headers: { 'x-ops-token': t }, body: JSON.stringify({ key }) }),
+  opsMute: (t: string, id: string, hours = 24) => request<{ ok: boolean; until: string }>('/api/v1/ops/actions/mute', { method: 'POST', headers: { 'x-ops-token': t }, body: JSON.stringify({ id, hours }) }),
+  opsRestart: (t: string) => request<{ ok: boolean; message: string }>('/api/v1/ops/actions/restart', { method: 'POST', headers: { 'x-ops-token': t } }),
   opsTestAlert: (t: string) => request<{ ok: boolean; to: string }>('/api/v1/ops/test-alert', { method: 'POST', headers: { 'x-ops-token': t } }),
   logoutEvent: () => request<{ ok: boolean }>('/api/v1/auth/logout', { method: 'POST', body: JSON.stringify({ via: 'web' }) }),
   createUser: (body: unknown) =>

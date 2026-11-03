@@ -48,6 +48,31 @@ export class OpsController {
     return this.ops.jobHistory(name);
   }
 
+  // ---- one-click fixes (owner token required) ----
+  @Post('actions/run')
+  async runJob(@Req() req: any, @Headers('x-ops-token') token = '', @Body() body: { job?: string }) {
+    await this.gate(req, token);
+    return this.ops.runJob(String(body?.job ?? ''));
+  }
+
+  @Post('actions/unlock')
+  async unlock(@Req() req: any, @Headers('x-ops-token') token = '', @Body() body: { key?: string }) {
+    await this.gate(req, token);
+    return this.ops.unlockLogin(String(body?.key ?? ''));
+  }
+
+  @Post('actions/mute')
+  async mute(@Req() req: any, @Headers('x-ops-token') token = '', @Body() body: { id?: string; hours?: number }) {
+    await this.gate(req, token);
+    return this.ops.mute(String(body?.id ?? ''), Number(body?.hours) || 24);
+  }
+
+  @Post('actions/restart')
+  async restart(@Req() req: any, @Headers('x-ops-token') token = '') {
+    await this.gate(req, token);
+    return this.ops.restartApp();
+  }
+
   /** Send a test alert email so the owner knows the alert path works. */
   @Post('test-alert')
   async testAlert(@Req() req: any, @Headers('x-ops-token') token = '') {

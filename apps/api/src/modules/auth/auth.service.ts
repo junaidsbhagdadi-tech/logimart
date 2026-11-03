@@ -38,7 +38,8 @@ export class AuthService {
       const seen = await this.prisma.loginLog.findFirst({ where: { userId: user.id, ip }, select: { id: true } });
       const any = await this.prisma.loginLog.findFirst({ where: { userId: user.id }, select: { id: true } });
       opsRecord({ kind: 'security', level: seen ? 'info' : 'warn', source: 'login', message: `${user.role} login: ${user.fullName} (${user.email}) from ${ip}${seen ? '' : ' — NEW network'}`, fingerprint: seen ? 'login:admin' : 'login:admin-newip', userId: user.id });
-      if (!seen && any) opsAlert(`newip:${user.id}:${ip}`, `${user.role} login from a new network: ${user.fullName}`, `${user.fullName} (${user.email}) signed in from ${ip}, which hasn't been used for this login before.
+      // Mobile-data networks change daily, so only SYS_ADMIN / owner logins are e-mailed; other admins show in the Security tab.
+      if (!seen && any && (user.role === 'SYS_ADMIN' || isOpsOwnerEmail(user.email))) opsAlert(`newip:${user.id}:${ip}`, `${user.role} login from a new network: ${user.fullName}`, `${user.fullName} (${user.email}) signed in from ${ip}, which hasn't been used for this login before.
 If this wasn't expected, change the password and check the console.`);
     } catch { /* never block a login */ }
   }

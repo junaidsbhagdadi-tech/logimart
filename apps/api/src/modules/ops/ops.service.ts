@@ -10,7 +10,20 @@ import * as tls from 'node:tls';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { OpsEventInput, isOpsOwnerEmail, registerOpsSink } from '../../common/ops-hooks';
+import { ModuleRef } from '@nestjs/core';
+import { OpsEventInput, isOpsOwnerEmail, opsJob, registerOpsSink } from '../../common/ops-hooks';
+import { LoginGuard } from '../auth/login-guard';
+import { BluedartService } from '../bluedart/bluedart.service';
+import { CarriersService } from '../carriers/carriers.service';
+import { DelhiveryService } from '../delhivery/delhivery.service';
+import { DsCargoService } from '../dscargo/dscargo.service';
+import { GatiService } from '../gati/gati.service';
+import { VExpressService } from '../vexpress/vexpress.service';
+import { XpressBeesService } from '../xpressbees/xpressbees.service';
+import { ArlService } from '../arlogistics/arl.service';
+import { DocumentsService } from '../documents/documents.service';
+import { ShipmentsService } from '../shipments/shipments.service';
+import { PriceCacheService } from '../billing/price-cache.service';
 
 const run = promisify(execFile);
 const RETENTION_DAYS = 30;
@@ -34,7 +47,7 @@ export class OpsService implements OnModuleInit, OnModuleDestroy {
   private bucket: Bucket = this.empty();
   private timers: NodeJS.Timeout[] = [];
 
-  constructor(private readonly prisma: PrismaService, private readonly mail: NotificationsService) {}
+  constructor(private readonly prisma: PrismaService, private readonly mail: NotificationsService, private readonly moduleRef: ModuleRef) {}
 
   private empty(): Bucket { return { requests: 0, e5: 0, e4: 0, totalMs: 0, maxMs: 0, slowPath: null, ext: 0 }; }
 
@@ -210,7 +223,7 @@ export class OpsService implements OnModuleInit, OnModuleDestroy {
       SELECT prev AS "from", minute AS "to", EXTRACT(EPOCH FROM (minute - prev))/60 AS mins FROM (
         SELECT minute, lag(minute) OVER (ORDER BY minute) AS prev FROM ops_minutes WHERE minute >= ${d30}) t
       WHERE prev IS NOT NULL AND minute - prev > interval '3 minutes' ORDER BY minute DESC LIMIT 20`;
-    return {
+    const out: any = {
       at: new Date(),
       uptime: { trackedFrom, pct30: +(Math.min(100, (upMin / totalMin) * 100)).toFixed(2), days: minutes, outages },
       traffic: { requests24h: last24[0]?.req ?? 0, errors5xx24h: last24[0]?.e5 ?? 0, avgMs: last24[0]?.req ? Math.round(last24[0].ms / last24[0].req) : 0, maxMs: last24[0]?.max ?? 0, extCalls24h: last24[0]?.ext ?? 0, slowest: slow },
@@ -227,7 +240,11 @@ export class OpsService implements OnModuleInit, OnModuleDestroy {
       demo: await this.ping('http://127.0.0.1:3100/health'),
       app: this.appRelease(),
       alerts,
+      locks: LoginGuard.locked(),
+      runnable: OpsService.runnableJobs(),
     };
+    out.issues = await this.issues(out);
+    return out;
   }
 
   async events(q: { kind?: string; search?: string; fingerprint?: string; limit?: number }) {
@@ -311,9 +328,103 @@ export class OpsService implements OnModuleInit, OnModuleDestroy {
     catch (e: any) { return { ok: false, ms: Date.now() - t, error: String(e?.message || e) }; }
   }
 
+  // ---------------------------------------------------------------- issues: what happened · does it matter · what to do
+
+  /** Jobs the console may re-run on demand — only idempotent ones (syncs, hand-offs, housekeeping, backup).
+   *  Customer MIS / daily summary are NOT here: re-running them e-mails every recipient again. */
+  private static RUNNABLE: Record<string, [any, string]> = {
+    'BlueDart tracking sync': [BluedartService, 'autoSync'], 'BlueDart auto-dispatch': [BluedartService, 'dispatchPending'],
+    'Carrier auto hand-off': [CarriersService, 'autoHandoff'], 'Delhivery tracking sync': [DelhiveryService, 'autoSync'],
+    'DS Cargo tracking sync': [DsCargoService, 'autoSync'], 'Gati tracking sync': [GatiService, 'autoSync'],
+    'V Express tracking sync': [VExpressService, 'autoSync'], 'XpressBees tracking sync': [XpressBeesService, 'autoSync'],
+    'AR Logistics tracking sync': [ArlService, 'autoSync'], 'Document purge': [DocumentsService, 'purgeDeliveredDocs'],
+    'Close delivered RTOs': [ShipmentsService, 'closeDeliveredReturns'], 'Report price cache': [PriceCacheService, 'refreshRecent'],
+  };
+  static runnableJobs() { return [...Object.keys(OpsService.RUNNABLE), 'Off-site backup']; }
+
+  private async muted(id: string) {
+    const m = await this.prisma.integrationToken.findUnique({ where: { provider: `OPS_MUTE:${id}` } }).catch(() => null);
+    return !!m && +m.expiresAt > Date.now();
+  }
+
+  async mute(id: string, hours = 24) {
+    const until = new Date(Date.now() + Math.min(168, Math.max(1, hours)) * 3600_000);
+    await this.prisma.integrationToken.upsert({ where: { provider: `OPS_MUTE:${id}` }, update: { token: 'muted', expiresAt: until }, create: { provider: `OPS_MUTE:${id}`, token: 'muted', expiresAt: until } });
+    this.record({ kind: 'info', source: 'ops', message: `Muted "${id}" until ${until.toISOString()}` });
+    return { ok: true, until };
+  }
+
+  async runJob(name: string) {
+    if (name === 'Off-site backup') {
+      // runs the nightly script now, detached (it records its own run)
+      const { spawn } = await import('node:child_process');
+      const child = spawn(process.execPath, ['scripts/offsite-backup.js'], { cwd: process.cwd(), detached: true, stdio: 'ignore' });
+      child.unref();
+      this.record({ kind: 'info', source: 'ops', message: 'Off-site backup started from the Tech Console' });
+      return { ok: true, started: name };
+    }
+    const entry = OpsService.RUNNABLE[name];
+    if (!entry) throw new BadRequestException(`"${name}" can't be run from here.`);
+    const svc: any = this.moduleRef.get(entry[0], { strict: false });
+    this.record({ kind: 'info', source: 'ops', message: `${name} started from the Tech Console` });
+    opsJob(name, () => svc[entry[1]]()).catch(() => undefined); // in the background; the result lands in Jobs
+    return { ok: true, started: name };
+  }
+
+  unlockLogin(key: string) {
+    const ok = LoginGuard.unlock(key);
+    this.record({ kind: 'security', level: 'info', source: 'ops', message: `Unlocked ${key} from the Tech Console` });
+    return { ok };
+  }
+
+  restartApp() {
+    this.record({ kind: 'info', level: 'warn', source: 'ops', message: 'App restart requested from the Tech Console' });
+    setTimeout(() => process.exit(0), 1500); // pm2 starts it again within seconds
+    return { ok: true, message: 'Restarting — the ERP is back in about 20 seconds.' };
+  }
+
+  /** Plain-language issue cards built from the live data. owner: who has to act. */
+  private async issues(d: any) {
+    type Issue = { id: string; severity: 'bad' | 'warn' | 'info'; title: string; what: string; matters: string; todo: string; owner: 'you' | 'developer' | 'none'; actions: { kind: string; label: string; arg?: string }[]; copy: string };
+    const out: Issue[] = [];
+    const copyOf = (i: Omit<Issue, 'copy'>, extra = '') => `ExcelEx Tech Console — ${i.title}\nWhat happened: ${i.what}\nWhy it matters: ${i.matters}\nWhat to do: ${i.todo}${extra ? `\n\nDetails:\n${extra}` : ''}\n(${new Date().toISOString()})`;
+    const add = (i: Omit<Issue, 'copy'>, extra = '') => out.push({ ...i, copy: copyOf(i, extra) });
+
+    for (const j of d.jobs.filter((x: any) => x.ok === false)) {
+      if (j.job === 'Off-site backup') {
+        const noSpaces = /not set/i.test(String(j.error));
+        add({ id: 'backup', severity: 'warn', title: 'Off-site backup is not being made', what: noSpaces ? 'The nightly copy of the database is saved on the server, but there is no DigitalOcean Spaces bucket to copy it off the server.' : `The last off-site backup failed: ${j.error}`, matters: 'If the server itself is lost, the only copy of the data is the database provider\'s own backup.', todo: noSpaces ? 'Create a private DigitalOcean Spaces bucket (Bangalore region) and send the bucket name — the key is then loaded on the server.' : 'Press "Run now". If it fails again, copy the details to the developer.', owner: noSpaces ? 'you' : 'developer', actions: noSpaces ? [] : [{ kind: 'run', label: 'Run now', arg: j.job }] }, String(j.error));
+      } else {
+        add({ id: `job:${j.job}`, severity: 'bad', title: `${j.job} failed`, what: `The last run failed: ${String(j.error || '').slice(0, 200)}`, matters: /tracking|hand-off|dispatch/i.test(j.job) ? 'Shipment statuses / carrier hand-offs are not updating for that carrier.' : 'That background task did not complete.', todo: 'Press "Run now" — a short network or carrier outage clears on retry. If it fails again, copy the details to the developer.', owner: 'developer', actions: [{ kind: 'run', label: 'Run now', arg: j.job }] }, String(j.error));
+      }
+    }
+    for (const g of d.errors.groups.slice(0, 6)) {
+      const last = await this.prisma.opsEvent.findFirst({ where: { fingerprint: g.fingerprint }, orderBy: { at: 'desc' }, select: { detail: true } });
+      const stack = String((last?.detail as any)?.stack ?? '').split('\n').slice(0, 6).join('\n');
+      add({ id: `err:${createHash('md5').update(g.fingerprint).digest('hex').slice(0, 12)}`, severity: g.n >= 10 ? 'bad' : 'warn', title: `Error on ${g.source} (${g.n}× today)`, what: String(g.message).slice(0, 240), matters: 'Users opening that screen or action see an error instead of a result.', todo: 'This needs a code fix — copy the details and send them to the developer.', owner: 'developer', actions: [] }, `${g.source}\n${g.message}\n${stack}`);
+    }
+    const s = d.server;
+    if (s.memPct >= 85) add({ id: 'mem', severity: s.memPct >= 92 ? 'bad' : 'warn', title: `Server memory at ${s.memPct}%`, what: `The server is using ${s.memPct}% of its memory (the ERP itself ${s.processMb} MB).`, matters: 'Near 100% the app slows down or crashes.', todo: 'Press "Restart app" outside busy hours (about 20 seconds offline). If it keeps coming back, the server needs more memory — tell the developer.', owner: 'you', actions: [{ kind: 'restart', label: 'Restart app' }] });
+    if ((s.diskPct ?? 0) >= 85) add({ id: 'disk', severity: 'bad', title: `Server disk at ${s.diskPct}%`, what: `Only ${s.diskFreeGb} GB free on the server.`, matters: 'A full disk stops backups, logs and uploads.', todo: 'Copy the details to the developer to clear old files / backups.', owner: 'developer', actions: [] });
+    if (d.db.connections >= d.db.maxConnections - 4) add({ id: 'dbconn', severity: 'bad', title: `Database connections ${d.db.connections}/${d.db.maxConnections}`, what: 'Almost every database connection is in use.', matters: 'New requests wait or fail.', todo: 'Press "Restart app" to release them; if it recurs, tell the developer.', owner: 'you', actions: [{ kind: 'restart', label: 'Restart app' }] });
+    for (const c of d.certs.filter((x: any) => x.daysLeft == null || x.daysLeft <= 14)) add({ id: `cert:${c.host}`, severity: 'bad', title: `HTTPS certificate — ${c.host}`, what: c.daysLeft == null ? `The site could not be checked (${c.error}).` : `It expires in ${c.daysLeft} days.`, matters: 'Browsers show the site as unsafe once it expires.', todo: 'Renewal is automatic — copy the details to the developer if this stays.', owner: 'developer', actions: [] });
+    if (!d.demo.ok) add({ id: 'demo', severity: 'warn', title: 'Sales demo ERP is down', what: String(d.demo.error ?? d.demo.status ?? 'not answering'), matters: 'Prospects can\'t open the demo.', todo: 'Copy the details to the developer.', owner: 'developer', actions: [] });
+    for (const sl of d.traffic.slowest.filter((x: any) => x.ms >= 10_000).slice(0, 3)) add({ id: `slow:${sl.path}`, severity: 'warn', title: `Slow screen: ${sl.path}`, what: `It took ${(sl.ms / 1000).toFixed(1)} s at its slowest today.`, matters: 'Users wait, and very slow requests can time out.', todo: 'Needs a code / database fix — copy the details to the developer.', owner: 'developer', actions: [] }, `${sl.path} — ${sl.ms} ms`);
+    for (const l of d.locks) add({ id: `lock:${l.key}`, severity: 'warn', title: l.kind === 'account' ? `Login locked: ${l.key.replace(/^(email|rider):/, '')}` : `Network blocked: ${l.key}`, what: `${l.fails} wrong passwords in 15 minutes — locked until ${new Date(+new Date(l.until) + 330 * 60000).toISOString().slice(11, 16)} IST.`, matters: l.kind === 'account' ? 'That person can\'t sign in until then.' : 'Everyone on that network is blocked from signing in.', todo: 'If it was them mistyping, press "Unlock". If you don\'t recognise it, leave it — the lock is protecting the account.', owner: 'you', actions: [{ kind: 'unlock', label: 'Unlock', arg: l.key }] });
+    if (d.email.provider === 'Brevo' && d.email.credits && d.email.credits.left <= 0) add({ id: 'brevo-credits', severity: 'bad', title: 'Email credits used up', what: 'Brevo has no sending credits left.', matters: 'MIS, summaries, codes and alerts are not delivered.', todo: 'Switch email to Amazon SES or top up Brevo.', owner: 'you', actions: [] });
+
+    const visible: Issue[] = [];
+    let mutedCount = 0;
+    for (const i of out) { if (await this.muted(i.id)) mutedCount++; else visible.push(i); }
+    const rank = { bad: 0, warn: 1, info: 2 } as const;
+    visible.sort((a, b) => rank[a.severity] - rank[b.severity]);
+    return { list: visible, muted: mutedCount };
+  }
+
   // ---------------------------------------------------------------- alerts (email, de-duplicated)
 
   private async alert(key: string, subject: string, body: string, cooldownH = 6) {
+    if (await this.muted(key) || await this.muted(key.replace(/-.*$/, ''))) return; // muted from the console
     const since = new Date(Date.now() - cooldownH * 3600_000);
     const recent = await this.prisma.opsEvent.findFirst({ where: { kind: 'alert', fingerprint: `alert:${key}`, at: { gte: since } } });
     if (recent) return;

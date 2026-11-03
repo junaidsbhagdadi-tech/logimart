@@ -53,6 +53,17 @@ export const LoginGuard = {
   succeeded(account: string) {
     accounts.delete(account);
   },
+  /** Logins / networks locked right now (for the Tech Console). */
+  locked() {
+    const now = Date.now();
+    const list = (m: Map<string, Entry>, kind: 'account' | 'network') => [...m].filter(([, e]) => e.lockedUntil > now).map(([key, e]) => ({ kind, key, fails: e.fails, until: new Date(e.lockedUntil) }));
+    return [...list(accounts, 'account'), ...list(ips, 'network')];
+  },
+  /** Lift a lock early (Tech Console "Unlock"). */
+  unlock(key: string) {
+    const had = accounts.delete(key) || ips.delete(key);
+    return had;
+  },
 };
 
 /** The real client IP: nginx overwrites X-Real-IP with $remote_addr (X-Forwarded-For's first hop is
