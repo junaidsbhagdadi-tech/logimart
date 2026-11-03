@@ -193,7 +193,8 @@ export function App() {
         <Route path="/green-tax" element={gate('/green-tax', canMaster) ? <GreenTax /> : <Navigate to="/" replace />} />
         <Route path="/reports" element={gate('/reports', canReports) ? <Reports /> : <Navigate to="/" replace />} />
         <Route path="/data-health" element={gate('/data-health', isAdminFin || canMaster) ? <DataHealth /> : <Navigate to="/" replace />} />
-        <Route path="/owner-console" element={(user as any)?.isOpsOwner ? <OwnerConsole /> : <Navigate to="/" replace />} />
+        <Route path="/tech-console" element={(user as any)?.isOpsOwner ? <OwnerConsole /> : <Navigate to="/" replace />} />
+        <Route path="/owner-console" element={<Navigate to="/tech-console" replace />} />
         <Route path="/attendance" element={['SYS_ADMIN', 'ADMIN', 'FINANCE_EXEC'].includes(String(user?.role)) ? <Attendance /> : <Navigate to="/" replace />} />
         <Route path="/audit" element={user?.role === 'SYS_ADMIN' ? <AuditLog /> : <Navigate to="/" replace />} />
         <Route path="/users" element={user?.role === 'SYS_ADMIN' ? <Users /> : <Navigate to="/" replace />} />

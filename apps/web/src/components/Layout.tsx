@@ -243,7 +243,7 @@ export function Layout() {
       { to: '/bluedart', icon: '🚚', label: 'Carrier APIs', show: isSysAdmin },
       { to: '/audit', icon: '🕵', label: 'Audit Log', show: isSysAdmin },
       { to: '/feedback', icon: '💬', label: 'Feedback', show: isSysAdmin },
-      { to: '/owner-console', icon: '🛰', label: 'Owner Console', show: !!(user as any)?.isOpsOwner },
+      { to: '/tech-console', icon: '🛰', label: 'Tech Console', show: !!(user as any)?.isOpsOwner },
     ] },
     { title: 'Utilities', items: [
       { to: '/archive', icon: '🗄', label: 'Archive', show: isSysAdmin },

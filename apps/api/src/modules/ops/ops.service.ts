@@ -23,7 +23,7 @@ const secret = () => `${process.env.JWT_SECRET || 'x'}:ops`;
 type Bucket = { requests: number; e5: number; e4: number; totalMs: number; maxMs: number; slowPath: string | null; ext: number };
 
 /**
- * Owner console (#monitoring): records errors / security events / per-minute traffic / job runs into
+ * Tech Console (#monitoring): records errors / security events / per-minute traffic / job runs into
  * Postgres (multi-instance safe, 30-day retention), computes health (server, DB, certificates, backups,
  * carriers, email), emails alerts with de-duplication, and gates everything behind owner email + a
  * one-time code.
@@ -100,7 +100,7 @@ export class OpsService implements OnModuleInit, OnModuleDestroy {
 
   async testAlert() {
     const to = alertTo();
-    const ok = to ? await this.mail.sendMail({ to: [to], subject: '[ERP alert] Test alert', text: 'This is a test from the owner console. Real alerts look like this.' }).catch(() => false) : false;
+    const ok = to ? await this.mail.sendMail({ to: [to], subject: '[ERP alert] Test alert', text: 'This is a test from the Tech Console. Real alerts look like this.' }).catch(() => false) : false;
     return { ok, to: to.replace(/^(.).*(@.*)$/, '$1•••$2') };
   }
 
@@ -127,10 +127,10 @@ export class OpsService implements OnModuleInit, OnModuleDestroy {
     if (credits && credits.left <= 0) throw new BadRequestException(`The email service (Brevo, ${credits.plan} plan) has no sending credits left, so the code can't be delivered. Top up / upgrade Brevo, then try again.`);
     const sent = await this.mail.sendMail({
       to: [to], subject: 'ExcelEx ERP sign-in code',
-      text: `Your ExcelEx owner-console sign-in code is ${code}. It expires in 10 minutes.\nIf you didn't request it, someone has your ERP password — change it now.`,
-      html: `<div style="font:15px Arial,sans-serif;color:#12262b"><p>Your ExcelEx owner-console sign-in code:</p><p style="font-size:30px;font-weight:700;letter-spacing:6px;margin:8px 0">${code}</p><p style="color:#4d6a70">It expires in 10 minutes. If you didn't request it, someone has your ERP password — change it now.</p></div>`,
+      text: `Your ExcelEx Tech Console sign-in code is ${code}. It expires in 10 minutes.\nIf you didn't request it, someone has your ERP password — change it now.`,
+      html: `<div style="font:15px Arial,sans-serif;color:#12262b"><p>Your ExcelEx Tech Console sign-in code:</p><p style="font-size:30px;font-weight:700;letter-spacing:6px;margin:8px 0">${code}</p><p style="color:#4d6a70">It expires in 10 minutes. If you didn't request it, someone has your ERP password — change it now.</p></div>`,
     });
-    this.record({ kind: 'security', level: 'info', source: 'ops', message: 'Owner console code requested', userId: String(userId) });
+    this.record({ kind: 'security', level: 'info', source: 'ops', message: 'Tech Console code requested', userId: String(userId) });
     if (!sent) throw new BadRequestException('Could not send the code — check the email service.');
     return { ok: true, sentTo: to.replace(/^(.).*(@.*)$/, '$1•••$2') };
   }
@@ -144,11 +144,11 @@ export class OpsService implements OnModuleInit, OnModuleDestroy {
     if (st.tries >= 5) throw new BadRequestException('Too many wrong codes — request a new one.');
     if (this.hash(String(code || '').trim()) !== st.h) {
       await this.prisma.integrationToken.update({ where: { provider: key }, data: { token: JSON.stringify({ ...st, tries: st.tries + 1 }) } });
-      this.record({ kind: 'security', level: 'warn', source: 'ops', message: `Wrong owner-console code from ${ip}`, userId: String(userId), fingerprint: 'ops:badcode' });
+      this.record({ kind: 'security', level: 'warn', source: 'ops', message: `Wrong Tech Console code from ${ip}`, userId: String(userId), fingerprint: 'ops:badcode' });
       throw new BadRequestException('Wrong code.');
     }
     await this.prisma.integrationToken.delete({ where: { provider: key } }).catch(() => undefined);
-    this.record({ kind: 'security', level: 'info', source: 'ops', message: `Owner console opened from ${ip}`, userId: String(userId) });
+    this.record({ kind: 'security', level: 'info', source: 'ops', message: `Tech Console opened from ${ip}`, userId: String(userId) });
     const exp = Date.now() + 12 * 3600_000;
     const body = `${userId}.${exp}`;
     return { token: `${body}.${this.sign(body)}`, expiresAt: new Date(exp) };
@@ -156,9 +156,9 @@ export class OpsService implements OnModuleInit, OnModuleDestroy {
 
   assertToken(userId: string | number, token?: string) {
     const [uid, exp, sig] = String(token || '').split('.');
-    if (!uid || !exp || !sig || uid !== String(userId) || +exp < Date.now()) throw new ForbiddenException('OPS_SESSION: Owner console session expired — sign in with a new code.');
+    if (!uid || !exp || !sig || uid !== String(userId) || +exp < Date.now()) throw new ForbiddenException('OPS_SESSION: Tech Console session expired — sign in with a new code.');
     const want = Buffer.from(this.sign(`${uid}.${exp}`)); const got = Buffer.from(sig);
-    if (want.length !== got.length || !timingSafeEqual(want, got)) throw new ForbiddenException('OPS_SESSION: Owner console session expired — sign in with a new code.');
+    if (want.length !== got.length || !timingSafeEqual(want, got)) throw new ForbiddenException('OPS_SESSION: Tech Console session expired — sign in with a new code.');
   }
 
   /** Brevo sending credits left (its API accepts mail even at 0 credits and drops it later, so check). */
@@ -319,7 +319,7 @@ export class OpsService implements OnModuleInit, OnModuleDestroy {
     if (recent) return;
     this.record({ kind: 'alert', level: 'warn', source: 'ops', message: subject, fingerprint: `alert:${key}` });
     const to = alertTo();
-    if (to) await this.mail.sendMail({ to: [to], subject: `[ERP alert] ${subject}`, text: `${body}\n\nOpen the owner console for details.` }).catch(() => false);
+    if (to) await this.mail.sendMail({ to: [to], subject: `[ERP alert] ${subject}`, text: `${body}\n\nOpen the Tech Console for details.` }).catch(() => false);
   }
 
   /** Called by the security hooks for things worth an immediate mail (admin login from a new IP). */

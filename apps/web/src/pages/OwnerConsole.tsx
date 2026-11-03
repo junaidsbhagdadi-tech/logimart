@@ -38,7 +38,7 @@ function Gate({ onToken }: { onToken: (t: string) => void }) {
   return (
     <div className="card" style={{ maxWidth: 440 }}>
       <h3 style={{ marginTop: 0 }}>Confirm it's you</h3>
-      <p className="muted">The owner console needs a one-time code sent to the owner's inbox, on top of your ERP password.</p>
+      <p className="muted">The Tech Console needs a one-time code sent to the owner's inbox, on top of your ERP password.</p>
       {err && <div className="error">{err}</div>}
       {!sent ? (
         <button onClick={send} disabled={busy}>{busy ? 'Sending…' : 'Email me a code'}</button>
@@ -133,13 +133,13 @@ export function OwnerConsole() {
     return { failingJobs, certLow, backupAge, problems };
   }, [data]);
 
-  if (!tok) return (<><h1>🛰 Owner Console</h1><Gate onToken={(t) => { setTokState(t); }} /></>);
+  if (!tok) return (<><h1>🛰 Tech Console</h1><Gate onToken={(t) => { setTokState(t); }} /></>);
 
   const tabs: [typeof tab, string][] = [['overview', 'Overview'], ['errors', 'Errors'], ['security', 'Security'], ['jobs', 'Jobs & carriers'], ['log', 'Event log']];
   return (
     <>
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-        <h1 style={{ margin: 0 }}>🛰 Owner Console</h1>
+        <h1 style={{ margin: 0 }}>🛰 Tech Console</h1>
         <div className="row" style={{ gap: 8, alignItems: 'center' }}>
           <span className="muted" style={{ fontSize: 12.5 }}>{data ? `Updated ${ist(data.at)} · refreshes every minute` : ''}</span>
           <button className="secondary" onClick={() => load()} disabled={busy}>{busy ? '…' : '↻'}</button>
