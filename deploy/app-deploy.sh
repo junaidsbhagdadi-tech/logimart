@@ -19,10 +19,11 @@ git pull --ff-only || true
 # to leave apps/api/dist/main.js missing and could wedge pm2 in a crash-loop. Prevents the root cause.
 export NODE_OPTIONS="--max-old-space-size=1792"
 
-# Clear the previous build output first. `nest build`'s own incremental cleanup hits
-# ENOTEMPTY on a stale dist/modules dir; a clean dir avoids it. Safe because the running app is
-# already loaded in memory and the guard below refuses to restart on a failed build.
-rm -rf apps/api/dist apps/web/dist
+# Clear the previous API build first. `nest build`'s own incremental cleanup hits ENOTEMPTY on a stale
+# dist/modules dir; a clean dir avoids it. Safe because the running app is already loaded in memory and
+# the guard below refuses to restart on a failed build. The WEB build is NOT cleared: it builds into
+# apps/web/dist-next and swaps in at the end, so the live site keeps serving pages during the deploy.
+rm -rf apps/api/dist apps/web/dist-next
 
 echo "==> Build (installs deps, prisma generate + db push, builds API + web portal)"
 # npm run build ends with scripts/verify-build.mjs, which exits non-zero if a build artifact is
