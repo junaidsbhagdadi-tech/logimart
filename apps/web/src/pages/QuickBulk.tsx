@@ -6,11 +6,12 @@ import { api } from '../api';
  * quick-booking form (customer, product, carrier, parcel/doc, pickup elsewhere, consignee, boxes +
  * size, total weight, content, numbers). Each row is booked exactly like a quick booking.
  */
+// Column order = the ops team's typing order (2026-11-05). Uploads match by heading, so files in the old order
+// (or any order) still book correctly.
 const COLS = [
-  'Customer code', 'Product', 'Carrier', 'Parcel / Doc', 'Pickup address', 'Pickup pincode', 'Pickup phone',
-  'Consignee name', 'Consignee pincode', 'Consignee phone', 'Consignee address', 'Consignee GSTIN',
-  'Boxes', 'L cm', 'W cm', 'H cm', 'Total weight kg', 'Content', 'AWB no', 'Forwarding AWB', 'Reference no',
-  'Invoice no', 'Invoice value', 'E-way bill no',
+  'Customer code', 'AWB no', 'Forwarding AWB', 'Consignee name', 'Consignee pincode', 'Consignee address', 'Consignee phone',
+  'Total weight kg', 'Boxes', 'L cm', 'W cm', 'H cm', 'Content', 'Product', 'Carrier', 'Parcel / Doc',
+  'Pickup address', 'Pickup pincode', 'Pickup phone', 'Reference no', 'Invoice no', 'Invoice value', 'E-way bill no', 'Consignee GSTIN',
 ] as const;
 const REQUIRED = ['Customer code', 'Product', 'Consignee name', 'Consignee pincode', 'Total weight kg'];
 const SAMPLE: Record<string, string | number> = {
