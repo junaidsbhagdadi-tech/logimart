@@ -24,6 +24,7 @@ import { ArlService } from '../arlogistics/arl.service';
 import { DocumentsService } from '../documents/documents.service';
 import { ShipmentsService } from '../shipments/shipments.service';
 import { PriceCacheService } from '../billing/price-cache.service';
+import { LifecycleService } from '../lifecycle/lifecycle.service';
 
 const run = promisify(execFile);
 const RETENTION_DAYS = 30;
@@ -339,6 +340,7 @@ export class OpsService implements OnModuleInit, OnModuleDestroy {
     'V Express tracking sync': [VExpressService, 'autoSync'], 'XpressBees tracking sync': [XpressBeesService, 'autoSync'],
     'AR Logistics tracking sync': [ArlService, 'autoSync'], 'Document purge': [DocumentsService, 'purgeDeliveredDocs'],
     'Close delivered RTOs': [ShipmentsService, 'closeDeliveredReturns'], 'Report price cache': [PriceCacheService, 'refreshRecent'],
+    'LOGM further connected': [LifecycleService, 'logmFurtherConnected'],
   };
   static runnableJobs() { return [...Object.keys(OpsService.RUNNABLE), 'Off-site backup']; }
 

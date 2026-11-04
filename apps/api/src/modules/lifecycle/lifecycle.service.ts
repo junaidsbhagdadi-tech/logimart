@@ -1,5 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ShipmentStatus } from '@prisma/client';
+import { Cron } from '@nestjs/schedule';
+import { opsJob } from '../../common/ops-hooks';
 import { PrismaService } from '../../prisma/prisma.service';
 import { resolveScannedAwb } from '../../common/resolve-awb';
 import { cityName, pinRows, placeName } from '../../common/place-name';
@@ -50,6 +52,39 @@ type DashFilter = { vendor?: string; clientId?: string; scope?: bigint[] | null 
 export class LifecycleService {
   private readonly logger = new Logger(LifecycleService.name);
   constructor(private readonly prisma: PrismaService, private readonly rates: RateService, private readonly storage: StorageService, private readonly notifications: NotificationsService) {}
+
+  /**
+   * LOGM = our own network (#13-6): from the day after booking a LOGM shipment shows "Shipment further
+   * connected" (milestone DPD, in transit) without anyone scanning it; delivery is still marked by hand.
+   * Hourly and idempotent — only LOGM bookings from a previous IST day still Booked / Picked.
+   */
+  @Cron('20 * * * *', { timeZone: 'Asia/Kolkata' })
+  scheduledLogm() { return opsJob('LOGM further connected', () => this.logmFurtherConnected()).catch(() => undefined); }
+
+  async logmFurtherConnected() {
+    const todayIst = new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10);
+    const ships = await this.prisma.shipment.findMany({
+      where: {
+        vendor: { equals: 'LOGM', mode: 'insensitive' }, createdAt: { lt: new Date(`${todayIst}T00:00:00+05:30`) },
+        OR: [{ statusCode: null }, { statusCode: { in: ['MAN', 'PKD', 'ORD'] } }],
+      },
+      select: { awb: true, createdAt: true }, take: 2000,
+    });
+    let n = 0;
+    for (const s of ships) {
+      // 10:00 IST on the day after booking (or now, if that is still ahead).
+      const bookedIst = new Date(+s.createdAt + 330 * 60000).toISOString().slice(0, 10);
+      const next = new Date(`${bookedIst}T10:00:00+05:30`); next.setUTCDate(next.getUTCDate() + 1);
+      const at = new Date(Math.min(+next, Date.now()));
+      const r = await this.prisma.shipment.updateMany({
+        where: { awb: s.awb, OR: [{ statusCode: null }, { statusCode: { in: ['MAN', 'PKD', 'ORD'] } }] },
+        data: { statusCode: 'DPD', status: ShipmentStatus.IN_TRANSIT, statusAt: at, bdStatus: 'Shipment further connected', bdSyncedAt: at },
+      });
+      if (r.count) { n++; await this.prisma.scanLog.create({ data: { awb: s.awb, eventType: 'DPD', scanAt: at, remark: 'Shipment further connected' } }); }
+    }
+    if (n) this.logger.log(`LOGM: ${n} shipment(s) marked "Shipment further connected".`);
+    return { marked: n };
+  }
 
   /** Email the billing customer a delivery confirmation with a tracking link. Best-effort, non-fatal. */
   private async sendDeliveryEmails(awbs: string[]) {
