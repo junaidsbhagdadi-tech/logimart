@@ -523,7 +523,7 @@ export class BluedartService implements OnModuleInit {
     return String(s?.product ?? '').toUpperCase() === 'FOD' || String(s?.paymentTerm ?? '').toUpperCase() === 'TO_PAY';
   }
 
-  /** SubProductCode (TSD): P=Prepaid, C=COD, A=FOD (consignee pays freight), D=DOD, B=DOD+FOD.
+  /** SubProductCode (TSD): blank = normal prepaid (P is BlueDart's eTail prepaid), C=COD, A=FOD (consignee pays freight), D=DOD, B=DOD+FOD.
    *  To-pay is NOT a sub-product — it's the isToPayCustomer flag on a prepaid (P) waybill. */
   private bdSubProduct(s: any): string {
     // Domestic Priority (D) has no P/C/A/D sub-products — BlueDart's pack master lists D alone = "Domestic
@@ -533,7 +533,9 @@ export class BluedartService implements OnModuleInit {
     if (s.isDod && this.isFod(s)) return 'B';
     if (s.isDod) return 'D';
     if (this.isFod(s)) return 'A';
-    return 'P';
+    // Prepaid = BLANK. "P" books BlueDart's eTail service (A+P → eTail Prepaid Air, 907… series; E+P → eTail ground,
+    // 509…). Verified live 2026-11-04: blank gives Dart Apex (581…) / Surface Line (536…), like portal bookings.
+    return '';
   }
 
   /** A long pickup address → BlueDart's three 30-character lines, split on word boundaries (they used to get

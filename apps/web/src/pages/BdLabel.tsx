@@ -198,9 +198,15 @@ export function BdLabel() {
         .cl-boxes { flex:0; margin:1mm 0; }
         .cl-boxes td { height:auto; font-size:7pt; font-weight:700; }
         @media print {
-          .cl-page { background:#fff; padding:0; gap:0; display:block; }
+          /* One label per page, never a blank one in between: nothing outside the labels takes space, each label is
+             a hair SHORTER than the page (mm→px rounding used to push it over and feed an empty label), and the last
+             label doesn't force a trailing blank page. */
+          html, body { margin:0 !important; padding:0 !important; min-height:0 !important; height:auto !important; background:#fff !important; }
+          body::before, body::after { display:none !important; content:none !important; }
+          .cl-page { background:#fff; padding:0; gap:0; display:block; min-height:0; }
           .no-print { display:none !important; }
-          .cl { page-break-after:always; break-after:page; }
+          .cl { height:68.4mm; margin:0; break-inside:avoid; page-break-inside:avoid; break-after:page; page-break-after:always; }
+          .cl:last-of-type { break-after:auto; page-break-after:auto; }
           @page { size:89mm 69mm; margin:0; }
         }
       `}</style>
