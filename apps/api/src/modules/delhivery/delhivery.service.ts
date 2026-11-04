@@ -3,7 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { DELHIVERY, DelAccount, delAccountFor, delAccounts, delConfigured } from './delhivery.config';
-import { deriveStatusFromBd } from '../bluedart/bd-status';
+import { carrierScanRow, deriveStatusFromBd, mergeCarrierScans } from '../bluedart/bd-status';
 import { cityName } from '../../common/place-name';
 import { opsJob } from '../../common/ops-hooks';
 
@@ -66,7 +66,8 @@ export class DelhiveryService implements OnModuleInit {
             { OR: [{ statusCode: null }, { statusCode: { notIn: ['DLD', 'RTD', 'CAN'] } }] },
           ],
         },
-        select: { awb: true }, orderBy: { createdAt: 'desc' }, take: 300,
+        // Least-recently synced first, so every open LR gets its turn (not just the newest 300).
+        select: { awb: true }, orderBy: [{ bdSyncedAt: { sort: 'asc', nulls: 'first' } }, { createdAt: 'desc' }], take: 300,
       });
       await this.backfillPods(50).catch(() => null);
       for (const r of rows) {
@@ -432,13 +433,13 @@ export class DelhiveryService implements OnModuleInit {
   }
 
   private async syncTrackingAs(awb: string) {
-    let s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, forwardingAwb: true, statusCode: true, bdStatus: true } });
+    let s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, forwardingAwb: true, statusCode: true, bdStatus: true, bdScans: true } });
     // Hand-off still waiting on Delhivery's async manifest job → resolve the LR first.
     const job = /^Delhivery job (\S+)/.exec(String(s?.bdStatus || ''))?.[1];
     if (s && !s.forwardingAwb && job) {
       const r = await this.applyManifestJob(s.id, job);
       if (!r.lrn) return { awb, lrn: null, status: `Manifest ${r.status ?? 'pending'}`, location: null, tracking: null };
-      s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, forwardingAwb: true, statusCode: true, bdStatus: true } });
+      s = await this.prisma.shipment.findUnique({ where: { awb }, select: { id: true, forwardingAwb: true, statusCode: true, bdStatus: true, bdScans: true } });
     }
     const lrn = s?.forwardingAwb;
     if (!lrn) throw new BadRequestException(`No Delhivery LR on ${awb} to track.`);
@@ -446,9 +447,32 @@ export class DelhiveryService implements OnModuleInit {
     // Tolerate a few response shapes for the latest scan.
     const scan = r?.data?.[0] ?? r?.data ?? r?.lr_status ?? r;
     const status = scan?.status ?? scan?.current_status ?? scan?.Status ?? null;
+    // The LR tracking returns only the LATEST scan per waybill (+ manifested / pickup dates) — keep each one we
+    // see so the history builds up across syncs. Times are IST without an offset.
+    const wbn = scan?.wbns?.[0] ?? {};
+    const istRow = (text: string, v: any, loc?: string | null) => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(String(v || ''));
+      return m ? [carrierScanRow('Delhivery', text, +m[1], +m[2], +m[3], +m[4], +m[5], loc)] : [];
+    };
+    const pretty = (x: any) => String(x || '').replace(/_/g, ' ').trim();
+    const rows = [
+      ...istRow('Manifested', wbn.manifested_date),
+      ...istRow('Picked up', wbn.pickup_date),
+      ...istRow([pretty(wbn.status || status), wbn.scan_remark].filter(Boolean).join(' — '), wbn.scan_timestamp, wbn.location ?? scan?.location ?? null),
+    ];
+    // Delhivery's codes (LEFT_ORIGIN, IN_TRANSIT, REACHED_DESTINATION…) → words our mapper knows.
+    const DLY_TEXT: Record<string, string> = { LEFT_ORIGIN: 'IN TRANSIT', IN_TRANSIT: 'IN TRANSIT', PICKED_UP: 'PICKED UP', PICKUP_DONE: 'PICKED UP', REACHED_DESTINATION: 'REACHED DESTINATION', AT_DESTINATION: 'REACHED DESTINATION', DISPATCHED: 'OUT FOR DELIVERY', OUT_FOR_DELIVERY: 'OUT FOR DELIVERY', DELIVERED: 'DELIVERED', UNDELIVERED: 'UNDELIVERED', RTO: 'RTO', RETURNED: 'RTO DELIVERED' };
+    const mapped = status ? (DLY_TEXT[String(status).toUpperCase()] ?? pretty(status)) : null;
     // Write the carrier status through to our milestone (same mapper as BlueDart) so lists/dashboards are right.
-    const derived = status ? deriveStatusFromBd(s?.statusCode, String(status)) : null;
-    if (status) await this.prisma.shipment.updateMany({ where: { awb }, data: { bdStatus: String(status), ...(derived ? { statusCode: derived.statusCode, status: derived.status, statusAt: new Date() } : {}) } });
+    const derived = mapped ? deriveStatusFromBd(s?.statusCode, mapped) : null;
+    const scanAt = (() => { const m = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})/.exec(String(wbn.scan_timestamp || '')); const d = m ? new Date(`${m[1]}+05:30`) : null; return d && !isNaN(+d) ? d : new Date(); })();
+    await this.prisma.shipment.updateMany({ where: { awb }, data: {
+      bdSyncedAt: new Date(),
+      ...(status ? { bdStatus: [pretty(status), wbn.location].filter(Boolean).join(' — ') } : {}),
+      ...(rows.length ? { bdScans: mergeCarrierScans(s?.bdScans, rows) } : {}),
+      ...(wbn.location ? { currentLocation: String(wbn.location).slice(0, 120) } : {}),
+      ...(derived ? { statusCode: derived.statusCode, status: derived.status, statusAt: scanAt } : {}),
+    } });
     if ((derived?.statusCode ?? s?.statusCode) === 'DLD') await this.fetchPod(awb, lrn).catch(() => null);
     return { awb, lrn, status, location: scan?.location ?? scan?.current_location ?? null, tracking: r };
   }

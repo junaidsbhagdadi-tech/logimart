@@ -85,7 +85,7 @@ export class TrackingService {
         for (const sc of JSON.parse((s as any).bdScans) as any[]) {
           const at = parseBdAt(sc?.date, sc?.time);
           if (!at) continue;
-          bdTimeline.push({ checkpoint: 'BDC', label: sc?.scan || sc?.type || 'Carrier scan', at, location: sc?.location ?? null, carrier: 'BlueDart' });
+          bdTimeline.push({ checkpoint: 'BDC', label: sc?.scan || sc?.type || 'Carrier scan', at, location: sc?.location ?? null, carrier: sc?.carrier || 'BlueDart' });
         }
       } catch { /* ignore malformed cache */ }
     }

@@ -276,7 +276,7 @@ export class LifecycleService {
         for (const sc of JSON.parse((s as any).bdScans) as any[]) {
           const at = parseBdAt(sc?.date, sc?.time);
           if (!at) continue;
-          bdScanRows.push({ at, code: 'BD', label: sc?.scan || sc?.type || 'Carrier scan', location: sc?.location ?? null, by: 'BlueDart', reason: null, remark: sc?.location ?? null });
+          bdScanRows.push({ at, code: 'BD', label: sc?.scan || sc?.type || 'Carrier scan', location: sc?.location ?? null, by: sc?.carrier || 'BlueDart', reason: null, remark: sc?.location ?? null });
         }
       } catch { /* ignore malformed cache */ }
     }

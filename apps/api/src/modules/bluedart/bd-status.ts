@@ -75,3 +75,25 @@ export function deriveStatusFromBd(
   if (eff === cur) return null;
   return { statusCode: eff, status: TO_ENUM[eff] ?? ShipmentStatus.IN_TRANSIT };
 }
+
+// ---- Carrier scan history (Shipment.bdScans) — the one JSON every carrier writes, so the tracker, the CS
+//      "Last scan" column and the pickup date read Delhivery / XpressBees history exactly like BlueDart's.
+//      Row shape (BlueDart's): { scan, date: "30-Oct-2026", time: "2205", location, carrier }.
+const MON3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+export type CarrierScan = { scan: string; date: string; time: string; location: string | null; carrier: string };
+/** One scan row from an IST wall-clock time (y, m 1-12, d, hh, mm). */
+export function carrierScanRow(carrier: string, scan: string, y: number, m: number, d: number, hh: number, mm: number, location?: string | null): CarrierScan {
+  return { scan, date: `${String(d).padStart(2, '0')}-${MON3[m - 1]}-${y}`, time: `${String(hh).padStart(2, '0')}${String(mm).padStart(2, '0')}`, location: location || null, carrier };
+}
+/** Merge new carrier scans into the stored JSON (dedupe on date+time+text), newest first like BlueDart. */
+export function mergeCarrierScans(oldJson: string | null | undefined, add: CarrierScan[]): string | null {
+  let old: any[] = [];
+  try { old = oldJson ? JSON.parse(oldJson) : []; } catch { old = []; }
+  const key = (x: any) => `${x?.date}|${x?.time}|${String(x?.scan ?? '').toUpperCase()}`;
+  const seen = new Set(old.map(key));
+  const fresh = add.filter((x) => { const k = key(x); if (seen.has(k)) return false; seen.add(k); return true; });
+  const merged = [...old, ...fresh];
+  const at = (x: any) => { const [d, mo, y] = String(x?.date ?? '').split('-'); const t = String(x?.time ?? '').replace(/\D/g, '').padStart(4, '0'); return `${y}${String(MON3.indexOf(mo)).padStart(2, '0')}${d}${t}`; };
+  merged.sort((a, b) => at(b).localeCompare(at(a)));
+  return merged.length ? JSON.stringify(merged) : null;
+}

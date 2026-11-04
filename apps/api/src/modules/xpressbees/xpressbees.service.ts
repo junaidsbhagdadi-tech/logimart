@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { deriveStatusFromBd } from '../bluedart/bd-status';
+import { carrierScanRow, deriveStatusFromBd, mergeCarrierScans } from '../bluedart/bd-status';
 import { XB, xbConfigured, xbTrackConfigured } from './xpressbees.config';
 import { cityName } from '../../common/place-name';
 import { opsJob } from '../../common/ops-hooks';
@@ -75,7 +75,9 @@ export class XpressBeesService implements OnModuleInit {
           // open ones, plus delivered ones still waiting for their POD image (podLink comes later)
           OR: [{ statusCode: null }, { statusCode: { notIn: ['DLD', 'RTD', 'CAN'] } }, { statusCode: 'DLD', podUrl: null, statusAt: { gte: new Date(Date.now() - 10 * 864e5) } }],
         },
-        select: { awb: true }, take: 300,
+        // Least-recently synced first: with no order the same 300 were re-polled every pass and the rest
+        // (e.g. 91697485906, picked up 30 Oct) sat at "Booked" forever.
+        select: { awb: true }, orderBy: [{ bdSyncedAt: { sort: 'asc', nulls: 'first' } }, { createdAt: 'desc' }], take: 300,
       });
       for (const r of rows) {
         try { await this.syncTracking(r.awb); } catch { /* keep going */ }
@@ -331,7 +333,7 @@ export class XpressBeesService implements OnModuleInit {
     const pod = pick('podlink', 'pod_link', 'podurl', 'pod_url', 'pod_image', 'pod');
     const s = await this.prisma.shipment.findFirst({
       where: { OR: [...(xbAwb ? [{ forwardingAwb: xbAwb }] : []), ...(mps ? [{ pieces: { some: { carrierChildId: mps } } }] : [])] },
-      select: { awb: true, statusCode: true, podUrl: true },
+      select: { awb: true, statusCode: true, podUrl: true, bdScans: true },
     });
     let result = 'no matching shipment';
     if (s) {
@@ -340,7 +342,8 @@ export class XpressBeesService implements OnModuleInit {
       await this.prisma.shipment.update({
         where: { awb: s.awb },
         data: {
-          ...(text || code ? { bdStatus: `${text || code}${where ? ` — ${where}` : ''} (XpressBees)` } : {}),
+          ...(text || code ? { bdStatus: `${text || code}${where ? ` — ${where}` : ''} (XpressBees)`, bdSyncedAt: new Date() } : {}),
+          ...(text || code ? (() => { const t = new Date((at ?? new Date()).getTime() + 330 * 60000); return { bdScans: mergeCarrierScans(s.bdScans, [carrierScanRow('XpressBees', text || code, t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate(), t.getUTCHours(), t.getUTCMinutes(), where)]) }; })() : {}),
           ...(derived ? { statusCode: derived.statusCode, status: derived.status, statusAt: at ?? new Date() } : {}),
           ...(pod && /^https?:\/\//.test(pod) && !s.podUrl ? { podUrl: pod } : {}),
         },
@@ -352,14 +355,14 @@ export class XpressBeesService implements OnModuleInit {
   }
 
   async syncTracking(awb: string) {
-    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { forwardingAwb: true, statusCode: true, podUrl: true } });
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { forwardingAwb: true, statusCode: true, podUrl: true, bdScans: true } });
     if (!s?.forwardingAwb) throw new BadRequestException(`No XpressBees AWB on ${awb} to track.`);
     const r = await this.track(s.forwardingAwb);
     const parse = (t: string) => { const m = /(\d{2})-(\d{2})-(\d{4}) (\d{2}):(\d{2}):(\d{2})/.exec(t || ''); return m ? Date.UTC(+m[3], +m[2] - 1, +m[1], +m[4], +m[5], +m[6]) : 0; };
     const scans: any[] = (r?.data?.shipmentDetails?.shipmentStatus ?? []).flatMap((b: any) => b?.status ?? []);
     scans.sort((a, b) => parse(a.statusDateTime) - parse(b.statusDateTime));
     const last = scans[scans.length - 1];
-    if (!last) return { awb, xbAwb: s.forwardingAwb, status: null, tracking: r };
+    if (!last) { await this.prisma.shipment.updateMany({ where: { awb }, data: { bdSyncedAt: new Date() } }); return { awb, xbAwb: s.forwardingAwb, status: null, tracking: r }; }
     // A second PKD at another hub is an in-transit hop, not a fresh pickup.
     const pkdHubs = new Set(scans.filter((x) => x.statusCode === 'PKD').map((x) => x.shipmentLocation));
     const code = String(last.statusCode || '').toUpperCase();
@@ -368,7 +371,17 @@ export class XpressBeesService implements OnModuleInit {
     const derived = text ? deriveStatusFromBd(s.statusCode, text) : null;
     // Their POD image rides on the scan (podLink) once XpressBees publishes it — bring it across.
     const podLink = !s.podUrl ? [...scans].reverse().map((x) => x.podLink).find((u) => typeof u === 'string' && /^https?:\/\//.test(u)) : undefined;
-    await this.prisma.shipment.updateMany({ where: { awb }, data: { bdStatus: label, ...(derived ? { statusCode: derived.statusCode, status: derived.status, statusAt: new Date() } : {}), ...(podLink ? { podUrl: podLink } : {}) } });
+    // Full scan history onto the shipment (the tracker's Scans tab used to show only our "Manifested").
+    const rows = scans.flatMap((x) => {
+      const m = /(\d{2})-(\d{2})-(\d{4}) (\d{2}):(\d{2})/.exec(String(x.statusDateTime || ''));
+      return m ? [carrierScanRow('XpressBees', String(x.remark || x.status || x.statusCode || 'Scan'), +m[3], +m[2], +m[1], +m[4], +m[5], x.shipmentLocation)] : [];
+    });
+    const lm = /(\d{2})-(\d{2})-(\d{4}) (\d{2}):(\d{2}):(\d{2})/.exec(String(last.statusDateTime || ''));
+    const lastAt = lm ? new Date(`${lm[3]}-${lm[2]}-${lm[1]}T${lm[4]}:${lm[5]}:${lm[6]}+05:30`) : new Date();
+    await this.prisma.shipment.updateMany({ where: { awb }, data: {
+      bdStatus: label, bdSyncedAt: new Date(), ...(rows.length ? { bdScans: mergeCarrierScans(s.bdScans, rows) } : {}),
+      ...(derived ? { statusCode: derived.statusCode, status: derived.status, statusAt: isNaN(+lastAt) ? new Date() : lastAt } : {}), ...(podLink ? { podUrl: podLink } : {}),
+    } });
     return { awb, xbAwb: s.forwardingAwb, status: label, statusCode: derived?.statusCode ?? s.statusCode, tracking: r };
   }
 
