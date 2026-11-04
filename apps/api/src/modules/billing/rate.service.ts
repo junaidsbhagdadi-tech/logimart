@@ -929,11 +929,39 @@ export class RateService {
    * tariff. This is the single entry point used by quotes, invoicing, and reweigh comparisons.
    */
   async chargesForShipment(shipment: any, pieces: WeightLike[]): Promise<ChargeBreakup | null> {
+    shipment = await this.healZones(shipment);
     // Per-box pricing takes over ONLY when the customer×product has a PerBoxRateCard; otherwise the
     // weight engine runs exactly as before. The rest of the pipeline is shared.
     const breakup = (await this.perBox.tryPrice(shipment, pieces)) ?? (await this.resolveCharges(shipment, pieces));
     const withCust = await this.applyCustomerOtherCharges(shipment, breakup);
     return this.applyOverrides(shipment, withCust);
+  }
+
+  /**
+   * A shipment booked while its pincode had no zone was saved with a broad REGION ("NORTH", "NORTHEAST"…) as its
+   * zone — no rate card has such a column, so it priced at ₹0 forever, even after the pincode was fixed. Such a
+   * placeholder is looked up again from the pincode master (same product → zone rule as booking), so fixing a
+   * pincode re-prices every not-yet-invoiced shipment to it. Real zones are left exactly as booked.
+   */
+  private static REGION_WORDS = new Set(['NORTH', 'SOUTH', 'EAST', 'WEST', 'NORTHEAST', 'CENTRAL', 'NE']);
+  private async healZones(s: any) {
+    const isRegion = (z: any) => !z || RateService.REGION_WORDS.has(String(z).replace(/[\s_-]+/g, '').toUpperCase());
+    if (!isRegion(s?.destZone) && !isRegion(s?.originZone)) return s;
+    const fam = String(s.product ?? '').toUpperCase();
+    const pick = (pin: any) => {
+      if (!pin) return null;
+      const courier = ['DP', 'TDD', 'NDD', 'TODP'].includes(fam);
+      const ecom = ['ECOM', 'ECOMM', 'ECOMMERCE'].includes(fam);
+      const surface = ['SURFACE', 'SFC', 'TOSFC', 'HUB'].includes(fam) || /ROAD|RAIL|SURFACE/i.test(String(s.serviceMode ?? ''));
+      const z = courier ? pin.dpZone : surface ? pin.surfaceZone : ecom ? (pin.ecomZone || pin.apexZone) : (pin.apexZone || pin.ecomZone);
+      return z ? String(z).replace(/\s+/g, '').toUpperCase() : null;
+    };
+    const [o, d] = await Promise.all([
+      isRegion(s.originZone) && /^\d{6}$/.test(String(s.shipperPincode ?? '')) ? this.prisma.pincode.findUnique({ where: { pincode: String(s.shipperPincode) } }) : null,
+      isRegion(s.destZone) && /^\d{6}$/.test(String(s.destPincode ?? '')) ? this.prisma.pincode.findUnique({ where: { pincode: String(s.destPincode) } }) : null,
+    ]);
+    const oz = pick(o), dz = pick(d);
+    return oz || dz ? { ...s, ...(oz ? { originZone: oz } : {}), ...(dz ? { destZone: dz } : {}) } : s;
   }
 
   /** Map a per-customer "Other Charge" description to the built-in charge-line code. */
