@@ -61,6 +61,7 @@ import { AuditLog } from './pages/AuditLog';
 import { Attendance } from './pages/Attendance';
 import { OwnerConsole } from './pages/OwnerConsole';
 import { RateCalculator } from './pages/RateCalculator';
+import { BulkMail } from './pages/BulkMail';
 import { Pincodes } from './pages/Pincodes';
 import { Masters } from './pages/Masters';
 import { Customer360 } from './pages/Customer360';
@@ -194,6 +195,7 @@ export function App() {
         <Route path="/bulk-rate-upload" element={gate('/bulk-rate-upload', canMaster) ? <BulkRateUpload /> : <Navigate to="/" replace />} />
         <Route path="/green-tax" element={gate('/green-tax', canMaster) ? <GreenTax /> : <Navigate to="/" replace />} />
         <Route path="/reports" element={gate('/reports', canReports) ? <Reports /> : <Navigate to="/" replace />} />
+        <Route path="/bulk-mail" element={gate('/bulk-mail', isAdminFin) ? <BulkMail /> : <Navigate to="/" replace />} />
         <Route path="/data-health" element={gate('/data-health', isAdminFin || canMaster) ? <DataHealth /> : <Navigate to="/" replace />} />
         <Route path="/tech-console" element={(user as any)?.isOpsOwner ? <OwnerConsole /> : <Navigate to="/" replace />} />
         <Route path="/owner-console" element={<Navigate to="/tech-console" replace />} />

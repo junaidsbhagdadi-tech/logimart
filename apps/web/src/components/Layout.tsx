@@ -10,6 +10,7 @@ import {
   Globe, PlaneTakeoff, Coins, ScanLine, PackageCheck, Boxes, Route, Truck, Send, Receipt, FileSpreadsheet, TrendingUp, BookOpen,
   Scale, ShieldCheck, Users, Building2, Handshake, Car, Wallet, Banknote, FolderOpen, Contact, LineChart, Container, Shuffle, Map as MapIcon,
   Database, Calculator, PieChart, Stethoscope, UserCog, Plug, History, MessageSquare, Archive, type LucideIcon,
+ Mail,
 } from 'lucide-react';
 import { fmtDateTime } from '../format';
 
@@ -34,7 +35,7 @@ const NAV_ICON: Record<string, LucideIcon> = {
   '/claims': ShieldCheck, '/customers': Users, '/companies': Building2, '/vendors': Handshake, '/vehicles': Car,
   '/vendor-bills': Wallet, '/expenses': Banknote, '/documents': FolderOpen, '/contact-directory': Contact, '/sales': LineChart,
   '/ftl-rates': Container, '/per-box-rates': Boxes, '/service-mapping': Shuffle, '/pincodes': MapIcon, '/masters': Database,
-  '/bulk-rate-upload': Upload, '/tax': Calculator, '/rate-calculator': Calculator, '/reports': PieChart, '/data-health': Stethoscope, '/riders': Bike,
+  '/bulk-rate-upload': Upload, '/tax': Calculator, '/rate-calculator': Calculator, '/reports': PieChart, '/bulk-mail': Mail, '/data-health': Stethoscope, '/riders': Bike,
   '/users': UserCog, '/bluedart': Plug, '/audit': History, '/feedback': MessageSquare, '/archive': Archive,
 };
 const NavIcon = ({ to, fallback }: { to: string; fallback: string }) => { const Ic = NAV_ICON[to]; return Ic ? <Ic aria-hidden /> : <>{fallback}</>; };
@@ -237,6 +238,7 @@ export function Layout() {
     ] },
     { title: 'Insights & Admin', items: [
       { to: '/reports', icon: '📈', label: 'Reports', show: isAdminFin || canMaster },
+      { to: '/bulk-mail', icon: '✉️', label: 'Bulk Customer Mail', show: isAdminFin },
       { to: '/data-health', icon: '🩺', label: 'Data Health', show: isAdminFin || canMaster },
       { to: '/riders', icon: '🛵', label: 'Riders & Drivers', show: canMaster },
       { to: '/users', icon: '⚙️', label: 'Users', show: isSysAdmin },

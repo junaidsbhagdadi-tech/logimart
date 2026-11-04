@@ -25,14 +25,14 @@ export const DEPARTMENT_DEFAULTS: Record<string, Record<string, DeptLevel>> = {
     '/': 'VIEW', '/team-dashboards': 'VIEW', '/tracker': 'VIEW', '/pincode-search': 'VIEW', '/exceptions': 'EDIT',
     '/create': 'EDIT', '/awb-list': 'EDIT', '/bulk': 'EDIT', '/pickups': 'EDIT', '/pickup-book': 'EDIT', '/quick-book': 'EDIT', '/handover': 'EDIT', '/rate-calculator': 'VIEW',
     '/customers': 'EDIT', '/claims': 'EDIT', '/documents': 'EDIT', '/notes': 'VIEW', '/invoices': 'VIEW',
-    '/reports': 'VIEW', '/contact-directory': 'EDIT',
+    '/reports': 'VIEW', '/contact-directory': 'EDIT', '/bulk-mail': 'EDIT',
   },
   FINANCE: {
     '/': 'VIEW', '/team-dashboards': 'VIEW', '/tracker': 'VIEW', '/exceptions': 'VIEW',
     '/invoices': 'DELETE', '/bill-worksheet': 'EDIT', '/sales-mis': 'VIEW', '/receivables': 'EDIT',
     '/notes': 'DELETE', '/claims': 'EDIT', '/customers': 'EDIT', '/vendors': 'EDIT', '/vehicles': 'EDIT',
     '/vendor-bills': 'EDIT', '/documents': 'EDIT', '/expenses': 'EDIT', '/expenses-report': 'DELETE', '/sales': 'VIEW',
-    '/ftl-rates': 'VIEW', '/per-box-rates': 'VIEW', '/tax': 'EDIT', '/reports': 'VIEW', '/rate-calculator': 'VIEW',
+    '/ftl-rates': 'VIEW', '/per-box-rates': 'VIEW', '/tax': 'EDIT', '/reports': 'VIEW', '/rate-calculator': 'VIEW', '/bulk-mail': 'EDIT',
   },
   SALES: {
     '/': 'VIEW', '/team-dashboards': 'VIEW', '/tracker': 'VIEW', '/pincode-search': 'VIEW',

@@ -773,6 +773,8 @@ export const api = {
   // ---- reports ----
   extraExpenseAction: (id: string, action: 'billed' | 'rejected' | 'reset', ref?: string) =>
     request<{ ok: boolean }>(`/api/v1/reports/extra-expense/${id}/action`, { method: 'POST', body: JSON.stringify({ action, ref }) }),
+  bulkMailRecipients: () => request<{ customers: number; count: number; rows: { email: string; code: string; customer: string }[] }>('/api/v1/bulk-mail/recipients'),
+  bulkMailSend: (body: { subject: string; body: string; test?: boolean }) => request<{ ok: boolean; test: boolean; count: number; to?: string; message?: string }>('/api/v1/bulk-mail/send', { method: 'POST', body: JSON.stringify(body) }),
   runReport: (type: string, from?: string, to?: string, extra: { clientId?: string; vendor?: string; status?: string } = {}) => {
     const q = new URLSearchParams();
     if (from) q.set('from', from);
