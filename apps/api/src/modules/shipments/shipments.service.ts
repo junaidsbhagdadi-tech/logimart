@@ -1305,16 +1305,28 @@ export class ShipmentsService {
     // so lift the default 300/500 cap; otherwise keep it small for the default "latest" view.
     const filtered = !!(s || gte || lte || ewbPending || vendors?.length);
     const take = Math.min(limit || (filtered ? 10000 : 300), filtered ? 20000 : 500);
+    // Only the columns the list shows. Pulling whole rows dragged each shipment's POD image (stored inline,
+    // up to ~10 MB) and carrier scan history out of the database — the Shipment List took up to 57 s.
     const shipments = await this.prisma.shipment.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       take,
-      include: {
+      select: {
+        id: true, awb: true, createdAt: true, consigneeName: true, consigneeCity: true, destPincode: true, destZone: true,
+        shipperCity: true, originLocation: true, shipperPincode: true, originZone: true, product: true, vendor: true,
+        bdWaybill: true, forwardingAwb: true, totalDeadKg: true, totalVolKg: true, chargeWeight: true, pieceCount: true,
+        shipmentValue: true, declaredValue: true, status: true, statusCode: true, bdStatus: true, ewbNo: true,
         client: { select: { legalName: true, accountCode: true } },
         _count: { select: { invoiceLines: true } },
         pieces: { select: { lengthCm: true, widthCm: true, heightCm: true, deadKg: true }, orderBy: { sequenceNo: 'asc' } },
       },
     });
+    // "Has POD" without reading the image itself.
+    const withPod = new Set<string>();
+    const ids = shipments.map((x) => x.id);
+    for (let i = 0; i < ids.length; i += 5000) {
+      for (const r of await this.prisma.shipment.findMany({ where: { id: { in: ids.slice(i, i + 5000) }, podUrl: { not: null } }, select: { id: true } })) withPod.add(String(r.id));
+    }
     // #3 — compact package-detail string: box dims grouped by size, e.g. "2×40x30x20, 1×55x45x30".
     const dimsOf = (pieces: { lengthCm: any; widthCm: any; heightCm: any }[]) => {
       const groups = new Map<string, number>();
@@ -1350,10 +1362,10 @@ export class ShipmentsService {
       deliveryVendor: s.bdWaybill ?? s.awb, // carrier waybill; self = own AWB
       status: s.status,
       statusCode: s.statusCode ?? 'MAN', // milestone code (MAN/PKD/…/DLD/UDL/RTO) for hub filters
-      bdStatus: (s as any).bdStatus ?? null,
+      bdStatus: s.bdStatus ?? null,
       ewbNo: s.ewbNo ?? null,
       ewbPending: isEwbPending(s),
-      hasPod: !!(s as any).podUrl,
+      hasPod: withPod.has(String(s.id)),
     }));
   }
 
