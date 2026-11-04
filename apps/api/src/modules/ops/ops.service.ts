@@ -240,7 +240,10 @@ export class OpsService implements OnModuleInit, OnModuleDestroy {
       errors: { count24h: errors, groups: errorsByFp },
       security: { failedLogins24h: failedLogins, deletes24h: auditDeletes, recent: security.map((s) => ({ at: s.at, level: s.level, message: s.message, source: s.source })) },
       jobs: jobs.map((j) => ({ ...j, runs24h: statsBy.get(j.job)?.runs ?? 0, ok24h: statsBy.get(j.job)?.ok ?? 0, avgSecs: statsBy.get(j.job)?.secs ? +Number(statsBy.get(j.job).secs).toFixed(1) : null })),
-      email: { ...Object.fromEntries(notif.map((n) => [n.status, n._count._all])), credits: await this.emailCredits(), provider: NotificationsService.sesEnabled() ? 'Amazon SES' : process.env.BREVO_API_KEY ? 'Brevo' : process.env.SMTP_HOST ? 'SMTP' : 'none' },
+      // The log has one row per RECIPIENT; also count the e-mails themselves (same subject + second = one e-mail).
+      email: { ...Object.fromEntries(notif.map((n) => [n.status, n._count._all])),
+        messages: ((await this.prisma.$queryRaw<any[]>`SELECT count(DISTINCT (split_part(message, ' (cc', 1), date_trunc('second', "createdAt")))::int AS n FROM notifications WHERE channel = 'email' AND status = 'sent' AND "createdAt" >= ${d1}`.catch(() => [{ n: null }]))[0]?.n ?? null),
+        credits: await this.emailCredits(), provider: NotificationsService.sesEnabled() ? 'Amazon SES' : process.env.BREVO_API_KEY ? 'Brevo' : process.env.SMTP_HOST ? 'SMTP' : 'none' },
       server: this.server(),
       db: dbStats,
       boots: boots.map((b) => b.at),
