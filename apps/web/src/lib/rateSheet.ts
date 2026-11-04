@@ -178,31 +178,44 @@ export async function parsePincodeMapping(file: File): Promise<Record<string, an
   const wb = XLSX.read(buf, { type: 'array' });
   const ws = wb.Sheets[wb.SheetNames.find((n) => /pincode/i.test(n)) || wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, raw: true, blankrows: false });
-  let h = -1;
-  rows.forEach((r, i) => { const low = (r || []).map((x) => String(x ?? '').trim().toLowerCase()); if (low.includes('pincode') && (low.includes('dp zone') || low.includes('edl'))) h = i; });
-  if (h < 0) throw new Error('Header row (Pincode / DP ZONE / EDL) not found');
-  const header = rows[h].map((x) => String(x ?? '').trim().toLowerCase());
-  const col = (name: string) => header.indexOf(name);
-  const pinC = col('pincode');
-  const areaIdx = header.map((v, i) => (v === 'area' ? i : -1)).filter((i) => i >= 0);
-  const scC = col('service centre');
-  const cityC = areaIdx[0] ?? pinC + 1;
-  const areaNameC = areaIdx[1] ?? scC + 1;
-  const surfC = header.findIndex((v) => v.startsWith('surfac')); // "Surfacae Zone" typo-safe
-  const g = (r: any[], c: number) => { if (c < 0) return null; const v = r[c]; return v == null ? null : (typeof v === 'number' && v === Math.floor(v) ? String(v) : String(v).trim()); };
-  const out: Record<string, any>[] = [];
-  for (let i = h + 1; i < rows.length; i++) {
-    const r = rows[i] || [];
+  // A sheet may hold SEVERAL blocks, each with its own header row (e.g. an "AIR" block then a "Surface"
+  // block for the same pincodes). Every block is read and merged per pincode — a block only fills the
+  // columns it has, so the Surface block never blanks the AIR zone (it used to: only the last block was read).
+  const isHeader = (r: any[]) => { const low = (r || []).map((x) => String(x ?? '').trim().toLowerCase()); return low.includes('pincode') && (low.includes('dp zone') || low.includes('edl') || low.some((v) => /^(air|apex|surfac)/.test(v))); };
+  if (!rows.some(isHeader)) throw new Error('Header row (Pincode + zone / EDL columns) not found');
+  const g = (r: any[], c: number) => { if (c < 0) return null; const v = r[c]; if (v == null || String(v).trim() === '') return null; return typeof v === 'number' && v === Math.floor(v) ? String(v) : String(v).trim(); };
+  const byPin = new Map<string, Record<string, any>>();
+  let header: string[] | null = null;
+  let tatIsAir = false;
+  for (const r of rows) {
+    if (isHeader(r)) { header = r.map((x: any) => String(x ?? '').trim().toLowerCase()); continue; }
+    if (!header) continue;
+    const H = header;
+    const col = (...names: string[]) => { for (const n of names) { const i = H.indexOf(n); if (i >= 0) return i; } return -1; };
+    const pinC = col('pincode');
+    const areaIdx = H.map((v, i) => (v === 'area' ? i : -1)).filter((i) => i >= 0);
+    const scC = col('service centre');
+    const surfC = H.findIndex((v) => v.startsWith('surfac')); // "Surfacae Zone" typo-safe
+    const airC = col('apex zone', 'apex', 'air zone', 'air');
+    tatIsAir = surfC < 0 && airC >= 0;
     const pin = g(r, pinC);
     if (!pin || !/^\d{6}$/.test(pin)) continue;
-    out.push({
-      pincode: pin, city: g(r, cityC), serviceCentre: g(r, scC), areaName: g(r, areaNameC), state: g(r, col('state')),
-      dpZone: g(r, col('dp zone')), surfaceZone: g(r, surfC), apexZone: g(r, col('apex zone')),
-      ecomZone: g(r, col('ecomzone')) ?? g(r, col('ecom zone')), edl: g(r, col('edl')),
+    const row: Record<string, any> = {
+      pincode: pin, city: g(r, areaIdx[0] ?? pinC + 1), serviceCentre: g(r, scC), areaName: g(r, areaIdx[1] ?? (scC >= 0 && !/^(state|edl|air|apex|surfac|dp zone|ecom|tat|pincode)/.test(H[scC + 1] ?? '') ? scC + 1 : -1)), state: g(r, col('state')),
+      dpZone: g(r, col('dp zone')), surfaceZone: g(r, surfC), apexZone: g(r, airC),
+      ecomZone: g(r, col('ecomzone', 'ecom zone')), edl: g(r, col('edl')),
       edlDistanceKm: g(r, col('edl distance')), tat: g(r, col('tat')),
-    });
+    };
+    const prev = byPin.get(pin) ?? { pincode: pin };
+    for (const [k, v] of Object.entries(row)) {
+      if (v == null) continue;
+      // one TAT per pincode: an AIR block's TAT wins over a Surface block's
+      if (k === 'tat' && prev.tat != null && !tatIsAir) continue;
+      prev[k] = v;
+    }
+    byPin.set(pin, prev);
   }
-  return out;
+  return [...byPin.values()];
 }
 
 const excelDate = (v: any): string | null => {

@@ -146,23 +146,27 @@ export class PincodesService {
       const zn = (v: any) => (v ? String(v).replace(/\s+/g, '').toUpperCase() : null);
       const surfaceZone = zn(r.surfaceZone);
       const apexZone = zn(r.apexZone);
-      const edlRaw = String(r.edl ?? '').trim();
-      const data: any = {
-        city: (r.city ?? r.area ?? '').toString().trim() || 'NA',
-        state: (r.state ?? '').toString().trim() || 'NA',
-        serviceCentre: r.serviceCentre ? String(r.serviceCentre).trim() : null,
-        areaName: r.areaName ? String(r.areaName).trim() : null,
-        dpZone: zn(r.dpZone),
-        surfaceZone, apexZone,
-        ecomZone: zn(r.ecomZone),
-        edl: edlRaw || 'Regular',
-        edlDistanceKm: num(r.edlDistanceKm),
-        tatHours: num(r.tat ?? r.tatHours),
-        isOda: edlRaw !== '' && edlRaw.toUpperCase() !== 'REGULAR',
-        region: this.regionFromZone(surfaceZone || apexZone),
-      };
+      // EDL column as EDL/Regular, or TRUE/FALSE / Yes/No (a TRUE/FALSE file used to store the word "true"
+      // and mark even FALSE pincodes as ODA).
+      const e = String(r.edl ?? '').trim().toUpperCase();
+      const edl = !e ? null : /^(TRUE|YES|Y|1|EDL|ODA)$/.test(e) ? 'EDL' : /^(FALSE|NO|N|0|REGULAR)$/.test(e) ? 'Regular' : String(r.edl).trim();
+      // TAT: a small number is DAYS (5 = 5 days), as files carry it; stored in hours.
+      const tatRaw = num(r.tat ?? r.tatHours);
+      const tatHours = tatRaw == null ? null : tatRaw <= 30 ? tatRaw * 24 : tatRaw;
+      // Only the columns the file actually has — a blank / missing column never wipes what is stored
+      // (an AIR-only file used to blank every surface zone, which made pincodes unpriceable).
+      const data: any = {};
+      const put = (k: string, v: any) => { if (v != null && v !== '') data[k] = v; };
+      put('city', (r.city ?? r.area ?? '').toString().trim());
+      put('state', (r.state ?? '').toString().trim());
+      put('serviceCentre', r.serviceCentre ? String(r.serviceCentre).trim() : null);
+      put('areaName', r.areaName ? String(r.areaName).trim() : null);
+      put('dpZone', zn(r.dpZone)); put('surfaceZone', surfaceZone); put('apexZone', apexZone); put('ecomZone', zn(r.ecomZone));
+      put('edl', edl); if (edl) data.isOda = edl !== 'Regular';
+      put('edlDistanceKm', num(r.edlDistanceKm)); put('tatHours', tatHours);
+      const reg = this.regionFromZone(surfaceZone || apexZone); if (reg) data.region = reg;
       try {
-        await this.prisma.pincode.upsert({ where: { pincode }, update: data, create: { pincode, ...data } });
+        await this.prisma.pincode.upsert({ where: { pincode }, update: data, create: { pincode, city: 'NA', state: 'NA', edl: 'Regular', ...data } });
         ok++;
       } catch (e: any) { errors.push({ pincode, error: e.message }); }
     }
