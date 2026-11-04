@@ -145,7 +145,18 @@ export function Layout() {
     XLSX.writeFile(wb, `appointments-${todayStr}.xlsx`);
   };
 
-  const [collapsed, setCollapsed] = useState(() => localStorage.getItem('lm.rail') === '1');
+  const [collapsedPref, setCollapsed] = useState(() => localStorage.getItem('lm.rail') === '1');
+  // Phone / home-screen shortcut: the menu becomes a slide-in drawer behind a top bar (☰); the desktop
+  // icon-rail collapse doesn't apply there.
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 820px)').matches);
+  const [drawer, setDrawer] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 820px)');
+    const on = () => { setIsMobile(mq.matches); if (!mq.matches) setDrawer(false); };
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  const collapsed = collapsedPref && !isMobile;
   const toggleRail = () => setCollapsed((c) => { const n = !c; localStorage.setItem('lm.rail', n ? '1' : '0'); return n; });
 
   const [closed, setClosed] = useState<Record<string, boolean>>(() => {
@@ -264,7 +275,15 @@ export function Layout() {
 
   return (
     <div className="app">
-      <aside className={collapsed ? 'sidebar collapsed' : 'sidebar'}>
+      <header className="mobile-topbar">
+        <button className="mobile-burger" onClick={() => setDrawer(true)} aria-label="Open menu">☰</button>
+        <Logo height={26} />
+        <form onSubmit={(e) => { lookupAwb(e); }} style={{ flex: 1, minWidth: 0 }}>
+          <input value={awb} onChange={(e) => setAwb(e.target.value)} placeholder="🔍 AWB" aria-label="AWB lookup" style={{ width: '100%', fontSize: 16, padding: '7px 10px' }} />
+        </form>
+      </header>
+      {drawer && <div className="mobile-backdrop" onClick={() => setDrawer(false)} />}
+      <aside className={`${collapsed ? 'sidebar collapsed' : 'sidebar'}${drawer ? ' mobile-open' : ''}`} onClick={(e) => { if (isMobile && (e.target as HTMLElement).closest('a')) setDrawer(false); }}>
         <button className="rail-toggle" onClick={toggleRail} title={collapsed ? 'Expand menu' : 'Collapse menu'} aria-label="Toggle menu">
           {collapsed ? '»' : '«'}
         </button>
