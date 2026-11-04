@@ -79,6 +79,15 @@ export class OpsService implements OnModuleInit, OnModuleDestroy {
 
   onModuleDestroy() { this.timers.forEach(clearInterval); this.flush().catch(() => undefined); }
 
+  /** A crash in a user's browser (see web lib/reportError.ts). Grouped per screen + message. */
+  clientError(userId: any, b: { message?: string; stack?: string; path?: string; where?: string; ua?: string }) {
+    const msg = String(b.message ?? '').slice(0, 400);
+    if (!msg) return;
+    const path = String(b.path ?? '/').replace(/\/[A-Z]{0,3}\d{6,}[A-Z0-9-]*/gi, '/:id').slice(0, 120);
+    this.record({ kind: 'error', level: 'error', source: `browser ${path}`, message: msg, userId: userId ? String(userId) : undefined,
+      detail: { stack: String(b.stack ?? '').slice(0, 4000), where: b.where, ua: b.ua }, fingerprint: `browser:${path}:${msg.slice(0, 80)}` });
+  }
+
   record(e: OpsEventInput) {
     this.prisma.opsEvent.create({
       data: {
@@ -400,18 +409,40 @@ export class OpsService implements OnModuleInit, OnModuleDestroy {
         add({ id: `job:${j.job}`, severity: 'bad', title: `${j.job} failed`, what: `The last run failed: ${String(j.error || '').slice(0, 200)}`, matters: /tracking|hand-off|dispatch/i.test(j.job) ? 'Shipment statuses / carrier hand-offs are not updating for that carrier.' : 'That background task did not complete.', todo: 'Press "Run now" — a short network or carrier outage clears on retry. If it fails again, copy the details to the developer.', owner: 'developer', actions: [{ kind: 'run', label: 'Run now', arg: j.job }] }, String(j.error));
       }
     }
-    for (const g of d.errors.groups.slice(0, 6)) {
-      const last = await this.prisma.opsEvent.findFirst({ where: { fingerprint: g.fingerprint }, orderBy: { at: 'desc' }, select: { detail: true } });
-      const stack = String((last?.detail as any)?.stack ?? '').split('\n').slice(0, 6).join('\n');
-      add({ id: `err:${createHash('md5').update(g.fingerprint).digest('hex').slice(0, 12)}`, severity: g.n >= 10 ? 'bad' : 'warn', title: `Error on ${g.source} (${g.n}× today)`, what: String(g.message).slice(0, 240), matters: 'Users opening that screen or action see an error instead of a result.', todo: 'This needs a code fix — copy the details and send them to the developer.', owner: 'developer', actions: [] }, `${g.source}\n${g.message}\n${stack}`);
+    // Bugs: only errors still happening on the CURRENT version (seen since the app last started) — ones last
+    // seen before an update were fixed by it and drop off. Known causes are explained in plain words.
+    const bootAt = Date.now() - process.uptime() * 1000;
+    let clearedByUpdate = 0;
+    for (const g of d.errors.groups) {
+      if (out.filter((x) => x.id.startsWith('err:')).length >= 8) break;
+      if (g.last && +new Date(g.last) < bootAt) { clearedByUpdate++; continue; }
+      const last = await this.prisma.opsEvent.findFirst({ where: { fingerprint: g.fingerprint }, orderBy: { at: 'desc' }, select: { detail: true, at: true } });
+      const stack = String((last?.detail as any)?.stack ?? '').split('\n').slice(0, 8).join('\n');
+      const seen = last?.at ? new Date(+last.at + 330 * 60000).toISOString().slice(11, 16) : '';
+      const m = String(g.message);
+      const browser = String(g.source).startsWith('browser ');
+      const known = /connection pool/i.test(m) ? { title: 'Database busy — requests waited too long', why: 'The ERP ran out of database connections at a busy moment, so those screens failed.', todo: 'The connection limit was raised from 3 to 8 on 5 Nov. If this card comes back, copy the details to the developer.' }
+        : /ENOENT.*index\.html/i.test(m) ? { title: 'Pages missing for a moment during an update', why: 'An update briefly removed the web pages.', todo: 'Fixed on 4 Nov (updates now swap pages in one step). Mute if it was before that.' }
+        : /timeout|ETIMEDOUT|ECONNRESET|socket hang up|fetch failed/i.test(m) ? { title: `Outside service didn't answer (${g.source})`, why: 'A carrier / outside service timed out — usually temporary.', todo: 'Nothing unless it keeps repeating; then copy the details to the developer.' }
+        : null;
+      add({
+        id: `err:${createHash('md5').update(g.fingerprint).digest('hex').slice(0, 12)}`, severity: g.n >= 10 ? 'bad' : 'warn',
+        title: known?.title ?? (browser ? `Screen crash in the browser: ${String(g.source).slice(8)} (${g.n}×)` : `Bug: error on ${g.source} (${g.n}× today)`),
+        what: `${m.replace(/\s+/g, ' ').trim().slice(0, 220)}${seen ? ` — last seen ${seen} IST` : ''}`,
+        matters: known?.why ?? (browser ? 'The user saw "Something went wrong on this screen" instead of the page.' : 'Users opening that screen or action see an error instead of a result.'),
+        todo: known?.todo ?? 'A code bug — press "Copy details" and send it to the developer (it carries the exact line). Mute once fixed.',
+        owner: known && !/connection pool|ENOENT/i.test(m) ? 'none' : 'developer', actions: [],
+      }, `${g.source}\n${m}\n${stack}`);
     }
+    void clearedByUpdate; // fixed-by-update errors simply drop off (they return as cards if they recur)
     const s = d.server;
     if (s.memPct >= 85) add({ id: 'mem', severity: s.memPct >= 92 ? 'bad' : 'warn', title: `Server memory at ${s.memPct}%`, what: `The server is using ${s.memPct}% of its memory (the ERP itself ${s.processMb} MB).`, matters: 'Near 100% the app slows down or crashes.', todo: 'Press "Restart app" outside busy hours (about 20 seconds offline). If it keeps coming back, the server needs more memory — tell the developer.', owner: 'you', actions: [{ kind: 'restart', label: 'Restart app' }] });
     if ((s.diskPct ?? 0) >= 85) add({ id: 'disk', severity: 'bad', title: `Server disk at ${s.diskPct}%`, what: `Only ${s.diskFreeGb} GB free on the server.`, matters: 'A full disk stops backups, logs and uploads.', todo: 'Copy the details to the developer to clear old files / backups.', owner: 'developer', actions: [] });
     if (d.db.connections >= d.db.maxConnections - 4) add({ id: 'dbconn', severity: 'bad', title: `Database connections ${d.db.connections}/${d.db.maxConnections}`, what: 'Almost every database connection is in use.', matters: 'New requests wait or fail.', todo: 'Press "Restart app" to release them; if it recurs, tell the developer.', owner: 'you', actions: [{ kind: 'restart', label: 'Restart app' }] });
     for (const c of d.certs.filter((x: any) => x.daysLeft == null || x.daysLeft <= 14)) add({ id: `cert:${c.host}`, severity: 'bad', title: `HTTPS certificate — ${c.host}`, what: c.daysLeft == null ? `The site could not be checked (${c.error}).` : `It expires in ${c.daysLeft} days.`, matters: 'Browsers show the site as unsafe once it expires.', todo: 'Renewal is automatic — copy the details to the developer if this stays.', owner: 'developer', actions: [] });
     if (!d.demo.ok) add({ id: 'demo', severity: 'warn', title: 'Sales demo ERP is down', what: String(d.demo.error ?? d.demo.status ?? 'not answering'), matters: 'Prospects can\'t open the demo.', todo: 'Copy the details to the developer.', owner: 'developer', actions: [] });
-    for (const sl of d.traffic.slowest.filter((x: any) => x.ms >= 10_000).slice(0, 3)) add({ id: `slow:${sl.path}`, severity: 'warn', title: `Slow screen: ${sl.path}`, what: `It took ${(sl.ms / 1000).toFixed(1)} s at its slowest today.`, matters: 'Users wait, and very slow requests can time out.', todo: 'Needs a code / database fix — copy the details to the developer.', owner: 'developer', actions: [] }, `${sl.path} — ${sl.ms} ms`);
+    const screenName = (p: string) => (/awb-list/.test(p) ? 'Shipment List' : /pickups/.test(p) ? 'Pickups' : /handoff/.test(p) ? 'Hand to carrier' : /mis|sales/i.test(p) ? 'Sales MIS' : /reports/.test(p) ? 'Reports' : p);
+    for (const sl of d.traffic.slowest.filter((x: any) => x.ms >= 10_000).slice(0, 3)) add({ id: `slow:${String(sl.path).replace(/L\d{6,}/g, ':awb')}`, severity: 'warn', title: `Slow screen: ${screenName(sl.path)}`, what: `${sl.path} took ${(sl.ms / 1000).toFixed(1)} s at its slowest today.`, matters: 'Users wait, and very slow requests can time out.', todo: /handoff/.test(sl.path) ? 'Usually the carrier\'s own API being slow — no action unless it keeps happening.' : 'Needs a speed fix in the code — copy the details to the developer.', owner: /handoff/.test(sl.path) ? 'none' : 'developer', actions: [] }, `${sl.path} — ${sl.ms} ms`);
     for (const l of d.locks) add({ id: `lock:${l.key}`, severity: 'warn', title: l.kind === 'account' ? `Login locked: ${l.key.replace(/^(email|rider):/, '')}` : `Network blocked: ${l.key}`, what: `${l.fails} wrong passwords in 15 minutes — locked until ${new Date(+new Date(l.until) + 330 * 60000).toISOString().slice(11, 16)} IST.`, matters: l.kind === 'account' ? 'That person can\'t sign in until then.' : 'Everyone on that network is blocked from signing in.', todo: 'If it was them mistyping, press "Unlock". If you don\'t recognise it, leave it — the lock is protecting the account.', owner: 'you', actions: [{ kind: 'unlock', label: 'Unlock', arg: l.key }] });
     if (d.email.provider === 'Brevo' && d.email.credits && d.email.credits.left <= 0) add({ id: 'brevo-credits', severity: 'bad', title: 'Email credits used up', what: 'Brevo has no sending credits left.', matters: 'MIS, summaries, codes and alerts are not delivered.', todo: 'Switch email to Amazon SES or top up Brevo.', owner: 'you', actions: [] });
 

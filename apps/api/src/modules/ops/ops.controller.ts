@@ -18,6 +18,13 @@ export class OpsController {
     if (token !== undefined) this.ops.assertToken(req.user.sub, token);
   }
 
+  /** Browser-side bug report from any signed-in screen (not owner-gated; recorded only, nothing returned). */
+  @Post('client-error')
+  clientError(@Req() req: any, @Body() b: { message?: string; stack?: string; path?: string; where?: string; ua?: string }) {
+    this.ops.clientError(req.user?.sub, b ?? {});
+    return { ok: true };
+  }
+
   @Post('otp/request')
   async request(@Req() req: any) {
     await this.gate(req);

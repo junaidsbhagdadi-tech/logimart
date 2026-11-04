@@ -227,15 +227,15 @@ export class NotificationsService {
    * A full email (several To / CC, optional HTML and attachments) — for reports such as the customer MIS.
    * Same providers as notify(): Amazon SES if configured, else Brevo API if BREVO_API_KEY, else SMTP. Logged as one notification per To.
    */
-  async sendMail(m: { to: string[]; cc?: string[]; subject: string; text: string; html?: string; attachments?: { filename: string; content: Buffer; contentType?: string }[] }): Promise<boolean> {
+  async sendMail(m: { to: string[]; cc?: string[]; subject: string; text: string; html?: string; attachments?: { filename: string; content: Buffer; contentType?: string }[]; officeCopy?: boolean }): Promise<boolean> {
     const to = [...new Set(m.to.map((x) => x.trim()).filter(Boolean))];
     const cc = [...new Set((m.cc ?? []).map((x) => x.trim()).filter((x) => x && !to.includes(x)))];
     if (!to.length) return false;
-    const bcc = this.copyBcc(m.subject, m.text, [...to, ...cc]);
+    const bcc = m.officeCopy === false ? [] : this.copyBcc(m.subject, m.text, [...to, ...cc]);
     let ok = false;
     try {
       if (NotificationsService.sesEnabled()) {
-        ok = await this.sendViaSes({ ...m, to, cc, bcc });
+        ok = await this.sendViaSes({ to, cc, bcc, subject: m.subject, text: m.text, html: m.html, attachments: m.attachments });
       } else if (process.env.BREVO_API_KEY) {
         const res = await fetch('https://api.brevo.com/v3/smtp/email', {
           method: 'POST',

@@ -4,7 +4,6 @@ import { useAuth } from '../auth';
 import { hasFeature, effectiveGrants } from '../rights';
 import { api } from '../api';
 import { Logo } from './Logo';
-import { FeedbackWidget } from './FeedbackWidget';
 import {
   LayoutDashboard, Gauge, Activity, Compass, MapPin, PlusCircle, Zap, Package, ClipboardList, List, Upload, Store, Bike, Inbox, AlertTriangle,
   Globe, PlaneTakeoff, Coins, ScanLine, PackageCheck, Boxes, Route, Truck, Send, Receipt, FileSpreadsheet, TrendingUp, BookOpen,
@@ -464,7 +463,6 @@ export function Layout() {
         </div>
       )}
 
-      <FeedbackWidget />
     </div>
   );
 }

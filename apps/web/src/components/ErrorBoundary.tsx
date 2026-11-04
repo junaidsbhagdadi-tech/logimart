@@ -1,4 +1,5 @@
 import React from 'react';
+import { reportClientError } from '../lib/reportError';
 
 /** Catches any render/runtime error in the tree so the app shows a recoverable message instead of a
  *  blank white screen. */
@@ -12,6 +13,7 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
     // Keep a breadcrumb in the console for debugging.
     // eslint-disable-next-line no-console
     console.error('App error:', error, info?.componentStack);
+    reportClientError(Object.assign(error, { stack: `${error?.stack ?? ''}\n--- component ---${String(info?.componentStack ?? '').slice(0, 800)}` }), 'screen crash');
   }
 
   render() {

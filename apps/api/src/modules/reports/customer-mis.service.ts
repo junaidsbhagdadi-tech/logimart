@@ -157,7 +157,7 @@ export class CustomerMisService {
 <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;border:1px solid #edf0f2">${counts.map(([k, v, col], i) => `<tr style="background:${i % 2 ? '#f5f8fc' : '#ffffff'}"><td style="padding:20px 20px;color:${col};font-weight:700;font-size:15px">${k}</td><td style="padding:20px 20px;text-align:right;color:#3c4043;font-size:15px">${v}</td></tr>`).join('')}</table>
 <p style="margin:28px 0 0">Thanks &amp; Regards,<br><b>${SIGNOFF}</b></p></div>`;
     const ok = await this.notify.sendMail({
-      to, cc, subject, text: lines.join('\n'), html,
+      to, cc, subject, text: lines.join('\n'), html, officeCopy: false, // the daily MIS is NOT copied to the office mailbox
       attachments: [{ filename: `MIS Report (${day}) - ${c.accountCode}.xlsx`, content: this.xlsx(rows, ndr), contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }],
     });
     return { clientId: String(clientId), code: c.accountCode, sent: ok, to, cc, rows: rows.length, pending: ndr.length, summary };

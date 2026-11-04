@@ -5,6 +5,9 @@ import { AuthProvider } from './auth';
 import { App } from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import './styles.css';
+import { installErrorReporting } from './lib/reportError';
+
+installErrorReporting();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
