@@ -56,7 +56,7 @@ export class NotificationsService {
    * message at 50 recipients) and paced under the SES per-second rate. The visible To is
    * "undisclosed-recipients" so no customer sees another's address.
    */
-  async sendBulkBcc(m: { subject: string; text: string; html?: string; bcc: string[] }) {
+  async sendBulkBcc(m: { subject: string; text: string; html?: string; bcc: string[]; attachments?: { filename: string; content: Buffer; contentType?: string }[] }) {
     const base = [...new Set(m.bcc.map((e) => e.trim().toLowerCase()).filter(Boolean))];
     const list = [...this.copyBcc(m.subject, m.text, base), ...base];
     const s = this.emailSender();
@@ -67,18 +67,18 @@ export class NotificationsService {
       try {
         if (NotificationsService.sesEnabled()) {
           this.ses ??= new SESv2Client({ region: process.env.SES_REGION || 'ap-south-1', credentials: { accessKeyId: process.env.SES_ACCESS_KEY_ID!, secretAccessKey: process.env.SES_SECRET_ACCESS_KEY! } });
-          const raw: Buffer = await new MailComposer({ from: `"${s.name}" <${s.email}>`, to: 'undisclosed-recipients:;', subject: m.subject, text: m.text, html: m.html }).compile().build();
+          const raw: Buffer = await new MailComposer({ from: `"${s.name}" <${s.email}>`, to: 'undisclosed-recipients:;', subject: m.subject, text: m.text, html: m.html, attachments: m.attachments?.map((a) => ({ filename: a.filename, content: a.content, contentType: a.contentType })) }).compile().build();
           await this.ses.send(new SendEmailCommand({ FromEmailAddress: s.email, Destination: { BccAddresses: chunk }, Content: { Raw: { Data: raw } }, ...(process.env.SES_CONFIG_SET ? { ConfigurationSetName: process.env.SES_CONFIG_SET } : {}) }));
         } else if (process.env.BREVO_API_KEY) {
           const res = await fetch('https://api.brevo.com/v3/smtp/email', {
             method: 'POST', headers: { 'api-key': process.env.BREVO_API_KEY as string, 'content-type': 'application/json', accept: 'application/json' },
-            body: JSON.stringify({ sender: s, to: [{ email: s.email }], bcc: chunk.map((email) => ({ email })), subject: m.subject, textContent: m.text, ...(m.html ? { htmlContent: m.html } : {}) }),
+            body: JSON.stringify({ sender: s, to: [{ email: s.email }], bcc: chunk.map((email) => ({ email })), subject: m.subject, textContent: m.text, ...(m.html ? { htmlContent: m.html } : {}), ...(m.attachments?.length ? { attachment: m.attachments.map((a) => ({ name: a.filename, content: a.content.toString('base64') })) } : {}) }),
           });
           if (!res.ok) throw new Error(`Brevo ${res.status}`);
         } else {
           const t = this.getMailer();
           if (!t) throw new Error('no mail provider configured');
-          await t.sendMail({ from: process.env.SMTP_FROM || 'noreply@logimart.co.in', to: s.email, bcc: chunk, subject: m.subject, text: m.text, html: m.html });
+          await t.sendMail({ from: process.env.SMTP_FROM || 'noreply@logimart.co.in', to: s.email, bcc: chunk, subject: m.subject, text: m.text, html: m.html, attachments: m.attachments });
         }
         sent += chunk.length;
       } catch (err) {

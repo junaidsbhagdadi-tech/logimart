@@ -774,7 +774,7 @@ export const api = {
   extraExpenseAction: (id: string, action: 'billed' | 'rejected' | 'reset', ref?: string) =>
     request<{ ok: boolean }>(`/api/v1/reports/extra-expense/${id}/action`, { method: 'POST', body: JSON.stringify({ action, ref }) }),
   bulkMailRecipients: () => request<{ customers: number; count: number; rows: { email: string; code: string; customer: string }[] }>('/api/v1/bulk-mail/recipients'),
-  bulkMailSend: (body: { subject: string; body: string; test?: boolean }) => request<{ ok: boolean; test: boolean; count: number; to?: string; message?: string }>('/api/v1/bulk-mail/send', { method: 'POST', body: JSON.stringify(body) }),
+  bulkMailSend: (body: { subject: string; body: string; test?: boolean; attachments?: { name: string; type: string; data: string }[] }) => request<{ ok: boolean; test: boolean; count: number; to?: string; message?: string }>('/api/v1/bulk-mail/send', { method: 'POST', body: JSON.stringify(body) }),
   performance: (q: { from?: string; to?: string; clientId?: string; vendor?: string } = {}) => request<any>(`/api/v1/performance${qs(q)}`),
   portalPerformance: (q: { from?: string; to?: string } = {}) => request<any>(`/api/v1/portal/performance${qs(q)}`),
   carrierPriority: () => request<{ basis: 'BALANCED' | 'PRICE' | 'TAT' | 'PERFORMANCE'; weights: { price: number; tat: number; performance: number } }>('/api/v1/performance/priority'),

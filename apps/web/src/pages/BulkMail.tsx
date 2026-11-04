@@ -38,6 +38,22 @@ export function BulkMail() {
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [tested, setTested] = useState(false);
+  // Attachments (PDF circular, holiday list, pincode Excel…): up to 5 files, 7 MB in all.
+  const [files, setFiles] = useState<{ name: string; type: string; size: number; data: string }[]>([]);
+  const totalMb = files.reduce((a, f) => a + f.size, 0) / 1048576;
+  const addFiles = async (list: FileList | null) => {
+    setError('');
+    const picked = [...(list ?? [])];
+    if (files.length + picked.length > 5) { setError('Attach at most 5 files.'); return; }
+    const read = (f: File) => new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = () => rej(r.error); r.readAsDataURL(f); });
+    const next = [...files];
+    for (const f of picked) {
+      if (/\.(exe|bat|cmd|com|scr|vbs|js|msi|ps1|jar|apk|dll|sh|lnk|hta)$/i.test(f.name)) { setError(`${f.name}: program / script files can't be e-mailed.`); return; }
+      next.push({ name: f.name, type: f.type || 'application/octet-stream', size: f.size, data: await read(f) });
+    }
+    if (next.reduce((a, f) => a + f.size, 0) > 7 * 1048576) { setError('Attachments come to more than 7 MB — e-mail can\'t carry that. Send a smaller file or share a link.'); return; }
+    setFiles(next); setTested(false);
+  };
 
   useEffect(() => { api.bulkMailRecipients().then(setRec).catch((e) => setError(e.message)); }, []);
 
@@ -48,7 +64,7 @@ export function BulkMail() {
     if (!test && !window.confirm(`Send "${subject.trim()}" to ${rec?.count ?? 'all'} customer e-mail addresses (BCC)?\n\nThis can't be recalled.`)) return;
     setBusy(true);
     try {
-      const r = await api.bulkMailSend({ subject, body, test });
+      const r = await api.bulkMailSend({ subject, body, test, attachments: files.map(({ name, type, data }) => ({ name, type, data })) });
       if (test) { setTested(true); setMsg(`Test sent to ${r.to}. Check how it looks, then send to everyone.`); }
       else setMsg(r.message ?? `Sending to ${r.count} addresses.`);
     } catch (e: any) { setError(e.message); }
@@ -66,6 +82,24 @@ export function BulkMail() {
         <label style={{ marginTop: 12 }}>Message</label>
         <textarea value={body} onChange={(e) => { setBody(e.target.value); setTested(false); }} rows={20} style={{ width: '100%', fontFamily: 'inherit', fontSize: 14, lineHeight: 1.5 }} />
         <div className="muted" style={{ fontSize: 12 }}>A blank line starts a new paragraph.</div>
+        <label style={{ marginTop: 12 }}>Attachments (optional)</label>
+        <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <label className="secondary" style={{ display: 'inline-block', padding: '6px 12px', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', margin: 0, fontWeight: 600 }}>
+            📎 Attach files
+            <input type="file" multiple style={{ display: 'none' }} onChange={(e) => { void addFiles(e.target.files); e.target.value = ''; }} />
+          </label>
+          <span className="muted" style={{ fontSize: 12 }}>Up to 5 files, 7 MB in all · {files.length ? `${totalMb.toFixed(2)} MB attached` : 'none attached'}</span>
+        </div>
+        {files.length > 0 && (
+          <div style={{ display: 'grid', gap: 4, marginTop: 8 }}>
+            {files.map((f, i) => (
+              <div key={f.name + i} className="row" style={{ gap: 8, alignItems: 'center', fontSize: 13 }}>
+                <span>📄 {f.name}</span><span className="muted">{(f.size / 1024).toFixed(0)} KB</span>
+                <button className="secondary" style={{ padding: '1px 8px', fontSize: 12 }} onClick={() => { setFiles((fs) => fs.filter((_, j) => j !== i)); setTested(false); }}>Remove</button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="card">
