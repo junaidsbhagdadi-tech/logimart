@@ -316,7 +316,18 @@ export class XpressBeesService implements OnModuleInit {
     const xbAwb = pick('awbno', 'awb_number', 'awbnumber', 'awb', 'waybill', 'awbmpsgroupidnumber');
     const mps = pick('mpsno', 'mps', 'childawb');
     const code = pick('statuscode', 'status_code', 'shipment_status_code').toUpperCase();
-    const text = pick('status', 'remark', 'current_status', 'shipment_status');
+    const text = pick('status', 'remarks', 'remark', 'current_status', 'shipment_status');
+    const where = pick('currentlocation', 'current_location', 'location');
+    // XpressBees' own event time (StatusDate + StatusTime): dd-mm-yyyy / yyyy-mm-dd, hh:mm[:ss] or hhmm, IST.
+    const at = (() => {
+      const d = pick('statusdate', 'status_date'), t = pick('statustime', 'status_time').replace(/^(\d{2})(\d{2})$/, '$1:$2');
+      const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/) ?? d.match(/^(\d{2})[-/](\d{2})[-/](\d{4})/);
+      if (!m) return null;
+      const [y, mo, da] = m[1].length === 4 ? [m[1], m[2], m[3]] : [m[3], m[2], m[1]];
+      const tm = (t.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/) ?? []) as string[];
+      const v = new Date(`${y}-${mo}-${da}T${String(tm[1] ?? '00').padStart(2, '0')}:${tm[2] ?? '00'}:${tm[3] ?? '00'}+05:30`);
+      return isNaN(+v) || +v > Date.now() + 864e5 ? null : v;
+    })();
     const pod = pick('podlink', 'pod_link', 'podurl', 'pod_url', 'pod_image', 'pod');
     const s = await this.prisma.shipment.findFirst({
       where: { OR: [...(xbAwb ? [{ forwardingAwb: xbAwb }] : []), ...(mps ? [{ pieces: { some: { carrierChildId: mps } } }] : [])] },
@@ -329,8 +340,8 @@ export class XpressBeesService implements OnModuleInit {
       await this.prisma.shipment.update({
         where: { awb: s.awb },
         data: {
-          ...(text || code ? { bdStatus: `${text || code} (XpressBees)` } : {}),
-          ...(derived ? { statusCode: derived.statusCode, status: derived.status, statusAt: new Date() } : {}),
+          ...(text || code ? { bdStatus: `${text || code}${where ? ` — ${where}` : ''} (XpressBees)` } : {}),
+          ...(derived ? { statusCode: derived.statusCode, status: derived.status, statusAt: at ?? new Date() } : {}),
           ...(pod && /^https?:\/\//.test(pod) && !s.podUrl ? { podUrl: pod } : {}),
         },
       });
