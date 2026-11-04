@@ -182,6 +182,17 @@ export function Invoices() {
     try { const r = await api.lockManyInvoices({ ids }); setMsg(`🔒 Locked ${r.locked} invoice(s)${r.skipped.length ? ` · skipped ${r.skipped.length} (already locked/empty)` : ''}.`); setSel(new Set()); load(); }
     catch (e: any) { setError(e.message); }
   };
+  const unlockSelected = async () => {
+    const ids = [...sel]; if (!ids.length) return;
+    if (!confirm(`Unlock ${ids.length} invoice(s) for changes?\n\nSame invoice number. The ledger charge is reversed and the invoice leaves the customer's portal until you lock it again. Not possible once paid or e-invoiced.`)) return;
+    setError(''); setMsg('');
+    try {
+      const r = await api.unlockManyInvoices(ids);
+      setMsg(`🔓 Unlocked ${r.unlocked} invoice(s) — edit, then lock again.`);
+      if (r.skipped.length) setError(`Not unlocked: ${r.skipped.map((x) => x.reason).join(' · ')}`);
+      setSel(new Set()); load();
+    } catch (e: any) { setError(e.message); }
+  };
   const lockAllDrafts = async () => {
     if (!confirm('Lock ALL draft invoices? Each is posted to its ledger and frozen.')) return;
     setError(''); setMsg('');
@@ -337,6 +348,7 @@ export function Invoices() {
             <button className="secondary" style={{ padding: '6px 12px', fontSize: 13 }} disabled={!sel.size} onClick={lockSelected}>🔒 Lock selected</button>
             <button className="secondary" style={{ padding: '6px 12px', fontSize: 13 }} disabled={!sel.size} onClick={einvoiceSelected} title="Generate GST e-invoice IRNs for the selected invoices">🧾 e-Invoice selected</button>
             <button className="secondary" style={{ padding: '6px 12px', fontSize: 13 }} onClick={lockAllDrafts} title="Lock every draft invoice">🔒 Lock ALL drafts</button>
+            <button className="secondary" style={{ padding: '6px 12px', fontSize: 13 }} disabled={!sel.size} onClick={unlockSelected} title="Back to draft for corrections — same invoice number; not once paid or e-invoiced">🔓 Unlock selected</button>
           </div>
         )}
 

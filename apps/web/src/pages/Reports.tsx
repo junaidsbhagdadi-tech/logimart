@@ -119,9 +119,18 @@ export function Reports() {
 
   const download = async (d: Data, rows: any[], name: string) => {
     const XLSX = await import('xlsx');
-    const aoa = [d.columns.map((c) => c.label), ...rows.map((r) => d.columns.map((c) => { const v = r[c.key]; return isNum(v) && !/^0\d/.test(String(v)) && String(v).length < 15 ? Number(String(v).replace(/[,₹]/g, '')) : v ?? ''; }))];
+    const cols = d.columns.filter((c) => !c.key.startsWith('_'));
+    const aoa = [cols.map((c) => c.label), ...rows.map((r) => cols.map((c) => { const v = r[c.key]; return isNum(v) && !/^0\d/.test(String(v)) && String(v).length < 15 ? Number(String(v).replace(/[,₹]/g, '')) : v ?? ''; }))];
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), name.slice(0, 30));
     XLSX.writeFile(wb, `logimart-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${from}_${to}.xlsx`);
+  };
+
+  // Extra Expense report actions — the row moves into the matching summary line on refresh.
+  const expenseAct = async (r: any, action: 'billed' | 'rejected' | 'reset') => {
+    let ref: string | undefined;
+    if (action === 'billed') { const v = window.prompt(`Mark ${r.awb} ₹${r.amount} (${r.reason}) as BILLED?\n\nInvoice / reference no. (optional):`, ''); if (v == null) return; ref = v; }
+    if (action === 'rejected' && !window.confirm(`${r.awb} ₹${r.amount} (${r.reason}) — the customer rejected it? It will not be billed.`)) return;
+    try { await api.extraExpenseAction(r._addonId, action, ref); await run(); } catch (e: any) { setError(e.message); }
   };
 
   const table = (d: Data, rows: any[], clickable: boolean, sortable: boolean) => (
@@ -137,7 +146,15 @@ export function Reports() {
           {rows.slice(0, 1000).map((r, i) => (
             <tr key={i} onClick={clickable && r._drill ? () => openDrill(r) : undefined}
               style={{ cursor: clickable && r._drill ? 'pointer' : undefined, fontWeight: isFooter(r) ? 700 : undefined, background: isFooter(r) ? 'var(--surface-2, #f1f3f6)' : undefined }}>
-              {d.columns.map((c) => <td key={c.key} style={{ whiteSpace: 'nowrap', textAlign: isNum(r[c.key]) ? 'right' : 'left', textDecoration: clickable && r._drill && c === d.columns[0] ? 'underline' : undefined }}>{String(r[c.key] ?? '—')}</td>)}
+              {d.columns.map((c) => c.key === '_action' ? (
+                <td key={c.key} style={{ whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
+                  {r._can === 'act' && <>
+                    <button style={{ padding: '2px 8px', fontSize: 12 }} onClick={() => expenseAct(r, 'billed')}>Billed</button>{' '}
+                    <button className="secondary" style={{ padding: '2px 8px', fontSize: 12 }} onClick={() => expenseAct(r, 'rejected')}>Rejected by customer</button>
+                  </>}
+                  {r._can === 'undo' && <button className="secondary" style={{ padding: '2px 8px', fontSize: 12 }} onClick={() => expenseAct(r, 'reset')}>Undo</button>}
+                </td>
+              ) : <td key={c.key} style={{ whiteSpace: 'nowrap', textAlign: isNum(r[c.key]) ? 'right' : 'left', textDecoration: clickable && r._drill && c === d.columns[0] ? 'underline' : undefined }}>{String(r[c.key] ?? (isFooter(r) ? '' : '—'))}</td>)}
             </tr>
           ))}
         </tbody>

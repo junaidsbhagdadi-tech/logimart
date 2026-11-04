@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles } from '../../common/rbac/roles.decorator';
@@ -74,7 +74,7 @@ export class CarriersController {
   /** CS exceptions inbox. */
   @Get('exceptions')
   @Roles(UserRole.WAREHOUSE_HANDLER, UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN, UserRole.SALES)
-  inbox(@Req() req: any) {
-    return this.exceptions.inbox(req.user);
+  inbox(@Req() req: any, @Query('all') all?: string) {
+    return this.exceptions.inbox(req.user, all === '1' || all === 'true');
   }
 }

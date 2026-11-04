@@ -58,6 +58,9 @@ export class BluedartService implements OnModuleInit {
           OR: [
             { bdWaybill: { not: null } },
             { AND: [{ forwardingAwb: { not: null } }, { OR: [{ vendor: { startsWith: 'BLUE', mode: 'insensitive' } }, { vendor: { equals: 'BDR', mode: 'insensitive' } }, ...(codes.length ? [{ vendor: { in: codes } }] : [])] }] },
+            // Bulk entry with vendor BDR / a BlueDart account and the BlueDart number typed as the AWB itself
+            // (forwarding no. blank, e.g. 52005070585) → tracked by that AWB. Our own L-series is excluded.
+            { AND: [{ forwardingAwb: null }, { NOT: { awb: { startsWith: 'L' } } }, { OR: [{ vendor: { startsWith: 'BLUE', mode: 'insensitive' } }, { vendor: { equals: 'BDR', mode: 'insensitive' } }, ...(codes.length ? [{ vendor: { in: codes } }] : [])] }] },
             { bdPickupToken: { not: null } },
           ],
         },
@@ -966,7 +969,9 @@ export class BluedartService implements OnModuleInit {
     }
     const raw = typeof r?.raw === 'string' ? r.raw : (typeof r === 'string' ? r : JSON.stringify(r));
     // For a pickup-only shipment, capture the waybill BlueDart assigned so later syncs track by it.
-    const discovered = !waybill ? ((raw.match(/WaybillNo="([^"]+)"/) || [])[1] || null) : null;
+    // (Only once BlueDart really knows it — a "No Information" reply also echoes WaybillNo="…".)
+    const discovered = !waybill && !/StatusType>\s*NF\s*</i.test(raw) && /<Scan|<Status>/i.test(raw) && !/incorrect waybill|no information/i.test(raw)
+      ? ((raw.match(/WaybillNo="([^"]+)"/) || [])[1] || null) : null;
     const { scans, bdStatus, bdStatusDate } = this.parseScans(raw);
     // Electronic POD: BlueDart's tracking names who received a delivered shipment (no POD image in the API).
     const receivedBy = ((raw.match(/<ReceivedBy>([^<]+)<\/ReceivedBy>/) || [])[1] || '').trim() || null;

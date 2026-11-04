@@ -1429,6 +1429,10 @@ model ShipmentAddon {
   noBillReason  String?   // why it is NOT billed to the customer (required when toBill = false)
   pickupDate    DateTime?
   billedInvoiceId BigInt? // set once it has been included on an invoice
+  // Marked "Billed" by hand on the Extra Expense report (billed outside an invoice run) — kept off invoices.
+  markedBilledAt  DateTime?
+  markedBilledRef String?
+  actionById      BigInt?
   createdById   BigInt?
   createdAt     DateTime  @default(now())
 

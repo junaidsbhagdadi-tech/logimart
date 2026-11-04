@@ -35,8 +35,11 @@ export function Vendors() {
     if (!confirm(`Delete ${sel.size} vendor${sel.size > 1 ? 's' : ''}? This cannot be undone.`)) return;
     setError(''); setMsg('');
     let ok = 0, fail = 0;
-    for (const id of sel) { try { await api.deleteVendor(id); ok++; } catch { fail++; } }
-    setMsg(`Deleted ${ok} vendor${ok !== 1 ? 's' : ''}${fail ? ` — ${fail} could not be deleted (in use).` : '.'}`);
+    const errs: string[] = [];
+    for (const id of sel) { try { await api.deleteVendor(id); ok++; } catch (e: any) { fail++; errs.push(e.message); } }
+    setMsg(`Removed ${ok} vendor${ok !== 1 ? 's' : ''}.`);
+    if (fail) setError(`${fail} could not be removed: ${errs.join('; ')}`);
+    setSel(new Set());
     load();
   };
 

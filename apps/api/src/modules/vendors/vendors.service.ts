@@ -100,9 +100,20 @@ export class VendorsService {
     return this.prisma.vendor.update({ where: { id: BigInt(id) }, data: this.vendorData(dto) });
   }
 
+  /**
+   * Delete a vendor. One still referenced (rate cards, bills, payments…) can't be hard-deleted — that failed
+   * silently in the bulk delete and the vendor kept showing (e.g. DLY12). It is DEACTIVATED instead: gone from
+   * every list and dropdown, history intact.
+   */
   async remove(id: number) {
     await this.get(id);
-    return this.prisma.vendor.delete({ where: { id: BigInt(id) } });
+    try {
+      await this.prisma.vendor.delete({ where: { id: BigInt(id) } });
+      return { ok: true, deleted: true };
+    } catch {
+      await this.prisma.vendor.update({ where: { id: BigInt(id) }, data: { isActive: false } });
+      return { ok: true, deleted: false, deactivated: true };
+    }
   }
 
   create(dto: any) {
@@ -188,6 +199,7 @@ export class VendorsService {
 
   async list() {
     const vendors = await this.prisma.vendor.findMany({
+      where: { isActive: true }, // deleted-but-referenced vendors are deactivated, not shown
       orderBy: { name: 'asc' },
       include: { payments: true },
     });

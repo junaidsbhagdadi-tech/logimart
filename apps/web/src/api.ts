@@ -537,6 +537,8 @@ export const api = {
     request<{ ok: boolean; invoiceNo: string; sentAt: string | null }>('/api/v1/billing/invoices/' + invoiceId + '/send', { method: 'POST' }),
   lockManyInvoices: (body: { ids?: (string | number)[]; all?: boolean }) =>
     request<{ ok: boolean; locked: number; skipped: { id: string; reason: string }[] }>('/api/v1/billing/invoices/lock-many', { method: 'POST', body: JSON.stringify({ ids: (body.ids ?? []).map(Number), all: body.all }) }),
+  unlockManyInvoices: (ids: (string | number)[]) =>
+    request<{ ok: boolean; unlocked: number; skipped: { id: string; reason: string }[] }>('/api/v1/billing/invoices/unlock-many', { method: 'POST', body: JSON.stringify({ ids: ids.map(Number) }) }),
   einvoiceManyInvoices: (ids: (string | number)[]) =>
     request<{ ok: boolean; done: number; failed: { id: string; reason: string }[] }>('/api/v1/billing/invoices/einvoice-many', { method: 'POST', body: JSON.stringify({ ids: ids.map(Number) }) }),
   deleteInvoice: (invoiceId: string) =>
@@ -727,7 +729,7 @@ export const api = {
   carrierTrack: (awb: string) => request<{ awb: string; carrierName: string; status: string | null }>(`/api/v1/carriers/track/${awb}`, { method: 'POST' }),
   carrierSuggest: (body: { clientId: number | string; product: string; originPincode?: string; destPincode: string; deadKg?: number; pcs?: number; declaredValue?: number; air?: boolean }) =>
     request<{ destPincode: string; oda: boolean; carriers: { vendor: string; name: string; carrier: string; price: number | null; serviceable: boolean | null; tatDays: number | null; tatSource: string | null; api: boolean; note: string }[] }>('/api/v1/carriers/suggest', { method: 'POST', body: JSON.stringify(body) }),
-  exceptionsInbox: () => request<{ generatedAt: string; total: number; buckets: { key: string; title: string; hint: string; items: any[] }[] }>('/api/v1/exceptions'),
+  exceptionsInbox: (all = false) => request<{ generatedAt: string; total: number; buckets: { key: string; title: string; hint: string; items: any[] }[] }>(`/api/v1/exceptions${all ? '?all=1' : ''}`),
   // ---- AR Logistics ----
   arlStatus: () => request<{ configured: boolean; [k: string]: any }>('/api/v1/arl/status'),
   arlHandoff: (awb: string) => request<{ awb: string; cn: string }>(`/api/v1/arl/handoff/${awb}`, { method: 'POST' }),
@@ -769,6 +771,8 @@ export const api = {
   portalRateCalc: (body: any) => request<any>('/api/v1/portal/rate-calculator', { method: 'POST', body: JSON.stringify(body) }),
 
   // ---- reports ----
+  extraExpenseAction: (id: string, action: 'billed' | 'rejected' | 'reset', ref?: string) =>
+    request<{ ok: boolean }>(`/api/v1/reports/extra-expense/${id}/action`, { method: 'POST', body: JSON.stringify({ action, ref }) }),
   runReport: (type: string, from?: string, to?: string, extra: { clientId?: string; vendor?: string; status?: string } = {}) => {
     const q = new URLSearchParams();
     if (from) q.set('from', from);

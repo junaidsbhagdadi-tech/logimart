@@ -12,11 +12,13 @@ const DAY = 864e5;
 export class ExceptionsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async inbox(user: any) {
+  /** `all` (CS team dashboard): no 30-day window — every open problem stays until it is closed. */
+  async inbox(user: any, all = false) {
     const scope = await scopedClientIds(this.prisma, user);
     const cw: any = scope ? { clientId: { in: scope } } : {};
     const now = Date.now();
-    const recent = new Date(now - 30 * DAY);
+    const recent = all ? new Date(0) : new Date(now - 30 * DAY);
+    const cap = all ? 5000 : 300;
     const sel = {
       awb: true, createdAt: true, vendor: true, statusCode: true, statusAt: true, consigneeName: true, consigneeCity: true, destPincode: true,
       forwardingAwb: true, bdWaybill: true, bdError: true, bdStatus: true, exceptionFlag: true, declaredValue: true, ewbNo: true,
@@ -26,24 +28,24 @@ export class ExceptionsService {
 
     const [handoffFailed, awaitingHandoff, undelivered, rto, stuck, ewbPending, invoicesUnsent, pickupsWaiting] = await Promise.all([
       // Carrier refused the hand-off (missing mobile / invoice copy / pincode …) — fix and retry.
-      this.prisma.shipment.findMany({ where: { ...cw, createdAt: { gte: recent }, bdError: { not: null }, forwardingAwb: null, bdWaybill: null, AND: [open] }, select: sel, orderBy: { bdDispatchAt: 'desc' }, take: 300 }),
+      this.prisma.shipment.findMany({ where: { ...cw, createdAt: { gte: recent }, bdError: { not: null }, forwardingAwb: null, bdWaybill: null, AND: [open] }, select: sel, orderBy: { bdDispatchAt: 'desc' }, take: cap }),
       // Booked in the ERP on an API carrier > 2 h ago and still not with the carrier.
-      this.prisma.shipment.findMany({ where: { ...cw, createdById: { not: null }, createdAt: { gte: new Date(now - 7 * DAY), lt: new Date(now - 2 * 3600_000) }, bdError: null, forwardingAwb: null, bdWaybill: null, bdPickupToken: null, vendor: { not: null }, OR: [{ statusCode: null }, { statusCode: 'MAN' }] }, select: sel, orderBy: { createdAt: 'asc' }, take: 300 }),
-      this.prisma.shipment.findMany({ where: { ...cw, statusCode: 'UDL', statusAt: { gte: recent } }, select: sel, orderBy: { statusAt: 'desc' }, take: 300 }),
-      this.prisma.shipment.findMany({ where: { ...cw, statusCode: 'RTO', statusAt: { gte: recent } }, select: sel, orderBy: { statusAt: 'desc' }, take: 300 }),
+      this.prisma.shipment.findMany({ where: { ...cw, createdById: { not: null }, createdAt: { gte: new Date(now - 7 * DAY), lt: new Date(now - 2 * 3600_000) }, bdError: null, forwardingAwb: null, bdWaybill: null, bdPickupToken: null, vendor: { not: null }, OR: [{ statusCode: null }, { statusCode: 'MAN' }] }, select: sel, orderBy: { createdAt: 'asc' }, take: cap }),
+      this.prisma.shipment.findMany({ where: { ...cw, statusCode: 'UDL', statusAt: { gte: recent } }, select: sel, orderBy: { statusAt: 'desc' }, take: cap }),
+      this.prisma.shipment.findMany({ where: { ...cw, statusCode: 'RTO', statusAt: { gte: recent } }, select: sel, orderBy: { statusAt: 'desc' }, take: cap }),
       // With a carrier, recent, but no movement for 3+ days.
       this.prisma.shipment.findMany({
         where: { ...cw, createdAt: { gte: recent }, statusCode: { in: ['PKD', 'ORD', 'DPD', 'DRD', 'OFD'] }, OR: [{ statusAt: { lt: new Date(now - 3 * DAY) } }, { statusAt: null }] },
-        select: sel, orderBy: { statusAt: 'asc' }, take: 300,
+        select: sel, orderBy: { statusAt: 'asc' }, take: cap,
       }),
-      this.prisma.shipment.findMany({ where: { ...cw, createdAt: { gte: recent }, declaredValue: { gte: 50000 }, OR: [{ ewbNo: null }, { ewbNo: '' }], AND: [open] }, select: sel, orderBy: { createdAt: 'desc' }, take: 300 }),
+      this.prisma.shipment.findMany({ where: { ...cw, createdAt: { gte: recent }, declaredValue: { gte: 50000 }, OR: [{ ewbNo: null }, { ewbNo: '' }], AND: [open] }, select: sel, orderBy: { createdAt: 'desc' }, take: cap }),
       this.prisma.invoice.findMany({
         where: { ...(scope ? { clientId: { in: scope } } : {}), status: { not: 'DRAFT' }, sentAt: null },
-        select: { id: true, invoiceNo: true, total: true, issuedAt: true, client: { select: { accountCode: true, legalName: true } } }, orderBy: { issuedAt: 'asc' }, take: 300,
+        select: { id: true, invoiceNo: true, total: true, issuedAt: true, client: { select: { accountCode: true, legalName: true } } }, orderBy: { issuedAt: 'asc' }, take: cap,
       }),
       this.prisma.pickupRequest.findMany({
         where: { ...cw, status: 'REQUESTED', createdAt: { lt: new Date(now - 2 * 3600_000), gte: recent } },
-        select: { id: true, createdAt: true, pickupAddress: true, city: true, pincode: true, contactName: true, vendor: true, clientId: true }, orderBy: { createdAt: 'asc' }, take: 300,
+        select: { id: true, createdAt: true, pickupAddress: true, city: true, pincode: true, contactName: true, vendor: true, clientId: true }, orderBy: { createdAt: 'asc' }, take: cap,
       }),
     ]);
 

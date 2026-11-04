@@ -86,7 +86,26 @@ function CS({ opts }: { opts: { customers: Opt[]; vendors: Opt[] } }) {
   const [filter, setFilter] = useState<'all' | 'ndr' | 'exception' | 'overdue' | 'old'>('all');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const load = () => { setBusy(true); setError(''); api.csDashboard(undefined, undefined, f).then(setData).catch((e) => setError(e.message)).finally(() => setBusy(false)); };
+  const load = () => {
+    setBusy(true); setError('');
+    api.csDashboard(undefined, undefined, f).then(setData).catch((e) => setError(e.message)).finally(() => setBusy(false));
+    // Exceptions summary (same buckets as the Exceptions page, minus "invoices not sent"), all open — no date window.
+    api.exceptionsInbox(true).then((r) => setExc(r.buckets.filter((b) => b.key !== 'invoices_unsent'))).catch(() => setExc([]));
+  };
+  const [exc, setExc] = useState<{ key: string; title: string; hint: string; items: any[] }[] | null>(null);
+  const [excOpen, setExcOpen] = useState<string | null>(null);
+  const excHead = (k: string) => (k === 'pickups_waiting' ? ['Pickup #', 'Customer', 'Address', 'Vendor', 'Reason', 'Age (days)'] : ['AWB', 'Customer', 'Vendor', 'Carrier AWB', 'Status', 'Consignee', 'Destination', 'Reason', 'Age (days)', 'Booked']);
+  const excRow = (k: string, i: any): (string | number)[] => (k === 'pickups_waiting'
+    ? [i.pickupId, i.customer, i.address, i.vendor, i.reason, i.ageDays ?? '']
+    : [i.awb, i.customer, i.vendor, i.carrierAwb ?? '', i.status, i.consignee, i.destination, i.reason, i.ageDays ?? '', d10(i.bookedAt)]);
+  const excXls = async (only?: string) => {
+    const XLSX = await import('xlsx');
+    const wb = XLSX.utils.book_new();
+    for (const b of (exc ?? []).filter((x) => !only || x.key === only)) {
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[`${b.title} — ${b.items.length} open as on ${today()}`], excHead(b.key), ...b.items.map((i) => excRow(b.key, i))]), b.title.replace(/[^A-Za-z0-9 ]/g, '').slice(0, 31));
+    }
+    XLSX.writeFile(wb, `cs-exceptions-${only ?? 'all'}-${today()}.xlsx`);
+  };
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [q, setQ] = useState('');
   const pick = (r: any) => filter === 'all' || (filter === 'ndr' ? r.ndr : filter === 'exception' ? r.exception : filter === 'old' ? r.ageDays > 30 : r.overdue);
@@ -114,6 +133,43 @@ function CS({ opts }: { opts: { customers: Opt[]; vendors: Opt[] } }) {
         </div>
       </div>
       {error && <div className="error">{error}</div>}
+      {exc && exc.length > 0 && (
+        <div className="card" style={{ margin: '10px 0' }}>
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <b>Exceptions summary</b>
+            <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => excXls()}>⬇ Excel — all ({exc.reduce((a, b) => a + b.items.length, 0)})</button>
+          </div>
+          <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+            {exc.map((b) => (
+              <button key={b.key} className={excOpen === b.key ? '' : 'secondary'} title={b.hint} style={{ padding: '6px 12px' }} onClick={() => setExcOpen(excOpen === b.key ? null : b.key)}>
+                {b.title} <span style={{ marginLeft: 4, padding: '0 7px', borderRadius: 10, fontSize: 11.5, fontWeight: 700, background: b.items.length ? '#fdecea' : '#e7f6ec', color: b.items.length ? '#b42318' : '#166534' }}>{b.items.length}</span>
+              </button>
+            ))}
+          </div>
+          {excOpen && (() => {
+            const b = exc.find((x) => x.key === excOpen)!;
+            return (
+              <div style={{ marginTop: 10 }}>
+                <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <span className="muted" style={{ fontSize: 12.5 }}>{b.hint}</span>
+                  <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => excXls(b.key)} disabled={!b.items.length}>⬇ Excel</button>
+                </div>
+                <div style={{ overflowX: 'auto', maxHeight: 420, overflowY: 'auto' }}>
+                  <table style={{ fontSize: 12.5, minWidth: 900 }}>
+                    <thead><tr>{excHead(b.key).map((h) => <th key={h}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {b.items.map((i, n) => (
+                        <tr key={n}>{excRow(b.key, i).map((v, j) => <td key={j}>{j === 0 && b.key !== 'pickups_waiting' ? <Link to={`/tracker/${v}`}><strong>{v}</strong></Link> : v}</td>)}</tr>
+                      ))}
+                      {!b.items.length && <tr><td colSpan={excHead(b.key).length} className="muted" style={{ textAlign: 'center', padding: 14 }}>Nothing open 🎉</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
       {data && (
         <>
           <div className="row" style={{ gap: 8, margin: '10px 0', flexWrap: 'wrap' }}>

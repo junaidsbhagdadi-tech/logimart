@@ -109,8 +109,13 @@ export class PickupsService {
     const clients = ids.length ? await this.prisma.b2bClient.findMany({ where: { id: { in: ids } }, select: { id: true, accountCode: true, legalName: true } }) : [];
     const byId = new Map(clients.map((c) => [String(c.id), c]));
     const pins = await pinRows(this.prisma, rows.map((r) => r.pincode));
+    // Who raised it: the customer on the portal (a CLIENT_ADMIN login) vs our own team — only customer
+    // requests pop up for CS.
+    const makers = [...new Set(rows.map((r) => r.createdById).filter((x): x is bigint => x != null))];
+    const custLogins = new Set((makers.length ? await this.prisma.user.findMany({ where: { id: { in: makers }, role: 'CLIENT_ADMIN' }, select: { id: true } }) : []).map((u) => String(u.id)));
     return rows.map((r) => ({
-      ...r, customerCode: byId.get(String(r.clientId))?.accountCode ?? null, customerName: byId.get(String(r.clientId))?.legalName ?? null,
+      ...r, byCustomer: r.createdById != null && custLogins.has(String(r.createdById)),
+      customerCode: byId.get(String(r.clientId))?.accountCode ?? null, customerName: byId.get(String(r.clientId))?.legalName ?? null,
       cityName: placeName(r.city, pins.get(String(r.pincode || '')), r.city), // "SHIMLA", not the "MTA" area code
     }));
   }

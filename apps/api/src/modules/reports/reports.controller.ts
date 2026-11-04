@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles } from '../../common/rbac/roles.decorator';
@@ -63,6 +63,13 @@ export class ReportsController {
   @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
   dataHealth() {
     return this.svc.dataHealth();
+  }
+
+  /** Extra Expense report — mark an expense Billed / Rejected by customer (or undo). */
+  @Post('extra-expense/:id/action')
+  @Roles(UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  extraExpenseAction(@Param('id') id: string, @Body() dto: { action: string; ref?: string }, @Req() req: any) {
+    return this.svc.extraExpenseAction(id, String(dto?.action || ''), dto?.ref, req.user?.sub ? BigInt(req.user.sub) : undefined);
   }
 
   @Get(':type')

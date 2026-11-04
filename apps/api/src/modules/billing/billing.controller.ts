@@ -143,6 +143,13 @@ export class BillingController {
     return this.invoices.generateEInvoice(Number(id));
   }
 
+  /** Unlock locked invoices back to DRAFT for corrections (not once paid / e-invoiced). */
+  @Post('billing/invoices/unlock-many')
+  @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  unlockMany(@Body() dto: { ids?: number[] }) {
+    return this.invoices.unlockMany(dto?.ids ?? []);
+  }
+
   /** Lock many invoices — selected ids, or every DRAFT when {all:true}. */
   @Post('billing/invoices/lock-many')
   @Roles(UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)

@@ -169,7 +169,7 @@ export class InvoiceService {
       if (!charges) continue; // no rate configured -> skip
 
       // Per-AWB ad-hoc add-on charges (toBill, not yet billed) fold into this line's "other charges".
-      const addons = await this.prisma.shipmentAddon.findMany({ where: { shipmentId: s.id, toBill: true, billedInvoiceId: null }, select: { id: true, amount: true, reason: true } });
+      const addons = await this.prisma.shipmentAddon.findMany({ where: { shipmentId: s.id, toBill: true, billedInvoiceId: null, markedBilledAt: null }, select: { id: true, amount: true, reason: true } });
       const addonTotal = +addons.reduce((a, x) => a + Number(x.amount), 0).toFixed(2);
       if (addonTotal) { (charges as any).addonLines = addons.map((a) => ({ reason: a.reason, amount: Number(a.amount) })); addonIdsToMark.push(...addons.map((a) => a.id)); }
 
@@ -340,6 +340,43 @@ export class InvoiceService {
       await this.notifications.notify({ channel: 'email', recipient: to, kind: 'invoice', message: invMsg });
     }
     return { invoice: updated, creditHold: overLimit, newBalance, creditLimit: client.creditLimit };
+  }
+
+  /**
+   * Unlock a locked invoice back to DRAFT so it can be corrected (#13-9). Same invoice number (no new number,
+   * no GST gap); its ledger charge is reversed off the customer's balance and re-posted when it is locked
+   * again; it drops off the customer's portal until then. Refused once a payment is recorded, or once a GST
+   * e-invoice (IRN) exists — that has to be cancelled on the GST portal first.
+   */
+  async unlockInvoice(invoiceId: number) {
+    const inv = await this.prisma.invoice.findUnique({ where: { id: BigInt(invoiceId) } });
+    if (!inv) throw new NotFoundException('Invoice not found');
+    if (inv.status === InvoiceStatus.DRAFT) throw new BadRequestException(`${inv.invoiceNo} is not locked.`);
+    const entries = await this.prisma.ledgerEntry.findMany({ where: { invoiceId: inv.id } });
+    if (entries.some((e) => e.entryType !== 'charge') || inv.status === InvoiceStatus.PAID || inv.status === InvoiceStatus.PARTIALLY_PAID) {
+      throw new BadRequestException(`${inv.invoiceNo} has a payment recorded — reverse the payment first.`);
+    }
+    if (inv.irn) throw new BadRequestException(`${inv.invoiceNo} already has a GST e-invoice (IRN) — cancel the IRN on the GST portal first (allowed within 24 h of generation).`);
+    const net = entries.reduce((s, e) => s + Number(e.amount), 0);
+    if (net !== 0) {
+      const client = await this.prisma.b2bClient.findUnique({ where: { id: inv.clientId } });
+      if (client) {
+        const newBalance = +(Number(client.outstandingBal) - net).toFixed(2);
+        await this.prisma.b2bClient.update({ where: { id: client.id }, data: { outstandingBal: new Prisma.Decimal(newBalance), isCreditHold: newBalance > Number(client.creditLimit) } });
+      }
+    }
+    if (entries.length) await this.prisma.ledgerEntry.deleteMany({ where: { invoiceId: inv.id } });
+    await this.prisma.invoice.update({ where: { id: inv.id }, data: { status: InvoiceStatus.DRAFT, sentAt: null } });
+    return { ok: true, invoiceNo: inv.invoiceNo, message: `${inv.invoiceNo} unlocked — edit it, then lock it again.` };
+  }
+
+  async unlockMany(ids: number[]) {
+    let unlocked = 0; const skipped: { id: string; reason: string }[] = [];
+    for (const id of ids ?? []) {
+      try { await this.unlockInvoice(Number(id)); unlocked++; }
+      catch (e: any) { skipped.push({ id: String(id), reason: e?.message || 'failed' }); }
+    }
+    return { ok: true, unlocked, skipped };
   }
 
   /** Lock many invoices at once (single / multiple / all). `all` locks every DRAFT invoice.

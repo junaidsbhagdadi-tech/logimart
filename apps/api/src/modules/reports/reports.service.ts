@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -220,6 +220,21 @@ export class ReportsService {
     return { columns: [{ key: 'metric', label: 'Metric' }, { key: 'value', label: 'Value' }], rows };
   }
 
+  /** Extra Expense report action (#13-2): Billed (by hand, kept off invoices) / Rejected by customer / undo. */
+  async extraExpenseAction(id: string, action: string, ref?: string, userId?: bigint) {
+    const a = await this.prisma.shipmentAddon.findUnique({ where: { id: BigInt(id) } });
+    if (!a) throw new NotFoundException('Expense not found');
+    if (a.billedInvoiceId) throw new BadRequestException('Already billed on an invoice — change it on the invoice.');
+    const data: any =
+      action === 'billed' ? { markedBilledAt: new Date(), markedBilledRef: (ref || '').trim().slice(0, 60) || null, toBill: true, noBillReason: null }
+      : action === 'rejected' ? { toBill: false, noBillReason: 'Rejected by customer', markedBilledAt: null, markedBilledRef: null }
+      : action === 'reset' ? { toBill: true, noBillReason: null, markedBilledAt: null, markedBilledRef: null }
+      : null;
+    if (!data) throw new BadRequestException('Action must be billed, rejected or reset.');
+    await this.prisma.shipmentAddon.update({ where: { id: a.id }, data: { ...data, actionById: userId ?? null } });
+    return { ok: true };
+  }
+
   /** AWB-wise extra expenses with their billing status — billed (invoice no), to be billed, or not to be
    *  billed (with the reason) — and a summary of each. */
   private async extraExpense(range: any, f: Filters = {}): Promise<Report> {
@@ -232,16 +247,19 @@ export class ReportsService {
     const invNo = new Map((invIds.length ? await this.prisma.invoice.findMany({ where: { id: { in: invIds } }, select: { id: true, invoiceNo: true } }) : []).map((i) => [i.id.toString(), i.invoiceNo]));
     const sum = { billed: 0, toBill: 0, notBilled: 0 };
     const reasons = new Map<string, number>();
-    const out = rows.map((r) => {
+    const out: any[] = rows.map((r) => {
       const amt = Number(r.amount) || 0;
       let status: string;
       if (r.billedInvoiceId) { status = `Billed — ${invNo.get(r.billedInvoiceId.toString()) ?? 'invoice'}`; sum.billed += amt; }
+      else if (r.markedBilledAt) { status = `Billed — marked${r.markedBilledRef ? ` (${r.markedBilledRef})` : ''}`; sum.billed += amt; }
       else if (r.toBill) { status = 'To be billed (next invoice)'; sum.toBill += amt; }
       else { const why = r.noBillReason || 'no reason given'; status = `Not to be billed — ${why}`; sum.notBilled += amt; reasons.set(why, (reasons.get(why) ?? 0) + amt); }
       return {
         date: new Date(+r.createdAt + 330 * 60000).toISOString().slice(0, 10), awb: r.shipment?.awb ?? '—', customer: r.shipment?.client?.legalName ?? '—',
         reason: r.reason ?? '', serviceCentre: r.serviceCentre ?? '', route: [r.fromLoc, r.toLoc].filter(Boolean).join(' → '), mode: r.mode ?? '',
         amount: amt.toFixed(2), status,
+        // Action buttons (Billed / Rejected by customer): on anything not yet on an invoice; Undo on a manual mark.
+        _addonId: String(r.id), _can: r.billedInvoiceId ? 'none' : r.markedBilledAt || (!r.toBill && r.noBillReason === 'Rejected by customer') ? 'undo' : 'act',
       };
     });
     const total = sum.billed + sum.toBill + sum.notBilled;
@@ -254,7 +272,7 @@ export class ReportsService {
         { key: 'date', label: 'Date' }, { key: 'awb', label: 'AWB' }, { key: 'customer', label: 'Customer' },
         { key: 'reason', label: 'Expense' }, { key: 'serviceCentre', label: 'Service centre' },
         { key: 'route', label: 'From → To' }, { key: 'mode', label: 'Paid by' },
-        { key: 'amount', label: 'Amount ₹' }, { key: 'status', label: 'Billing' },
+        { key: 'amount', label: 'Amount ₹' }, { key: 'status', label: 'Billing' }, { key: '_action', label: 'Action' },
       ],
       rows: out,
     };

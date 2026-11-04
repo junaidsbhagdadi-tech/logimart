@@ -105,10 +105,11 @@ export function Layout() {
     if (withReply && !reply) return;
     try { await api.portalCsRead(awb, reply || undefined); setCsMsgs((m) => m.filter((x) => x.awb !== awb)); } catch { /* keep it in the list */ }
   };
-  // Customer pickup requests awaiting CS hand-off (not yet handed to a vendor).
+  // Customer pickup requests awaiting CS hand-off (not yet handed to a vendor). Only ones the CUSTOMER raised
+  // on the portal — a pickup our own team books needs no "new request" prompt.
   const [pendPickups, setPendPickups] = useState<any[]>([]);
   const [pickOpen, setPickOpen] = useState(false);
-  const loadPendPickups = () => api.listPickups().then((ps: any[]) => setPendPickups(ps.filter((p) => p.status === 'REQUESTED' && !p.token && !p.csActionedAt))).catch(() => {});
+  const loadPendPickups = () => api.listPickups().then((ps: any[]) => setPendPickups(ps.filter((p) => p.byCustomer && p.status === 'REQUESTED' && !p.token && !p.csActionedAt))).catch(() => {});
   const pickupDone = async (id: string) => { try { await api.pickupActioned(id); setPendPickups((ps) => ps.filter((p) => String(p.id) !== id)); } catch { /* keep it */ } };
   useEffect(() => {
     if (!user || user.role === 'CLIENT_ADMIN') return;
