@@ -493,7 +493,7 @@ export const api = {
   listInvoices: () => request<Invoice[]>('/api/v1/billing/invoices'),
   getInvoice: (id: string) => request<Invoice>(`/api/v1/billing/invoices/${id}`),
   csDashboard: (from?: string, to?: string, f: { vendor?: string; clientId?: string } = {}) =>
-    request<{ count: number; ndrCount: number; overdueCount: number; rows: any[] }>(`/api/v1/lifecycle/cs-dashboard${qs({ from, to, ...f })}`),
+    request<{ count: number; ndrCount: number; overdueCount: number; exceptionCount?: number; rtoCount?: number; oldestAt?: string | null; rows: any[] }>(`/api/v1/lifecycle/cs-dashboard${qs({ from, to, ...f })}`),
   opsDashboard: (f: { vendor?: string; clientId?: string } = {}) => request<{ buckets: { key: string; label: string; count: number }[]; byCode: Record<string, number> }>(`/api/v1/lifecycle/ops-dashboard${qs(f)}`),
   opsBucket: (code: string, f: { vendor?: string; clientId?: string } = {}) => request<any[]>(`/api/v1/lifecycle/ops-bucket/${code}${qs(f)}`),
   salesByRep: (from?: string, to?: string, f: { vendor?: string; clientId?: string; groupBy?: string } = {}) =>

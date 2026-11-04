@@ -80,23 +80,24 @@ export function TeamDashboards() {
 
 /** CS — pending / stuck shipments, NDR, overdue; the queue to chase and send NDR reports on. */
 function CS({ opts }: { opts: { customers: Opt[]; vendors: Opt[] } }) {
-  const [from, setFrom] = useState(new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10));
-  const [to, setTo] = useState(today());
+  // No date range: every open AWB stays on the list until it is delivered / returned / cancelled (or deleted).
   const [f, setF] = useState<Filt>({ vendor: '', clientId: '' });
   const [data, setData] = useState<Awaited<ReturnType<typeof api.csDashboard>> | null>(null);
-  const [filter, setFilter] = useState<'all' | 'ndr' | 'overdue'>('all');
+  const [filter, setFilter] = useState<'all' | 'ndr' | 'exception' | 'overdue' | 'old'>('all');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const load = () => { setBusy(true); setError(''); api.csDashboard(from, to, f).then(setData).catch((e) => setError(e.message)).finally(() => setBusy(false)); };
+  const load = () => { setBusy(true); setError(''); api.csDashboard(undefined, undefined, f).then(setData).catch((e) => setError(e.message)).finally(() => setBusy(false)); };
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [q, setQ] = useState('');
-  const rows = (data?.rows ?? []).filter((r) => filter === 'all' || (filter === 'ndr' ? r.ndr : r.overdue))
+  const pick = (r: any) => filter === 'all' || (filter === 'ndr' ? r.ndr : filter === 'exception' ? r.exception : filter === 'old' ? r.ageDays > 30 : r.overdue);
+  const oldCount = (data?.rows ?? []).filter((r: any) => r.ageDays > 30).length;
+  const rows = (data?.rows ?? []).filter(pick)
     .filter((r: any) => !q.trim() || [r.awb, r.forwardingAwb, r.customer, r.code, r.consignee, r.phone, r.origin, r.destination, r.status, r.vendor, r.lastScan?.text, r.remark]
       .some((v) => String(v ?? '').toLowerCase().includes(q.trim().toLowerCase())));
   const scanAt = (v: any) => (v ? new Date(v).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
   const exportXls = () => downloadXlsx(
-    `cs-pending-${from}_${to}${f.vendor ? '-' + f.vendor : ''}.xlsx`,
-    `NDR / Pending report ${from} → ${to}${filtLabel(f, opts) ? ' · ' + filtLabel(f, opts) : ''}`,
+    `cs-open-${today()}${f.vendor ? '-' + f.vendor : ''}.xlsx`,
+    `NDR / Pending — all open as on ${today()}${filtLabel(f, opts) ? ' · ' + filtLabel(f, opts) : ''}`,
     ['AWB', 'Booked', 'Picked', 'Customer', 'Code', 'Vendor', 'Forwarding No', 'Consignee', 'Phone', 'Origin', 'Destination', 'Status', 'Last scan', 'Last scan at', 'Age (days)', 'EDD', 'Overdue', 'NDR', 'Remark'],
     rows.map((r: any) => [r.awb, d10(r.bookedAt), d10(r.pickedAt), r.customer, r.code, r.vendor || 'SELF', r.forwardingAwb, r.consignee, r.phone, r.origin ?? '', r.destination, r.status, r.lastScan?.text ?? '', scanAt(r.lastScan?.at), r.ageDays, d10(r.edd), r.overdue ? 'YES' : '', r.ndr ? 'YES' : '', r.remark ?? '']),
   );
@@ -104,19 +105,20 @@ function CS({ opts }: { opts: { customers: Opt[]; vendors: Opt[] } }) {
     <>
       <div className="card">
         <div className="row" style={{ gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          <div><label>From</label><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
-          <div><label>To</label><input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
           <FilterBar f={f} setF={setF} opts={opts} />
-          <button onClick={load} disabled={busy}>{busy ? 'Loading…' : '🔍 Search'}</button>
+          <button onClick={load} disabled={busy}>{busy ? 'Loading…' : '⟳ Refresh'}</button>
           <button className="secondary" onClick={exportXls} disabled={!rows.length}>⬇ Excel</button>
+        </div>
+        <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+          Every open AWB, any booking date — it stays here until it is delivered, returned or cancelled.{data?.oldestAt ? ` Oldest open booking: ${d10(data.oldestAt)}.` : ''}
         </div>
       </div>
       {error && <div className="error">{error}</div>}
       {data && (
         <>
           <div className="row" style={{ gap: 8, margin: '10px 0', flexWrap: 'wrap' }}>
-            {([['all', `Pending: ${data.count}`], ['ndr', `NDR: ${data.ndrCount}`], ['overdue', `Overdue: ${data.overdueCount}`]] as const).map(([k, label]) => (
-              <button key={k} className={filter === k ? '' : 'secondary'} style={{ padding: '6px 12px', ...(k === 'ndr' && data.ndrCount ? { color: 'var(--danger,#c0392b)' } : {}) }} onClick={() => setFilter(k)}>{label}</button>
+            {([['all', `Pending: ${data.count}`], ['ndr', `NDR: ${data.ndrCount}`], ['exception', `Exceptions: ${data.exceptionCount ?? 0}`], ['overdue', `Overdue: ${data.overdueCount}`], ['old', `Open > 30 days: ${oldCount}`]] as const).map(([k, label]) => (
+              <button key={k} className={filter === k ? '' : 'secondary'} title={k === 'exception' ? 'RTO in progress or a flagged remark' : k === 'old' ? 'Booked more than 30 days ago and still not closed' : undefined} style={{ padding: '6px 12px', ...((k === 'ndr' && data.ndrCount) || (k === 'exception' && data.exceptionCount) ? { color: 'var(--danger,#c0392b)' } : {}) }} onClick={() => setFilter(k)}>{label}</button>
             ))}
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search AWB / customer / consignee / city / status…" style={{ maxWidth: 320, marginLeft: 8 }} />
             {q && <span className="muted" style={{ fontSize: 12, alignSelf: 'center' }}>{rows.length} match</span>}
@@ -143,7 +145,7 @@ function CS({ opts }: { opts: { customers: Opt[]; vendors: Opt[] } }) {
                     <td>{r.remark || '—'}</td>
                   </tr>
                 ))}
-                {rows.length === 0 && <tr><td colSpan={14} className="muted" style={{ textAlign: 'center', padding: 18 }}>{q ? 'Nothing matches the search.' : 'Nothing pending in this range 🎉'}</td></tr>}
+                {rows.length === 0 && <tr><td colSpan={14} className="muted" style={{ textAlign: 'center', padding: 18 }}>{q ? 'Nothing matches the search.' : 'Nothing open 🎉'}</td></tr>}
               </tbody>
             </table>
           </div>

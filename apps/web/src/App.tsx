@@ -24,6 +24,7 @@ import { VendorBills } from './pages/VendorBills';
 import { WalkIn } from './pages/WalkIn';
 import { AwbPrint } from './pages/AwbPrint';
 import { BdLabel } from './pages/BdLabel';
+import { BulkLabels } from './pages/BulkLabels';
 import { BdAwbPrint } from './pages/BdAwbPrint';
 import { BlueDart } from './pages/BlueDart';
 import { BillWorksheet } from './pages/BillWorksheet';
@@ -110,6 +111,7 @@ export function App() {
       <Route path="/shipments/:awb/awb-print" element={<AwbPrint />} />
       <Route path="/handover/print" element={<HandoverPrint />} />
       <Route path="/shipments/:awb/bd-label" element={<BdLabel />} />
+      <Route path="/labels/print" element={<BulkLabels />} />
       <Route path="/shipments/:awb/bd-awb" element={<BdAwbPrint />} />
       <Route path="/intl/:idOrJob/document" element={<IntlDocument />} />
       <Route element={<Layout />}>

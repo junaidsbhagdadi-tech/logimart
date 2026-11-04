@@ -38,6 +38,11 @@ function serviceName(m: MasterLabel): string {
   return 'SURFACE';
 }
 
+/** BlueDart Domestic Priority goes as ONE waybill — no per-box (MPS) stickers. */
+export const isBdDp = (m: MasterLabel) => carrierName(m) === 'BLUEDART' && /^(DP|TODP|TDD)$/.test(String(m.product || '').toUpperCase());
+/** Pages one AWB prints: 5 + one per box (none for DP); POD-only mode = 1. */
+export const labelPageCount = (m: MasterLabel, only?: 'pod') => (only === 'pod' ? 1 : 5 + (isBdDp(m) ? 0 : (m.boxes?.length || m.pieceCount || 1)));
+
 export function BdLabel() {
   const { awb } = useParams();
   const [m, setM] = useState<MasterLabel | null>(null);
@@ -49,7 +54,29 @@ export function BdLabel() {
 
   if (error) return <div style={{ padding: 24, color: '#b00' }}>{error}</div>;
   if (!m) return <p style={{ padding: 24 }}>Loading…</p>;
+  const carrierAwb = m.carrierAwb || m.bdWaybill || m.forwardingAwb || '';
+  const isOwn = !m.vendor || m.vendor === 'SELF';
+  return (
+    <div className="cl-page">
+      <div className="cl-toolbar no-print">
+        <Link to={`/shipments/${m.awb}`}>← {m.awb}</Link>
+        <span className="cl-hint">{labelPageCount(m)} pages · 89 × 69 mm{isBdDp(m) ? ' · DP = single AWB' : ''}</span>
+        <button onClick={() => window.print()}>🖨 Print</button>
+      </div>
+      {!carrierAwb && !isOwn && (
+        <div className="no-print cl-warn">
+          ⚠ <b>No {carrierName(m)} AWB yet.</b> These labels show our AWB ({m.awb}), which the carrier can't scan. Hand the shipment to the carrier first (<Link to={`/shipments/${m.awb}`}>open shipment</Link>), then reprint.
+        </div>
+      )}
+      <CourierSet m={m} />
+      <style>{LABEL_CSS}</style>
+    </div>
+  );
+}
 
+/** The print set of ONE AWB (sections only — the page supplies toolbar + LABEL_CSS). `only="pod"` = POD copy only. */
+export function CourierSet({ m, only }: { m: MasterLabel; only?: 'pod' }) {
+  const dp = isBdDp(m);
   const title = `${carrierName(m)} - ${serviceName(m)}`;
   const isDelhivery = carrierName(m) === 'DELHIVERY';
   const firstBoxId = (m.boxes ?? []).find((b: any) => b.carrierId)?.carrierId as string | undefined;
@@ -84,7 +111,7 @@ export function BdLabel() {
       <div className="cl-copy">{copy}</div>
       <div className="cl-title">{title}</div>
       <div className="cl-line cl-big">Org: {org} - Dst: {dst}{m.referenceNo ? <span className="cl-small"> | Ref No: {m.referenceNo}</span> : null}</div>
-      <div className="cl-line cl-big">Wgt: {kg} KGs | MASTER - {m.pieceCount} Boxes | Date:{date}</div>
+      <div className="cl-line cl-big">Wgt: {kg} KGs | {dp ? '' : 'MASTER - '}{m.pieceCount} Boxes | Date:{date}</div>
       <div className="cl-bar">
         <Barcode value={lead} />
         {carrierAwb && !isOwn && <div className="cl-our">{lr ? <>LR: <b>{lr}</b> · </> : null}Our AWB: <b>{m.awb}</b></div>}
@@ -100,19 +127,24 @@ export function BdLabel() {
     </section>
   );
 
-  return (
-    <div className="cl-page">
-      <div className="cl-toolbar no-print">
-        <Link to={`/shipments/${m.awb}`}>← {m.awb}</Link>
-        <span className="cl-hint">{5 + boxes.length} pages · 89 × 69 mm</span>
-        <button onClick={() => window.print()}>🖨 Print</button>
-      </div>
-      {!carrierAwb && !isOwn && (
-        <div className="no-print cl-warn">
-          ⚠ <b>No {carrierName(m)} AWB yet.</b> These labels show our AWB ({m.awb}), which the carrier can't scan. Hand the shipment to the carrier first (<Link to={`/shipments/${m.awb}`}>open shipment</Link>), then reprint.
-        </div>
-      )}
+  const pod = (
+    <section className="cl" key="pod">
+      <div className="cl-copy">{only === 'pod' ? 'CARRIER POD COPY' : '4 · CARRIER POD COPY'}</div>
+      <div className="cl-title">{title}</div>
+      <div className="cl-pod-head">POD COPY | <b>AWB: {lead} | BOXES: {m.pieceCount} NOS</b></div>
+      <div className="cl-line">SENDER : {sender}</div>
+      <div className="cl-line">RECEIVER : {m.destPincode || m.consignee.name}{ourTag}</div>
+      <div className="cl-bar cl-bar-sm"><Barcode value={lead} /></div>
+      <table className="cl-pod">
+        <thead><tr><th>RECEIVED BY</th><th>SEAL / SIGNATURE</th><th>RECEIVED ON</th><th>REMARKS</th></tr></thead>
+        <tbody><tr><td /><td /><td /><td /></tr></tbody>
+      </table>
+    </section>
+  );
+  if (only === 'pod') return pod;
 
+  return (
+    <>
       {label('1 · WITH INVOICE')}
 
       <section className="cl">
@@ -133,22 +165,11 @@ export function BdLabel() {
 
       {label('3 · STICK ON INVOICE')}
 
-      <section className="cl">
-        <div className="cl-copy">4 · CARRIER POD COPY</div>
-        <div className="cl-title">{title}</div>
-        <div className="cl-pod-head">POD COPY | <b>AWB: {lead} | BOXES: {m.pieceCount} NOS</b></div>
-        <div className="cl-line">SENDER : {sender}</div>
-        <div className="cl-line">RECEIVER : {m.destPincode || m.consignee.name}{ourTag}</div>
-        <div className="cl-bar cl-bar-sm"><Barcode value={lead} /></div>
-        <table className="cl-pod">
-          <thead><tr><th>RECEIVED BY</th><th>SEAL / SIGNATURE</th><th>RECEIVED ON</th><th>REMARKS</th></tr></thead>
-          <tbody><tr><td /><td /><td /><td /></tr></tbody>
-        </table>
-      </section>
+      {pod}
 
       {label('5 · SHIPPER COPY')}
 
-      {boxes.map((b, i) => {
+      {!dp && boxes.map((b, i) => {
         const boxNo = b.carrierId || `${lead}-${String(i + 1).padStart(4, '0')}`;
         return (
           <section className="cl" key={`box${i}`}>
@@ -171,7 +192,11 @@ export function BdLabel() {
         );
       })}
 
-      <style>{`
+    </>
+  );
+}
+
+export const LABEL_CSS = `
         .cl-page { background:#eee; min-height:100vh; padding:16px; display:flex; flex-direction:column; align-items:center; gap:14px; }
         .cl-toolbar { width:89mm; display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:13px; }
         .cl-toolbar button { padding:6px 14px; font-weight:700; cursor:pointer; }
@@ -209,7 +234,4 @@ export function BdLabel() {
           .cl:last-of-type { break-after:auto; page-break-after:auto; }
           @page { size:89mm 69mm; margin:0; }
         }
-      `}</style>
-    </div>
-  );
-}
+      `;

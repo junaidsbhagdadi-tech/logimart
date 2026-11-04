@@ -400,6 +400,24 @@ function MyBookings({ onOpen }: { onOpen: (awb: string) => void }) {
   const v = (r: any) => (String(r.vendor || '') ? String(r.vendor).toUpperCase() : 'SELF');
   const vendors = [...new Set(rows.map(v))].sort();
   const shown = rows.filter((r) => vendor == null || v(r) === vendor);
+  // Account-wise bulk actions — on the picked account code (chip), or on all of the day's bookings.
+  const [bulk, setBulk] = useState<{ done: number; total: number; ok: number; errors: string[] } | null>(null);
+  const handed = (r: any) => !!(r.bdWaybill ?? r.forwardingAwb);
+  const toHand = shown.filter((r) => !handed(r) && v(r) !== 'SELF');
+  const scopeName = vendor ?? 'all accounts';
+  const handOffAll = async () => {
+    if (!toHand.length || !window.confirm(`Hand ${toHand.length} booking(s) of ${scopeName} to the carrier now?
+
+Each one gets the carrier's AWB (and pickup) — same as pressing "Hand to carrier" on each.`)) return;
+    const st = { done: 0, total: toHand.length, ok: 0, errors: [] as string[] };
+    setBulk({ ...st });
+    for (const r of toHand) {
+      try { await api.carrierHandoff(r.awb); st.ok++; } catch (e: any) { st.errors.push(`${r.awb}: ${e.message}`); }
+      st.done++; setBulk({ ...st, errors: [...st.errors] });
+    }
+    reload();
+  };
+  const printAll = (only?: 'pod') => window.open(`/labels/print?awbs=${encodeURIComponent(shown.map((r) => r.awb).join(','))}${only ? '&only=pod' : ''}`, '_blank');
   const printManifest = () => {
     const picked = rows.filter((r) => sel.has(r.awb));
     const vs = [...new Set(picked.map(v))];
@@ -416,6 +434,24 @@ function MyBookings({ onOpen }: { onOpen: (awb: string) => void }) {
       {vendors.length > 1 && (
         <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
           {[null, ...vendors].map((x) => <button key={x ?? 'all'} className={vendor === x ? '' : 'secondary'} style={{ padding: '3px 12px', fontSize: 12 }} onClick={() => setVendor(x)}>{x ?? 'All'}</button>)}
+        </div>
+      )}
+      {!loading && !error && shown.length > 0 && (
+        <div className="card" style={{ padding: '10px 12px', marginBottom: 8 }}>
+          <div style={{ fontSize: 12.5, marginBottom: 8 }}>
+            <b>{vendor ?? 'All accounts'}</b> · {shown.length} booking(s) · <span style={{ color: toHand.length ? 'var(--warn, #b45309)' : 'var(--ok, #16a34a)', fontWeight: 600 }}>{toHand.length ? `${toHand.length} not handed to carrier` : 'all handed to carrier'}</span>
+          </div>
+          <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+            <button disabled={!toHand.length || (bulk != null && bulk.done < bulk.total)} onClick={handOffAll} style={{ flex: 1, minWidth: 140 }}>🚚 Hand off all ({toHand.length})</button>
+            <button className="secondary" onClick={() => printAll()} style={{ flex: 1, minWidth: 120 }} title="Labels + box details + POD copy + box stickers for every AWB">🏷 Print labels ({shown.length})</button>
+            <button className="secondary" onClick={() => printAll('pod')} style={{ flex: 1, minWidth: 120 }} title="Only the carrier's POD copy — one page per AWB">📄 Print PODs ({shown.length})</button>
+          </div>
+          {bulk && (
+            <div style={{ fontSize: 12.5, marginTop: 8 }}>
+              {bulk.done < bulk.total ? `Handing off ${bulk.done}/${bulk.total}…` : `Done — ${bulk.ok} handed to the carrier${bulk.errors.length ? `, ${bulk.errors.length} failed:` : '.'}`}
+              {bulk.errors.length > 0 && <ul style={{ margin: '4px 0 0 16px', padding: 0, color: 'var(--danger, #c0392b)' }}>{bulk.errors.map((e) => <li key={e}>{e}</li>)}</ul>}
+            </div>
+          )}
         </div>
       )}
       {loading ? <p className="muted">Loading…</p> : error ? <div className="error">{error}</div> : shown.length === 0 ? <p className="muted">No bookings by you on this day.</p> : (

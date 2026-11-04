@@ -462,15 +462,17 @@ export class LifecycleService {
     return w;
   }
 
-  async csDashboard(from?: string, to?: string, f: DashFilter = {}) {
+  /**
+   * CS queue = EVERY open shipment, whatever its booking date: it stays here until it is closed (Delivered /
+   * Returned / Cancelled) or the AWB is deleted. (It used to show only bookings of a From-To range, so an NDR
+   * booked 31 days ago silently dropped off.) `from` / `to` are accepted for old clients and ignored.
+   */
+  async csDashboard(_from?: string, _to?: string, f: DashFilter = {}) {
     const awbs0 = (list: { awb: string }[]) => list.map((x) => x.awb);
-    // Whole IST days (the end date used to stop at 23:59 UTC = 05:29 IST next day / start at 05:30 IST).
-    const gte = from ? new Date(`${from}T00:00:00+05:30`) : new Date(Date.now() - 30 * 86400000);
-    const lte = to ? new Date(`${to}T23:59:59.999+05:30`) : new Date();
     const labelOf = (c: string) => LIFECYCLE.find((l) => l.code === c)?.label || c;
     const ships = await this.prisma.shipment.findMany({
-      where: { createdAt: { gte, lte }, statusCode: { notIn: ['DLD', 'RTD', 'CAN'] }, ...this.dashWhere(f) },
-      orderBy: { createdAt: 'asc' }, take: 5000,
+      where: { AND: [{ OR: [{ statusCode: null }, { statusCode: { notIn: ['DLD', 'RTD', 'CAN'] } }] }, this.dashWhere(f)] },
+      orderBy: { createdAt: 'asc' }, take: 15000,
       select: { awb: true, statusCode: true, statusAt: true, createdAt: true, vendor: true, forwardingAwb: true, consigneeName: true, consigneePhone: true, consigneeCity: true, destZone: true, destPincode: true, shipperCity: true, shipperPincode: true, originZone: true, originLocation: true, currentLocation: true, bdStatus: true, bdSyncedAt: true, expectedDelivery: true, exceptionFlag: true, bdScans: true, client: { select: { legalName: true, accountCode: true } } },
     });
     // Full place names (pincode master → city / area), not the 3-letter codes the cities are stored as.
@@ -529,9 +531,15 @@ export class LifecycleService {
         ageDays: Math.floor((now - new Date(s.createdAt).getTime()) / 86400000),
         edd: s.expectedDelivery ?? null, overdue: !!edd && now > edd,
         ndr: code === 'UDL', remark: s.exceptionFlag ?? null,
+        // exception = anything CS must act on besides a plain NDR: a flagged remark or an RTO in progress
+        exception: !!s.exceptionFlag || code === 'RTO',
       };
     });
-    return { count: rows.length, ndrCount: rows.filter((r) => r.ndr).length, overdueCount: rows.filter((r) => r.overdue).length, rows };
+    return {
+      count: rows.length, ndrCount: rows.filter((r) => r.ndr).length, overdueCount: rows.filter((r) => r.overdue).length,
+      exceptionCount: rows.filter((r) => r.exception).length, rtoCount: rows.filter((r) => r.statusCode === 'RTO').length,
+      oldestAt: rows[0]?.bookedAt ?? null, rows,
+    };
   }
 
   /** Operations dashboard: task buckets by milestone stage (with counts). */
