@@ -18,8 +18,8 @@ export type PriorityBasis = 'BALANCED' | 'PRICE' | 'TAT' | 'PERFORMANCE';
 export type PrioritySetting = { basis: PriorityBasis; weights: { price: number; tat: number; performance: number } };
 const DEFAULT_PRIORITY: PrioritySetting = { basis: 'BALANCED', weights: { price: 40, tat: 30, performance: 30 } };
 
-type Agg = { booked: number; delivered: number; measured: number; onTime: number; tatSum: number; ndr: number; rto: number; open: number; kg: number; sell: number; cost: number; costKg: number };
-const blank = (): Agg => ({ booked: 0, delivered: 0, measured: 0, onTime: 0, tatSum: 0, ndr: 0, rto: 0, open: 0, kg: 0, sell: 0, cost: 0, costKg: 0 });
+type Agg = { booked: number; delivered: number; measured: number; onTime: number; tatSum: number; ndr: number; rto: number; open: number; kg: number; sell: number; sellKg: number; cost: number; costKg: number };
+const blank = (): Agg => ({ booked: 0, delivered: 0, measured: 0, onTime: 0, tatSum: 0, ndr: 0, rto: 0, open: 0, kg: 0, sell: 0, sellKg: 0, cost: 0, costKg: 0 });
 const pct = (a: number, b: number) => (b ? Math.round((a / b) * 1000) / 10 : null);
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -52,7 +52,7 @@ export class PerformanceService {
     const ships = await this.prisma.shipment.findMany({
       where, take: 60000,
       select: { id: true, awb: true, vendor: true, product: true, serviceMode: true, createdAt: true, statusCode: true, statusAt: true, apptDelivery: true,
-        shipperPincode: true, destPincode: true, destZone: true, consigneeCity: true, consigneeName: true, bdHandedAt: true, chargeWeight: true, bdStatus: true },
+        shipperPincode: true, destPincode: true, destZone: true, consigneeCity: true, consigneeName: true, bdHandedAt: true, chargeWeight: true, totalDeadKg: true, bdStatus: true },
     });
     const tat = new LaneTat(this.prisma);
     const zones = await tat.pinZones(ships.flatMap((s) => [s.shipperPincode, s.destPincode]));
@@ -94,7 +94,7 @@ export class PerformanceService {
       const ist = new Date(+s.createdAt + 330 * 60000);
       const monday = new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate() - ((ist.getUTCDay() + 6) % 7))).toISOString().slice(0, 10);
       const pr = price.get(String(s.id));
-      const kg = Number(s.chargeWeight || 0);
+      const kg = Number(s.chargeWeight || 0) || Number(s.totalDeadKg || 0);
       const groups = [all, add(byRegion, region), add(byCity, city), add(byPin, String(s.destPincode || '—'), { city }), add(byWeek, monday), ...(opts.internal ? [add(byVendor, key)] : [])];
       for (const g of groups) {
         g.booked++; g.kg += kg;
@@ -104,7 +104,7 @@ export class PerformanceService {
         else g.open++;
         if (onTime != null) { g.measured++; if (onTime) g.onTime++; }
         if (days != null && onTime != null) g.tatSum += days;
-        if (pr) { g.sell += pr.sell; if (pr.cost != null) { g.cost += pr.cost; g.costKg += kg; } }
+        if (pr && kg > 0) { if (pr.sell > 0) { g.sell += pr.sell; g.sellKg += kg; } if (pr.cost != null && pr.cost > 0) { g.cost += pr.cost; g.costKg += kg; } }
       }
       if (code === 'UDL' && ndrList.length < 300) {
         ndrList.push({ awb: s.awb, bookedAt: s.createdAt, consignee: s.consigneeName ?? '', city, pincode: s.destPincode ?? '', reason: s.bdStatus ?? 'Undelivered', ...(opts.internal ? { vendor: vName(key) } : {}) });
@@ -113,7 +113,7 @@ export class PerformanceService {
     const out = (g: Agg) => ({
       booked: g.booked, delivered: g.delivered, deliveredPct: pct(g.delivered, g.booked), measured: g.measured, onTimePct: pct(g.onTime, g.measured),
       avgTatDays: g.measured ? r2(g.tatSum / g.measured) : null, ndr: g.ndr, ndrPct: pct(g.ndr, g.booked), rto: g.rto, rtoPct: pct(g.rto, g.booked), open: g.open,
-      ...(opts.internal ? { sell: r2(g.sell), cost: r2(g.cost), costPerKg: g.costKg ? r2(g.cost / g.costKg) : null, sellPerKg: g.kg ? r2(g.sell / g.kg) : null } : {}),
+      ...(opts.internal ? { sell: r2(g.sell), cost: r2(g.cost), costPerKg: g.costKg ? r2(g.cost / g.costKg) : null, sellPerKg: g.sellKg ? r2(g.sell / g.sellKg) : null } : {}),
     });
     const top = (m: Map<string, any>, n: number, label: string) => [...m.entries()].sort((a, b) => b[1].booked - a[1].booked).slice(0, n).map(([k, g]) => ({ [label]: k, ...(g.city && label === 'pincode' ? { city: g.city } : {}), ...out(g) }));
     return {
