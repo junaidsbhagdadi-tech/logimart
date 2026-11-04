@@ -8,6 +8,7 @@ export const FEATURE_CATALOG: FeatureSection[] = [
   { section: 'Overview', features: [
     { to: '/', label: 'Dashboard' },
     { to: '/team-dashboards', label: 'Team Dashboards' },
+    { to: '/carrier-performance', label: 'Carrier Performance' },
     { to: '/tracker', label: 'Track Shipment' },
     { to: '/pincode-search', label: 'Pincode Search' },
   ] },

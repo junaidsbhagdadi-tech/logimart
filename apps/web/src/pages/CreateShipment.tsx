@@ -171,7 +171,7 @@ export function CreateShipment() {
   const [rateCompare, setRateCompare] = useState<{ vendor: string; total: number; freight: number }[] | null>(null);
   const [rcBusy, setRcBusy] = useState(false);
   // Live carrier checks (serviceable? transit days?) from the carriers' own APIs, merged into the comparison.
-  const [svcInfo, setSvcInfo] = useState<Record<string, { serviceable: boolean | null; tatDays: number | null; tatSource: string | null }>>({});
+  const [svcInfo, setSvcInfo] = useState<Record<string, { serviceable: boolean | null; tatDays: number | null; tatSource: string | null; onTimePct?: number | null; priorityRank?: number }>>({});
   const compareRates = async () => {
     if (!clientId || !product || !destPin) return;
     setRcBusy(true); setRateCompare(null);
@@ -179,8 +179,8 @@ export function CreateShipment() {
       const totalDead = pieces.reduce((s, p) => s + (Number(p.deadKg) || 0), 0) || 0.5; // row kg = that row's TOTAL
       const body = { clientId, product, originPincode: originPin || undefined, destPincode: destPin, deadKg: totalDead, pcs: pieces.reduce((s, p) => s + pcOf(p), 0), declaredValue: Number(svc.shipmentValue) || undefined };
       const [r, sg] = await Promise.all([api.carrierRates(body), api.carrierSuggest({ ...body, air: /AIR/i.test(String(serviceMode)) }).catch(() => null)]);
-      const info: Record<string, { serviceable: boolean | null; tatDays: number | null; tatSource: string | null }> = {};
-      for (const c of sg?.carriers ?? []) info[c.vendor.toUpperCase()] = { serviceable: c.serviceable, tatDays: c.tatDays, tatSource: c.tatSource };
+      const info: Record<string, { serviceable: boolean | null; tatDays: number | null; tatSource: string | null; onTimePct?: number | null; priorityRank?: number }> = {};
+      for (const c of sg?.carriers ?? []) info[c.vendor.toUpperCase()] = { serviceable: c.serviceable, tatDays: c.tatDays, tatSource: c.tatSource, onTimePct: c.onTimePct, priorityRank: c.priorityRank };
       setSvcInfo(info);
       // Serviceable first (a carrier that can't deliver there is useless however cheap), then cheapest.
       const opts = r.options.map((o) => ({ vendor: o.vendor, total: o.total, freight: o.freight }));
@@ -803,6 +803,8 @@ export function CreateShipment() {
                             {isCheap && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--green-2)', background: 'var(--green-soft)', padding: '2px 6px', borderRadius: 5 }}>CHEAPEST</span>}
                             {isFast && !isCheap && !noSvc(o.vendor) && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--brand-2)', background: 'var(--sky-soft)', padding: '2px 6px', borderRadius: 5 }}>FASTEST</span>}
                             {noSvc(o.vendor) && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--danger, #c0392b)', background: 'var(--st-problem-bg)', padding: '2px 6px', borderRadius: 5 }}>NOT SERVICEABLE</span>}
+                            {svcInfo[String(o.vendor).toUpperCase()]?.priorityRank === 1 && !noSvc(o.vendor) && <span title="Top choice under the priority carrier setting" style={{ fontSize: 10, fontWeight: 700, color: '#7a4b00', background: '#fff1cc', padding: '2px 6px', borderRadius: 5 }}>★ PRIORITY</span>}
+                            {svcInfo[String(o.vendor).toUpperCase()]?.onTimePct != null && <span title="On-time % over the last 60 days (measured deliveries)" style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--muted)' }}>{Math.round(svcInfo[String(o.vendor).toUpperCase()]!.onTimePct!)}% on time</span>}
                             {svcInfo[String(o.vendor).toUpperCase()]?.serviceable === true && <span title="Confirmed by the carrier's API" style={{ fontSize: 10, fontWeight: 700, color: 'var(--green-2)' }}>✓ serves pin</span>}
                             {picked && ' ✓'}
                           </span>

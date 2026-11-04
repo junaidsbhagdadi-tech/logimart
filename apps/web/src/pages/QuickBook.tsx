@@ -134,7 +134,7 @@ function NewBooking({ onBooked }: { onBooked: (awb: string) => void }) {
   );
 
   // Carrier suggestion for this customer × product × destination (serviceable first, then cheapest).
-  const [sugg, setSugg] = useState<{ vendor: string; name: string; price: number | null; serviceable: boolean | null; tatDays: number | null }[]>([]);
+  const [sugg, setSugg] = useState<{ vendor: string; name: string; price: number | null; serviceable: boolean | null; tatDays: number | null; onTimePct?: number | null; priorityRank?: number }[]>([]);
   useEffect(() => {
     setSugg([]);
     if (!cust || !product || !/^\d{6}$/.test(con.pincode)) return;
@@ -257,13 +257,13 @@ function NewBooking({ onBooked }: { onBooked: (awb: string) => void }) {
         </Field>
         {sugg.length > 0 && (
           <div style={{ margin: '-4px 0 10px' }}>
-            <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>Suggested carriers for {con.pincode} — click to pick</div>
+            <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>Suggested carriers for {con.pincode} (★ = priority pick) — click to pick</div>
             <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
               {sugg.map((c) => (
                 <button key={c.vendor} type="button" className={vendor === c.vendor ? '' : 'secondary'} disabled={c.serviceable === false}
                   title={c.serviceable === false ? 'Not serviceable for this pincode' : c.name}
                   style={{ padding: '4px 10px', fontSize: 12, opacity: c.serviceable === false ? 0.5 : 1 }} onClick={() => setVendor(c.vendor)}>
-                  <strong>{c.vendor}</strong>{c.price != null ? ` · ₹${Math.round(c.price).toLocaleString('en-IN')}` : ''}{c.tatDays != null ? ` · ${c.tatDays}d` : ''}{c.serviceable === false ? ' · ✗' : c.serviceable ? ' · ✓' : ''}
+                  {c.priorityRank === 1 && c.serviceable !== false ? '★ ' : ''}<strong>{c.vendor}</strong>{c.price != null ? ` · ₹${Math.round(c.price).toLocaleString('en-IN')}` : ''}{c.tatDays != null ? ` · ${c.tatDays}d` : ''}{c.onTimePct != null ? ` · ${Math.round(c.onTimePct)}% on time` : ''}{c.serviceable === false ? ' · ✗' : c.serviceable ? ' · ✓' : ''}
                 </button>
               ))}
             </div>

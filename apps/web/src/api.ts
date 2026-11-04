@@ -728,7 +728,7 @@ export const api = {
   carrierHandoff: (awb: string) => request<{ awb: string; carrier: string; carrierName: string; carrierAwb: string | null; message: string }>(`/api/v1/carriers/handoff/${awb}`, { method: 'POST' }),
   carrierTrack: (awb: string) => request<{ awb: string; carrierName: string; status: string | null }>(`/api/v1/carriers/track/${awb}`, { method: 'POST' }),
   carrierSuggest: (body: { clientId: number | string; product: string; originPincode?: string; destPincode: string; deadKg?: number; pcs?: number; declaredValue?: number; air?: boolean }) =>
-    request<{ destPincode: string; oda: boolean; carriers: { vendor: string; name: string; carrier: string; price: number | null; serviceable: boolean | null; tatDays: number | null; tatSource: string | null; api: boolean; note: string }[] }>('/api/v1/carriers/suggest', { method: 'POST', body: JSON.stringify(body) }),
+    request<{ destPincode: string; oda: boolean; priority?: { basis: string }; carriers: { vendor: string; name: string; carrier: string; price: number | null; serviceable: boolean | null; tatDays: number | null; tatSource: string | null; api: boolean; note: string; onTimePct?: number | null; priorityRank?: number }[] }>('/api/v1/carriers/suggest', { method: 'POST', body: JSON.stringify(body) }),
   exceptionsInbox: (all = false) => request<{ generatedAt: string; total: number; buckets: { key: string; title: string; hint: string; items: any[] }[] }>(`/api/v1/exceptions${all ? '?all=1' : ''}`),
   // ---- AR Logistics ----
   arlStatus: () => request<{ configured: boolean; [k: string]: any }>('/api/v1/arl/status'),
@@ -775,6 +775,10 @@ export const api = {
     request<{ ok: boolean }>(`/api/v1/reports/extra-expense/${id}/action`, { method: 'POST', body: JSON.stringify({ action, ref }) }),
   bulkMailRecipients: () => request<{ customers: number; count: number; rows: { email: string; code: string; customer: string }[] }>('/api/v1/bulk-mail/recipients'),
   bulkMailSend: (body: { subject: string; body: string; test?: boolean }) => request<{ ok: boolean; test: boolean; count: number; to?: string; message?: string }>('/api/v1/bulk-mail/send', { method: 'POST', body: JSON.stringify(body) }),
+  performance: (q: { from?: string; to?: string; clientId?: string; vendor?: string } = {}) => request<any>(`/api/v1/performance${qs(q)}`),
+  portalPerformance: (q: { from?: string; to?: string } = {}) => request<any>(`/api/v1/portal/performance${qs(q)}`),
+  carrierPriority: () => request<{ basis: 'BALANCED' | 'PRICE' | 'TAT' | 'PERFORMANCE'; weights: { price: number; tat: number; performance: number } }>('/api/v1/performance/priority'),
+  setCarrierPriority: (body: { basis: string; weights?: { price: number; tat: number; performance: number } }) => request<any>('/api/v1/performance/priority', { method: 'POST', body: JSON.stringify(body) }),
   runReport: (type: string, from?: string, to?: string, extra: { clientId?: string; vendor?: string; status?: string } = {}) => {
     const q = new URLSearchParams();
     if (from) q.set('from', from);

@@ -23,7 +23,7 @@ const isRetired = (to: string) => RETIRED.some((r) => to === r || to.startsWith(
 // One line icon per menu entry (route → icon). Replaces the emoji, which render differently on every
 // device and repeated (two 🚚, two 📦). Unknown routes fall back to the item's emoji.
 const NAV_ICON: Record<string, LucideIcon> = {
-  '/': LayoutDashboard, '/hub': Gauge, '/team-dashboards': Activity, '/tracker': Compass, '/pincode-search': MapPin,
+  '/': LayoutDashboard, '/hub': Gauge, '/team-dashboards': Activity, '/carrier-performance': Gauge, '/performance': Activity, '/tracker': Compass, '/pincode-search': MapPin,
   '/create': PlusCircle, '/quick-book': Zap, '/pickup-book': Package, '/handover': ClipboardList, '/exceptions': AlertTriangle, '/awb-list': List,
   '/bulk': Upload, '/walk-in': Store, '/deliver': Bike, '/pickups': Inbox,
   '/intl': Globe, '/intl/book': PlaneTakeoff, '/intl/rate-cards': Coins,
@@ -59,6 +59,7 @@ export function Layout() {
   const clientGroups: Group[] = [
     { title: 'Overview', items: [
       { to: '/', icon: '📊', label: 'My Dashboard', end: true },
+      { to: '/performance', icon: '📈', label: 'Performance dashboard' },
       { to: '/pincode-search', icon: '📍', label: 'Pincode Search' },
       // Only for customers switched on for rate checks (off by default).
       { to: '/rate-calculator', icon: '💹', label: 'Rate Calculator', show: !!(user as any)?.canCheckRates },
@@ -179,6 +180,7 @@ export function Layout() {
       { to: '/', icon: '📊', label: 'Dashboard', end: true },
       { to: '/hub', icon: '🚚', label: 'Shipping Hub' },
       { to: '/team-dashboards', icon: '📈', label: 'Team Dashboards' },
+      { to: '/carrier-performance', icon: '🏁', label: 'Carrier Performance' },
       { to: '/tracker', icon: '🧭', label: 'Track Shipment' },
       { to: '/pincode-search', icon: '📍', label: 'Pincode Search' },
     ] },

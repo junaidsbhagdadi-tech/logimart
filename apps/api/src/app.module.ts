@@ -32,6 +32,7 @@ import { OpscanModule } from './modules/opscan/opscan.module';
 import { LifecycleModule } from './modules/lifecycle/lifecycle.module';
 import { ArchiveModule } from './modules/archive/archive.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { PerformanceModule } from './modules/performance/performance.module';
 import { BluedartModule } from './modules/bluedart/bluedart.module';
 import { DelhiveryModule } from './modules/delhivery/delhivery.module';
 import { XpressBeesModule } from './modules/xpressbees/xpressbees.module';
@@ -103,6 +104,7 @@ const webDist = join(__dirname, '..', '..', 'web', 'dist');
     OpscanModule,
     LifecycleModule,
     ReportsModule,
+    PerformanceModule,
     BluedartModule,
     DelhiveryModule,
     XpressBeesModule,

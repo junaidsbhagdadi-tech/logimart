@@ -12,6 +12,8 @@ import { ArlService, arlConfigured } from '../arlogistics/arl.service';
 import { DsCargoService, isDsCargoVendor } from '../dscargo/dscargo.service';
 import { ShipmentsService } from '../shipments/shipments.service';
 import { opsJob } from '../../common/ops-hooks';
+import { PerformanceService } from '../performance/performance.service';
+import { LaneTat } from '../../common/lane-tat';
 
 export type CarrierKind = 'BD' | 'DLY' | 'XB' | 'GATI' | 'VXP' | 'ARL' | 'DSC' | 'SELF' | 'OTHER';
 const NAMES: Record<CarrierKind, string> = { BD: 'BlueDart', DLY: 'Delhivery', XB: 'XpressBees', GATI: 'Gati', VXP: 'V Express', ARL: 'AR Logistics', DSC: 'DS Cargo', SELF: 'own network', OTHER: 'carrier' };
@@ -37,6 +39,7 @@ export class CarriersService implements OnModuleInit {
     private readonly arl: ArlService,
     private readonly ds: DsCargoService,
     private readonly shipments: ShipmentsService,
+    private readonly perf: PerformanceService,
   ) {}
 
   /**
@@ -214,8 +217,11 @@ export class CarriersService implements OnModuleInit {
         api: this.configured(k), note: serviceable === false ? 'Not serviceable for this pincode' : destPin?.isOda ? 'ODA location' : '',
       });
     }
-    rows.sort((a, b) => (a.serviceable === false ? 1 : 0) - (b.serviceable === false ? 1 : 0) || (a.price ?? 1e12) - (b.price ?? 1e12) || (a.tatDays ?? 99) - (b.tatDays ?? 99));
-    return { destPincode: dto.destPincode, oda: !!destPin?.isOda, carriers: rows };
+    // Priority carrier setting (#13-4): rank by price / transit / on-time % (last 60 days) or a weighted balance.
+    const [scores, priority] = await Promise.all([this.perf.carrierScores().catch(() => new Map()), this.perf.getPriority()]);
+    const lt = new LaneTat(this.prisma);
+    for (const r of rows) { const sc = scores.get(await lt.carrierKey(r.vendor)); r.onTimePct = sc?.onTimePct ?? null; r.onTimeMeasured = sc?.measured ?? 0; }
+    return { destPincode: dto.destPincode, oda: !!destPin?.isOda, priority, carriers: this.perf.rank(rows, priority) };
   }
 
   // ---- auto hand-off of new bookings ----

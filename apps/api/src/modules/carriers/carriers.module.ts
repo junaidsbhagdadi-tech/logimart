@@ -1,3 +1,4 @@
+import { PerformanceModule } from '../performance/performance.module';
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { BluedartModule } from '../bluedart/bluedart.module';
@@ -16,7 +17,7 @@ import { CarriersService } from './carriers.service';
 import { ExceptionsService } from './exceptions.service';
 
 @Module({
-  imports: [PrismaModule, BluedartModule, DelhiveryModule, XpressBeesModule, GatiModule, VExpressModule, ArlModule, DsCargoModule, ShipmentsModule, BillingModule, PincodesModule],
+  imports: [PrismaModule, BluedartModule, DelhiveryModule, XpressBeesModule, GatiModule, VExpressModule, ArlModule, DsCargoModule, ShipmentsModule, BillingModule, PincodesModule, PerformanceModule],
   controllers: [CarriersController],
   providers: [CarriersService, ExceptionsService, RateCalculatorService],
 })
