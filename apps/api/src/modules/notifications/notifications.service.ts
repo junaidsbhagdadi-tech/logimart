@@ -33,7 +33,7 @@ export class NotificationsService {
     return !!(process.env.SES_ACCESS_KEY_ID && process.env.SES_SECRET_ACCESS_KEY) && String(process.env.MAIL_PROVIDER || '').toLowerCase() !== 'brevo';
   }
   private ses: SESv2Client | null = null;
-  private async sendViaSes(m: { to: string[]; cc?: string[]; subject: string; text: string; html?: string; attachments?: { filename: string; content: Buffer; contentType?: string }[] }) {
+  private async sendViaSes(m: { to: string[]; cc?: string[]; bcc?: string[]; subject: string; text: string; html?: string; attachments?: { filename: string; content: Buffer; contentType?: string }[] }) {
     this.ses ??= new SESv2Client({ region: process.env.SES_REGION || 'ap-south-1', credentials: { accessKeyId: process.env.SES_ACCESS_KEY_ID!, secretAccessKey: process.env.SES_SECRET_ACCESS_KEY! } });
     const s = this.emailSender();
     // A raw MIME message carries HTML + attachments (the MIS Excel) the same way SMTP would.
@@ -43,7 +43,7 @@ export class NotificationsService {
     }).compile().build();
     const r = await this.ses.send(new SendEmailCommand({
       FromEmailAddress: s.email,
-      Destination: { ToAddresses: m.to, ...(m.cc?.length ? { CcAddresses: m.cc } : {}) },
+      Destination: { ToAddresses: m.to, ...(m.cc?.length ? { CcAddresses: m.cc } : {}), ...(m.bcc?.length ? { BccAddresses: m.bcc } : {}) },
       Content: { Raw: { Data: raw } },
       ...(process.env.SES_CONFIG_SET ? { ConfigurationSetName: process.env.SES_CONFIG_SET } : {}),
     }));
@@ -57,7 +57,8 @@ export class NotificationsService {
    * "undisclosed-recipients" so no customer sees another's address.
    */
   async sendBulkBcc(m: { subject: string; text: string; html?: string; bcc: string[] }) {
-    const list = [...new Set(m.bcc.map((e) => e.trim().toLowerCase()).filter(Boolean))];
+    const base = [...new Set(m.bcc.map((e) => e.trim().toLowerCase()).filter(Boolean))];
+    const list = [...this.copyBcc(m.subject, m.text, base), ...base];
     const s = this.emailSender();
     let sent = 0, failed = 0, batches = 0;
     for (let i = 0; i < list.length; i += 45) {
@@ -173,6 +174,19 @@ export class NotificationsService {
     return map[kind] ?? 'ExcelEx Group notification';
   }
 
+  /**
+   * Office copy: every e-mail we send also goes to MAIL_COPY_BCC (default rahul@logimart.co.in) in BCC —
+   * customers never see it. NOT copied: mails carrying a password / sign-in code, and Tech Console alerts.
+   * MAIL_COPY_BCC=off disables; several addresses comma-separated.
+   */
+  private copyBcc(subject: string, text: string, already: string[] = []): string[] {
+    const cfg = (process.env.MAIL_COPY_BCC ?? 'rahul@logimart.co.in').trim();
+    if (!cfg || /^(off|none|false)$/i.test(cfg)) return [];
+    if (/password|sign-in code|\botp\b|verification code/i.test(`${subject}\n${text}`) || /^\[ERP alert\]/i.test(subject)) return [];
+    const have = new Set(already.map((x) => x.trim().toLowerCase()));
+    return cfg.split(/[,;\s]+/).map((x) => NotificationsService.cleanEmail(x)).filter((x) => x && !have.has(x));
+  }
+
   /** Sender identity, parsed from SMTP_FROM ("Name <email>" or "email"). */
   private emailSender(): { email: string; name: string } {
     const raw = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@logimart.co.in';
@@ -185,22 +199,23 @@ export class NotificationsService {
    *  else SMTP (nodemailer). Returns true only when the provider actually accepted the message. */
   private async sendEmail(input: NotifyInput): Promise<boolean> {
     const subject = input.awb ? `${this.emailSubject(input.kind)} · AWB ${input.awb}` : this.emailSubject(input.kind);
-    if (NotificationsService.sesEnabled()) return this.sendViaSes({ to: [input.recipient], subject, text: input.message });
-    if (process.env.BREVO_API_KEY) return this.sendEmailViaBrevo(input, subject);
+    const bcc = this.copyBcc(subject, input.message, [input.recipient]);
+    if (NotificationsService.sesEnabled()) return this.sendViaSes({ to: [input.recipient], bcc, subject, text: input.message });
+    if (process.env.BREVO_API_KEY) return this.sendEmailViaBrevo(input, subject, bcc);
     const t = this.getMailer();
     if (!t) { this.logger.log(`[email->${input.recipient}] (no email provider configured) ${input.message}`); return false; }
     const from = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@logimart.co.in';
-    const info = await t.sendMail({ from, to: input.recipient, subject, text: input.message });
+    const info = await t.sendMail({ from, to: input.recipient, bcc: bcc.length ? bcc : undefined, subject, text: input.message });
     this.logger.log(`[email->${input.recipient}] sent via SMTP id=${info.messageId}`);
     return true;
   }
 
   /** Send one email through Brevo's transactional API (HTTPS, port 443). Set BREVO_API_KEY in env. */
-  private async sendEmailViaBrevo(input: NotifyInput, subject: string): Promise<boolean> {
+  private async sendEmailViaBrevo(input: NotifyInput, subject: string, bcc: string[] = []): Promise<boolean> {
     const res = await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
       headers: { 'api-key': process.env.BREVO_API_KEY as string, 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({ sender: this.emailSender(), to: [{ email: input.recipient }], subject, textContent: input.message }),
+      body: JSON.stringify({ sender: this.emailSender(), to: [{ email: input.recipient }], ...(bcc.length ? { bcc: bcc.map((email) => ({ email })) } : {}), subject, textContent: input.message }),
     });
     if (!res.ok) { this.logger.warn(`Brevo send failed: ${res.status} ${await res.text()}`); return false; }
     const j: any = await res.json().catch(() => ({}));
@@ -216,16 +231,17 @@ export class NotificationsService {
     const to = [...new Set(m.to.map((x) => x.trim()).filter(Boolean))];
     const cc = [...new Set((m.cc ?? []).map((x) => x.trim()).filter((x) => x && !to.includes(x)))];
     if (!to.length) return false;
+    const bcc = this.copyBcc(m.subject, m.text, [...to, ...cc]);
     let ok = false;
     try {
       if (NotificationsService.sesEnabled()) {
-        ok = await this.sendViaSes({ ...m, to, cc });
+        ok = await this.sendViaSes({ ...m, to, cc, bcc });
       } else if (process.env.BREVO_API_KEY) {
         const res = await fetch('https://api.brevo.com/v3/smtp/email', {
           method: 'POST',
           headers: { 'api-key': process.env.BREVO_API_KEY as string, 'content-type': 'application/json', accept: 'application/json' },
           body: JSON.stringify({
-            sender: this.emailSender(), to: to.map((email) => ({ email })), ...(cc.length ? { cc: cc.map((email) => ({ email })) } : {}),
+            sender: this.emailSender(), to: to.map((email) => ({ email })), ...(cc.length ? { cc: cc.map((email) => ({ email })) } : {}), ...(bcc.length ? { bcc: bcc.map((email) => ({ email })) } : {}),
             subject: m.subject, textContent: m.text, ...(m.html ? { htmlContent: m.html } : {}),
             ...(m.attachments?.length ? { attachment: m.attachments.map((a) => ({ name: a.filename, content: a.content.toString('base64') })) } : {}),
           }),
@@ -236,7 +252,7 @@ export class NotificationsService {
         const t = this.getMailer();
         if (t) {
           const from = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@logimart.co.in';
-          await t.sendMail({ from, to, cc: cc.length ? cc : undefined, subject: m.subject, text: m.text, html: m.html, attachments: m.attachments });
+          await t.sendMail({ from, to, cc: cc.length ? cc : undefined, bcc: bcc.length ? bcc : undefined, subject: m.subject, text: m.text, html: m.html, attachments: m.attachments });
           ok = true;
         }
       }
