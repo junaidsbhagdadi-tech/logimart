@@ -363,7 +363,7 @@ export class LifecycleService {
       try {
         // Carrier code per scan (was always "BD"), and one row per event: XpressBees sends the same scan for
         // every box of an MPS shipment (13 boxes = 13 identical "Picked" rows) — repeats are folded into one.
-        const carrierCode = (c: string) => (/xpress/i.test(c) ? 'XPB' : /delhivery/i.test(c) ? 'DLY' : /v ?express/i.test(c) ? 'VXP' : /gati|allcargo/i.test(c) ? 'GATI' : 'BD');
+        const carrierCode = (c: string) => (/v ?express/i.test(c) ? 'VXP' : /xpress ?bees/i.test(c) ? 'XPB' : /delhivery/i.test(c) ? 'DLY' : /gati|allcargo/i.test(c) ? 'GATI' : 'BD');
         const raw = (JSON.parse((s as any).bdScans) as any[]).map((sc) => ({ sc, at: parseBdAt(sc?.date, sc?.time) })).filter((x) => x.at).sort((a, b) => +a.at! - +b.at!);
         let prev: any = null;
         for (const { sc, at } of raw) {
