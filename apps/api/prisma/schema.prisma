@@ -134,6 +134,7 @@ model B2bClient {
   isCash          Boolean  @default(false) // cash customer — no invoices generated
   apiKey          String?  @unique // customer-facing API key (x-api-key) for the external tracking/rate API
   canCheckRates   Boolean  @default(false) // may view rate agreement + estimate cost in their portal
+  canSeePerformance Boolean @default(false) // #14-4 may open the Performance dashboard in their portal (off by default)
   canViewInvoices Boolean  @default(false) // #22 — may see their invoices in the customer portal (opt-in)
   defaultVendor   String?   // preferred carrier — auto-fills the vendor at booking (staff can override)
   allowedVendors  String[]  @default([]) // vendor codes this customer may be booked on; EMPTY = all vendors allowed

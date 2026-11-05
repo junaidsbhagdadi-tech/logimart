@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles, SuperAdminOnly, Feature } from '../../common/rbac/roles.decorator';
@@ -85,12 +85,30 @@ export class CustomersController {
 
   // Pickup addresses / warehouses: CS (WAREHOUSE_HANDLER) + Ops (HUB_MANAGER) manage these too, so
   // they can save a pickup point as a reusable warehouse straight from the booking screen.
+  // #14-9/10 a customer login may list + save pickup points (warehouses) for its OWN accounts (Quick Booking).
+  private async ownAccount(req: any, id: string) {
+    if (req.user?.role !== UserRole.CLIENT_ADMIN) return this.inScope(req, id);
+    const me = BigInt(req.user.clientId);
+    const [mine, them] = await Promise.all([
+      this.prisma.b2bClient.findUnique({ where: { id: me }, select: { parentAccountId: true } }),
+      this.prisma.b2bClient.findUnique({ where: { id: BigInt(id) }, select: { id: true, parentAccountId: true } }),
+    ]);
+    const root = mine?.parentAccountId ?? me;
+    if (!them || !(them.id === me || them.id === root || them.parentAccountId === root)) throw new ForbiddenException('Not your account.');
+  }
   @Get(':id/addresses')
-  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.WAREHOUSE_HANDLER, UserRole.SALES, UserRole.SYS_ADMIN)
-  async listAddr(@Param('id') id: string, @Req() req: any) { await this.inScope(req, id); return this.customers.listAddr(Number(id)); }
+  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.WAREHOUSE_HANDLER, UserRole.SALES, UserRole.SYS_ADMIN, UserRole.CLIENT_ADMIN)
+  async listAddr(@Param('id') id: string, @Req() req: any) {
+    await this.ownAccount(req, id);
+    const rows = await this.customers.listAddr(Number(id));
+    return req.user?.role === UserRole.CLIENT_ADMIN ? (rows as any[]).filter((r) => r.isWarehouse) : rows;
+  }
   @Post(':id/addresses')
-  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.WAREHOUSE_HANDLER, UserRole.SYS_ADMIN)
-  addAddr(@Param('id') id: string, @Body() d: any) { return this.customers.addAddr(Number(id), d); }
+  @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.WAREHOUSE_HANDLER, UserRole.SYS_ADMIN, UserRole.CLIENT_ADMIN)
+  async addAddr(@Param('id') id: string, @Body() d: any, @Req() req: any) {
+    await this.ownAccount(req, id);
+    return this.customers.addAddr(Number(id), req.user?.role === UserRole.CLIENT_ADMIN ? { ...d, isWarehouse: true, contactType: 'Warehouse' } : d);
+  }
   @Patch(':id/addresses/:rowId')
   @Roles(UserRole.FINANCE_EXEC, UserRole.HUB_MANAGER, UserRole.WAREHOUSE_HANDLER, UserRole.SYS_ADMIN)
   updAddr(@Param('rowId') rowId: string, @Body() d: any) { return this.customers.updAddr(Number(rowId), d); }

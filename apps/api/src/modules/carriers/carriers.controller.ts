@@ -74,7 +74,7 @@ export class CarriersController {
   /** CS exceptions inbox. */
   @Get('exceptions')
   @Roles(UserRole.WAREHOUSE_HANDLER, UserRole.HUB_MANAGER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN, UserRole.SALES)
-  inbox(@Req() req: any, @Query('all') all?: string) {
-    return this.exceptions.inbox(req.user, all === '1' || all === 'true');
+  inbox(@Req() req: any, @Query('all') all?: string, @Query('vendor') vendor?: string, @Query('clientId') clientId?: string) {
+    return this.exceptions.inbox(req.user, all === '1' || all === 'true', { vendor, clientId });
   }
 }

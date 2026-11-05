@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { deriveStatusFromBd } from '../bluedart/bd-status';
+import { carrierScanRow, deriveStatusFromBd, mergeCarrierScans } from '../bluedart/bd-status';
 import { cityName } from '../../common/place-name';
 import { opsJob } from '../../common/ops-hooks';
 
@@ -140,7 +140,7 @@ export class VExpressService implements OnModuleInit {
 
   /** Pull the V Express status onto the shipment (and their POD link once delivered). */
   async syncTracking(awb: string) {
-    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { forwardingAwb: true, statusCode: true, podUrl: true } });
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { forwardingAwb: true, statusCode: true, podUrl: true, bdScans: true } });
     if (!s?.forwardingAwb) throw new BadRequestException(`No V Express LR on ${awb} to track.`);
     const d = await this.lr(s.forwardingAwb);
     if (!d) throw new BadRequestException(`V Express has no LR ${s.forwardingAwb} on this account.`);
@@ -154,9 +154,29 @@ export class VExpressService implements OnModuleInit {
       const p = await this.pod(s.forwardingAwb).catch(() => null);
       podUrl = (p?.lrs ?? [])[0]?.pod_img_url ?? undefined; // EPOD photo on their S3
     }
+    // V Express gives no scan list — only milestone timestamps + the latest event. Each is kept as a scan, so the
+    // tracker shows a history (it used to show only the carrier-status line).
+    const rows: any[] = [];
+    const add = (text: string, v: any, loc?: string | null) => {
+      const d = v ? new Date(v) : null;
+      if (!d || isNaN(+d)) return;
+      const t = new Date(+d + 330 * 60000);
+      rows.push(carrierScanRow('V Express', text, t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate(), t.getUTCHours(), t.getUTCMinutes(), loc ?? null));
+    };
+    add('Booked', d.created_at, d.consignor_city);
+    add('Ready for pickup', d.ready_for_pickup_at, d.pickup_branch_facility_name || d.consignor_city);
+    add('Dispatched', d.dispatch_date, d.pickup_branch_facility_name || d.consignor_city);
+    if (d.tracking_status) add(String(d.tracking_status), d.last_event_at, null);
+    add(`Delivered${d.delivered_to_contact_name ? ` — received by ${d.delivered_to_contact_name}` : ''}`, d.delivered_at, d.delivered_at_location || d.consignee_city);
+    const lastAt = d.last_event_at ? new Date(d.last_event_at) : null;
     await this.prisma.shipment.updateMany({
       where: { awb },
-      data: { bdStatus: /cancel/i.test(status) ? 'CANCELLED (V Express)' : label, ...(derived ? { statusCode: derived.statusCode, status: derived.status, statusAt: new Date() } : {}), ...(podUrl ? { podUrl } : {}) },
+      data: {
+        bdStatus: /cancel/i.test(status) ? 'CANCELLED (V Express)' : label, bdSyncedAt: new Date(),
+        ...(rows.length ? { bdScans: mergeCarrierScans(s.bdScans, rows) } : {}),
+        ...(d.delivered_to_contact_name ? { podReceivedBy: String(d.delivered_to_contact_name).slice(0, 120) } : {}),
+        ...(derived ? { statusCode: derived.statusCode, status: derived.status, statusAt: lastAt && !isNaN(+lastAt) ? lastAt : new Date() } : {}), ...(podUrl ? { podUrl } : {}),
+      },
     });
     return { awb, lr: s.forwardingAwb, status: label, statusCode: derived?.statusCode ?? s.statusCode, charge: d.total_charge ?? null, billedKg: d.billed_weight_in_kgs ?? null, tracking: d };
   }
@@ -170,7 +190,7 @@ export class VExpressService implements OnModuleInit {
           createdAt: { gte: new Date(Date.now() - 30 * 864e5) }, forwardingAwb: { not: null },
           AND: [{ OR: [{ vendor: { in: ['VXP', 'VX'] } }, { vendor: { contains: 'V EXPRESS', mode: 'insensitive' } }] }, { OR: [{ statusCode: null }, { statusCode: { notIn: ['DLD', 'RTD', 'CAN'] } }] }],
         },
-        select: { awb: true }, take: 300,
+        select: { awb: true }, orderBy: [{ bdSyncedAt: { sort: 'asc', nulls: 'first' } }, { createdAt: 'desc' }], take: 300,
       });
       for (const r of rows) {
         try { await this.syncTracking(r.awb); } catch { /* keep going */ }

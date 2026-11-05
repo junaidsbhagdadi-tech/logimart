@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
+import { useAuth } from '../auth';
 import { ScanButton } from '../components/BarcodeScanner';
 import { StatusBadge } from '../components/StatusBadge';
 import { QuickBulk } from './QuickBulk';
@@ -53,6 +54,8 @@ export function QuickBook() {
 }
 
 function NewBooking({ onBooked }: { onBooked: (awb: string) => void }) {
+  const { user } = useAuth();
+  const isClient = user?.role === 'CLIENT_ADMIN'; // #14-10 customers book here too (no carrier / AWB fields)
   const [st, setSt] = useState<Settings>(() => load(SETTINGS_KEY, DEFAULTS));
   const [showSettings, setShowSettings] = useState(false);
   const setSetting = (k: keyof Settings, v: boolean) => setSt((s) => { const n = { ...s, [k]: v }; save(SETTINGS_KEY, n); return n; });
@@ -105,11 +108,28 @@ function NewBooking({ onBooked }: { onBooked: (awb: string) => void }) {
   useEffect(() => { if (st.autoRef && !ref) setRef(`R${Date.now().toString().slice(-8)}`); /* eslint-disable-next-line */ }, [st.autoRef]);
 
   // Customer: type the code or name and pick from the list (the app's customer picker).
+  // #14-9 saved pickup points (warehouses) of the chosen customer — pick one, or save the typed address.
+  const [whs, setWhs] = useState<any[]>([]);
+  const loadWhs = (cid?: string) => { if (!cid) { setWhs([]); return; } api.listAddr(cid).then((rows) => setWhs((rows || []).filter((r: any) => r.isWarehouse || /WAREHOUSE|PICKUP|GODOWN|SHIPPER/i.test(String(r.contactType || ''))))).catch(() => setWhs([])); };
+  const applyWh = (id: string) => {
+    const w = whs.find((x) => String(x.id) === id); if (!w) return;
+    setPickupElsewhere(true);
+    setPick({ address: [w.addressLine1, w.addressLine2, w.city].filter(Boolean).join(', '), pincode: String(w.pincode || ''), phone: String(w.mobile || w.landline || '') });
+  };
+  const saveWh = async () => {
+    if (!cust || !pick.address.trim() || !/^\d{6}$/.test(pick.pincode.trim())) { setErr('Fill the pickup address and a 6-digit pincode first.'); return; }
+    const name = window.prompt('Save this pickup address as a warehouse. Name it:', pick.address.split(',')[0].slice(0, 40));
+    if (!name) return;
+    try { await api.addAddr(String(cust.id), { contactType: 'Warehouse', isWarehouse: true, name, addressLine1: pick.address.trim(), pincode: pick.pincode.trim(), mobile: pick.phone.trim() || undefined }); loadWhs(String(cust.id)); setErr(''); }
+    catch (e: any) { setErr(e.message); }
+  };
   const pickCustomer = (v: string) => {
     setCustText(v);
     const s = v.trim().toLowerCase();
     const m = customers.find((c) => c.accountCode.toLowerCase() === s || `${c.accountCode} — ${c.legalName}`.toLowerCase() === s);
     setCust(m ?? null);
+    loadWhs(m ? String(m.id) : undefined);
+    if (isClient) setVendor(String(m?.defaultVendor || '')); // a customer can't pick the carrier
     const dv = String(m?.defaultVendor || '').toUpperCase();
     if (dv && vendors.some((x) => x.code.toUpperCase() === dv)) setVendor(vendors.find((x) => x.code.toUpperCase() === dv)!.code);
   };
@@ -249,13 +269,13 @@ function NewBooking({ onBooked }: { onBooked: (awb: string) => void }) {
             {products.map((p) => <option key={p.code} value={p.code}>{p.code} — {p.name}</option>)}
           </select>
         </Field>
-        <Field label="Carrier (optional)">
+        {!isClient && <Field label="Carrier (optional)">
           <select value={vendor} onChange={(e) => setVendor(e.target.value)}>
             <option value="">— Own network / decide later —</option>
             {vendors.map((v) => <option key={v.code} value={v.code}>{v.code}  {v.name}</option>)}
           </select>
-        </Field>
-        {sugg.length > 0 && (
+        </Field>}
+        {!isClient && sugg.length > 0 && (
           <div style={{ margin: '-4px 0 10px' }}>
             <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>Suggested carriers for {con.pincode} (★ = priority pick) — click to pick</div>
             <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
@@ -289,6 +309,14 @@ function NewBooking({ onBooked }: { onBooked: (awb: string) => void }) {
         <span><span style={{ fontWeight: 600 }}>Pickup from another address</span><br /><span className="muted" style={{ fontSize: 12 }}>Off = the customer's own address{cust && !pickupElsewhere && cust.addressLine ? ` (${[cust.addressLine, cust.city, cust.pincode].filter(Boolean).join(', ')})` : ''}</span></span>
         <input type="checkbox" checked={pickupElsewhere} onChange={(e) => setPickupElsewhere(e.target.checked)} style={{ width: 'auto' }} />
       </label>
+      {cust && whs.length > 0 && (
+        <Field label="Saved warehouse">
+          <select value="" onChange={(e) => e.target.value && applyWh(e.target.value)}>
+            <option value="">— pick a saved pickup point ({whs.length}) —</option>
+            {whs.map((w) => <option key={w.id} value={w.id}>{w.name} · {[w.city, w.pincode].filter(Boolean).join(' ')}</option>)}
+          </select>
+        </Field>
+      )}
       {pickupElsewhere && (
         <>
           <Field label="Pickup address"><textarea rows={2} value={pick.address} onChange={(e) => setPick((p) => ({ ...p, address: e.target.value }))} /></Field>
@@ -296,6 +324,7 @@ function NewBooking({ onBooked }: { onBooked: (awb: string) => void }) {
             <Field label="Pickup pincode"><input inputMode="numeric" maxLength={6} value={pick.pincode} onChange={(e) => setPick((p) => ({ ...p, pincode: e.target.value }))} /></Field>
             <Field label="Pickup phone"><input inputMode="tel" value={pick.phone} onChange={(e) => setPick((p) => ({ ...p, phone: e.target.value }))} /></Field>
           </div>
+          {cust && <button className="secondary" style={{ padding: '4px 12px', fontSize: 12.5, marginBottom: 8 }} onClick={saveWh}>💾 Save as warehouse</button>}
         </>
       )}
 
@@ -337,8 +366,8 @@ function NewBooking({ onBooked }: { onBooked: (awb: string) => void }) {
       <Field label="Content / description"><input value={content} onChange={(e) => setContent(e.target.value)} /></Field>
 
       <Section>Numbers (scan or type)</Section>
-      <Field label="AWB no.">{scan(awb, setAwb, 'Blank = auto-generate', 'Scan the AWB barcode')}</Field>
-      <Field label="Forwarding / carrier AWB (optional)">{scan(fwd, setFwd, '', 'Scan the carrier barcode')}</Field>
+      {!isClient && <Field label="AWB no.">{scan(awb, setAwb, 'Blank = auto-generate', 'Scan the AWB barcode')}</Field>}
+      {!isClient && <Field label="Forwarding / carrier AWB (optional)">{scan(fwd, setFwd, '', 'Scan the carrier barcode')}</Field>}
       <Field label="Reference no. (optional)">{scan(ref, setRef, '', 'Scan the reference')}</Field>
       <div className="row" style={{ gap: 12 }}>
         <Field label="Invoice no.">{scan(invNo, setInvNo, '', 'Scan the invoice barcode')}</Field>
@@ -384,6 +413,8 @@ function NewBooking({ onBooked }: { onBooked: (awb: string) => void }) {
 
 /** Today's (or a picked day's) bookings by me — open one, or tick several of a carrier and print the handover manifest. */
 function MyBookings({ onOpen }: { onOpen: (awb: string) => void }) {
+  const { user } = useAuth();
+  const isClient = user?.role === 'CLIENT_ADMIN';
   const [day, setDay] = useState(todayIst());
   const [rows, setRows] = useState<any[]>([]);
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -436,7 +467,7 @@ Each one gets the carrier's AWB (and pickup) — same as pressing "Hand to carri
           {[null, ...vendors].map((x) => <button key={x ?? 'all'} className={vendor === x ? '' : 'secondary'} style={{ padding: '3px 12px', fontSize: 12 }} onClick={() => setVendor(x)}>{x ?? 'All'}</button>)}
         </div>
       )}
-      {!loading && !error && shown.length > 0 && (
+      {!isClient && !loading && !error && shown.length > 0 && (
         <div className="card" style={{ padding: '10px 12px', marginBottom: 8 }}>
           <div style={{ fontSize: 12.5, marginBottom: 8 }}>
             <b>{vendor ?? 'All accounts'}</b> · {shown.length} booking(s) · <span style={{ color: toHand.length ? 'var(--warn, #b45309)' : 'var(--ok, #16a34a)', fontWeight: 600 }}>{toHand.length ? `${toHand.length} not handed to carrier` : 'all handed to carrier'}</span>
@@ -483,6 +514,7 @@ Each one gets the carrier's AWB (and pickup) — same as pressing "Hand to carri
 
 /** What was booked — edit / cancel / hand to carrier / attach invoice / print (the app's booking summary). */
 function BookingSummary({ awb, justBooked, onClose }: { awb: string; justBooked: boolean; onClose: () => void }) {
+  const isClientUser = useAuth().user?.role === 'CLIENT_ADMIN';
   const [s, setS] = useState<any>(null);
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
@@ -576,7 +608,7 @@ Cancel it here anyway?`)) throw e;
 
       {editable && <Link to={`/shipments/${awb}`}><button className="secondary" style={btn}>✎ Edit booking</button></Link>}
       {String(s.statusCode || 'MAN') === 'MAN' && <button className="secondary" style={{ ...btn, color: 'var(--bad, #c0392b)', borderColor: 'var(--bad, #c0392b)' }} disabled={busy} onClick={cancel} title="Also cancels it with the carrier if it was handed off">🗑 Cancel booking</button>}
-      {carrier !== 'SELF' && !carrierAwb && <button style={btn} disabled={busy} onClick={handoff}>{busy ? 'Working…' : carrier === 'OTHER' ? `Enter ${vend} AWB` : `➤ Hand to ${carrierName} — generate AWB`}</button>}
+      {!isClientUser && carrier !== 'SELF' && !carrierAwb && <button style={btn} disabled={busy} onClick={handoff}>{busy ? 'Working…' : carrier === 'OTHER' ? `Enter ${vend} AWB` : `➤ Hand to ${carrierName} — generate AWB`}</button>}
       <label className="button secondary" style={{ ...btn, display: 'block', textAlign: 'center', cursor: 'pointer', border: '1px solid var(--border, #d0d5dd)', borderRadius: 8, fontWeight: 600 }}>
         📎 Attach invoice copy
         <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; attachInvoice(f); }} />

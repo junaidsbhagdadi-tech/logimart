@@ -25,24 +25,48 @@ function useFilterOptions() {
 }
 
 /** Vendor-wise + customer-wise filter used on every tab. */
+/** #14-5 Pick several vendors / customers, with a search box. Value = comma-separated. */
+function MultiPick({ label, value, onChange, options, allLabel, width }: { label: string; value: string; onChange: (v: string) => void; options: Opt[]; allLabel: string; width: number }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const sel = value ? value.split(',').filter(Boolean) : [];
+  const toggle = (v: string) => onChange((sel.includes(v) ? sel.filter((x) => x !== v) : [...sel, v]).join(','));
+  const shown = options.filter((o) => !q.trim() || o.label.toLowerCase().includes(q.trim().toLowerCase()));
+  const text = sel.length === 0 ? allLabel : sel.length === 1 ? (options.find((o) => o.value === sel[0])?.label ?? sel[0]) : `${sel.length} selected`;
+  return (
+    <div style={{ position: 'relative' }}>
+      <label>{label}</label>
+      <button type="button" className="secondary" onClick={() => setOpen((o) => !o)} style={{ minWidth: width, maxWidth: 320, textAlign: 'left', display: 'flex', justifyContent: 'space-between', gap: 8, fontWeight: sel.length ? 600 : 400 }}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{text}</span><span>▾</span>
+      </button>
+      {open && <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />}
+      {open && (
+        <div style={{ position: 'absolute', zIndex: 50, top: '100%', left: 0, marginTop: 4, width: Math.max(width, 300), background: 'var(--card, #fff)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.14)', padding: 8 }}>
+          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" />
+          <div style={{ maxHeight: 280, overflowY: 'auto', marginTop: 6 }}>
+            {shown.map((o) => (
+              <label key={o.value} className="row" style={{ gap: 8, alignItems: 'center', fontWeight: 400, fontSize: 13, padding: '4px 2px', cursor: 'pointer', margin: 0 }}>
+                <input type="checkbox" style={{ width: 'auto' }} checked={sel.includes(o.value)} onChange={() => toggle(o.value)} />{o.label}
+              </label>
+            ))}
+            {!shown.length && <div className="muted" style={{ fontSize: 12.5, padding: 6 }}>No match.</div>}
+          </div>
+          <div className="row" style={{ justifyContent: 'space-between', marginTop: 8 }}>
+            <button type="button" className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => onChange('')}>Clear</button>
+            <span className="muted" style={{ fontSize: 12, alignSelf: 'center' }}>{sel.length ? `${sel.length} picked` : ''}</span>
+            <button type="button" style={{ padding: '4px 12px', fontSize: 12 }} onClick={() => setOpen(false)}>Done</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FilterBar({ f, setF, opts }: { f: Filt; setF: (f: Filt) => void; opts: { customers: Opt[]; vendors: Opt[] } }) {
   return (
     <>
-      <div>
-        <label>Vendor</label>
-        <select value={f.vendor} onChange={(e) => setF({ ...f, vendor: e.target.value })} style={{ minWidth: 170 }}>
-          <option value="">All vendors</option>
-          <option value="SELF">SELF (own network)</option>
-          {opts.vendors.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
-        </select>
-      </div>
-      <div>
-        <label>Customer</label>
-        <select value={f.clientId} onChange={(e) => setF({ ...f, clientId: e.target.value })} style={{ minWidth: 220, maxWidth: 300 }}>
-          <option value="">All customers</option>
-          {opts.customers.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-        </select>
-      </div>
+      <MultiPick label="Vendor" value={f.vendor} onChange={(v) => setF({ ...f, vendor: v })} options={[{ value: 'SELF', label: 'SELF (own network)' }, ...opts.vendors]} allLabel="All vendors" width={180} />
+      <MultiPick label="Customer" value={f.clientId} onChange={(v) => setF({ ...f, clientId: v })} options={opts.customers} allLabel="All customers" width={230} />
     </>
   );
 }
@@ -55,10 +79,13 @@ async function downloadXlsx(name: string, title: string, head: string[], body: (
   XLSX.writeFile(wb, name);
 }
 
-const filtLabel = (f: Filt, opts: { customers: Opt[]; vendors: Opt[] }) => [
-  f.vendor ? `Vendor: ${f.vendor}` : '',
-  f.clientId ? `Customer: ${opts.customers.find((c) => c.value === f.clientId)?.label ?? f.clientId}` : '',
-].filter(Boolean).join(' · ');
+const filtLabel = (f: Filt, opts: { customers: Opt[]; vendors: Opt[] }) => {
+  const cs = f.clientId ? f.clientId.split(',').filter(Boolean).map((id) => opts.customers.find((c) => c.value === id)?.label ?? id) : [];
+  return [
+    f.vendor ? `Vendor: ${f.vendor.split(',').join(', ')}` : '',
+    cs.length ? `Customer: ${cs.slice(0, 3).join(', ')}${cs.length > 3 ? ` +${cs.length - 3} more` : ''}` : '',
+  ].filter(Boolean).join(' · ');
+};
 
 export function TeamDashboards() {
   const [tab, setTab] = useState<Tab>('Customer Service');
@@ -90,7 +117,7 @@ function CS({ opts }: { opts: { customers: Opt[]; vendors: Opt[] } }) {
     setBusy(true); setError('');
     api.csDashboard(undefined, undefined, f).then(setData).catch((e) => setError(e.message)).finally(() => setBusy(false));
     // Exceptions summary (same buckets as the Exceptions page, minus "invoices not sent"), all open — no date window.
-    api.exceptionsInbox(true).then((r) => setExc(r.buckets.filter((b) => b.key !== 'invoices_unsent'))).catch(() => setExc([]));
+    api.exceptionsInbox(true, f).then((r) => setExc(r.buckets.filter((b) => b.key !== 'invoices_unsent'))).catch(() => setExc([]));
   };
   const [exc, setExc] = useState<{ key: string; title: string; hint: string; items: any[] }[] | null>(null);
   const [excOpen, setExcOpen] = useState<string | null>(null);
@@ -106,7 +133,9 @@ function CS({ opts }: { opts: { customers: Opt[]; vendors: Opt[] } }) {
     }
     XLSX.writeFile(wb, `cs-exceptions-${only ?? 'all'}-${today()}.xlsx`);
   };
-  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // #14-6 the list (and therefore the Excel) follows the filters the moment they change — picking a customer
+  // used to need "Refresh", so the export carried every customer under that customer's title.
+  useEffect(load, [f.vendor, f.clientId]); // eslint-disable-line react-hooks/exhaustive-deps
   const [q, setQ] = useState('');
   const pick = (r: any) => filter === 'all' || (filter === 'ndr' ? r.ndr : filter === 'exception' ? r.exception : filter === 'old' ? r.ageDays > 30 : r.overdue);
   const oldCount = (data?.rows ?? []).filter((r: any) => r.ageDays > 30).length;

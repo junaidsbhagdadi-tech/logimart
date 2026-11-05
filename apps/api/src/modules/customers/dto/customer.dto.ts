@@ -48,6 +48,7 @@ export class CreateClientDto {
   @IsOptional() @IsBoolean() isOneTime?: boolean;
   @IsOptional() @IsBoolean() isCash?: boolean;
   @IsOptional() @IsBoolean() canCheckRates?: boolean;
+  @IsOptional() @IsBoolean() canSeePerformance?: boolean;
   @IsOptional() @IsBoolean() canViewInvoices?: boolean;
   @IsOptional() @IsNumber() commissionPct?: number;
 }
@@ -86,6 +87,7 @@ export class UpdateClientDto {
   @IsOptional() @IsInt() @Min(0) creditDays?: number;
   @IsOptional() @IsBoolean() isCash?: boolean;
   @IsOptional() @IsBoolean() canCheckRates?: boolean;
+  @IsOptional() @IsBoolean() canSeePerformance?: boolean;
   @IsOptional() @IsBoolean() canViewInvoices?: boolean;
   @IsOptional() @IsNumber() commissionPct?: number;
   @IsOptional() @IsString() salesPerson?: string;

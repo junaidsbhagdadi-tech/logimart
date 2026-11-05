@@ -32,15 +32,17 @@ export class ShipmentsController {
 
   /** Rider app — shipments I booked on a day (IST, default today): reopen, edit, hand off, print, manifest. */
   @Get('my-bookings')
-  @Roles(UserRole.DRIVER, UserRole.HUB_MANAGER, UserRole.WAREHOUSE_HANDLER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  @Roles(UserRole.DRIVER, UserRole.HUB_MANAGER, UserRole.WAREHOUSE_HANDLER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN, UserRole.CLIENT_ADMIN)
   myBookings(@Req() req: any, @Query('date') date?: string) {
     return this.shipments.myBookings(BigInt(req.user.sub), date);
   }
 
   /** Lightweight customer picker for the pickup-boy (DRIVER) mobile booking — id/name/code only. */
   @Get('booking-customers')
-  @Roles(UserRole.DRIVER, UserRole.HUB_MANAGER, UserRole.WAREHOUSE_HANDLER, UserRole.FINANCE_EXEC, UserRole.SALES, UserRole.SYS_ADMIN)
+  @Roles(UserRole.DRIVER, UserRole.HUB_MANAGER, UserRole.WAREHOUSE_HANDLER, UserRole.FINANCE_EXEC, UserRole.SALES, UserRole.SYS_ADMIN, UserRole.CLIENT_ADMIN)
   async bookingCustomers(@Req() req: any, @Query('q') q?: string) {
+    // #14-10 a customer login (Quick Booking in the portal) sees only its own account group.
+    if (req.user.role === UserRole.CLIENT_ADMIN) return this.shipments.bookingCustomers(q, [...(await this.shipments.bookableAccountIds(req.user.clientId))].map((x) => BigInt(x)));
     return this.shipments.bookingCustomers(q, await scopedClientIds(this.prisma, req.user));
   }
 

@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
-import { Roles } from '../../common/rbac/roles.decorator';
+import { Feature, Roles } from '../../common/rbac/roles.decorator';
 import { LifecycleService } from './lifecycle.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { scopedClientIds } from '../../common/scope/data-scope';
@@ -55,6 +55,14 @@ export class LifecycleController {
   @Get('bags')
   @Roles(...OPS)
   bags() { return this.svc.bags(); }
+
+  /** #14-8 Bulk delivery update from an Excel (AWB / Status / Date / Received by) — no POD image needed. */
+  @Post('bulk-delivery-excel')
+  @Feature('/lm/bulk-delivery-update')
+  @Roles(UserRole.HUB_MANAGER, UserRole.WAREHOUSE_HANDLER, UserRole.FINANCE_EXEC, UserRole.SYS_ADMIN)
+  bulkDeliveryExcel(@Body() dto: { rows: { awb?: string; status?: string; date?: any; receivedBy?: string }[] }, @Req() req: any) {
+    return this.svc.bulkDeliveryExcel(dto?.rows ?? [], req.user?.sub ? BigInt(req.user.sub) : undefined);
+  }
 
   @Post('scan')
   @Roles(...OPS)

@@ -118,7 +118,7 @@ export function App() {
       <Route path="/intl/:idOrJob/document" element={<IntlDocument />} />
       <Route element={<Layout />}>
         <Route path="/" element={user?.role === 'CLIENT_ADMIN' ? <ClientPortal /> : <Dashboard />} />
-        <Route path="/performance" element={user?.role === 'CLIENT_ADMIN' ? <Performance internal={false} /> : <Navigate to="/carrier-performance" replace />} />
+        <Route path="/performance" element={user?.role === 'CLIENT_ADMIN' ? ((user as any)?.canSeePerformance ? <Performance internal={false} /> : <Navigate to="/" replace />) : <Navigate to="/carrier-performance" replace />} />
         <Route path="/carrier-performance" element={user?.role === 'CLIENT_ADMIN' || user?.role === 'DRIVER' ? <Navigate to="/" replace /> : gate('/carrier-performance', true) ? <Performance internal /> : <Navigate to="/" replace />} />
         <Route path="/team-dashboards" element={user?.role === 'CLIENT_ADMIN' ? <Navigate to="/" replace /> : <TeamDashboards />} />
         <Route path="/tracker" element={<TrackDetail />} />

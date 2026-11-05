@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { deriveStatusFromBd } from '../bluedart/bd-status';
+import { carrierScanRow, deriveStatusFromBd, mergeCarrierScans } from '../bluedart/bd-status';
 import { cityName } from '../../common/place-name';
 import { opsJob } from '../../common/ops-hooks';
 
@@ -273,7 +273,7 @@ export class GatiService implements OnModuleInit {
   }
 
   async syncTracking(awb: string) {
-    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { forwardingAwb: true, statusCode: true } });
+    const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { forwardingAwb: true, statusCode: true, bdScans: true } });
     if (!s?.forwardingAwb) throw new BadRequestException(`No Gati docket on ${awb} to track.`);
     const r = await this.track(s.forwardingAwb);
     const d = first(r?.details);
@@ -283,7 +283,20 @@ export class GatiService implements OnModuleInit {
     const text = GATI_TEXT[code] ?? (latest?.INTRANSIT_STATUS || d.DOCKET_STATUS || null);
     const label = `${d.DOCKET_STATUS || latest?.INTRANSIT_STATUS || 'Booked'}${latest?.INTRANSIT_LOCATION ? ` — ${latest.INTRANSIT_LOCATION}` : ''}${latest?.REASON_DESC ? ` (${latest.REASON_DESC})` : ''} (Gati)`;
     const derived = text ? deriveStatusFromBd(s.statusCode, text) : null;
-    await this.prisma.shipment.updateMany({ where: { awb }, data: { bdStatus: label, ...(derived ? { statusCode: derived.statusCode, status: derived.status, statusAt: new Date() } : {}) } });
+    // Every transit event as a scan (date / time field names read defensively: DD-MM-YYYY, DD-MON-YYYY or ISO).
+    const MON: Record<string, number> = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 };
+    const rows: any[] = [];
+    for (const e of (d.TRANSIT_DTLS ?? []) as any[]) {
+      const dk = Object.keys(e).find((k) => /DATE/i.test(k)); const tk = Object.keys(e).find((k) => /TIME/i.test(k));
+      const ds = String(dk ? e[dk] : ''), ts = String(tk ? e[tk] : '');
+      let m = ds.match(/^(\d{1,2})[-/ ]([A-Za-z]{3}|\d{1,2})[-/ ](\d{4})/); let y = 0, mo = 0, da = 0;
+      if (m) { da = +m[1]; mo = /\d/.test(m[2]) ? +m[2] : MON[m[2].toUpperCase()] ?? 0; y = +m[3]; }
+      else if ((m = ds.match(/^(\d{4})-(\d{2})-(\d{2})/))) { y = +m[1]; mo = +m[2]; da = +m[3]; }
+      if (!y || !mo || !da) continue;
+      const tm = (ts.match(/(\d{1,2}):(\d{2})/) ?? ds.match(/(\d{1,2}):(\d{2})/) ?? []) as string[];
+      rows.push(carrierScanRow('Gati', String(e.INTRANSIT_STATUS || e.STATUS || 'Scan'), y, mo, da, +(tm[1] ?? 0), +(tm[2] ?? 0), e.INTRANSIT_LOCATION || null));
+    }
+    await this.prisma.shipment.updateMany({ where: { awb }, data: { bdStatus: label, bdSyncedAt: new Date(), ...(rows.length ? { bdScans: mergeCarrierScans(s.bdScans, rows) } : {}), ...(derived ? { statusCode: derived.statusCode, status: derived.status, statusAt: new Date() } : {}) } });
     return { awb, docket: s.forwardingAwb, status: label, statusCode: derived?.statusCode ?? s.statusCode, pod: d.POD || null, tracking: d };
   }
 

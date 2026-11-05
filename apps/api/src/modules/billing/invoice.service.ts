@@ -1,3 +1,4 @@
+import { dashFilterWhere } from '../../common/dash-filter';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InvoiceStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -485,11 +486,8 @@ export class InvoiceService {
   async salesByRep(from?: string, to?: string, opts: { vendor?: string; clientId?: string; groupBy?: 'rep' | 'customer' | 'vendor'; scope?: bigint[] | null } = {}) {
     const gte = from ? new Date(from) : new Date(new Date().setHours(0, 0, 0, 0));
     const lte = to ? new Date(`${to}T23:59:59`) : new Date();
-    const where: any = { createdAt: { gte, lte } };
-    if (opts.vendor && opts.vendor.trim()) where.vendor = { equals: opts.vendor.trim(), mode: 'insensitive' };
-    if (opts.clientId && /^\d+$/.test(opts.clientId)) where.clientId = BigInt(opts.clientId);
-    // #10 — branch/company-scoped staff: only their customers (a picked customer outside it matches nothing).
-    if (opts.scope) where.clientId = where.clientId != null ? (opts.scope.includes(where.clientId) ? where.clientId : { in: [] }) : { in: opts.scope };
+    // several vendors / customers (comma-separated); branch/company-scoped staff stay inside their scope
+    const where: any = { createdAt: { gte, lte }, ...dashFilterWhere(opts.vendor, opts.clientId, opts.scope) };
     const groupBy = opts.groupBy === 'customer' || opts.groupBy === 'vendor' ? opts.groupBy : 'rep';
     const ships = await this.prisma.shipment.findMany({
       where, take: 20000,

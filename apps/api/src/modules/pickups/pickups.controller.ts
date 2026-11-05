@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
-import { IsBoolean, IsInt, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Roles, Feature } from '../../common/rbac/roles.decorator';
@@ -44,6 +44,8 @@ class CompleteDto {
   @IsOptional() @IsString() consigneeName?: string;
   @IsOptional() @IsString() consigneePhone?: string;
   @IsOptional() @IsString() consigneeAddress?: string;
+  // #14-7 reverse pickup to many locations: one booking (own AWB) per drop, all marked picked together
+  @IsOptional() @IsArray() drops?: { destPincode: string; consigneeName?: string; consigneePhone?: string; consigneeAddress?: string; weight?: number; pieces?: number; value?: number; forwardingNo?: string }[];
 }
 class HandoffDto {
   @IsOptional() @IsString() vendor?: string;

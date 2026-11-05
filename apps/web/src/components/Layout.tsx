@@ -58,13 +58,14 @@ export function Layout() {
   const clientGroups: Group[] = [
     { title: 'Overview', items: [
       { to: '/', icon: '📊', label: 'My Dashboard', end: true },
-      { to: '/performance', icon: '📈', label: 'Performance dashboard' },
+      { to: '/performance', icon: '📈', label: 'Performance dashboard', show: !!(user as any)?.canSeePerformance },
       { to: '/pincode-search', icon: '📍', label: 'Pincode Search' },
       // Only for customers switched on for rate checks (off by default).
       { to: '/rate-calculator', icon: '💹', label: 'Rate Calculator', show: !!(user as any)?.canCheckRates },
     ] },
     { title: 'My Shipments', items: [
       { to: '/create', icon: '➕', label: 'Book Shipment' },
+      { to: '/quick-book', icon: '⚡', label: 'Quick Booking' },
       { to: '/awb-list', icon: '📝', label: 'My Shipments' },
       { to: '/tracker', icon: '🧭', label: 'Track Shipment' },
       { to: '/pickups', icon: '📦', label: 'Schedule Pickup' },

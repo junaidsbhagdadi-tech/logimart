@@ -252,8 +252,40 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
   const [pickedFor, setPickedFor] = useState<any | null>(null);
   const [pk, setPk] = useState({ awb: '', pickedAt: '', weight: '', pieces: '', value: '', destPincode: '', consigneeName: '', consigneePhone: '' });
   const openPicked = (p: any) => { setPickedFor(p); setPk({ awb: '', pickedAt: String(p.handoffAt || new Date().toISOString()).slice(0, 10), weight: p.pickedWeight || p.weight || '', pieces: String(p.estPieces || ''), value: p.pickedValue || p.invoiceValue || '', destPincode: '', consigneeName: '', consigneePhone: '' }); setError(''); };
+  // #14-7 reverse pickup: one collection, many destinations — each drop becomes its own AWB.
+  type Drop = { destPincode: string; consigneeName: string; consigneePhone: string; consigneeAddress: string; weight: string; pieces: string; value: string; forwardingNo: string };
+  const blankDrop = (): Drop => ({ destPincode: '', consigneeName: '', consigneePhone: '', consigneeAddress: '', weight: '', pieces: '1', value: '', forwardingNo: '' });
+  const [multi, setMulti] = useState(false);
+  const [drops, setDrops] = useState<Drop[]>([blankDrop(), blankDrop()]);
+  const setDrop = (i: number, k: keyof Drop, v: string) => setDrops((ds) => ds.map((d, j) => (j === i ? { ...d, [k]: v } : d)));
+  const dropsFromExcel = async (f?: File) => {
+    if (!f) return;
+    try {
+      const XLSX = await import('xlsx');
+      const wb = XLSX.read(await f.arrayBuffer(), { type: 'array' });
+      const raw = XLSX.utils.sheet_to_json<Record<string, any>>(wb.Sheets[wb.SheetNames[0]], { defval: '', raw: false });
+      const hk = (s: string) => s.toLowerCase().replace(/[^a-z]/g, '');
+      const out = raw.map((r) => {
+        const get = (...n: string[]) => { for (const [k, v] of Object.entries(r)) if (n.includes(hk(k))) return String(v ?? '').trim(); return ''; };
+        return { destPincode: get('destinationpincode', 'pincode', 'destpincode', 'droppincode'), consigneeName: get('consigneename', 'consignee', 'name', 'location'), consigneePhone: get('phone', 'consigneephone', 'mobile'), consigneeAddress: get('address', 'consigneeaddress'), weight: get('weight', 'weightkg'), pieces: get('boxes', 'pieces', 'pcs') || '1', value: get('value', 'invoicevalue'), forwardingNo: get('forwardingno', 'forwardingawb', 'awb', 'carrierawb') };
+      }).filter((d) => d.destPincode);
+      if (!out.length) { setError('No rows with a destination pincode — columns: Destination pincode, Consignee name, Phone, Address, Weight, Boxes, Value, Forwarding no.'); return; }
+      setDrops(out); setError('');
+    } catch (e: any) { setError(e.message); }
+  };
   const doPicked = async () => {
     if (!pickedFor) return;
+    if (multi) {
+      const ds = drops.filter((d) => d.destPincode.trim());
+      if (!ds.length) { setError('Add at least one drop with a destination pincode.'); return; }
+      if (!window.confirm(`Book ${ds.length} shipments (one AWB each) for pickup #${pickedFor.id} and mark it picked?`)) return;
+      try {
+        const r: any = await api.completePickup(String(pickedFor.id), { pickedAt: pk.pickedAt || undefined, drops: ds.map((d) => ({ destPincode: d.destPincode.trim(), consigneeName: d.consigneeName || undefined, consigneePhone: d.consigneePhone || undefined, consigneeAddress: d.consigneeAddress || undefined, weight: d.weight ? +d.weight : undefined, pieces: d.pieces ? +d.pieces : undefined, value: d.value ? +d.value : undefined, forwardingNo: d.forwardingNo || undefined })) });
+        setMsg(`✓ Picked — ${r.shipments?.length ?? 0} shipment(s) booked: ${(r.shipments ?? []).map((x: any) => x.awb).join(', ')}${r.failed?.length ? ` · ${r.failed.length} not booked: ${r.failed.map((f: any) => `#${f.drop} ${f.error}`).join('; ')}` : ''}`);
+        setPickedFor(null); setMulti(false); setDrops([blankDrop(), blankDrop()]); load();
+      } catch (e: any) { setError(e.message); }
+      return;
+    }
     try {
       const r: any = await api.completePickup(String(pickedFor.id), { forwardingNo: pk.awb.trim() || undefined, pickedAt: pk.pickedAt || undefined, weight: pk.weight ? +pk.weight : undefined, pieces: pk.pieces ? +pk.pieces : undefined, value: pk.value ? +pk.value : undefined,
         destPincode: pk.destPincode || undefined, consigneeName: pk.consigneeName || undefined, consigneePhone: pk.consigneePhone || undefined });
@@ -573,7 +605,46 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
       )}
 
       {pickedFor && (
-        <Modal title={`Mark picked — pickup #${pickedFor.id}`} width={460} onClose={() => setPickedFor(null)}>
+        <Modal title={`Mark picked — pickup #${pickedFor.id}`} width={multi ? 980 : 460} onClose={() => setPickedFor(null)}>
+          <label className="row" style={{ gap: 8, alignItems: 'center', fontWeight: 600, marginBottom: 8 }}>
+            <input type="checkbox" style={{ width: 'auto' }} checked={multi} onChange={(e) => setMulti(e.target.checked)} />
+            Several drop locations <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>— reverse pickup: one collection, an AWB for each destination</span>
+          </label>
+          {multi ? (
+            <>
+              <div className="row" style={{ gap: 8, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 8 }}>
+                <div style={{ width: 170 }}><label>Picked on</label><input type="date" value={pk.pickedAt} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setPk((s) => ({ ...s, pickedAt: e.target.value }))} /></div>
+                <label className="button secondary" style={{ padding: '8px 12px', cursor: 'pointer', margin: 0, border: '1px solid var(--border)', borderRadius: 8 }}>⬆ Drops from Excel<input type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={(e) => { void dropsFromExcel(e.target.files?.[0]); e.target.value = ''; }} /></label>
+                <span className="muted" style={{ fontSize: 12 }}>Columns: Destination pincode · Consignee name · Phone · Address · Weight · Boxes · Value · Forwarding no</span>
+              </div>
+              <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+                <table style={{ fontSize: 12.5 }}>
+                  <thead><tr><th>#</th><th>Dest. pincode *</th><th>Consignee / location</th><th>Phone</th><th>Address</th><th>Kg</th><th>Boxes</th><th>Value ₹</th><th>Forwarding no</th><th /></tr></thead>
+                  <tbody>
+                    {drops.map((d, i) => (
+                      <tr key={i}>
+                        <td>{i + 1}</td>
+                        <td><input style={{ width: 90 }} maxLength={6} value={d.destPincode} onChange={(e) => setDrop(i, 'destPincode', e.target.value)} /></td>
+                        <td><input style={{ width: 150 }} value={d.consigneeName} onChange={(e) => setDrop(i, 'consigneeName', e.target.value)} /></td>
+                        <td><input style={{ width: 105 }} value={d.consigneePhone} onChange={(e) => setDrop(i, 'consigneePhone', e.target.value)} /></td>
+                        <td><input style={{ width: 170 }} value={d.consigneeAddress} onChange={(e) => setDrop(i, 'consigneeAddress', e.target.value)} /></td>
+                        <td><input style={{ width: 60 }} type="number" value={d.weight} onChange={(e) => setDrop(i, 'weight', e.target.value)} /></td>
+                        <td><input style={{ width: 55 }} type="number" value={d.pieces} onChange={(e) => setDrop(i, 'pieces', e.target.value)} /></td>
+                        <td><input style={{ width: 80 }} type="number" value={d.value} onChange={(e) => setDrop(i, 'value', e.target.value)} /></td>
+                        <td><input style={{ width: 120 }} value={d.forwardingNo} onChange={(e) => setDrop(i, 'forwardingNo', e.target.value)} /></td>
+                        <td>{drops.length > 1 && <button className="secondary" style={{ padding: '2px 8px' }} onClick={() => setDrops((ds) => ds.filter((_, j) => j !== i))}>✕</button>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
+                <button className="secondary" onClick={() => setDrops((ds) => [...ds, blankDrop()])}>＋ Add drop</button>
+                <span className="muted" style={{ fontSize: 12.5 }}>{drops.filter((d) => d.destPincode.trim()).length} drop(s) · our AWB is generated for each</span>
+                <div className="row" style={{ gap: 8 }}><button className="secondary" onClick={() => setPickedFor(null)}>Cancel</button><button onClick={doPicked}>Mark picked &amp; book all</button></div>
+              </div>
+            </>
+          ) : (<>
           <p className="muted" style={{ marginTop: 0, fontSize: 12.5 }}>Capture the actuals at pickup. Our internal AWB is generated automatically{pickedFor.pickedAwb ? ` (already booked: ${pickedFor.pickedAwb})` : ''} — type only the vendor's number.</p>
           <div className="grid cols-2" style={{ gap: 10 }}>
             <div style={{ gridColumn: 'span 2' }}><label>Forwarding no. <span className="muted" style={{ fontSize: 11 }}>(vendor's AWB{pickedFor.vendor ? ` — ${pickedFor.vendor}` : ''})</span></label><input value={pk.awb} onChange={(e) => setPk((s) => ({ ...s, awb: e.target.value }))} placeholder="e.g. BlueDart waybill" /></div>
@@ -593,6 +664,7 @@ export function Pickups({ mode }: { mode?: 'book' } = {}) {
             <button className="secondary" onClick={() => setPickedFor(null)}>Cancel</button>
             <button onClick={doPicked}>Mark picked</button>
           </div>
+          </>)}
         </Modal>
       )}
       </>)}

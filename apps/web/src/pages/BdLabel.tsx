@@ -32,6 +32,7 @@ function carrierName(m: MasterLabel): string {
   return (m.vendorName || v).toUpperCase();
 }
 function serviceName(m: MasterLabel): string {
+  if (isBdDp(m)) return 'DP'; // #14-2 a DP sticker says DP, not AIR
   const p = String(m.product || '').toUpperCase();
   if (/APEX|APX/.test(p)) return 'APEX';
   if (/AIR/.test(String(m.serviceMode || ''))) return 'AIR';
@@ -41,7 +42,7 @@ function serviceName(m: MasterLabel): string {
 /** BlueDart Domestic Priority goes as ONE waybill — no per-box (MPS) stickers. */
 export const isBdDp = (m: MasterLabel) => carrierName(m) === 'BLUEDART' && /^(DP|TODP|TDD)$/.test(String(m.product || '').toUpperCase());
 /** Pages one AWB prints: 5 + one per box (none for DP); POD-only mode = 1. */
-export const labelPageCount = (m: MasterLabel, only?: 'pod') => (only === 'pod' ? 1 : 5 + (isBdDp(m) ? 0 : (m.boxes?.length || m.pieceCount || 1)));
+export const labelPageCount = (m: MasterLabel, only?: 'pod') => (only === 'pod' || isBdDp(m) ? 1 : 5 + (m.boxes?.length || m.pieceCount || 1));
 
 export function BdLabel() {
   const { awb } = useParams();
@@ -60,7 +61,7 @@ export function BdLabel() {
     <div className="cl-page">
       <div className="cl-toolbar no-print">
         <Link to={`/shipments/${m.awb}`}>← {m.awb}</Link>
-        <span className="cl-hint">{labelPageCount(m)} pages · 89 × 69 mm{isBdDp(m) ? ' · DP = single AWB' : ''}</span>
+        <span className="cl-hint">{labelPageCount(m)} {labelPageCount(m) === 1 ? 'page' : 'pages'} · 89 × 69 mm{isBdDp(m) ? ' · DP = one sticker' : ''}</span>
         <button onClick={() => window.print()}>🖨 Print</button>
       </div>
       {!carrierAwb && !isOwn && (
@@ -142,6 +143,8 @@ export function CourierSet({ m, only }: { m: MasterLabel; only?: 'pod' }) {
     </section>
   );
   if (only === 'pod') return pod;
+  // #14-2 BlueDart DP travels on ONE sticker — no invoice / POD / shipper copies, no box stickers.
+  if (dp) return label('DP');
 
   return (
     <>

@@ -122,6 +122,7 @@ export class CustomersService {
           isOneTime: dto.isOneTime ?? false,
           isCash: dto.isCash ?? false,
           canCheckRates: dto.canCheckRates ?? false,
+          canSeePerformance: dto.canSeePerformance ?? false,
           canViewInvoices: dto.canViewInvoices ?? false,
           commissionPct: this.dec(dto.commissionPct),
         },

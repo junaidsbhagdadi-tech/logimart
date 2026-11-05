@@ -290,10 +290,72 @@ export function Bagging() {
 }
 
 /** Last-mile delivery update: Delivered (POD mandatory) or Undelivered (reason). Single or bulk. */
+/** #14-8 Excel: AWB No · Status · Date · Received by — no POD image; delivery location = the destination. */
+function DeliveryExcel() {
+  const [rows, setRows] = useState<{ awb: string; status: string; date?: string; receivedBy?: string }[] | null>(null);
+  const [file, setFile] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [res, setRes] = useState<{ updated: number; failed: number; results: { awb: string; ok: boolean; status?: string; error?: string }[] } | null>(null);
+  const [err, setErr] = useState('');
+  const hk = (s: string) => s.toLowerCase().replace(/[^a-z]/g, '');
+  const template = async () => {
+    const XLSX = await import('xlsx');
+    const ws = XLSX.utils.aoa_to_sheet([['AWB No', 'Status', 'Date', 'Received by'], ['L1000000101', 'Delivered', '05-11-2026 14:30', 'Ramesh (security)'], ['L1000000102', 'Undelivered', '05-11-2026', 'Consignee not available']]);
+    ws['!cols'] = [{ wch: 16 }, { wch: 14 }, { wch: 18 }, { wch: 26 }];
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Delivery update'); XLSX.writeFile(wb, 'bulk-delivery-update-template.xlsx');
+  };
+  const onFile = async (f?: File) => {
+    if (!f) return;
+    setErr(''); setRes(null); setFile(f.name);
+    try {
+      const XLSX = await import('xlsx');
+      const wb = XLSX.read(await f.arrayBuffer(), { type: 'array', cellDates: false });
+      const raw = XLSX.utils.sheet_to_json<Record<string, any>>(wb.Sheets[wb.SheetNames[0]], { defval: '', raw: false });
+      const out = raw.map((r) => {
+        const get = (...names: string[]) => { for (const [k, v] of Object.entries(r)) if (names.includes(hk(k))) return String(v ?? '').trim(); return ''; };
+        return { awb: get('awbno', 'awb', 'awbnumber'), status: get('status'), date: get('date', 'deliverydate', 'deliveredon') || undefined, receivedBy: get('receivedby', 'receiver', 'reason', 'remark') || undefined };
+      }).filter((r) => r.awb);
+      if (!out.length) throw new Error('No rows — the sheet needs the columns AWB No, Status, Date, Received by.');
+      setRows(out);
+    } catch (e: any) { setErr(e.message); setRows(null); }
+  };
+  const submit = async () => {
+    if (!rows?.length) return;
+    if (!window.confirm(`Update ${rows.length} shipment(s) from ${file}? Delivered ones get no POD image — only "received by".`)) return;
+    setBusy(true); setErr('');
+    try { setRes(await api.bulkDeliveryExcel(rows)); setRows(null); } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  };
+  return (
+    <div className="card">
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <div><b>Upload Excel — no POD needed</b><div className="muted" style={{ fontSize: 12.5 }}>Columns: AWB No · Status (Delivered / Undelivered / Returned) · Date · Received by. Location = the shipment's destination.</div></div>
+        <div className="row" style={{ gap: 8 }}>
+          <button className="secondary" onClick={template}>⬇ Template</button>
+          <label className="button" style={{ padding: '8px 14px', cursor: 'pointer', margin: 0, border: '1px solid var(--border)', borderRadius: 8, fontWeight: 600 }}>⬆ Choose Excel<input type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={(e) => { void onFile(e.target.files?.[0]); e.target.value = ''; }} /></label>
+        </div>
+      </div>
+      {rows && (
+        <div className="row" style={{ gap: 10, alignItems: 'center', marginTop: 10 }}>
+          <span>{file}: <b>{rows.length}</b> row(s) — {rows.filter((r) => /deliver/i.test(r.status) && !/un|not/i.test(r.status)).length} delivered, {rows.filter((r) => /un|not/i.test(r.status)).length} undelivered</span>
+          <button disabled={busy} onClick={submit}>{busy ? 'Updating…' : `Update ${rows.length}`}</button>
+        </div>
+      )}
+      {err && <div className="error" style={{ marginTop: 8 }}>{err}</div>}
+      {res && (
+        <div style={{ marginTop: 10, fontSize: 13 }}>
+          <b style={{ color: 'var(--ok, #16a34a)' }}>{res.updated} updated</b>{res.failed ? <> · <b style={{ color: 'var(--danger, #c0392b)' }}>{res.failed} not updated</b></> : null}
+          {res.failed > 0 && <ul style={{ margin: '6px 0 0 18px' }}>{res.results.filter((r) => !r.ok).slice(0, 50).map((r) => <li key={r.awb}>{r.awb}: {r.error}</li>)}</ul>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function DeliveryUpdate({ bulk }: { bulk?: boolean }) {
   const [outcome, setOutcome] = useState<'DLD' | 'UDL'>('DLD');
   return (
     <>
+      {bulk && <DeliveryExcel />}
       <div className="card" style={{ marginBottom: 0 }}>
         <div className="row" style={{ gap: 8 }}>
           <button className={outcome === 'DLD' ? '' : 'secondary'} onClick={() => setOutcome('DLD')}>✅ Delivered (DLD)</button>

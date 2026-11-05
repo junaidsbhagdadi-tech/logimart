@@ -157,8 +157,9 @@ export class PickupsService {
    *  `forwardingNo` (the vendor's AWB): our internal AWB is GENERATED and the vendor number is stored as
    * the forwarding no — ops only type the carrier's number.
    */
-  async complete(id: number, captured: { awb?: string; forwardingNo?: string; pickedAt?: string; weight?: number; pieces?: number; value?: number; destPincode?: string; consigneeName?: string; consigneePhone?: string; consigneeAddress?: string } = {}, userId?: bigint) {
+  async complete(id: number, captured: { awb?: string; forwardingNo?: string; pickedAt?: string; weight?: number; pieces?: number; value?: number; destPincode?: string; consigneeName?: string; consigneePhone?: string; consigneeAddress?: string; drops?: any[] } = {}, userId?: bigint) {
     const p = await this.exists(id);
+    if (Array.isArray(captured.drops) && captured.drops.length) return this.completeMulti(p, id, captured, userId);
     let shipment: { awb: string; booked: boolean } | null = null;
     // When it was really picked: the date given, else the hand-off day (mark-picked is often done a day later),
     // never before the request nor in the future. A booking made here is dated the PICKUP REQUEST's day —
@@ -221,6 +222,43 @@ export class PickupsService {
       },
     });
     return { ...updated, shipment, forwardingNo: fwd || null };
+  }
+
+  /**
+   * #14-7 One pickup, many destinations (reverse pickup, e.g. a hotel chain sending to 40 locations): every drop
+   * is booked as its own shipment with an auto-generated internal AWB, dated the request's day and marked Picked.
+   */
+  private async completeMulti(p: any, id: number, captured: { pickedAt?: string; drops?: any[] }, userId?: bigint) {
+    const now = new Date();
+    const given = captured.pickedAt ? new Date(/T/.test(captured.pickedAt) ? captured.pickedAt : `${String(captured.pickedAt).slice(0, 10)}T12:00:00+05:30`) : null;
+    let pickedAt = given && !isNaN(+given) ? given : (p.handoffAt ?? now);
+    if (+pickedAt > +now) pickedAt = now;
+    if (+pickedAt < +p.createdAt) pickedAt = p.createdAt;
+    const drops = (captured.drops ?? []).slice(0, 500);
+    const bad = drops.map((d, i) => (/^\d{6}$/.test(String(d?.destPincode ?? '').trim()) ? null : i + 1)).filter(Boolean);
+    if (bad.length) throw new BadRequestException(`Drop ${bad.join(', ')}: destination pincode must be 6 digits.`);
+    const isBd = await this.bluedart.isBlueDartVendor(p.vendor).catch(() => false);
+    const shipments: { awb: string; destPincode: string; forwardingNo: string | null }[] = [];
+    const failed: { drop: number; error: string }[] = [];
+    let kg = 0, pcs = 0, val = 0;
+    for (let i = 0; i < drops.length; i++) {
+      const d = drops[i];
+      try {
+        const created: any = await this.bookFromPickup(p, { destPincode: String(d.destPincode).trim(), consigneeName: d.consigneeName || undefined, consigneePhone: d.consigneePhone || undefined, consigneeAddress: d.consigneeAddress || undefined, weight: d.weight != null ? Number(d.weight) : undefined, pieces: d.pieces != null ? Number(d.pieces) : undefined, value: d.value != null ? Number(d.value) : undefined });
+        const fwd = String(d.forwardingNo ?? '').trim().toUpperCase();
+        await this.prisma.shipment.update({ where: { awb: created.awb }, data: { createdAt: p.createdAt, statusCode: 'PKD', status: 'PICKED_UP' as any, statusAt: pickedAt, ...(fwd ? { forwardingAwb: fwd, ...(isBd ? { bdWaybill: fwd } : {}) } : {}) } });
+        await this.prisma.scanLog.updateMany({ where: { awb: created.awb, eventType: 'MAN' }, data: { scanAt: p.createdAt } });
+        await this.prisma.scanLog.create({ data: { awb: created.awb, eventType: 'PKD', remark: `Picked — pickup request #${id} (drop ${i + 1} of ${drops.length})`, scannedById: userId ?? null, scanAt: pickedAt } });
+        shipments.push({ awb: created.awb, destPincode: String(d.destPincode).trim(), forwardingNo: fwd || null });
+        kg += Number(d.weight || 0); pcs += Math.max(1, Math.floor(Number(d.pieces || 1))); val += Number(d.value || 0);
+      } catch (e: any) { failed.push({ drop: i + 1, error: e?.message || 'failed' }); }
+    }
+    if (!shipments.length) throw new BadRequestException(`No drop could be booked: ${failed.map((f) => `#${f.drop} ${f.error}`).join('; ')}`);
+    const updated = await this.prisma.pickupRequest.update({
+      where: { id: BigInt(id) },
+      data: { status: PickupStatus.PICKED, pickedAwb: shipments[0].awb, pickedPieces: pcs, ...(kg ? { pickedWeight: new Prisma.Decimal(kg) } : {}), ...(val ? { pickedValue: new Prisma.Decimal(val) } : {}) },
+    });
+    return { ...updated, shipment: { awb: shipments[0].awb, booked: true }, shipments, failed };
   }
 
   /**

@@ -6,6 +6,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { resolveScannedAwb } from '../../common/resolve-awb';
 import { cityName, pinRows, placeName } from '../../common/place-name';
 import { effectiveCode } from '../bluedart/bd-status';
+import { dashFilterWhere } from '../../common/dash-filter';
 import { RateService } from '../billing/rate.service';
 import { StorageService } from '../storage/storage.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -218,6 +219,58 @@ export class LifecycleService {
     return { code, updated: done.length, done, missing, locked, duplicate, needPod };
   }
 
+  /**
+   * #14-8 Bulk delivery update from Excel — AWB No · Status · Date · Received by — WITHOUT a POD image
+   * (the POD-scan screen still needs one). The delivery location is the shipment's destination. Status:
+   * Delivered / Undelivered / Returned (or DLD / UDL / RTD). Closed shipments are skipped, never reopened.
+   */
+  async bulkDeliveryExcel(rows: { awb?: string; status?: string; date?: any; receivedBy?: string }[], userId?: bigint) {
+    const parseAt = (v: any): Date => {
+      const now = new Date();
+      if (v == null || String(v).trim() === '') return now;
+      if (typeof v === 'number' || /^\d{5}(\.\d+)?$/.test(String(v).trim())) { const d = new Date(Math.round((Number(v) - 25569) * 864e5) - 330 * 60000); return isNaN(+d) || +d > +now ? now : d; }
+      const s = String(v).trim();
+      let m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})(?:[ T](\d{1,2}):(\d{2}))?/);
+      let d: Date | null = null;
+      if (m) { const y = m[3].length === 2 ? `20${m[3]}` : m[3]; d = new Date(`${y}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}T${(m[4] ?? '12').padStart(2, '0')}:${m[5] ?? '00'}:00+05:30`); }
+      else if ((m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?/))) d = new Date(`${m[1]}-${m[2]}-${m[3]}T${(m[4] ?? '12').padStart(2, '0')}:${m[5] ?? '00'}:00+05:30`);
+      else d = new Date(s);
+      return !d || isNaN(+d) || +d > +now ? now : d;
+    };
+    const results: { awb: string; ok: boolean; status?: string; error?: string }[] = [];
+    const delivered: string[] = [];
+    for (const r of (rows || []).slice(0, 3000)) {
+      const key = String(r?.awb ?? '').trim().toUpperCase();
+      if (!key) continue;
+      const st = String(r?.status ?? '').trim().toUpperCase();
+      const code = /UNDELIVER|NOT DELIVER|^UDL$|^NDR$/.test(st) ? 'UDL' : /^RTD$|RETURNED|RTO DELIVERED/.test(st) ? 'RTD' : /^DLD$|DELIVERED|^D$/.test(st) ? 'DLD' : null;
+      if (!code) { results.push({ awb: key, ok: false, error: `status "${r?.status ?? ''}" not understood — use Delivered, Undelivered or Returned` }); continue; }
+      const s = await this.prisma.shipment.findFirst({ where: { OR: [{ awb: key }, { forwardingAwb: { equals: key, mode: 'insensitive' } }, { bdWaybill: key }] }, select: { id: true, awb: true, statusCode: true, consigneeCity: true, destZone: true, destPincode: true } });
+      if (!s) { results.push({ awb: key, ok: false, error: 'AWB not found' }); continue; }
+      const cur = String(s.statusCode || 'MAN').toUpperCase();
+      if (['DLD', 'RTD', 'CAN'].includes(cur)) { results.push({ awb: s.awb, ok: false, error: `already closed (${cur})` }); continue; }
+      if (code === 'RTD' && !['RTO', 'UDL'].includes(cur)) { results.push({ awb: s.awb, ok: false, error: 'Returned needs the shipment to be in RTO first' }); continue; }
+      const at = parseAt(r?.date);
+      const pins = await pinRows(this.prisma, [s.destPincode]);
+      const loc = placeName(s.consigneeCity, pins.get(String(s.destPincode || '')), s.destZone) || null; // destination = delivery location
+      const by = String(r?.receivedBy ?? '').trim().slice(0, 120) || null;
+      await this.prisma.shipment.update({
+        where: { id: s.id },
+        data: {
+          statusCode: code, status: TO_ENUM[code], statusAt: at, ...(loc ? { currentLocation: loc } : {}),
+          ...(code === 'DLD' && by ? { podReceivedBy: by } : {}),
+          ...(code === 'UDL' ? { exceptionFlag: by || 'Undelivered' } : {}),
+        },
+      });
+      await this.prisma.scanLog.create({ data: { awb: s.awb, eventType: code, scanAt: at, serviceCenter: loc, scannedById: userId ?? null,
+        remark: code === 'DLD' ? (by ? `Received by ${by} (bulk update)` : 'Delivered (bulk update)') : code === 'UDL' ? (by || 'Undelivered (bulk update)') : 'Returned (bulk update)' } });
+      if (code === 'DLD') delivered.push(s.awb);
+      results.push({ awb: s.awb, ok: true, status: code });
+    }
+    if (delivered.length) await this.sendDeliveryEmails(delivered).catch(() => undefined);
+    return { updated: results.filter((x) => x.ok).length, failed: results.filter((x) => !x.ok).length, results };
+  }
+
   /** Full scan timeline for one AWB (append-only history), oldest → newest, with labels.
    *  Consumable by staff, customer panel, and public website tracking. */
   /** A CLIENT_ADMIN may only see their own account's AWBs (own account + same head-office group).
@@ -308,11 +361,19 @@ export class LifecycleService {
     const bdScanRows: { at: Date; code: string; label: string; location: string | null; by: string | null; reason: string | null; remark: string | null }[] = [];
     if ((s as any).bdScans) {
       try {
-        for (const sc of JSON.parse((s as any).bdScans) as any[]) {
-          const at = parseBdAt(sc?.date, sc?.time);
-          if (!at) continue;
-          bdScanRows.push({ at, code: 'BD', label: sc?.scan || sc?.type || 'Carrier scan', location: sc?.location ?? null, by: sc?.carrier || 'BlueDart', reason: null, remark: sc?.location ?? null });
+        // Carrier code per scan (was always "BD"), and one row per event: XpressBees sends the same scan for
+        // every box of an MPS shipment (13 boxes = 13 identical "Picked" rows) — repeats are folded into one.
+        const carrierCode = (c: string) => (/xpress/i.test(c) ? 'XPB' : /delhivery/i.test(c) ? 'DLY' : /v ?express/i.test(c) ? 'VXP' : /gati|allcargo/i.test(c) ? 'GATI' : 'BD');
+        const raw = (JSON.parse((s as any).bdScans) as any[]).map((sc) => ({ sc, at: parseBdAt(sc?.date, sc?.time) })).filter((x) => x.at).sort((a, b) => +a.at! - +b.at!);
+        let prev: any = null;
+        for (const { sc, at } of raw) {
+          const label = String(sc?.scan || sc?.type || 'Carrier scan').trim();
+          const loc = sc?.location ? String(sc.location).trim() : null;
+          if (prev && prev.label === label && (prev.location ?? '') === (loc ?? '') && +at! - +prev.at < 12 * 3600_000) { prev.n++; continue; }
+          prev = { at: at!, code: carrierCode(String(sc?.carrier || 'BlueDart')), label, location: loc, by: sc?.carrier || 'BlueDart', reason: null, remark: null, n: 1 };
+          bdScanRows.push(prev);
         }
+        for (const r of bdScanRows as any[]) { if (r.n > 1) r.remark = `${r.n} scans (one per box)`; delete r.n; }
       } catch { /* ignore malformed cache */ }
     }
     // Same mapper the carrier sync writes through with (bluedart/bd-status.ts) — covers a sync not yet run.
@@ -489,6 +550,10 @@ export class LifecycleService {
   /** Customer-Service dashboard: pending / stuck shipments with aging, NDR (undelivered) + overdue flags. */
   /** Team-dashboard filter: a vendor code (case-insensitive) and/or one customer. */
   private dashWhere(f: DashFilter = {}) {
+    // several vendors / customers at once (comma-separated) — see common/dash-filter
+    return dashFilterWhere(f.vendor, f.clientId, f.scope);
+  }
+  private dashWhereOld(f: DashFilter = {}) {
     const w: any = {};
     if (f.vendor && String(f.vendor).trim()) w.vendor = { equals: String(f.vendor).trim(), mode: 'insensitive' };
     if (f.clientId && /^\d+$/.test(String(f.clientId))) w.clientId = BigInt(f.clientId);

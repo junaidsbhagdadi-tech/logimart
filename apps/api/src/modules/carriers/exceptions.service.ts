@@ -13,9 +13,14 @@ export class ExceptionsService {
   constructor(private readonly prisma: PrismaService) {}
 
   /** `all` (CS team dashboard): no 30-day window — every open problem stays until it is closed. */
-  async inbox(user: any, all = false) {
+  async inbox(user: any, all = false, f: { vendor?: string; clientId?: string } = {}) {
     const scope = await scopedClientIds(this.prisma, user);
     const cw: any = scope ? { clientId: { in: scope } } : {};
+    // Team-dashboard filters (several vendors / customers) — so its Excel matches what is on screen.
+    const ids = String(f.clientId ?? '').split(',').map((x) => x.trim()).filter((x) => /^\d+$/.test(x)).map((x) => BigInt(x));
+    if (ids.length) cw.clientId = { in: scope ? ids.filter((i) => scope.includes(i)) : ids };
+    const vs = String(f.vendor ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+    if (vs.length) cw.vendor = { in: [...vs, ...vs.map((v) => v.toUpperCase())], mode: 'insensitive' };
     const now = Date.now();
     const recent = all ? new Date(0) : new Date(now - 30 * DAY);
     const cap = all ? 5000 : 300;
@@ -40,7 +45,7 @@ export class ExceptionsService {
       }),
       this.prisma.shipment.findMany({ where: { ...cw, createdAt: { gte: recent }, declaredValue: { gte: 50000 }, OR: [{ ewbNo: null }, { ewbNo: '' }], AND: [open] }, select: sel, orderBy: { createdAt: 'desc' }, take: cap }),
       this.prisma.invoice.findMany({
-        where: { ...(scope ? { clientId: { in: scope } } : {}), status: { not: 'DRAFT' }, sentAt: null },
+        where: { ...(cw.clientId ? { clientId: cw.clientId } : {}), status: { not: 'DRAFT' }, sentAt: null },
         select: { id: true, invoiceNo: true, total: true, issuedAt: true, client: { select: { accountCode: true, legalName: true } } }, orderBy: { issuedAt: 'asc' }, take: cap,
       }),
       this.prisma.pickupRequest.findMany({

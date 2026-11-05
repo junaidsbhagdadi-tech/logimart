@@ -68,9 +68,9 @@ If this wasn't expected, change the password and check the console.`);
   /** Portal opt-in flags from the linked customer (CLIENT_ADMIN) so the UI can gate My Invoices /
    *  rate-check. Internal staff (no clientId) get both false; they're governed by role, not these. */
   private async clientFlags(clientId: bigint | null) {
-    if (clientId == null) return { canViewInvoices: false, canCheckRates: false };
-    const c = await this.prisma.b2bClient.findUnique({ where: { id: clientId }, select: { canViewInvoices: true, canCheckRates: true } }).catch(() => null);
-    return { canViewInvoices: !!c?.canViewInvoices, canCheckRates: !!c?.canCheckRates };
+    if (clientId == null) return { canViewInvoices: false, canCheckRates: false, canSeePerformance: false };
+    const c = await this.prisma.b2bClient.findUnique({ where: { id: clientId }, select: { canViewInvoices: true, canCheckRates: true, canSeePerformance: true } }).catch(() => null);
+    return { canViewInvoices: !!c?.canViewInvoices, canCheckRates: !!c?.canCheckRates, canSeePerformance: !!c?.canSeePerformance };
   }
 
   /** Current user's LIVE profile (role / department / feature grants) so the client can refresh

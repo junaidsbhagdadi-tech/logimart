@@ -729,7 +729,9 @@ export const api = {
   carrierTrack: (awb: string) => request<{ awb: string; carrierName: string; status: string | null }>(`/api/v1/carriers/track/${awb}`, { method: 'POST' }),
   carrierSuggest: (body: { clientId: number | string; product: string; originPincode?: string; destPincode: string; deadKg?: number; pcs?: number; declaredValue?: number; air?: boolean }) =>
     request<{ destPincode: string; oda: boolean; priority?: { basis: string }; carriers: { vendor: string; name: string; carrier: string; price: number | null; serviceable: boolean | null; tatDays: number | null; tatSource: string | null; api: boolean; note: string; onTimePct?: number | null; priorityRank?: number }[] }>('/api/v1/carriers/suggest', { method: 'POST', body: JSON.stringify(body) }),
-  exceptionsInbox: (all = false) => request<{ generatedAt: string; total: number; buckets: { key: string; title: string; hint: string; items: any[] }[] }>(`/api/v1/exceptions${all ? '?all=1' : ''}`),
+  exceptionsInbox: (all = false, f: { vendor?: string; clientId?: string } = {}) => request<{ generatedAt: string; total: number; buckets: { key: string; title: string; hint: string; items: any[] }[] }>(`/api/v1/exceptions${qs({ all: all ? '1' : undefined, ...f })}`),
+  bulkDeliveryExcel: (rows: { awb: string; status: string; date?: string; receivedBy?: string }[]) =>
+    request<{ updated: number; failed: number; results: { awb: string; ok: boolean; status?: string; error?: string }[] }>('/api/v1/lifecycle/bulk-delivery-excel', { method: 'POST', body: JSON.stringify({ rows }) }),
   // ---- AR Logistics ----
   arlStatus: () => request<{ configured: boolean; [k: string]: any }>('/api/v1/arl/status'),
   arlHandoff: (awb: string) => request<{ awb: string; cn: string }>(`/api/v1/arl/handoff/${awb}`, { method: 'POST' }),
@@ -937,7 +939,7 @@ export const api = {
     request<{ total: number; created: number; results: { row: string; ok: boolean; error?: string }[] }>('/api/v1/pickups/bulk', { method: 'POST', body: JSON.stringify({ rows, vendor: vendor || undefined }) }),
   assignPickup: (id: string, riderId: number) =>
     request(`/api/v1/pickups/${id}/assign`, { method: 'POST', body: JSON.stringify({ riderId }) }),
-  completePickup: (id: string, body: { awb?: string; forwardingNo?: string; pickedAt?: string; weight?: number; pieces?: number; value?: number; destPincode?: string; consigneeName?: string; consigneePhone?: string; consigneeAddress?: string } = {}) =>
+  completePickup: (id: string, body: { awb?: string; forwardingNo?: string; pickedAt?: string; weight?: number; pieces?: number; value?: number; destPincode?: string; consigneeName?: string; consigneePhone?: string; consigneeAddress?: string; drops?: any[] } = {}) =>
     request(`/api/v1/pickups/${id}/complete`, { method: 'POST', body: JSON.stringify(body) }),
   pickupDetail: (id: string) => request<any>(`/api/v1/pickups/${id}`),
   pickupActioned: (id: string) => request<any>(`/api/v1/pickups/${id}/actioned`, { method: 'POST' }),

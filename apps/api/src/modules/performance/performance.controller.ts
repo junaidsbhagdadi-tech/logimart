@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/rbac/roles.guard';
 import { Feature, Roles } from '../../common/rbac/roles.decorator';
@@ -28,6 +28,9 @@ export class PerformanceController {
   @Get('portal/performance')
   @Roles(UserRole.CLIENT_ADMIN)
   async portal(@Req() req: any, @Query('from') from?: string, @Query('to') to?: string) {
+    // #14-4 only for customers switched on (Customers → edit → "Performance dashboard"), not by default.
+    const c = await this.prisma.b2bClient.findUnique({ where: { id: BigInt(req.user.clientId) }, select: { canSeePerformance: true } });
+    if (!c?.canSeePerformance) throw new ForbiddenException('The Performance dashboard is not enabled for your account — ask your account manager.');
     const ids = await this.perf.portalClientIds(BigInt(req.user.clientId));
     return this.perf.dashboard({ from, to, clientIds: ids, internal: false });
   }
