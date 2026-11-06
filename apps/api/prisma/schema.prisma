@@ -55,6 +55,7 @@ model User {
   // ---- Rider/driver identity (role DRIVER) — used by the mobile app's Rider-ID + PIN login ----
   riderCode    String?   @unique // RID001 — the field ID a rider logs into the app with
   pinHash      String?   // bcrypt of the rider's numeric PIN
+  isMasterRider Boolean  @default(false) // master Rider ID: sees + acts on EVERY rider's pickups, deliveries and bookings in the app
   phone        String?   // rider mobile
   vehicleNo    String?   // assigned vehicle
   createdAt    DateTime  @default(now())

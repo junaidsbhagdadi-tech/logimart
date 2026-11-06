@@ -991,11 +991,18 @@ export class ShipmentsService {
    * ODA flag and EDD so rating stays correct. Charges are computed live, so no stored total to patch.
    */
   /** Rider app "My bookings": shipments this user booked on an IST day (default today). */
+  /** Master Rider ID (User.isMasterRider) — acts on every rider's bookings, not just its own. */
+  private async isMasterRider(userId: bigint) {
+    const u = await this.prisma.user.findUnique({ where: { id: userId }, select: { isMasterRider: true } });
+    return !!u?.isMasterRider;
+  }
+
   async myBookings(userId: bigint, date?: string) {
     const d = /^\d{4}-\d{2}-\d{2}$/.test(String(date || '')) ? String(date) : new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10);
+    const master = await this.isMasterRider(userId);
     const rows = await this.prisma.shipment.findMany({
       where: {
-        createdById: userId, createdAt: { gte: new Date(`${d}T00:00:00+05:30`), lte: new Date(`${d}T23:59:59.999+05:30`) },
+        ...(master ? { createdById: { not: null } } : { createdById: userId }), createdAt: { gte: new Date(`${d}T00:00:00+05:30`), lte: new Date(`${d}T23:59:59.999+05:30`) },
         OR: [{ statusCode: null }, { statusCode: { not: 'CAN' } }], // cancelled bookings drop off the rider's list
       },
       orderBy: { createdAt: 'desc' },
@@ -1117,7 +1124,7 @@ export class ShipmentsService {
   async assertRiderOwns(awbRaw: string, userId: bigint) {
     const s = await this.prisma.shipment.findUnique({ where: { awb: String(awbRaw || '').trim().toUpperCase() }, select: { createdById: true } });
     if (!s) throw new NotFoundException(`AWB ${awbRaw} not found`);
-    if (s.createdById !== userId) throw new ForbiddenException('You can only attach documents to shipments you booked.');
+    if (s.createdById !== userId && !(await this.isMasterRider(userId))) throw new ForbiddenException('You can only attach documents to shipments you booked.');
   }
 
   /** A rider may cancel their own booking while it's still Booked — also after the carrier hand-off
@@ -1125,7 +1132,7 @@ export class ShipmentsService {
   async assertRiderCanCancel(awbRaw: string, userId: bigint) {
     const s = await this.prisma.shipment.findUnique({ where: { awb: String(awbRaw || '').trim().toUpperCase() }, select: { createdById: true, statusCode: true } });
     if (!s) throw new NotFoundException(`AWB ${awbRaw} not found`);
-    if (s.createdById !== userId) throw new ForbiddenException('You can only cancel shipments you booked. Ask CS.');
+    if (s.createdById !== userId && !(await this.isMasterRider(userId))) throw new ForbiddenException('You can only cancel shipments you booked. Ask CS.');
     if (String(s.statusCode || 'MAN') !== 'MAN') throw new ConflictException('Already picked up — ask CS to cancel it.');
   }
 
@@ -1133,7 +1140,7 @@ export class ShipmentsService {
     const awb = String(awbRaw || '').trim().toUpperCase();
     const s = await this.prisma.shipment.findUnique({ where: { awb }, select: { createdById: true, statusCode: true, bdWaybill: true, forwardingAwb: true, vendor: true } });
     if (!s) throw new NotFoundException(`AWB ${awb} not found`);
-    if (s.createdById !== userId) throw new ForbiddenException('You can only change shipments you booked. Ask CS to correct this one.');
+    if (s.createdById !== userId && !(await this.isMasterRider(userId))) throw new ForbiddenException('You can only change shipments you booked. Ask CS to correct this one.');
     if (String(s.statusCode || 'MAN') !== 'MAN') throw new ConflictException('Already picked up — ask CS to correct it.');
     const apiCarrier = /^(BLUE|BDR)|^DLY|DELHIVERY|^XPB$|^XB$|XPRESS\s*BEES|^GATI$|ALLCARGO|^VXP$|^VX$|V\s*EXPRESS|^ARL$|AR\s*LOG/i.test(String(s.vendor || '').trim());
     if (s.bdWaybill || (s.forwardingAwb && apiCarrier)) throw new ConflictException('Already handed to the carrier — ask CS to cancel the carrier AWB first.');
