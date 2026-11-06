@@ -453,7 +453,7 @@ tbody tr:hover td { background: var(--sky-soft); }
 /* ============ Phone view (home-screen shortcut) ============
    Top bar with ☰ + AWB lookup; the menu slides in as a drawer; pages get a narrow gutter, wrapping rows,
    stacked grids and side-scrolling tables (never the whole page). */
-.mobile-topbar, .mobile-backdrop { display: none; }
+.mobile-topbar, .mobile-backdrop, .mobile-tabbar { display: none; }
 @media (max-width: 820px) {
   .app { flex-direction: column; }
   .mobile-topbar {
@@ -462,6 +462,25 @@ tbody tr:hover td { background: var(--sky-soft); }
     background: var(--card); border-bottom: 1px solid var(--border);
   }
   .mobile-burger { padding: 6px 12px; font-size: 20px; line-height: 1; background: transparent; color: var(--text); border: 1px solid var(--border); }
+  .mobile-install { padding: 6px 10px; font-size: 12.5px; white-space: nowrap; }
+  /* app-style bottom tab bar */
+  .mobile-tabbar {
+    display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 900;
+    background: var(--card); border-top: 1px solid var(--border);
+    padding-bottom: env(safe-area-inset-bottom); box-shadow: 0 -4px 18px rgba(0,0,0,.06);
+  }
+  .mobile-tabbar .tab {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    min-height: 56px; padding: 6px 2px; background: transparent; border: 0; border-radius: 0; box-shadow: none;
+    color: var(--muted); text-decoration: none; font-weight: 600; font-size: 11px; -webkit-tap-highlight-color: transparent;
+  }
+  .mobile-tabbar .tab .tab-ic { font-size: 20px; line-height: 1; }
+  .mobile-tabbar .tab.active { color: var(--brand); }
+  .main { padding-bottom: calc(80px + env(safe-area-inset-bottom)) !important; }
+  /* app feel: bigger touch targets, no accidental zoom / text selection on controls */
+  .main button, .main select { min-height: 40px; }
+  button, .mobile-tabbar, .sidebar nav a { -webkit-user-select: none; user-select: none; }
+  body { overscroll-behavior-y: none; }
   .mobile-backdrop { display: block; position: fixed; inset: 0; background: rgba(0,0,0,.38); z-index: 950; }
   .sidebar {
     position: fixed; top: 0; left: 0; bottom: 0; height: 100vh; width: min(84vw, 290px); z-index: 1000;

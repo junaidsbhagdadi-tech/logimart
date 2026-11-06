@@ -158,6 +158,22 @@ export function Layout() {
     return () => mq.removeEventListener('change', on);
   }, []);
   const collapsed = collapsedPref && !isMobile;
+  // ---- Install as an app (PWA) ----
+  const standalone = typeof window !== 'undefined' && (window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone === true);
+  const [installEvt, setInstallEvt] = useState<any>(null);
+  const isIos = typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const [iosHint, setIosHint] = useState(false);
+  useEffect(() => {
+    const on = (e: any) => { e.preventDefault(); setInstallEvt(e); };
+    window.addEventListener('beforeinstallprompt', on);
+    window.addEventListener('appinstalled', () => setInstallEvt(null));
+    return () => window.removeEventListener('beforeinstallprompt', on);
+  }, []);
+  const canInstall = !standalone && (!!installEvt || isIos);
+  const install = async () => {
+    if (installEvt) { installEvt.prompt(); try { await installEvt.userChoice; } catch { /* dismissed */ } setInstallEvt(null); return; }
+    if (isIos) setIosHint(true);
+  };
   const toggleRail = () => setCollapsed((c) => { const n = !c; localStorage.setItem('lm.rail', n ? '1' : '0'); return n; });
 
   const [closed, setClosed] = useState<Record<string, boolean>>(() => {
@@ -280,6 +296,7 @@ export function Layout() {
       <header className="mobile-topbar">
         <button className="mobile-burger" onClick={() => setDrawer(true)} aria-label="Open menu">☰</button>
         <Logo height={26} />
+        {canInstall && <button className="mobile-install" onClick={install} title="Install ExcelEx as an app on this phone">📲 Install</button>}
         <form onSubmit={(e) => { lookupAwb(e); }} style={{ flex: 1, minWidth: 0 }}>
           <input value={awb} onChange={(e) => setAwb(e.target.value)} placeholder="🔍 AWB" aria-label="AWB lookup" style={{ width: '100%', fontSize: 16, padding: '7px 10px' }} />
         </form>
@@ -339,6 +356,7 @@ export function Layout() {
               </button>
             </div>
           )}
+          {canInstall && !isMobile && !collapsed && <button className="secondary" style={{ width: '100%', marginBottom: 8, fontSize: 12.5 }} onClick={install}>📲 Install as app</button>}
           <div className="name">{user?.fullName}</div>
           <div className="role">{user?.role}</div>
           <button className="secondary" onClick={onLogout} title="Logout">Logout</button>
@@ -347,6 +365,33 @@ export function Layout() {
       <main className="main">
         <Outlet />
       </main>
+
+      {/* Phone tab bar — the app-style bottom navigation (hidden on desktop). */}
+      <nav className="mobile-tabbar" aria-label="Main">
+        {(isClient
+          ? [['/', '🏠', 'Home'], ['/quick-book', '⚡', 'Book'], ['/tracker', '🧭', 'Track'], ['/awb-list', '📝', 'Shipments']]
+          : [['/', '🏠', 'Home'], ['/quick-book', '⚡', 'Book'], ['/tracker', '🧭', 'Track'], ['/pickups', '📦', 'Pickups']]
+        ).map(([to, ic, label]) => (
+          <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => (isActive ? 'tab active' : 'tab')}>
+            <span className="tab-ic">{ic}</span><span className="tab-lbl">{label}</span>
+          </NavLink>
+        ))}
+        <button className="tab" onClick={() => setDrawer(true)}><span className="tab-ic">☰</span><span className="tab-lbl">Menu</span></button>
+      </nav>
+
+      {iosHint && (
+        <div className="mobile-backdrop" style={{ display: 'grid', placeItems: 'end center', zIndex: 2000 }} onClick={() => setIosHint(false)}>
+          <div className="card" style={{ margin: 16, marginBottom: 'calc(90px + env(safe-area-inset-bottom))', maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
+            <b>Install ExcelEx on your iPhone</b>
+            <ol style={{ margin: '8px 0 10px 18px', padding: 0, lineHeight: 1.6 }}>
+              <li>Tap the <b>Share</b> button (square with an arrow) at the bottom of Safari.</li>
+              <li>Choose <b>Add to Home Screen</b>, then <b>Add</b>.</li>
+              <li>Open ExcelEx from the new icon — it runs full-screen like an app.</li>
+            </ol>
+            <button style={{ width: '100%' }} onClick={() => setIosHint(false)}>Got it</button>
+          </div>
+        </div>
+      )}
 
       {/* Global appointment-delivery notification — visible on every page. */}
       {!isClient && dueAppts.length > 0 && (

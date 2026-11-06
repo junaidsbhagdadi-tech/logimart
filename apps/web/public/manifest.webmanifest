@@ -1,12 +1,24 @@
 {
-  "name": "ExcelEx Delivery",
-  "short_name": "Delivery",
-  "description": "ExcelEx Express rider delivery app — find AWB, capture POD.",
-  "start_url": "/deliver",
+  "id": "/",
+  "name": "ExcelEx ERP",
+  "short_name": "ExcelEx",
+  "description": "ExcelEx Express Logistics — book, track, pickups, PODs and billing.",
+  "start_url": "/?source=app",
   "scope": "/",
   "display": "standalone",
-  "orientation": "portrait",
-  "background_color": "#16308f",
-  "theme_color": "#1e44be",
-  "icons": []
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#0d3a8c",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Quick booking", "url": "/quick-book", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Track shipment", "url": "/tracker", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Pickups", "url": "/pickups", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
 }
