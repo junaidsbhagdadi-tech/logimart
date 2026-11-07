@@ -68,6 +68,7 @@ export class XpressBeesService implements OnModuleInit {
     if (this.syncing) return;
     this.syncing = true;
     try {
+      await this.replayUnmatched().catch((e) => this.log.warn(`replay: ${e?.message || e}`));
       const rows = await this.prisma.shipment.findMany({
         where: {
           createdAt: { gte: new Date(Date.now() - 30 * 864e5) }, forwardingAwb: { not: null },
@@ -311,6 +312,37 @@ export class XpressBeesService implements OnModuleInit {
    * webhook_logs for checking. Matches our shipment by their AWB (forwarding no) or a box (MPS) id.
    */
   async webhook(body: any) {
+    const result = await this.applyPush(body);
+    await this.prisma.webhookLog.create({ data: { provider: 'XPB', payload: body ?? {}, result } }).catch(() => undefined);
+    return { ok: true, result };
+  }
+
+  /**
+   * XpressBees pushes every AWB on our account, including ones booked on their panel and typed into the ERP
+   * later. Those pushes found no shipment at the time, so their scans and the delivery POD link were lost.
+   * Replays such logged pushes (last 30 days, oldest first) once the AWB exists in the ERP.
+   */
+  async replayUnmatched() {
+    const logs = await this.prisma.webhookLog.findMany({
+      where: { provider: 'XPB', result: 'no matching shipment', createdAt: { gte: new Date(Date.now() - 30 * 864e5) } },
+      orderBy: { id: 'asc' }, take: 5000, select: { id: true, payload: true },
+    });
+    if (!logs.length) return { replayed: 0 };
+    const awbOf = (b: any) => String(b?.AWBNO ?? b?.AWBNo ?? b?.awbno ?? b?.awb_number ?? b?.awb ?? '').trim();
+    const awbs = [...new Set(logs.map((l) => awbOf(l.payload)).filter(Boolean))];
+    const known = new Set((await this.prisma.shipment.findMany({ where: { forwardingAwb: { in: awbs } }, select: { forwardingAwb: true } })).map((x) => x.forwardingAwb));
+    let replayed = 0;
+    for (const l of logs) {
+      if (!known.has(awbOf(l.payload))) continue;
+      const r = await this.applyPush(l.payload).catch((e) => `replay failed: ${e?.message || e}`);
+      await this.prisma.webhookLog.update({ where: { id: l.id }, data: { result: `replayed: ${r}`.slice(0, 2000) } }).catch(() => undefined);
+      replayed++;
+    }
+    if (replayed) this.log.log(`XpressBees: replayed ${replayed} earlier pushes for AWBs entered after the scan.`);
+    return { replayed };
+  }
+
+  private async applyPush(body: any): Promise<string> {
     const flat: Record<string, any> = {};
     const walk = (o: any, depth = 0) => { if (!o || typeof o !== 'object' || depth > 4) return; for (const [k, v] of Object.entries(o)) { if (v && typeof v === 'object') walk(v, depth + 1); else if (flat[k.toLowerCase()] == null) flat[k.toLowerCase()] = v; } };
     walk(body);
@@ -350,8 +382,7 @@ export class XpressBeesService implements OnModuleInit {
       });
       result = `updated ${s.awb}${derived ? ` → ${derived.statusCode}` : ''}${pod ? ' + POD' : ''}`;
     }
-    await this.prisma.webhookLog.create({ data: { provider: 'XPB', payload: body ?? {}, result } }).catch(() => undefined);
-    return { ok: true, result };
+    return result;
   }
 
   async syncTracking(awb: string) {
