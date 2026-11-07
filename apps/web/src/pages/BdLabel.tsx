@@ -94,7 +94,8 @@ export function CourierSet({ m, only }: { m: MasterLabel; only?: 'pod' }) {
   boxes.forEach((b) => { if (b.l && b.w && b.h) { const k = `${b.l} x ${b.w} x ${b.h}`; dimGroups.set(k, (dimGroups.get(k) || 0) + 1); } });
   const dims = [...dimGroups.entries()].map(([k, n]) => (dimGroups.size > 1 || n > 1 ? `${k} (${n})` : k)).join(', ') || '—';
   // On a carrier's label the sender is our account code only — the carrier must never see our customer's name.
-  const sender = isOwn ? `${m.accountCode || ''} - ${m.shipperName || m.consignor.name}` : `LOGIMART ${m.accountCode || ''}`.trim();
+  // #15-3 carrier labels: "<vendor code> - <customer code>" (codes only, no names).
+  const sender = isOwn ? `${m.accountCode || ''} - ${m.shipperName || m.consignor.name}` : [String(m.vendor || '').toUpperCase(), m.accountCode].filter(Boolean).join(' - ');
   const date = ddmmyyyy(m.createdAt);
   // Page 2 — boxes grouped by identical size, with their weight where each box's weight is known.
   const groupMap = new Map<string, { dims: string; n: number; kg: number }>();

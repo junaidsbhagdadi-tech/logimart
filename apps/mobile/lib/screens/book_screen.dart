@@ -591,6 +591,55 @@ class _MyBookingsState extends State<MyBookings> {
   }
 
   String _v(Map<String, dynamic> r) => '${r['vendor'] ?? ''}'.isEmpty ? 'SELF' : '${r['vendor']}'.toUpperCase();
+  bool _handed(Map<String, dynamic> r) => (r['bdWaybill'] ?? r['forwardingAwb']) != null;
+
+  // #15-6 account-wise bulk actions (same as web Quick Booking): on the picked account chip, or the whole day.
+  int? _bulkDone, _bulkTotal;
+  Future<void> _handOffAll(List<Map<String, dynamic>> toHand) async {
+    final scope = _vendor ?? 'all accounts';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Hand off ${toHand.length} booking(s)?'),
+        content: Text('$scope — each one gets the carrier\'s AWB (and pickup), same as "Hand to carrier" on each.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Hand off')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final errors = <String>[];
+    setState(() { _bulkDone = 0; _bulkTotal = toHand.length; });
+    for (final r in toHand) {
+      try {
+        await ApiClient.instance.handoffCarrier('${r['awb']}');
+      } catch (e) {
+        errors.add('${r['awb']}: $e');
+      }
+      if (mounted) setState(() => _bulkDone = (_bulkDone ?? 0) + 1);
+    }
+    if (!mounted) return;
+    setState(() { _bulkDone = null; _bulkTotal = null; });
+    if (errors.isEmpty) {
+      toast(context, 'Handed off ${toHand.length} booking(s).');
+    } else {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('${toHand.length - errors.length} handed off · ${errors.length} failed'),
+          content: SingleChildScrollView(child: Text(errors.join('\n\n'))),
+          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+        ),
+      );
+    }
+    load();
+  }
+
+  Future<void> _printAll(List<Map<String, dynamic>> rows, {bool podOnly = false}) => PrintView.open(
+      context,
+      podOnly ? 'POD copies (${rows.length})' : 'Labels (${rows.length})',
+      '/labels/print?awbs=${Uri.encodeComponent(rows.map((r) => r['awb']).join(','))}${podOnly ? '&only=pod' : ''}');
 
   Future<void> _printManifest() async {
     final picked = _rows.where((r) => _sel.contains(r['awb'])).toList();
@@ -636,6 +685,40 @@ class _MyBookingsState extends State<MyBookings> {
                 )),
           ]),
         ),
+      if (!_loading && _error == null && shown.isNotEmpty) Builder(builder: (_) {
+        final toHand = shown.where((r) => !_handed(r) && _v(r) != 'SELF').toList();
+        final busy = _bulkTotal != null;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text('${_vendor ?? 'All accounts'} · ${shown.length} booking(s)${toHand.isNotEmpty ? ' · ${toHand.length} not handed to carrier' : ''}',
+                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            Row(children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: busy || toHand.isEmpty ? null : () => _handOffAll(toHand),
+                  icon: busy ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.local_shipping, size: 18),
+                  label: Text(busy ? 'Handing off ${_bulkDone ?? 0}/$_bulkTotal' : 'Hand off all (${toHand.length})'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _printAll(shown),
+                  icon: const Icon(Icons.sell_outlined, size: 18),
+                  label: Text('Print labels (${shown.length})'),
+                ),
+              ),
+            ]),
+            OutlinedButton.icon(
+              onPressed: () => _printAll(shown, podOnly: true),
+              icon: const Icon(Icons.description_outlined, size: 18),
+              label: Text('Print PODs (${shown.length})'),
+            ),
+          ]),
+        );
+      }),
       Expanded(
         child: _loading
             ? const Center(child: CircularProgressIndicator())

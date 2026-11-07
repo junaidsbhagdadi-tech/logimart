@@ -1301,6 +1301,8 @@ export class ShipmentsService {
     if (gte || lte) where.createdAt = { ...(gte ? { gte } : {}), ...(lte ? { lte } : {}) };
     // CS worklist: ≥ ₹50k consignments still missing their e-way bill number (AND — `where.OR` is the search).
     if (ewbPending) where.AND = [EWB_PENDING_WHERE];
+    // #15-4 cancelled / voided AWBs leave the list (Reports → Void Report has them); a search still finds one.
+    if (!s) where.AND = [...(where.AND ?? []), { OR: [{ statusCode: null }, { statusCode: { not: 'CAN' } }] }];
     // Carrier filter (Shipping Hub tile → that carrier's shipments). vendor codes, case-insensitive; SELF = none.
     if (vendors?.length) {
       const v = vendors.map((x) => x.trim()).filter(Boolean);
